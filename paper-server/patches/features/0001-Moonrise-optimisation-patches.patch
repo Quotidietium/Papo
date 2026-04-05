@@ -26652,7 +26652,7 @@ index 061bc47972d9c67375c0ff9461c506625c80108c..7656665352632fc718bea91dcfd3dd41
          );
          this.chunkSource.getGeneratorState().ensureStructuresGenerated();
 @@ -449,6 +693,20 @@ public class ServerLevel extends Level implements ServerEntityGetter, WorldGenLe
-         this.waypointManager = new ServerWaypointManager();
+         this.waypointManager = new ServerWaypointManager(this); // Paper - optimize ServerWaypointManager with locator bar disabled
          this.environmentAttributes = EnvironmentAttributeSystem.builder().addDefaultLayers(this).build();
          this.updateSkyBrightness();
 +        // Paper start - rewrite chunk system

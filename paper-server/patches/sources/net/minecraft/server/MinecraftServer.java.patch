@@ -1459,7 +1459,7 @@
                  serverPlayer.connection.send(new ClientboundEntityEventPacket(serverPlayer, b));
              }
          } else if (rule == GameRules.LIMITED_CRAFTING || rule == GameRules.IMMEDIATE_RESPAWN) {
-@@ -2121,18 +_,18 @@
+@@ -2121,18 +_,19 @@
                  ? ClientboundGameEventPacket.LIMITED_CRAFTING
                  : ClientboundGameEventPacket.IMMEDIATE_RESPAWN;
              ClientboundGameEventPacket clientboundGameEventPacket = new ClientboundGameEventPacket(type, (Boolean)value ? 1.0F : 0.0F);
@@ -1469,6 +1469,7 @@
 -            this.getAllLevels().forEach(serverLevel -> {
 +            // this.getAllLevels().forEach(serverLevel -> { // Paper - per-world game rules
                  ServerWaypointManager waypointManager = serverLevel.getWaypointManager();
++                waypointManager.locatorBarEnabled = (Boolean) value; // Paper - optimize ServerWaypointManager with locator bar disabled
                  if ((Boolean)value) {
                      serverLevel.players().forEach(waypointManager::updatePlayer);
                  } else {
