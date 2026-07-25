@@ -545,7 +545,7 @@ public final class CraftItemStack extends ItemStack {
         if (this.isEmpty()) {
             return null;
         }
-        return io.papermc.paper.datacomponent.PaperDataComponentType.convertDataComponentValue(this.handle.getComponents(), (io.papermc.paper.datacomponent.PaperDataComponentType.ValuedImpl<T, ?>) type);
+        return io.papermc.paper.datacomponent.PaperDataComponentType.convertDataComponentValue(this.handle, (io.papermc.paper.datacomponent.PaperDataComponentType.ValuedImpl<T, ?>) type);
     }
 
     @Override
