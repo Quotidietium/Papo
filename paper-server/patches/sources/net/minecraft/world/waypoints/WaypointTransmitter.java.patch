@@ -1,10 +1,18 @@
 --- a/net/minecraft/world/waypoints/WaypointTransmitter.java
 +++ b/net/minecraft/world/waypoints/WaypointTransmitter.java
-@@ -20,6 +_,7 @@
+@@ -20,13 +_,14 @@
      Waypoint.Icon waypointIcon();
- 
+
      static boolean doesSourceIgnoreReceiver(LivingEntity entity, ServerPlayer player) {
 +        if (!player.getBukkitEntity().canSee(entity.getBukkitEntity())) return true; // Paper - ignore if entity is hidden from player
          if (player.isSpectator()) {
              return false;
          } else if (!entity.isSpectator() && !entity.hasIndirectPassenger(player)) {
+             double broadcastRange = Math.min(
+                 entity.getAttributeValue(Attributes.WAYPOINT_TRANSMIT_RANGE), player.getAttributeValue(Attributes.WAYPOINT_RECEIVE_RANGE)
+             );
+-            return entity.distanceTo(player) >= broadcastRange;
++            return entity.distanceToSqr(player) >= Mth.square(broadcastRange); // Paper - optimize waypoint distance check by using squared distance
+         } else {
+             return true;
+         }
