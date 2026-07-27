@@ -201,7 +201,7 @@
                      player.handleCreativeModeItemDrop(carried);
                  }
              }
-@@ -588,8 +_,9 @@
+@@ -588,14 +_,15 @@
          if (player instanceof ServerPlayer) {
              ItemStack carried = this.getCarried();
              if (!carried.isEmpty()) {
@@ -212,6 +212,13 @@
              }
          }
      }
+ 
+     private static void dropOrPlaceInInventory(Player player, ItemStack stack) {
+-        boolean flag = player.isRemoved() && player.getRemovalReason() != Entity.RemovalReason.CHANGED_DIMENSION;
++        boolean flag = !player.isAlive() && player.getRemovalReason() != Entity.RemovalReason.CHANGED_DIMENSION; // Paper - Make sure player is dead (https://github.com/PaperMC/Paper/pull/13002)
+         boolean flag1 = player instanceof ServerPlayer serverPlayer && serverPlayer.hasDisconnected();
+         if (flag || flag1) {
+             player.drop(stack, false);
 @@ -635,6 +_,14 @@
      public abstract boolean stillValid(Player player);
  
