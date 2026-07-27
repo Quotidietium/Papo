@@ -569,7 +569,11 @@ public class CraftBlockData implements BlockData {
 
     public static void reloadCache() {
         stringDataCache.clear();
-        Block.BLOCK_STATE_REGISTRY.forEach(blockData -> stringDataCache.put(blockData.toString(), blockData.createCraftBlockData()));
+        Block.BLOCK_STATE_REGISTRY.forEach(blockData -> {
+            CraftBlockData data = blockData.createCraftBlockData();
+            data.parsedStates = new java.util.HashMap<>(blockData.getValues()); // Backport of #14080: cached states must be mergeable
+            stringDataCache.put(blockData.toString(), data);
+        });
     }
     // Paper end - cache block data strings
 

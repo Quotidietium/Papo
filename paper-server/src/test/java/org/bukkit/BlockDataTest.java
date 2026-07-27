@@ -94,6 +94,22 @@ public class BlockDataTest {
     }
 
     @Test
+    public void testMergeFullySpecifiedBannerData() {
+        BlockData banner = CraftBlockData.newData(null, "minecraft:light_gray_banner");
+        BlockData rotation = CraftBlockData.newData(null, "minecraft:light_gray_banner[rotation=1]");
+
+        assertEquals(rotation, banner.merge(rotation));
+    }
+
+    @Test
+    public void testMergeFullySpecifiedLogData() {
+        BlockData log = CraftBlockData.newData(BlockType.OAK_LOG, null);
+        BlockData axis = CraftBlockData.newData(BlockType.OAK_LOG, "[axis=y]");
+
+        assertEquals(axis, log.merge(axis));
+    }
+
+    @Test
     public void testMergeAny() {
         Chest trueTarget = (Chest) CraftBlockData.newData(null, "minecraft:chest[facing=east,waterlogged=true]");
         Chest falseTarget = (Chest) CraftBlockData.newData(null, "minecraft:chest[facing=east,waterlogged=false]");
