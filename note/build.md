@@ -64,6 +64,21 @@ Gradle 会自动探测 PATH 中的 JDK 21 作为 toolchain，无需手动配置 
 
 > `runServer` 系列任务在 `paper-server/build.gradle.kts` 中指定了 **JetBrains 厂商的 JDK 21**（`JvmVendorSpec.JETBRAINS`），由 foojay-resolver 自动下载；若本机没有 JBR 且网络受限，这些 run 任务可能失败（不影响编译打包）。
 
+## 修改 Minecraft 源码补丁的正确工作流（重要，踩过坑）
+
+`paper-server/src/minecraft/` 下有一个 paperweight 维护的**内部 git 仓库**（`src/minecraft/java/.git`），外部 `patches/` 目录才是提交进版本库的"事实来源"。两者通过 gradle 任务同步：
+
+1. **修改源码**：直接编辑 `src/minecraft/java/...` 下的文件。
+2. **`./gradlew :paper-server:fixupSourcePatches`** —— 把未提交的源码修改以 `git commit --fixup` + `rebase --autosquash` 合并进内部仓库的 "paper File Patches" 提交。
+3. **`./gradlew :paper-server:rebuildPatches`** —— 从内部仓库重新生成 `patches/` 下的补丁文件（会自动 `git add`）。
+
+注意：
+
+- **不要**只跑 `rebuildSourcePatches` 而不先 `fixupSourcePatches`：rebuild 会先 `git stash` 未提交的修改再重建，未 fixup 的修改会"丢失"（补丁重新生成后不含你的改动）。
+- **不要**在同一次 gradlew 调用里串联 `fixupSourcePatches rebuildPatches`：实测会在内部 `git stash push` 时失败并**清空 patches 目录**（可用 `git restore --staged paper-server/patches && git restore paper-server/patches` 恢复，因为补丁已提交）。分开两次调用即可。
+- 直接手工编辑 `patches/` 下的 `.patch` 文件也是合法的（它们是事实来源），但之后必须跑**完整的** `./gradlew :paper-server:applyPatches` 同步源码树。只跑 `applySourcePatches` 会把 feature 补丁（如对 log4j AsyncAppender 的修改）从源码树里抹掉，导致莫名编译错误。
+- 内部仓库的 `file` 标签标记 "paper File Patches" 提交的位置，fixup/rebase 后若标签未跟随移动（任务中断时会发生），rebuild 会从旧提交重新生成补丁，表现为"修改神秘消失"。修复方法：`cd paper-server/src/minecraft/java && git tag -f file <新的paper File Patches提交哈希>`。
+
 ## 注意事项
 
 - `paper-server/src/minecraft/` 在 `.gitignore` 中 —— 补丁生成的源码树**不进入版本库**，版本库只跟踪 `patches/` 目录。提交改动 = 提交补丁文件（`rebuildPatches` 的产物）。
