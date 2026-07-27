@@ -1813,12 +1813,12 @@
      @Override
      public void handleInteract(ServerboundInteractPacket packet) {
          PacketUtils.ensureRunningOnSameThread(packet, this, this.player.level());
-+        if (this.player.isImmobile()) return; // CraftBukkit
++        if (this.player.isImmobile() || this.player.isSpectator()) return; // CraftBukkit
          if (this.hasClientLoaded()) {
              final ServerLevel serverLevel = this.player.level();
              final Entity target = packet.getTarget(serverLevel);
 +            // Spigot start
-+            if (target == this.player && !this.player.isSpectator()) {
++            if (target == this.player) {
 +                this.disconnect(Component.literal("Cannot interact with self!"), org.bukkit.event.player.PlayerKickEvent.Cause.SELF_INTERACTION); // Paper - kick event cause
 +                return;
 +            }
