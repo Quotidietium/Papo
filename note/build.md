@@ -79,6 +79,55 @@ Gradle 会自动探测 PATH 中的 JDK 21 作为 toolchain，无需手动配置 
 - 直接手工编辑 `patches/` 下的 `.patch` 文件也是合法的（它们是事实来源），但之后必须跑**完整的** `./gradlew :paper-server:applyPatches` 同步源码树。只跑 `applySourcePatches` 会把 feature 补丁（如对 log4j AsyncAppender 的修改）从源码树里抹掉，导致莫名编译错误。
 - 内部仓库的 `file` 标签标记 "paper File Patches" 提交的位置，fixup/rebase 后若标签未跟随移动（任务中断时会发生），rebuild 会从旧提交重新生成补丁，表现为"修改神秘消失"。修复方法：`cd paper-server/src/minecraft/java && git tag -f file <新的paper File Patches提交哈希>`。
 
+## 2026-07-28 补充：性能移植批次踩坑记录
+
+### Gradle daemon 挂死（重要）
+
+本机多次出现 Gradle daemon 挂死：daemon 进程活着但只做健康检查，客户端进程无输出死亡。规律是**前台 Bash 命令因超时被提升为后台任务时**必然触发。
+
+**解决办法**：所有 gradlew 调用一律加 `--no-daemon`，并且从一开始就用 `run_in_background=true` 启动。清理残留 daemon 时按 PID 逐个 `Stop-Process`（不要用 blanket java 杀进程，会误杀）。
+
+### 手工编辑 .patch 文件的三个硬性规则
+
+codechicken diffpatch 引擎非常严格：
+
+1. **空白上下文行必须是单个空格**。空上下文行在 diff 里是一个空格字符；某些编辑器/工具（包括 Write 工具）会剥掉行尾空格把它变成真正的空行，引擎直接拒绝（报 "Patch engine failure" / "Failed to apply N/M hunks"）。修复：用 python 把补丁里长度为 0 的行替换为单空格。
+2. **hunk 头计数必须与行数一致**。`@@ -a,b +_,c @@` 中 b = (上下文行+删除行) 数，c = (上下文行+新增行) 数。把上下文行改成 -/+ 对**不改变**计数；只有纯增/删行才改变。校验脚本：`python note/check_patch_counts.py [files...]`。
+3. **`+` 侧起始行号用 `_`**（paperweight 约定，表示由引擎推算），`-` 侧必须写真实行号但引擎实际不校验它，只校验 b/c 计数。
+
+### 版本不匹配的补丁如何移植（26.x → 1.21.11）
+
+上游 main 已到 26.x，很多补丁直接拿过来 hunk 对不上（变量改名、行数不同）。可靠流程：
+
+1. 从内部仓库提取 1.21.11 vanilla 源码：`cd paper-server/src/minecraft/java && git show base:<path> > /tmp/a.java`；
+2. 复制一份为 /tmp/b.java，手工把上游改动**按 1.21.11 的变量名/结构**应用进去；
+3. `git diff --no-index --src-prefix= --dst-prefix= /tmp/a.java /tmp/b.java` 生成 diff，套进补丁文件（hunk 头按上面规则改）；
+4. 完整 `applyPatches` 验证。
+
+已知 26.x vs 1.21.11 差异点（移植时逐个核对）：`WaypointTransmitter` 的 broadcastRange 三行 vs 单行 `double min`；`Main.java` 的 `options` vs `optionSet`、`pidFilePath` vs `path`；`Blocks.java` 的 `state` vs `blockState`；`BarrelBlockEntity` 构造器签名不同；`ItemStackTemplate`/`ItemInstance`、`net.minecraft.util.filefix.FileFixerUpper` 在 1.21.11 **不存在**（对应上游提交直接跳过）。
+
+### feature 补丁移植工作流（保留原作者）
+
+从 Pufferfish 等外部仓库移植补丁时：
+
+1. 在**已 applyPatches 的源码树**上直接改代码（变量名适配 1.21.11），编译通过；
+2. 内部仓库提交，用 `git -c user.name=X -c user.email=Y commit --author="X <Y>"` 保留原作者，消息里注明 "Papo: ported from Pufferfish (GPL-3.0)" 及本地适配差异；
+3. `./gradlew :paper-server:rebuildPatches`（单独一次调用）自动生成 `patches/features/00NN-*.patch`；
+4. 完整 `applyPatches` + `compileJava` + `test` 验证后，外层仓库提交补丁文件。
+
+### 移植评估结论备忘（Pufferfish ver/1.21, MC 1.21.10）
+
+已移植：0003 窒息优化（去配置门控）、0008 闪电倒计时、0010+0013 区块查找/加载、0014 的 AttributeMap lambda 缓存。
+
+跳过及原因：
+- 0005 ShapelessRecipes 贪心匹配：成分有重叠的配方（如 `[planks标签, 橡木]`）会假阴性，数据包可构造，游戏性回归风险；
+- 0007 万圣节检查：1.21.11 无此热点（`Bat.isHalloween` 已移除，`SpecialDates` 只在骷髅/僵尸 finalizeSpawn 调用）；
+- 0011 攀爬缓存：上游 EAR 2.0 已有等价物（`getLastClimbablePos`）；
+- 0015 goal selector 节流：EAR 2.0 已节流 1/3，叠加 1/20 会让远处生物几乎不动；
+- 0006 弹射物限载：会破坏珍珠炮等依赖弹射物加载区块的装置，无配置门控不能开；
+- 0004 异步刷怪：自述可能产生不一致，需移植 AsyncExecutor 等工具类，风险大于收益；
+- 0009 DAB：侵入性强，EAR 2.0 已覆盖大部分收益，暂缓。
+
 ## 注意事项
 
 - `paper-server/src/minecraft/` 在 `.gitignore` 中 —— 补丁生成的源码树**不进入版本库**，版本库只跟踪 `patches/` 目录。提交改动 = 提交补丁文件（`rebuildPatches` 的产物）。
