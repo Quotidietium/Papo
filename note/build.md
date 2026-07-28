@@ -87,6 +87,8 @@ Gradle 会自动探测 PATH 中的 JDK 21 作为 toolchain，无需手动配置 
 
 **解决办法**：所有 gradlew 调用一律加 `--no-daemon`，并且从一开始就用 `run_in_background=true` 启动。清理残留 daemon 时按 PID 逐个 `Stop-Process`（不要用 blanket java 杀进程，会误杀）。
 
+另：**不要在同一次调用里串联 `applyPatches` 与 `compileJava`/`test`**——Gradle 9 的隐式依赖校验会报 `applyResourcePatches`/`processResources` 冲突直接失败。applyPatches 永远单独一次调用，编译测试再另跑一次。
+
 ### 手工编辑 .patch 文件的三个硬性规则
 
 codechicken diffpatch 引擎非常严格：
