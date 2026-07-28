@@ -62,7 +62,7 @@
          if (this.openCount == 0) {
              this.onClose(level, pos, state);
              level.gameEvent(entity, GameEvent.CONTAINER_CLOSE, pos);
-@@ -70,6 +_,18 @@
+@@ -70,8 +_,20 @@
          }
  
          int size = entitiesWithContainerOpen.size();
@@ -81,3 +81,5 @@
 +            // CraftBukkit end
 +
              boolean flag = size != 0;
+             boolean flag1 = i != 0;
+             if (flag && !flag1) {
