@@ -152,6 +152,17 @@
 
 ---
 
+## 批次 8（2026-07-30）：区块发送选块解析免流
+
+### 0053 — PlayerChunkSender.collectChunksToSend 解析段 stream→循环
+- **文件**：`net/minecraft/server/network/PlayerChunkSender.java` `collectChunksToSend`
+- **热点**：每玩家每 tick（登录/跑图突发期，pending>batchQuota 时）。
+- **改法**：**保守重写**——`Comparators.least(floor, distanceSquared)` 选块逻辑原样保留（改它有选错块=客户端先收远区块的 UX 风险），仅把其后 `.stream().mapToLong().mapToObj().filter().toList()` 解析段换成普通循环。
+- **等价性**：选块完全不变；循环按 leastKeys 同序解析+nonNull 过滤，结果列表一致。
+- **风险**：低（选块未动）。**价值：中**（突发期）。
+
+---
+
 ## 候选后续批次（来自 survey，按 价值×置信/风险 排序）
 
 - **Direction.Plane 迭代器分配**（#2，高价值广覆盖）：`Direction.java` 加 `HORIZONTAL_FACES` 静态数组，把 FlowingFluid 等 6+ 处 enhanced-for 改索引循环。
