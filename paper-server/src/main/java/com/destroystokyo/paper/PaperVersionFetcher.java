@@ -53,57 +53,20 @@ public class PaperVersionFetcher implements VersionFetcher {
 
     @Override
     public Component getVersionMessage() {
-        final Component updateMessage;
-        if (BUILD_INFO.buildNumber().isEmpty() && BUILD_INFO.gitCommit().isEmpty()) {
-            updateMessage = text("You are running a development version without access to version information", color(0xFF5300));
-        } else {
-            updateMessage = getUpdateStatusMessage();
-        }
+        // Papo start - independent fork, do not query upstream PaperMC for updates
+        final String papoVersion = BUILD_INFO.papoVersion().orElse("unknown");
+        final Component updateMessage = text("Papo " + papoVersion + " (independent Paper fork; upstream update checks disabled)", NamedTextColor.GRAY);
+        // Papo end - independent fork, do not query upstream PaperMC for updates
         final @Nullable Component history = this.getHistory();
 
         return history != null ? Component.textOfChildren(updateMessage, Component.newline(), history) : updateMessage;
     }
 
     public static void getUpdateStatusStartupMessage() {
-        int distance = DISTANCE_ERROR;
-
-        final OptionalInt buildNumber = BUILD_INFO.buildNumber();
-        if (buildNumber.isEmpty() && BUILD_INFO.gitCommit().isEmpty()) {
-            COMPONENT_LOGGER.warn(text("*** You are running a development version without access to version information ***"));
-        } else {
-            final Optional<MinecraftVersionFetcher> apiResult = fetchMinecraftVersionList();
-            if (buildNumber.isPresent()) {
-                distance = fetchDistanceFromSiteApi(buildNumber.getAsInt());
-            } else {
-                final Optional<String> gitBranch = BUILD_INFO.gitBranch();
-                final Optional<String> gitCommit = BUILD_INFO.gitCommit();
-                if (gitBranch.isPresent() && gitCommit.isPresent()) {
-                    distance = fetchDistanceFromGitHub(gitBranch.get(), gitCommit.get());
-                }
-            }
-
-            switch (distance) {
-                case DISTANCE_ERROR -> COMPONENT_LOGGER.error(text("*** Error obtaining version information! Cannot fetch version info ***"));
-                case 0 -> apiResult.ifPresent(result -> {
-                    COMPONENT_LOGGER.warn(text("*************************************************************************************"));
-                    COMPONENT_LOGGER.warn(text("You are running the latest build for your Minecraft version (" + BUILD_INFO.minecraftVersionId() + ")"));
-                    COMPONENT_LOGGER.warn(text("However, you are " + result.distance() + " release(s) behind the latest stable release (" + result.latestVersion() + ")!"));
-                    COMPONENT_LOGGER.warn(text("It is recommended that you update as soon as possible"));
-                    COMPONENT_LOGGER.warn(text(DOWNLOAD_PAGE));
-                    COMPONENT_LOGGER.warn(text("*************************************************************************************"));
-                });
-                case DISTANCE_UNKNOWN -> COMPONENT_LOGGER.warn(text("*** You are running an unknown version! Cannot fetch version info ***"));
-                default -> {
-                    if (apiResult.isPresent()) {
-                        COMPONENT_LOGGER.warn(text("*** You are running an outdated version of Minecraft, which is " + apiResult.get().distance() + " release(s) and " + distance + " build(s) behind!"));
-                        COMPONENT_LOGGER.warn(text("*** Please update to the latest stable version on " + DOWNLOAD_PAGE + " ***"));
-                    } else {
-                        COMPONENT_LOGGER.info(text("*** Currently you are " + distance + " build(s) behind ***"));
-                        COMPONENT_LOGGER.info(text("*** It is highly recommended to download the latest build from " + DOWNLOAD_PAGE + " ***"));
-                    }
-                }
-            }
-        }
+        // Papo start - independent fork, do not query upstream PaperMC; just log the local version
+        final String papoVersion = BUILD_INFO.papoVersion().orElse("unknown");
+        COMPONENT_LOGGER.info(text("Running Papo " + papoVersion + " (Paper " + BUILD_INFO.asString(VERSION_SIMPLE) + " compatible fork)"));
+        // Papo end - independent fork, do not query upstream PaperMC; just log the local version
     }
 
     private static Component getUpdateStatusMessage() {
