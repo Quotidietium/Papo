@@ -113,6 +113,34 @@
 
 ---
 
+## 批次 5（2026-07-30）：插件 API 枚举缓存（CraftBukkit 直提交）
+
+### CraftEntity.getPose / setPose 枚举数组缓存
+- **文件**：`paper-server/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java`（src/main/java，**直接提交**，不走补丁）
+- **改法**：`Pose.values()[ordinal]` 每次克隆数组 → 缓存为 `private static final POSE_VALUES` / `NMS_POSE_VALUES`。
+- **等价性**：枚举数组内容运行期不变，缓存与每次 values() 等价；保持原有 ordinal 索引（不引入按名映射的行为变更）。
+- **风险**：零。
+
+---
+
+## 批次 6（2026-07-30）：高价值事件/容器分配消除（第二轮扫描）
+
+### 0050 — NeighborUpdater.executeUpdate 无监听器时跳过 BlockPhysicsEvent
+- **文件**：`net/minecraft/world/level/redstone/NeighborUpdater.java` `executeUpdate`
+- **热点**：每次邻通知（红石/活塞/方块破坏连锁/流体）的中心入口，负载下每秒百万级。无条件分配 `BlockPhysicsEvent` + 2 `CraftBlock` + `CraftBlockData` 克隆。
+- **改法**：用 `BlockPhysicsEvent.getHandlerList().getRegisteredListeners().length > 0` 守卫整个分配+触发（Paper 在 PlayerChunkSender 等处用的同一模式）。
+- **等价性**：事件唯一消费者是 `isCancelled()` 检查；零监听器则永不被取消，直落 `handleNeighborChanged` 与原行为一致。
+- **风险**：低（纯监听器计数守卫）。**价值：高**。
+
+### 0051 — AbstractContainerMenu.broadcastChanges 前置门控 copy-supplier
+- **文件**：`net/minecraft/world/inventory/AbstractContainerMenu.java` `broadcastChanges`
+- **热点**：每个开容器玩家每 containerUpdate tick，每槽位建 `Suppliers.memoize(item::copy)`（方法引用+Supplier 各一份），即使槽位无变化（常态）。
+- **改法**：复用 `triggerSlotListeners`/`synchronizeSlotToRemote` 内部的廉价 match 判定，仅当 `listenerNeeds || remoteNeeds` 才建 supplier 并调用。
+- **等价性**：两调用在匹配时均为无副作用 no-op；前置门控与内部判定逐字一致（同类内可访问 private 字段）。InventoryMenu.broadcastSlotChange 因 `suppressRemoteUpdates` 等 private 字段子类不可访问，未改。
+- **风险**：低。**价值：高**（多玩家开容器时）。
+
+---
+
 ## 候选后续批次（来自 survey，按 价值×置信/风险 排序）
 
 - **Direction.Plane 迭代器分配**（#2，高价值广覆盖）：`Direction.java` 加 `HORIZONTAL_FACES` 静态数组，把 FlowingFluid 等 6+ 处 enhanced-for 改索引循环。
