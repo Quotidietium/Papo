@@ -1,0 +1,59 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 04:54:50 +0800
+Subject: [PATCH] Reuse collision lists in Entity.collide to avoid per-move
+ allocation
+
+Hoist the four ArrayLists allocated per move() (every moving entity, every
+tick) to per-entity fields and clear() them each call. CollisionUtil's
+getEntityHardCollisions/getCollisionsForBlockOrWorldBorder/performCollisions
+only write/read these lists and never retain them; collide() is non-reentrant
+and runs single-threaded per entity under Moonrise regionized ticking.
+
+diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
+index 3bf618f1d756bad7755a87803132bd731e7c41be..24fc1a5a41aba8360defcab0b45b297b624b9ca1 100644
+--- a/net/minecraft/world/entity/Entity.java
++++ b/net/minecraft/world/entity/Entity.java
+@@ -1522,6 +1522,13 @@ public abstract class Entity implements SyncedDataHolder, DebugValueSource, Name
+         return list.isEmpty() ? distance : -Shapes.collide(Direction.Axis.Y, boundingBox, list, -distance);
+     }
+ 
++    // Papo start - reusable collision lists to avoid per-move allocation in collide()
++    private final List<VoxelShape> collideVoxelList = new ArrayList<>();
++    private final List<AABB> collideAABBList = new ArrayList<>();
++    private final List<AABB> collideEntityAABBList = new ArrayList<>();
++    private final List<VoxelShape> collideStepVoxelList = new ArrayList<>();
++    // Papo end
++
+     // Paper start - optimise collisions
+     private Vec3 collide(Vec3 movement) {
+         final boolean xZero = movement.x == 0.0;
+@@ -1533,8 +1540,8 @@ public abstract class Entity implements SyncedDataHolder, DebugValueSource, Name
+ 
+         final AABB currentBox = this.getBoundingBox();
+ 
+-        final List<VoxelShape> potentialCollisionsVoxel = new ArrayList<>();
+-        final List<AABB> potentialCollisionsBB = new ArrayList<>();
++        final List<VoxelShape> potentialCollisionsVoxel = this.collideVoxelList; potentialCollisionsVoxel.clear(); // Papo - reuse per-entity
++        final List<AABB> potentialCollisionsBB = this.collideAABBList; potentialCollisionsBB.clear(); // Papo - reuse per-entity
+ 
+         final AABB initialCollisionBox;
+         if (xZero & zZero) {
+@@ -1546,7 +1553,7 @@ public abstract class Entity implements SyncedDataHolder, DebugValueSource, Name
+             initialCollisionBox = currentBox.expandTowards(movement);
+         }
+ 
+-        final List<AABB> entityAABBs = new ArrayList<>();
++        final List<AABB> entityAABBs = this.collideEntityAABBList; entityAABBs.clear(); // Papo - reuse per-entity
+         ca.spottedleaf.moonrise.patches.collisions.CollisionUtil.getEntityHardCollisions(
+             this.level, (Entity)(Object)this, initialCollisionBox, entityAABBs, 0, null
+         );
+@@ -1576,7 +1583,7 @@ public abstract class Entity implements SyncedDataHolder, DebugValueSource, Name
+             stepRetrievalBox = stepRetrievalBox.expandTowards(0.0, (double)-1.0E-5F, 0.0);
+         }
+ 
+-        final List<VoxelShape> stepVoxels = new ArrayList<>();
++        final List<VoxelShape> stepVoxels = this.collideStepVoxelList; stepVoxels.clear(); // Papo - reuse per-entity
+         final List<AABB> stepAABBs = entityAABBs;
+ 
+         ca.spottedleaf.moonrise.patches.collisions.CollisionUtil.getCollisionsForBlocksOrWorldBorder(
