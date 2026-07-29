@@ -1,0 +1,22 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 04:47:16 +0800
+Subject: [PATCH] Optimise FlowingFluid.isSolidFace to reuse block-state lookup
+
+Use blockState.getFluidState() instead of a second level.getFluidState()
+world lookup, matching the pattern already used in spread() and
+BlockGetter. Called up to 8x per getFlow.
+
+diff --git a/net/minecraft/world/level/material/FlowingFluid.java b/net/minecraft/world/level/material/FlowingFluid.java
+index 85e9ec8061fc01d39977f6db314da14b1e7725e1..14788f273b08549be1a451c8af81b862e2862e98 100644
+--- a/net/minecraft/world/level/material/FlowingFluid.java
++++ b/net/minecraft/world/level/material/FlowingFluid.java
+@@ -147,7 +147,7 @@ public abstract class FlowingFluid extends Fluid {
+ 
+     protected boolean isSolidFace(BlockGetter level, BlockPos neighborPos, Direction side) {
+         BlockState blockState = level.getBlockState(neighborPos);
+-        FluidState fluidState = level.getFluidState(neighborPos);
++        FluidState fluidState = blockState.getFluidState(); // Papo - reuse the block-state lookup already done above instead of a second world lookup (same as spread() and BlockGetter)
+         return !fluidState.getType().isSame(this)
+             && (side == Direction.UP || !(blockState.getBlock() instanceof IceBlock) && blockState.isFaceSturdy(level, neighborPos, side));
+     }
