@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 04:47:16 +0800
+Subject: [PATCH] Optimise CompoundTag.merge to avoid per-key double hash
+ lookup
+
+Iterate other's entries directly (fastutil fastIterator) instead of
+keySet()+get(), mirroring the write()/copy() optimisation.
+
+diff --git a/net/minecraft/nbt/CompoundTag.java b/net/minecraft/nbt/CompoundTag.java
+index cd347ea056db099be7341514064594b649de5175..e2e155ec22628138cbe0a60b08642388f2c4713c 100644
+--- a/net/minecraft/nbt/CompoundTag.java
++++ b/net/minecraft/nbt/CompoundTag.java
+@@ -453,14 +453,19 @@ public final class CompoundTag implements Tag {
+     }
+ 
+     public CompoundTag merge(CompoundTag other) {
+-        for (String string : other.tags.keySet()) {
+-            Tag tag = other.tags.get(string);
++        // Papo start - iterate other's entries directly to avoid a second hash lookup per key
++        java.util.Iterator<java.util.Map.Entry<String, Tag>> iterator = (other.tags instanceof it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap) ? ((it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap) other.tags).object2ObjectEntrySet().fastIterator() : other.tags.entrySet().iterator();
++        while (iterator.hasNext()) {
++            java.util.Map.Entry<String, Tag> entry = iterator.next();
++            String string = entry.getKey();
++            Tag tag = entry.getValue();
+             if (tag instanceof CompoundTag compoundTag && this.tags.get(string) instanceof CompoundTag compoundTag1) {
+                 compoundTag1.merge(compoundTag);
+             } else {
+                 this.put(string, tag.copy());
+             }
+         }
++        // Papo end - iterate other's entries directly
+ 
+         return this;
+     }
