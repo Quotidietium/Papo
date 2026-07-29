@@ -1,0 +1,123 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 04:47:16 +0800
+Subject: [PATCH] Avoid Optional<Float> allocation in LookControl.tick
+
+Replace the Optional<Float>-returning getXRotD()/getYRotD() call path in
+tick() with a boolean+field protocol (hasXRotD()/hasYRotD() write reusable
+xRotD/yRotD fields). Removes two Optional allocations and two Float boxes
+per mob per tick. The Optional getters are retained (delegating) for API
+compat; Shulker's overrides are converted to the boolean protocol.
+
+diff --git a/net/minecraft/world/entity/ai/control/LookControl.java b/net/minecraft/world/entity/ai/control/LookControl.java
+index 95c43931fb0f11136ab73df3c8716aac42d8f1d4..444bfce189b283b32ccc826f46013f2c6cc502a3 100644
+--- a/net/minecraft/world/entity/ai/control/LookControl.java
++++ b/net/minecraft/world/entity/ai/control/LookControl.java
+@@ -14,6 +14,8 @@ public class LookControl implements Control {
+     protected double wantedX;
+     protected double wantedY;
+     protected double wantedZ;
++    protected float xRotD; // Papo - reusable rotation deltas, written by hasXRotD()/hasYRotD() to avoid Optional<Float> allocation every tick
++    protected float yRotD; // Papo
+ 
+     public LookControl(Mob mob) {
+         this.mob = mob;
+@@ -51,8 +53,16 @@ public class LookControl implements Control {
+ 
+         if (this.lookAtCooldown > 0) {
+             this.lookAtCooldown--;
+-            this.getYRotD().ifPresent(rotationWanted -> this.mob.yHeadRot = this.rotateTowards(this.mob.yHeadRot, rotationWanted, this.yMaxRotSpeed));
+-            this.getXRotD().ifPresent(_float -> this.mob.setXRot(this.rotateTowards(this.mob.getXRot(), _float, this.xMaxRotAngle)));
++            // Papo start - use a boolean+field protocol instead of Optional<Float> to avoid
++            // two Optional allocations (and Float boxing) per mob per tick. Subclasses that
++            // overrode getXRotD()/getYRotD() must override hasXRotD()/hasYRotD() instead.
++            if (this.hasYRotD()) {
++                this.mob.yHeadRot = this.rotateTowards(this.mob.yHeadRot, this.yRotD, this.yMaxRotSpeed);
++            }
++            if (this.hasXRotD()) {
++                this.mob.setXRot(this.rotateTowards(this.mob.getXRot(), this.xRotD, this.xMaxRotAngle));
++            }
++            // Papo end
+         } else {
+             this.mob.yHeadRot = this.rotateTowards(this.mob.yHeadRot, this.mob.yBodyRot, 10.0F);
+         }
+@@ -86,21 +96,37 @@ public class LookControl implements Control {
+         return this.wantedZ;
+     }
+ 
+-    protected Optional<Float> getXRotD() {
++    // Papo start - boolean+field rotation-delta protocol (avoids Optional<Float> allocation).
++    // The Optional-returning getXRotD()/getYRotD() below delegate here; subclasses that
++    // previously overrode those getters (e.g. Shulker) must override hasXRotD()/hasYRotD().
++    protected boolean hasXRotD() {
+         double d = this.wantedX - this.mob.getX();
+         double d1 = this.wantedY - this.mob.getEyeY();
+         double d2 = this.wantedZ - this.mob.getZ();
+         double squareRoot = Math.sqrt(d * d + d2 * d2);
+-        return !(Math.abs(d1) > 1.0E-5F) && !(Math.abs(squareRoot) > 1.0E-5F)
+-            ? Optional.empty()
+-            : Optional.of((float)(-(Mth.atan2(d1, squareRoot) * 180.0F / (float)Math.PI)));
++        if (!(Math.abs(d1) > 1.0E-5F) && !(Math.abs(squareRoot) > 1.0E-5F)) {
++            return false;
++        }
++        this.xRotD = (float)(-(Mth.atan2(d1, squareRoot) * 180.0F / (float)Math.PI));
++        return true;
+     }
+ 
+-    protected Optional<Float> getYRotD() {
++    protected boolean hasYRotD() {
+         double d = this.wantedX - this.mob.getX();
+         double d1 = this.wantedZ - this.mob.getZ();
+-        return !(Math.abs(d1) > 1.0E-5F) && !(Math.abs(d) > 1.0E-5F)
+-            ? Optional.empty()
+-            : Optional.of((float)(Mth.atan2(d1, d) * 180.0F / (float)Math.PI) - 90.0F);
++        if (!(Math.abs(d1) > 1.0E-5F) && !(Math.abs(d) > 1.0E-5F)) {
++            return false;
++        }
++        this.yRotD = (float)(Mth.atan2(d1, d) * 180.0F / (float)Math.PI) - 90.0F;
++        return true;
++    }
++
++    protected Optional<Float> getXRotD() {
++        return this.hasXRotD() ? Optional.of(this.xRotD) : Optional.empty();
++    }
++
++    protected Optional<Float> getYRotD() {
++        return this.hasYRotD() ? Optional.of(this.yRotD) : Optional.empty();
+     }
++    // Papo end
+ }
+diff --git a/net/minecraft/world/entity/monster/Shulker.java b/net/minecraft/world/entity/monster/Shulker.java
+index 06e8d9c6233e8aea0822d83a764c11d6d6482643..dfff331ddf6461285692654c3c2b6848452a8807 100644
+--- a/net/minecraft/world/entity/monster/Shulker.java
++++ b/net/minecraft/world/entity/monster/Shulker.java
+@@ -693,7 +693,7 @@ public class Shulker extends AbstractGolem implements Enemy {
+         }
+ 
+         @Override
+-        protected Optional<Float> getYRotD() {
++        protected boolean hasYRotD() { // Papo - override the boolean protocol (was getYRotD); writes yRotD and returns whether a rotation is present
+             Direction opposite = Shulker.this.getAttachFace().getOpposite();
+             Vector3f vector3f = opposite.getRotation().transform(new Vector3f(Shulker.FORWARD));
+             Vec3i unitVec3i = opposite.getUnitVec3i();
+@@ -705,12 +705,17 @@ public class Shulker extends AbstractGolem implements Enemy {
+             Vector3f vector3f2 = new Vector3f((float)d, (float)d1, (float)d2);
+             float f = vector3f1.dot(vector3f2);
+             float f1 = vector3f.dot(vector3f2);
+-            return !(Math.abs(f) > 1.0E-5F) && !(Math.abs(f1) > 1.0E-5F) ? Optional.empty() : Optional.of((float)(Mth.atan2(-f, f1) * 180.0F / (float)Math.PI));
++            if (!(Math.abs(f) > 1.0E-5F) && !(Math.abs(f1) > 1.0E-5F)) {
++                return false;
++            }
++            this.yRotD = (float)(Mth.atan2(-f, f1) * 180.0F / (float)Math.PI);
++            return true;
+         }
+ 
+         @Override
+-        protected Optional<Float> getXRotD() {
+-            return Optional.of(0.0F);
++        protected boolean hasXRotD() { // Papo - override the boolean protocol (was getXRotD)
++            this.xRotD = 0.0F;
++            return true;
+         }
+     }
+ 
