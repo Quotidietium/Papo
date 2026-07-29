@@ -21,7 +21,8 @@ public record ServerBuildInfoImpl(
     OptionalInt buildNumber,
     Instant buildTime,
     Optional<String> gitBranch,
-    Optional<String> gitCommit
+    Optional<String> gitCommit,
+    Optional<String> papoVersion // Papo - papo version
 ) implements ServerBuildInfo {
     private static final String ATTRIBUTE_BRAND_ID = "Brand-Id";
     private static final String ATTRIBUTE_BRAND_NAME = "Brand-Name";
@@ -29,6 +30,7 @@ public record ServerBuildInfoImpl(
     private static final String ATTRIBUTE_BUILD_NUMBER = "Build-Number";
     private static final String ATTRIBUTE_GIT_BRANCH = "Git-Branch";
     private static final String ATTRIBUTE_GIT_COMMIT = "Git-Commit";
+    private static final String ATTRIBUTE_PAPO_VERSION = "Papo-Version"; // Papo - papo version
 
     private static final String BRAND_PAPER_NAME = "Paper";
 
@@ -55,7 +57,8 @@ public record ServerBuildInfoImpl(
                 .map(Instant::parse)
                 .orElse(Main.BOOT_TIME),
             getManifestAttribute(manifest, ATTRIBUTE_GIT_BRANCH),
-            getManifestAttribute(manifest, ATTRIBUTE_GIT_COMMIT)
+            getManifestAttribute(manifest, ATTRIBUTE_GIT_COMMIT),
+            getManifestAttribute(manifest, ATTRIBUTE_PAPO_VERSION) // Papo - papo version
         );
     }
 

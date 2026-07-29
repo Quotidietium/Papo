@@ -190,6 +190,7 @@ tasks.jar {
     manifest {
         val git = Git(rootProject.layout.projectDirectory.path)
         val mcVersion = rootProject.providers.gradleProperty("mcVersion").get()
+        val papoVersion = rootProject.providers.gradleProperty("papoVersion").orElse("unknown").get() // Papo - papo version
         val build = System.getenv("BUILD_NUMBER") ?: null
         val buildTime = providers.environmentVariable("BUILD_STARTED_AT").map(Instant::parse).orElse(Instant.EPOCH).get()
         val gitHash = git.exec(providers, "rev-parse", "--short=7", "HEAD").get().trim()
@@ -198,14 +199,15 @@ tasks.jar {
         val gitBranch = git.exec(providers, "rev-parse", "--abbrev-ref", "HEAD").get().trim()
         attributes(
             "Main-Class" to "org.bukkit.craftbukkit.Main",
-            "Implementation-Title" to "Paper",
+            "Implementation-Title" to "Papo", // Papo - brand
             "Implementation-Version" to implementationVersion,
             "Implementation-Vendor" to date,
-            "Specification-Title" to "Paper",
+            "Specification-Title" to "Papo", // Papo - brand
             "Specification-Version" to project.version,
-            "Specification-Vendor" to "Paper Team",
-            "Brand-Id" to "papermc:paper",
-            "Brand-Name" to "Paper",
+            "Specification-Vendor" to "Papo", // Papo - brand
+            "Brand-Id" to "papermc:paper", // Papo - kept for plugin compatibility (isBrandCompatible)
+            "Brand-Name" to "Papo", // Papo - brand
+            "Papo-Version" to papoVersion, // Papo - papo version
             "Build-Number" to (build ?: ""),
             "Build-Time" to buildTime.toString(),
             "Git-Branch" to gitBranch,
@@ -356,6 +358,18 @@ tasks.registerRunTask("runReobfPaperclip") {
     classpath(tasks.createReobfPaperclipJar.flatMap { it.outputZip })
     mainClass.set(null as String?)
 }
+
+// Papo start - produce a runnable jar named Papo-<mcVersion>-<papoVersion>.jar
+val createPapoJar = tasks.register<Copy>("createPapoJar") {
+    group = "build"
+    description = "Assembles the runnable Papo jar named Papo-<mcVersion>-<papoVersion>.jar"
+    val mcVersion = rootProject.providers.gradleProperty("mcVersion").get()
+    val papoVersion = rootProject.providers.gradleProperty("papoVersion").orElse("unknown").get()
+    from(tasks.createMojmapBundlerJar.flatMap { it.outputZip })
+    into(layout.buildDirectory.dir("libs"))
+    rename { _ -> "Papo-$mcVersion-$papoVersion.jar" }
+}
+// Papo end - produce a runnable jar named Papo-<mcVersion>-<papoVersion>.jar
 
 fill {
     project("paper")
