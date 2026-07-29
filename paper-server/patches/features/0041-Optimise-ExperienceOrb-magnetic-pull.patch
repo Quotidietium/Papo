@@ -1,0 +1,44 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 04:21:17 +0800
+Subject: [PATCH] Optimise ExperienceOrb magnetic pull
+
+Reuse the length already computed for the pull strength and fold
+normalize()+scale() into a single scalar, saving 3 Vec3 allocations and a
+redundant Math.sqrt per orb per tick. Behaviour is identical, including the
+Vec3.normalize() zero-length guard.
+
+diff --git a/net/minecraft/world/entity/ExperienceOrb.java b/net/minecraft/world/entity/ExperienceOrb.java
+index f2ec0bd8cca3c08d558790537e17a8a2f95f1953..02c0f3227904e116570941d41d1f762ce085a941 100644
+--- a/net/minecraft/world/entity/ExperienceOrb.java
++++ b/net/minecraft/world/entity/ExperienceOrb.java
+@@ -224,14 +224,21 @@ public class ExperienceOrb extends Entity {
+ 
+         if (this.followingPlayer != null && !cancelled) {
+             // CraftBukkit end
+-            Vec3 vec3 = new Vec3(
+-                this.followingPlayer.getX() - this.getX(),
+-                this.followingPlayer.getY() + this.followingPlayer.getEyeHeight() / 2.0 - this.getY(),
+-                this.followingPlayer.getZ() - this.getZ()
+-            );
+-            double d = vec3.lengthSqr();
+-            double d1 = 1.0 - Math.sqrt(d) / 8.0;
+-            this.setDeltaMovement(this.getDeltaMovement().add(vec3.normalize().scale(d1 * d1 * 0.1)));
++            // Papo start - optimise XP orb magnetic pull: reuse the length already computed
++            // for the pull strength and fold normalize()+scale() into one scalar, avoiding
++            // 3 Vec3 allocations and a redundant Math.sqrt per orb per tick. Behaviour is
++            // identical to vec3.normalize().scale(d1*d1*0.1), including the zero-length guard
++            // (Vec3.normalize() returns ZERO when length < 1.0E-5, i.e. no pull applied).
++            double dx = this.followingPlayer.getX() - this.getX();
++            double dy = this.followingPlayer.getY() + this.followingPlayer.getEyeHeight() / 2.0 - this.getY();
++            double dz = this.followingPlayer.getZ() - this.getZ();
++            double len = Math.sqrt(dx * dx + dy * dy + dz * dz);
++            if (len >= 1.0E-5) {
++                double d1 = 1.0 - len / 8.0;
++                double scale = d1 * d1 * 0.1 / len;
++                this.setDeltaMovement(this.getDeltaMovement().add(dx * scale, dy * scale, dz * scale));
++            }
++            // Papo end - optimise XP orb magnetic pull
+         }
+     }
+ 
