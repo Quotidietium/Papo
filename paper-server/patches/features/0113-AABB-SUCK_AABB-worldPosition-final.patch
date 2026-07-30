@@ -1,0 +1,49 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 06:37:09 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=E6=BC=8F=E6=96=97=EF=BC=9A?=
+ =?UTF-8?q?=E6=96=B9=E5=9D=97=E5=AE=9E=E4=BD=93=E6=BC=8F=E6=96=97=E7=9A=84?=
+ =?UTF-8?q?=E5=90=B8=E5=8F=96=20AABB=20=E5=AE=9E=E4=BE=8B=E7=BC=93?=
+ =?UTF-8?q?=E5=AD=98=EF=BC=88SUCK=5FAABB=20=E4=B8=BA=E5=85=B1=E4=BA=AB?=
+ =?UTF-8?q?=E4=B8=8D=E5=8F=AF=E5=8F=98=E5=B8=B8=E9=87=8F=E3=80=81worldPosi?=
+ =?UTF-8?q?tion=20final=EF=BC=8C=E7=9F=BF=E8=BD=A6=E6=BC=8F=E6=96=97?=
+ =?UTF-8?q?=E4=BF=9D=E6=8C=81=E9=80=90=E6=AC=A1=E8=AE=A1=E7=AE=97=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/level/block/entity/HopperBlockEntity.java b/net/minecraft/world/level/block/entity/HopperBlockEntity.java
+index 12f8105d6b12c5d63cb6e5e79435c7fd22655475..e64b7598b80065de8f9510cbed91613646860ac4 100644
+--- a/net/minecraft/world/level/block/entity/HopperBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/HopperBlockEntity.java
+@@ -38,6 +38,7 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+     public int cooldownTime = -1;
+     private long tickedGameTime;
+     private Direction facing;
++    private net.minecraft.world.phys.AABB papoSuckAabb; // Papo - cached moved suck AABB (constant per block entity; see getItemsAtAndAbove)
+ 
+     // CraftBukkit start - add fields and methods
+     public List<org.bukkit.entity.HumanEntity> transaction = new java.util.ArrayList<>();
+@@ -766,7 +767,20 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+     }
+ 
+     public static List<ItemEntity> getItemsAtAndAbove(Level level, Hopper hopper) {
+-        AABB aabb = hopper.getSuckAabb().move(hopper.getLevelX() - 0.5, hopper.getLevelY() - 0.5, hopper.getLevelZ() - 0.5);
++        // Papo start - cache the moved suck AABB on block-entity hoppers: getSuckAabb() is the shared
++        // immutable Hopper.SUCK_AABB constant and a block entity's worldPosition is final (vanilla
++        // cannot move block entities; a setBlock recreates the BE with a fresh cache), so the moved
++        // AABB is constant per block entity. AABB itself is immutable and getEntitiesOfClass only
++        // reads it. Minecart hoppers keep the per-call computation (they move).
++        final AABB aabb;
++        if (hopper instanceof HopperBlockEntity hopperBlockEntity) {
++            aabb = hopperBlockEntity.papoSuckAabb != null
++                ? hopperBlockEntity.papoSuckAabb
++                : (hopperBlockEntity.papoSuckAabb = hopper.getSuckAabb().move(hopper.getLevelX() - 0.5, hopper.getLevelY() - 0.5, hopper.getLevelZ() - 0.5));
++        } else {
++            aabb = hopper.getSuckAabb().move(hopper.getLevelX() - 0.5, hopper.getLevelY() - 0.5, hopper.getLevelZ() - 0.5);
++        }
++        // Papo end
+         return level.getEntitiesOfClass(ItemEntity.class, aabb, EntitySelector.ENTITY_STILL_ALIVE);
+     }
+ 
