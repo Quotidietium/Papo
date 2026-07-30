@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 00:49:28 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=20FriendlyByteBuf=20?=
+ =?UTF-8?q?=E6=9E=9A=E4=B8=BE=E8=AF=BB=E5=86=99=EF=BC=9AClassValue=20?=
+ =?UTF-8?q?=E7=BC=93=E5=AD=98=E6=9E=9A=E4=B8=BE=E5=B8=B8=E9=87=8F=E6=95=B0?=
+ =?UTF-8?q?=E7=BB=84=EF=BC=8C=E5=85=8D=20getEnumConstants=20=E6=AF=8F?=
+ =?UTF-8?q?=E6=AC=A1=E5=85=8B=E9=9A=86?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/network/FriendlyByteBuf.java b/net/minecraft/network/FriendlyByteBuf.java
+index 7c6ce41ea28e9adb640b5be1c3be91ca251ff55d..9abc71cf6f910acba86fa34d731a0e9e1c92d60e 100644
+--- a/net/minecraft/network/FriendlyByteBuf.java
++++ b/net/minecraft/network/FriendlyByteBuf.java
+@@ -203,8 +203,25 @@ public class FriendlyByteBuf extends ByteBuf {
+         }
+     }
+ 
++    // Papo start - cache enum constant arrays: Class.getEnumConstants() clones the shared
++    // array on every call, but the contents (singletons in declaration order) never change,
++    // and the three call sites below only index/iterate the array without exposing it.
++    // Null (non-enum class) passes through and NPEs at the use site exactly as before.
++    private static final ClassValue<Object[]> PAPO_ENUM_CONSTANTS = new ClassValue<>() {
++        @Override
++        protected Object[] computeValue(Class<?> type) {
++            return type.getEnumConstants();
++        }
++    };
++
++    @SuppressWarnings("unchecked")
++    private static <T extends Enum<T>> T[] papoEnumConstants(Class<T> enumClass) {
++        return (T[]) PAPO_ENUM_CONSTANTS.get(enumClass);
++    }
++    // Papo end
++
+     public <E extends Enum<E>> void writeEnumSet(EnumSet<E> enumSet, Class<E> enumClass) {
+-        E[] enums = (E[])enumClass.getEnumConstants();
++        E[] enums = papoEnumConstants(enumClass); // Papo - cached enum constants (see above)
+         BitSet bitSet = new BitSet(enums.length);
+ 
+         for (int i = 0; i < enums.length; i++) {
+@@ -215,7 +232,7 @@ public class FriendlyByteBuf extends ByteBuf {
+     }
+ 
+     public <E extends Enum<E>> EnumSet<E> readEnumSet(Class<E> enumClass) {
+-        E[] enums = (E[])enumClass.getEnumConstants();
++        E[] enums = papoEnumConstants(enumClass); // Papo - cached enum constants (see above)
+         BitSet fixedBitSet = this.readFixedBitSet(enums.length);
+         EnumSet<E> set = EnumSet.noneOf(enumClass);
+ 
+@@ -510,7 +527,7 @@ public class FriendlyByteBuf extends ByteBuf {
+     }
+ 
+     public <T extends Enum<T>> T readEnum(Class<T> enumClass) {
+-        return enumClass.getEnumConstants()[this.readVarInt()];
++        return papoEnumConstants(enumClass)[this.readVarInt()]; // Papo - cached enum constants (see above)
+     }
+ 
+     public FriendlyByteBuf writeEnum(Enum<?> value) {

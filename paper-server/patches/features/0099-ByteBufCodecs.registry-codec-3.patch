@@ -1,0 +1,108 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 01:57:21 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=E5=AE=9E=E4=BD=93/=E6=96=B9?=
+ =?UTF-8?q?=E5=9D=97=E4=BA=8B=E4=BB=B6/=E5=8C=BA=E5=9D=97=E5=8C=85?=
+ =?UTF-8?q?=E7=BC=96=E7=A0=81=EF=BC=9AByteBufCodecs.registry=20=E6=97=A0?=
+ =?UTF-8?q?=E7=8A=B6=E6=80=81=20codec=20=E6=8F=90=E5=8D=87=E4=B8=BA?=
+ =?UTF-8?q?=E9=9D=99=E6=80=81=E5=8D=95=E4=BE=8B=EF=BC=883=20=E4=B8=AA?=
+ =?UTF-8?q?=E5=8C=85=E7=B1=BB=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/network/protocol/game/ClientboundAddEntityPacket.java b/net/minecraft/network/protocol/game/ClientboundAddEntityPacket.java
+index f571ff64ae1007f8f0632febd2dcca7056a29b3c..5f67ad7feed249c6a1362b79618aa9dd029e1dde 100644
+--- a/net/minecraft/network/protocol/game/ClientboundAddEntityPacket.java
++++ b/net/minecraft/network/protocol/game/ClientboundAddEntityPacket.java
+@@ -18,6 +18,11 @@ public class ClientboundAddEntityPacket implements Packet<ClientGamePacketListen
+     public static final StreamCodec<RegistryFriendlyByteBuf, ClientboundAddEntityPacket> STREAM_CODEC = Packet.codec(
+         ClientboundAddEntityPacket::write, ClientboundAddEntityPacket::new
+     );
++    // Papo - hoist the stateless registry codec: ByteBufCodecs.registry() allocates an
++    // anonymous StreamCodec per call; the instance only captures the registry key constant
++    // and resolves the registry from the buffer on every encode/decode, so a shared
++    // singleton encodes/decodes byte-identically.
++    private static final StreamCodec<RegistryFriendlyByteBuf, EntityType<?>> ENTITY_TYPE_CODEC = ByteBufCodecs.registry(Registries.ENTITY_TYPE);
+     private final int id;
+     private final UUID uuid;
+     private final EntityType<?> type;
+@@ -87,7 +92,7 @@ public class ClientboundAddEntityPacket implements Packet<ClientGamePacketListen
+     private ClientboundAddEntityPacket(RegistryFriendlyByteBuf buffer) {
+         this.id = buffer.readVarInt();
+         this.uuid = buffer.readUUID();
+-        this.type = ByteBufCodecs.registry(Registries.ENTITY_TYPE).decode(buffer);
++        this.type = ENTITY_TYPE_CODEC.decode(buffer); // Papo - shared codec (see above)
+         this.x = buffer.readDouble();
+         this.y = buffer.readDouble();
+         this.z = buffer.readDouble();
+@@ -101,7 +106,7 @@ public class ClientboundAddEntityPacket implements Packet<ClientGamePacketListen
+     private void write(RegistryFriendlyByteBuf buffer) {
+         buffer.writeVarInt(this.id);
+         buffer.writeUUID(this.uuid);
+-        ByteBufCodecs.registry(Registries.ENTITY_TYPE).encode(buffer, this.type);
++        ENTITY_TYPE_CODEC.encode(buffer, this.type); // Papo - shared codec (see above)
+         buffer.writeDouble(this.x);
+         buffer.writeDouble(this.y);
+         buffer.writeDouble(this.z);
+diff --git a/net/minecraft/network/protocol/game/ClientboundBlockEventPacket.java b/net/minecraft/network/protocol/game/ClientboundBlockEventPacket.java
+index e391c01e172f94acffd5600b41bef615ae72b69d..0da12644d36f43e1afa965cfcd32da2dbebe7eef 100644
+--- a/net/minecraft/network/protocol/game/ClientboundBlockEventPacket.java
++++ b/net/minecraft/network/protocol/game/ClientboundBlockEventPacket.java
+@@ -13,6 +13,8 @@ public class ClientboundBlockEventPacket implements Packet<ClientGamePacketListe
+     public static final StreamCodec<RegistryFriendlyByteBuf, ClientboundBlockEventPacket> STREAM_CODEC = Packet.codec(
+         ClientboundBlockEventPacket::write, ClientboundBlockEventPacket::new
+     );
++    // Papo - hoist the stateless registry codec (see ClientboundAddEntityPacket)
++    private static final StreamCodec<RegistryFriendlyByteBuf, Block> BLOCK_CODEC = ByteBufCodecs.registry(Registries.BLOCK);
+     private final BlockPos pos;
+     private final int b0;
+     private final int b1;
+@@ -29,14 +31,14 @@ public class ClientboundBlockEventPacket implements Packet<ClientGamePacketListe
+         this.pos = buffer.readBlockPos();
+         this.b0 = buffer.readUnsignedByte();
+         this.b1 = buffer.readUnsignedByte();
+-        this.block = ByteBufCodecs.registry(Registries.BLOCK).decode(buffer);
++        this.block = BLOCK_CODEC.decode(buffer); // Papo - shared codec (see above)
+     }
+ 
+     private void write(RegistryFriendlyByteBuf buffer) {
+         buffer.writeBlockPos(this.pos);
+         buffer.writeByte(this.b0);
+         buffer.writeByte(this.b1);
+-        ByteBufCodecs.registry(Registries.BLOCK).encode(buffer, this.block);
++        BLOCK_CODEC.encode(buffer, this.block); // Papo - shared codec (see above)
+     }
+ 
+     @Override
+diff --git a/net/minecraft/network/protocol/game/ClientboundLevelChunkPacketData.java b/net/minecraft/network/protocol/game/ClientboundLevelChunkPacketData.java
+index 1c3557072345944acf6aab4c1476f5d5c038999c..597fc00ca8fc16b59c1d93745f5488a2a7880d8e 100644
+--- a/net/minecraft/network/protocol/game/ClientboundLevelChunkPacketData.java
++++ b/net/minecraft/network/protocol/game/ClientboundLevelChunkPacketData.java
+@@ -167,6 +167,8 @@ public class ClientboundLevelChunkPacketData {
+         public static final StreamCodec<RegistryFriendlyByteBuf, List<ClientboundLevelChunkPacketData.BlockEntityInfo>> LIST_STREAM_CODEC = STREAM_CODEC.apply(
+             ByteBufCodecs.list()
+         );
++        // Papo - hoist the stateless registry codec (see ClientboundAddEntityPacket)
++        private static final StreamCodec<RegistryFriendlyByteBuf, BlockEntityType<?>> BLOCK_ENTITY_TYPE_CODEC = ByteBufCodecs.registry(Registries.BLOCK_ENTITY_TYPE);
+         final int packedXZ;
+         final int y;
+         final BlockEntityType<?> type;
+@@ -182,14 +184,14 @@ public class ClientboundLevelChunkPacketData {
+         private BlockEntityInfo(RegistryFriendlyByteBuf buffer) {
+             this.packedXZ = buffer.readByte();
+             this.y = buffer.readShort();
+-            this.type = ByteBufCodecs.registry(Registries.BLOCK_ENTITY_TYPE).decode(buffer);
++            this.type = BLOCK_ENTITY_TYPE_CODEC.decode(buffer); // Papo - shared codec (see above)
+             this.tag = buffer.readNbt();
+         }
+ 
+         private void write(RegistryFriendlyByteBuf buffer) {
+             buffer.writeByte(this.packedXZ);
+             buffer.writeShort(this.y);
+-            ByteBufCodecs.registry(Registries.BLOCK_ENTITY_TYPE).encode(buffer, this.type);
++            BLOCK_ENTITY_TYPE_CODEC.encode(buffer, this.type); // Papo - shared codec (see above)
+             buffer.writeNbt(this.tag);
+         }
+ 
