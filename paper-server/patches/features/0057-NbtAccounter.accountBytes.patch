@@ -1,0 +1,33 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 14:24:06 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=20NbtAccounter.accountBytes?=
+ =?UTF-8?q?=EF=BC=9A=E6=97=A0=E9=99=90=E5=88=B6=E8=B4=A6=E6=88=B7=E5=BF=AB?=
+ =?UTF-8?q?=E9=80=9F=E8=B7=AF=E5=BE=84?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+解析时每个 tag 都调用。无限制账户（quota==Long.MAX_VALUE，区块/玩家加载的
+主路径）永不触发溢出检查、usage 也从不被读取，故在长加法/比较/分支前短路返回。
+
+diff --git a/net/minecraft/nbt/NbtAccounter.java b/net/minecraft/nbt/NbtAccounter.java
+index 9da1ab454a460b65f142f6d751f178fcdfc33667..cc84d5771e8d5d5b838a041f5eda00824fe8eeb6 100644
+--- a/net/minecraft/nbt/NbtAccounter.java
++++ b/net/minecraft/nbt/NbtAccounter.java
+@@ -39,7 +39,14 @@ public class NbtAccounter {
+     public void accountBytes(long bytes) {
+         if (bytes < 0L) {
+             throw new IllegalArgumentException("Tried to account NBT tag with negative size: " + bytes);
+-        } else if (this.usage + bytes > this.quota) {
++        }
++        // Papo start - fast-path unlimited accounters (quota == Long.MAX_VALUE): the overflow
++        // check below can never fire and usage is never read for unlimited accounters.
++        if (this.quota == Long.MAX_VALUE) {
++            return;
++        }
++        // Papo end
++        if (this.usage + bytes > this.quota) {
+             throw new NbtAccounterException(
+                 "Tried to read NBT tag that was too big; tried to allocate: " + this.usage + " + " + bytes + " bytes where max allowed: " + this.quota
+             );
