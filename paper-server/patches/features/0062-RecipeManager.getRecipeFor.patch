@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 15:02:03 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=20RecipeManager.getRecipeFor?=
+ =?UTF-8?q?=EF=BC=9A=E7=9B=B4=E6=8E=A5=E8=BF=AD=E4=BB=A3=E5=8F=96=E6=9C=80?=
+ =?UTF-8?q?=E5=90=8E=E5=8C=B9=E9=85=8D?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+原实现 stream().toList().getLast()，每次合成/熔炼缓存未命中都分配
+stream+list。改为直接迭代 byType 集合、保留最后匹配（CraftBukkit
+SPIGOT-4638 last-wins 语义不变），免 stream/list 分配。
+
+diff --git a/net/minecraft/world/item/crafting/RecipeManager.java b/net/minecraft/world/item/crafting/RecipeManager.java
+index 4e0b0d630e18bde916a07889bcaf0e7accf064ca..896bda2af0c32e8c5861550384c8e80a1a4e5bf9 100644
+--- a/net/minecraft/world/item/crafting/RecipeManager.java
++++ b/net/minecraft/world/item/crafting/RecipeManager.java
+@@ -167,8 +167,19 @@ public class RecipeManager extends SimplePreparableReloadListener<RecipeMap> imp
+ 
+     public <I extends RecipeInput, T extends Recipe<I>> Optional<RecipeHolder<T>> getRecipeFor(RecipeType<T> recipeType, I input, Level level) {
+         // CraftBukkit start
+-        List<RecipeHolder<T>> list = this.recipes.getRecipesFor(recipeType, input, level).toList();
+-        return (list.isEmpty()) ? Optional.empty() : Optional.of(list.getLast()); // CraftBukkit - SPIGOT-4638: last recipe gets priority
++        // Papo start - SPIGOT-4638: last recipe gets priority; iterate byType directly and keep the last match
++        // instead of stream().toList().getLast() (which allocates a stream + list per lookup).
++        if (input.isEmpty()) {
++            return Optional.empty();
++        }
++        RecipeHolder<T> last = null;
++        for (RecipeHolder<T> holder : this.recipes.byType(recipeType)) {
++            if (holder.value().matches(input, level)) {
++                last = holder;
++            }
++        }
++        return Optional.ofNullable(last);
++        // Papo end
+         // CraftBukkit end
+     }
+ 
