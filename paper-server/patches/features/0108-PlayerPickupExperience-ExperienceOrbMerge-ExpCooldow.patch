@@ -1,0 +1,66 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 05:58:07 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=E7=BB=8F=E9=AA=8C=E7=90=83?=
+ =?UTF-8?q?=EF=BC=9APlayerPickupExperience/ExperienceOrbMerge/ExpCooldown/?=
+ =?UTF-8?q?ItemMend=204=20=E4=BA=8B=E4=BB=B6=E6=97=A0=E7=9B=91=E5=90=AC?=
+ =?UTF-8?q?=E5=99=A8=E9=97=A8=E6=8E=A7?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/entity/ExperienceOrb.java b/net/minecraft/world/entity/ExperienceOrb.java
+index 02c0f3227904e116570941d41d1f762ce085a941..01a0cbb5718cc0b8f45bf116787a00754bfa24d3 100644
+--- a/net/minecraft/world/entity/ExperienceOrb.java
++++ b/net/minecraft/world/entity/ExperienceOrb.java
+@@ -302,7 +302,10 @@ public class ExperienceOrb extends Entity {
+ 
+     private void merge(ExperienceOrb orb) {
+         // Paper start - call orb merge event
+-        if (!new com.destroystokyo.paper.event.entity.ExperienceOrbMergeEvent((org.bukkit.entity.ExperienceOrb) this.getBukkitEntity(), (org.bukkit.entity.ExperienceOrb) orb.getBukkitEntity()).callEvent()) {
++        // Papo - skip event allocation+fire when no plugin listens (with zero listeners callEvent()
++        // always returns true, so merging unconditionally is identical).
++        if (com.destroystokyo.paper.event.entity.ExperienceOrbMergeEvent.getHandlerList().getRegisteredListeners().length > 0
++            && !new com.destroystokyo.paper.event.entity.ExperienceOrbMergeEvent((org.bukkit.entity.ExperienceOrb) this.getBukkitEntity(), (org.bukkit.entity.ExperienceOrb) orb.getBukkitEntity()).callEvent()) {
+             return;
+         }
+         // Paper end - call orb merge event
+@@ -361,8 +364,11 @@ public class ExperienceOrb extends Entity {
+     @Override
+     public void playerTouch(Player entity) {
+         if (entity instanceof ServerPlayer serverPlayer) {
+-            if (entity.takeXpDelay == 0 && new com.destroystokyo.paper.event.player.PlayerPickupExperienceEvent(serverPlayer.getBukkitEntity(), (org.bukkit.entity.ExperienceOrb) this.getBukkitEntity()).callEvent()) { // Paper - PlayerPickupExperienceEvent
+-                entity.takeXpDelay = org.bukkit.craftbukkit.event.CraftEventFactory.callPlayerXpCooldownEvent(entity, 2, org.bukkit.event.player.PlayerExpCooldownChangeEvent.ChangeReason.PICKUP_ORB).getNewCooldown(); // CraftBukkit - entity.takeXpDelay = 2;
++            // Papo - skip PlayerPickupExperienceEvent allocation+fire when no plugin listens (callEvent()
++            // always true with zero listeners). Cooldown event likewise returns the passed-in cooldown
++            // unchanged when no one listens.
++            if (entity.takeXpDelay == 0 && (com.destroystokyo.paper.event.player.PlayerPickupExperienceEvent.getHandlerList().getRegisteredListeners().length == 0 || new com.destroystokyo.paper.event.player.PlayerPickupExperienceEvent(serverPlayer.getBukkitEntity(), (org.bukkit.entity.ExperienceOrb) this.getBukkitEntity()).callEvent())) { // Paper - PlayerPickupExperienceEvent
++                entity.takeXpDelay = org.bukkit.event.player.PlayerExpCooldownChangeEvent.getHandlerList().getRegisteredListeners().length == 0 ? 2 : org.bukkit.craftbukkit.event.CraftEventFactory.callPlayerXpCooldownEvent(entity, 2, org.bukkit.event.player.PlayerExpCooldownChangeEvent.ChangeReason.PICKUP_ORB).getNewCooldown(); // CraftBukkit - entity.takeXpDelay = 2;
+                 entity.take(this, 1);
+                 int i = this.repairPlayerItems(serverPlayer, this.getValue());
+                 if (i > 0) {
+@@ -387,12 +393,17 @@ public class ExperienceOrb extends Entity {
+             int min = Math.min(i, itemStack.getDamageValue());
+             // CraftBukkit start
+             // Paper start - mending event
+-            final int consumedExperience = min > 0 ? min * value / i : 0;
+-            org.bukkit.event.player.PlayerItemMendEvent event = org.bukkit.craftbukkit.event.CraftEventFactory.callPlayerItemMendEvent(player, this, itemStack, randomItemWith.get().inSlot(), min, consumedExperience);
+-            // Paper end - mending event
+-            min = event.getRepairAmount();
+-            if (event.isCancelled()) {
+-                return value;
++            // Papo - skip PlayerItemMendEvent allocation+fire when no plugin listens: with zero
++            // listeners getRepairAmount() returns the passed-in repairAmount (== min) and the event
++            // can never be cancelled, so leaving min untouched is identical.
++            if (org.bukkit.event.player.PlayerItemMendEvent.getHandlerList().getRegisteredListeners().length > 0) {
++                final int consumedExperience = min > 0 ? min * value / i : 0;
++                org.bukkit.event.player.PlayerItemMendEvent event = org.bukkit.craftbukkit.event.CraftEventFactory.callPlayerItemMendEvent(player, this, itemStack, randomItemWith.get().inSlot(), min, consumedExperience);
++                // Paper end - mending event
++                min = event.getRepairAmount();
++                if (event.isCancelled()) {
++                    return value;
++                }
+             }
+             // CraftBukkit end
+             itemStack.setDamageValue(itemStack.getDamageValue() - min);
