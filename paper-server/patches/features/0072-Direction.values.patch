@@ -1,0 +1,55 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 17:06:21 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=20=E5=AF=BB=E8=B7=AF?=
+ =?UTF-8?q?=E8=8A=82=E7=82=B9=E8=AF=84=E4=BC=B0=E5=99=A8=20Direction.value?=
+ =?UTF-8?q?s()=20=E6=AF=8F=E6=AC=A1=E5=85=8B=E9=9A=86=E6=94=B9=E7=A7=81?=
+ =?UTF-8?q?=E6=9C=89=E9=9D=99=E6=80=81=E7=BC=93=E5=AD=98=E6=95=B0=E7=BB=84?=
+ =?UTF-8?q?=EF=BC=88=E6=B8=B8=E6=B3=B3/=E4=B8=A4=E6=A0=96=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/level/pathfinder/AmphibiousNodeEvaluator.java b/net/minecraft/world/level/pathfinder/AmphibiousNodeEvaluator.java
+index ea90ada690ba23aeb6990d828b4b3513798ce21e..b1ed651e0ffa67562b8f64b0492c0dc0e1fb389e 100644
+--- a/net/minecraft/world/level/pathfinder/AmphibiousNodeEvaluator.java
++++ b/net/minecraft/world/level/pathfinder/AmphibiousNodeEvaluator.java
+@@ -8,6 +8,7 @@ import net.minecraft.world.level.PathNavigationRegion;
+ import org.jspecify.annotations.Nullable;
+ 
+ public class AmphibiousNodeEvaluator extends WalkNodeEvaluator {
++    private static final Direction[] DIRECTIONS = Direction.values(); // Papo - cache enum array, values() clones per call
+     private final boolean prefersShallowSwimming;
+     private float oldWalkableCost;
+     private float oldWaterBorderCost;
+@@ -97,7 +98,7 @@ public class AmphibiousNodeEvaluator extends WalkNodeEvaluator {
+         if (pathTypeFromState == PathType.WATER) {
+             BlockPos.MutableBlockPos mutableBlockPos = new BlockPos.MutableBlockPos();
+ 
+-            for (Direction direction : Direction.values()) {
++            for (Direction direction : DIRECTIONS) { // Papo - cached array
+                 mutableBlockPos.set(x, y, z).move(direction);
+                 PathType pathTypeFromState1 = context.getPathTypeFromState(mutableBlockPos.getX(), mutableBlockPos.getY(), mutableBlockPos.getZ());
+                 if (pathTypeFromState1 == PathType.BLOCKED) {
+diff --git a/net/minecraft/world/level/pathfinder/SwimNodeEvaluator.java b/net/minecraft/world/level/pathfinder/SwimNodeEvaluator.java
+index 8c28183f6c10ae79b7344d867bd1abf248c4a79b..cf14aaaaed0ffda72429d04434fa7fc2f398aef9 100644
+--- a/net/minecraft/world/level/pathfinder/SwimNodeEvaluator.java
++++ b/net/minecraft/world/level/pathfinder/SwimNodeEvaluator.java
+@@ -15,6 +15,7 @@ import net.minecraft.world.level.material.FluidState;
+ import org.jspecify.annotations.Nullable;
+ 
+ public class SwimNodeEvaluator extends NodeEvaluator {
++    private static final Direction[] DIRECTIONS = Direction.values(); // Papo - cache enum array, values() clones per call
+     private final boolean allowBreaching;
+     private final Long2ObjectMap<PathType> pathTypesByPosCache = new Long2ObjectOpenHashMap<>();
+ 
+@@ -51,7 +52,7 @@ public class SwimNodeEvaluator extends NodeEvaluator {
+         int i = 0;
+         Map<Direction, Node> map = Maps.newEnumMap(Direction.class);
+ 
+-        for (Direction direction : Direction.values()) {
++        for (Direction direction : DIRECTIONS) { // Papo - cached array
+             Node node1 = this.findAcceptedNode(node.x + direction.getStepX(), node.y + direction.getStepY(), node.z + direction.getStepZ());
+             map.put(direction, node1);
+             if (this.isNodeValid(node1)) {
