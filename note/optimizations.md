@@ -512,9 +512,36 @@
 
 ---
 
+## 批次 30（2026-07-31）：实体每 tick 热路径分配消除（0104-0105）
+
+批次 29 survey 遗留的两个中风险候选，先做逃逸/语义实证（Explore 子代理全树查证 + javap 等价判据）再落地，共 2 个补丁。
+
+### 0104 — Entity.updateFluidHeightAndDoFluidPushing 每调用 3 处分配消除
+- **文件**：`net/minecraft/world/entity/Entity.java`
+- **热点**：`updateInWaterStateAndDoFluidPushing`（LAVA 路径）+ `updateInWaterStateAndDoWaterCurrentPushing`（WATER 路径）每实体每 tick ×2 调用；每调用分配 `getBoundingBox().deflate(1.0E-3)` 新 AABB、`new BlockPos.MutableBlockPos()`、`LevelChunkSection[chunkLenX*lenZ][]` 包装数组（单 chunk 常态为 1 元素）。
+- **改法**：
+  1. deflate 边界算术内联为 6 个 double（`bb.minX - -1.0E-3` 等，与 `AABB.inflate(-v)` 的 `minX - x / maxX + x`（x=-1e-3）逐运算相同）；
+  2. `papoFluidMutablePos` 逐实体惰性字段复用（逃逸实证：Paper 运行时 Fluid 实现封闭于 5 个 vanilla 实例——注册表冻结、FluidState final、无 Forge 式扩展点；FlowingFluid.getHeight/getFlow 与 EmptyFluid 只读坐标不存引用；`lastLavaContact` 存的是 `immutable()` 新拷贝）；
+  3. 单 chunk 快速路径：`minChunkX==maxChunkX && minChunkZ==maxChunkZ` 时直接用该 chunk 的 sections 引用，不建包装数组（此情形下索引表达式 `(currX>>4)+chunkLenX*(currZ>>4)+chunkOffset` 恒为 0，基准 main 实证）；内层循环取数组改为循环不变三元（JIT 可提升）。
+- **等价性**：边界 double 与 deflate 结果逐位一致（基准 main 10 万随机 box 逐位比对）；索引布局多 chunk 情形与原公式逐点一致、单 chunk 恒 0（main 实证）；getChunk 调用序列/参数不变（NPE 时机同原）；MutableBlockPos 复用不改变任何对外可见状态。
+- **风险**：低-中（方法为 public，并发调用同一实体会共享 scratch pos——vanilla 实体 tick 单线程，插件异步调此 NMS 方法本就违规；已注释注明 tick-thread only）。
+
+### 0105 — Entity.computeSpeed 每 tick Vec3 分配消除（分量 double 存储 + getKnownSpeed 惰性重建）
+- **文件**：`net/minecraft/world/entity/Entity.java`（字段、computeSpeed、reapplyPosition、hasMovedHorizontallyRecently、getKnownSpeed）
+- **热点**：`baseTick` 每实体每 tick 调用 computeSpeed；原实现 `position().subtract(lastKnownPosition)` 每次 1 个 Vec3 分配（`position()` 返回存储字段不分配）。消费方全树仅 KineticWeapon.getMotion（动能武器攻击，低频事件驱动）+ hasMovedHorizontallyRecently（只读 horizontalDistance）。
+- **改法**：`lastKnownSpeed`/`lastKnownPosition` 两个 Vec3 字段 → 6 个 double + 1 个 valid 标志；getKnownSpeed 返回 `new Vec3(分量)`（分配移到低频 API 调用点）；reapplyPosition 置 valid=false；hasMovedHorizontallyRecently 内联 `Math.sqrt(x*x+z*z)`。
+- **等价性**：`a - b` 与 `Vec3.subtract` 的 `a + (-b)` 位级一致（IEEE 754 取负精确）；Vec3 不可变（final 字段）且 setPos 整体替换，存坐标 ≡ 存引用；`position()` 无子类覆盖（全树 grep），单次读取 ≡ 三次读取；首 tick 零速度语义、reapplyPosition 失效语义逐分支一致；ServerPlayer.getKnownSpeed 覆盖走 lastKnownClientMovement 不受影响。基准 main：静止/移动/往返/大坐标 4 组序列逐位比对 + moved 公式全等。
+- **风险**：低（字段 private 且全树引用点仅 5 处，均已覆盖；NMS 插件直接反射访问被删字段不在兼容性红线内——NMS 无稳定 API 承诺，但已在补丁注释说明）。
+
+### 暂缓（批次 30 评估后未做，附原因）
+- **sections 包装数组多 chunk 路径池化**：尺寸随 box 跨 chunk 数变化，复用收益低且引入容量管理复杂度，仅单 chunk 快速路径已覆盖常态。
+- **touchingUnloadedChunk 的 inflate(1.0) AABB**：独立方法被多处调用（含本方法入口短路），改签名穿线范围大，收益每调用 1 个 AABB，暂缓。
+
+---
+
 ## 候选后续批次（来自 survey，按 价值×置信/风险 排序）
 
-（旧清单中 Direction.Plane 迭代器、tickBlockEntities 移除集、NaturalSpawner 距离、pushableBy、LookControl Optional、distanceToSqr 批、CraftBukkit 枚举缓存均已完成，见对应批次。批次 28 完成：InventoryChangeTrigger 早退 0093、Utf8String 写侧 NBT ASCII 快速路径 0092、tickChildren SetTimePacket 惰性 0094、FriendlyByteBuf.writeNbt 适配器 0095。批次 29 完成：FriendlyByteBuf.readNbt 读侧适配器 0096、VarInt.read 快速路径 0097、枚举常量缓存 0098、registry codec 单例 0099、EntityJumpEvent/PlayerVelocityEvent 门控 0100、惰性 list 0101、TrackedEntity 惰性移除 0102、Inflater 池化 0103；map 编码 forEach→entrySet 经基准实测回退 0.77× 已撤销（见批次 29 撤销条）。）
+（旧清单中 Direction.Plane 迭代器、tickBlockEntities 移除集、NaturalSpawner 距离、pushableBy、LookControl Optional、distanceToSqr 批、CraftBukkit 枚举缓存均已完成，见对应批次。批次 28 完成：InventoryChangeTrigger 早退 0093、Utf8String 写侧 NBT ASCII 快速路径 0092、tickChildren SetTimePacket 惰性 0094、FriendlyByteBuf.writeNbt 适配器 0095。批次 29 完成：FriendlyByteBuf.readNbt 读侧适配器 0096、VarInt.read 快速路径 0097、枚举常量缓存 0098、registry codec 单例 0099、EntityJumpEvent/PlayerVelocityEvent 门控 0100、惰性 list 0101、TrackedEntity 惰性移除 0102、Inflater 池化 0103；map 编码 forEach→entrySet 经基准实测回退 0.77× 已撤销（见批次 29 撤销条）。批次 30 完成：流体检测路径 3 处分配消除 0104、computeSpeed Vec3 消除 0105。）
 
 ### 批次 23-27 survey 新增候选（2026-07-30，尚未做）
 
@@ -528,10 +555,11 @@
 
 ### 批次 29 survey 新增候选（2026-07-31，尚未做）
 
-- **Entity 流体检测路径分配消除**（中-高价值，中风险）：`updateFluidHeightAndDoFluidPushing` 每实体每 tick ×2 的 deflate/inflate AABB、MutableBlockPos、单 chunk section 包装数组；涉 moonrise 重写的边界算术，需单独仔细核对。
-- **Entity.computeSpeed Vec3 拆 double**（高频率，中风险）：每实体每 tick 1 个 Vec3；`getKnownSpeed()` 公共 API 消费，需先采样调用频率。
+- ~~**Entity 流体检测路径分配消除**~~ **批次 30 已完成（0104）**。
+- ~~**Entity.computeSpeed Vec3 拆 double**~~ **批次 30 已完成（0105）**：消费方仅 KineticWeapon（低频），分量存储 + getKnownSpeed 惰性重建。
 - **ClientboundLightUpdatePacketData BitSet.toLongArray 缓存**（中价值）：getter public 可变，**不满足可证等价，暂缓**。
 - **PlayerNaturallySpawnCreaturesEvent 复用**（每玩家每 tick）：残留状态管理复杂，**暂缓**。
 - **Varint21FrameDecoder helperBuf 消除**（低价值）：每入站帧 ≤3 字节抄写。
+- **Entity.touchingUnloadedChunk inflate(1.0) AABB 内联**（批次 30 新增，低-中价值）：每调用 1 个 AABB，但方法被多处调用需改签名穿线，暂缓。
 
 已确认**已优化、勿重复**：EntityTickList.forEach、LevelTicks、LevelChunk.getBlockState、getEntitiesOfClass、Entity.collide 数学、CompoundTag.copy、PatchedDataComponentMap、getNearestPlayer、PoiManager、Brigadier 子节点查找等。
