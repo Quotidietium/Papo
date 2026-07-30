@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 23:47:48 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=20InventoryChangeTrigger?=
+ =?UTF-8?q?=EF=BC=9A=E6=97=A0=E7=9B=91=E5=90=AC=E5=99=A8=E6=97=B6=E8=B7=B3?=
+ =?UTF-8?q?=E8=BF=87=E5=85=A8=E8=83=8C=E5=8C=85=E6=A7=BD=E4=BD=8D=E7=BB=9F?=
+ =?UTF-8?q?=E8=AE=A1=E6=89=AB=E6=8F=8F?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+该触发器在每次背包槽位同步（containerListener.slotChanged）时调用，
+原实现无条件扫描全部槽位（每非空槽位含 getMaxStackSize 组件查找）统计
+full/empty/occupied，而基类 SimpleCriterionTrigger.trigger 对空监听器集合本就无操作。
+用 0086 引入的 hasListeners 早退，老玩家完成相关进度后为常态路径。
+扫描为纯读操作无副作用，提前返回不改变任何可见行为。
+
+diff --git a/net/minecraft/advancements/criterion/InventoryChangeTrigger.java b/net/minecraft/advancements/criterion/InventoryChangeTrigger.java
+index 29d378939629549b5de1490cab5851c91864a04f..2b644e336beb56be069af2c30ccccaa890d10629 100644
+--- a/net/minecraft/advancements/criterion/InventoryChangeTrigger.java
++++ b/net/minecraft/advancements/criterion/InventoryChangeTrigger.java
+@@ -21,6 +21,13 @@ public class InventoryChangeTrigger extends SimpleCriterionTrigger<InventoryChan
+     }
+ 
+     public void trigger(ServerPlayer player, Inventory inventory, ItemStack stack) {
++        // Papo start - skip the full inventory scan when nobody listens; the base trigger
++        // no-ops on an absent/empty listener set, so the slot counts would be discarded.
++        // The scan is pure reads (getItem/isEmpty/getCount/getMaxStackSize), no side effects.
++        if (!this.hasListeners(player)) {
++            return;
++        }
++        // Papo end
+         int i = 0;
+         int i1 = 0;
+         int i2 = 0;
