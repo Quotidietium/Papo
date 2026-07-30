@@ -1,0 +1,53 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 14:54:08 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=20StructureStart.placeInChun?=
+ =?UTF-8?q?k=EF=BC=9Astream+toList=20=E6=94=B9=E5=9B=9E=E5=91=BD=E4=BB=A4?=
+ =?UTF-8?q?=E5=BC=8F=E5=BE=AA=E7=8E=AF?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+CraftBukkit 把原循环改成了 list.stream().filter().toList()；每个结构放置
+都分配中间 list。改为命令式循环，首个相交 piece 时才惰性初始化
+TransformerGeneratorAccess，处理顺序与 discard 时机不变。
+
+diff --git a/net/minecraft/world/level/levelgen/structure/StructureStart.java b/net/minecraft/world/level/levelgen/structure/StructureStart.java
+index 063d79ec9975dd30602024c4096579ca5b2f1135..e5fc31e722cc0a66d1158e71fa877794400b8298 100644
+--- a/net/minecraft/world/level/levelgen/structure/StructureStart.java
++++ b/net/minecraft/world/level/levelgen/structure/StructureStart.java
+@@ -92,21 +92,28 @@ public final class StructureStart {
+             BlockPos blockPos = new BlockPos(center.getX(), boundingBox.minY(), center.getZ());
+ 
+             // CraftBukkit start
++            // Papo start - restore an imperative loop (the stream+toList allocates per placement);
++            // lazily set up the CraftBukkit TransformerGeneratorAccess only on the first intersecting piece.
+             // for (StructurePiece structurePiece : list) {
+             //     if (structurePiece.getBoundingBox().intersects(box)) {
+             //         structurePiece.postProcess(level, structureManager, generator, random, box, chunkPos, blockPos);
+             //     }
+             // }
+-            List<StructurePiece> pieces = list.stream().filter(piece -> piece.getBoundingBox().intersects(box)).toList();
+-            if (!pieces.isEmpty()) {
+-                org.bukkit.craftbukkit.util.TransformerGeneratorAccess transformerAccess = new org.bukkit.craftbukkit.util.TransformerGeneratorAccess();
+-                transformerAccess.setDelegate(level);
+-                transformerAccess.setStructureTransformer(new org.bukkit.craftbukkit.util.CraftStructureTransformer(this.generationEventCause, level, structureManager, this.structure, box, chunkPos));
+-                for (StructurePiece piece : pieces) {
++            org.bukkit.craftbukkit.util.TransformerGeneratorAccess transformerAccess = null;
++            for (StructurePiece piece : list) {
++                if (piece.getBoundingBox().intersects(box)) {
++                    if (transformerAccess == null) {
++                        transformerAccess = new org.bukkit.craftbukkit.util.TransformerGeneratorAccess();
++                        transformerAccess.setDelegate(level);
++                        transformerAccess.setStructureTransformer(new org.bukkit.craftbukkit.util.CraftStructureTransformer(this.generationEventCause, level, structureManager, this.structure, box, chunkPos));
++                    }
+                     piece.postProcess(transformerAccess, structureManager, generator, random, box, chunkPos, blockPos);
+                 }
++            }
++            if (transformerAccess != null) {
+                 transformerAccess.getStructureTransformer().discard();
+             }
++            // Papo end
+             // CraftBukkit end
+ 
+             this.structure.afterPlace(level, structureManager, generator, random, box, chunkPos, this.pieceContainer);
