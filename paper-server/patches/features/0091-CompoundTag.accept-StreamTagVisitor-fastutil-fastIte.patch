@@ -1,0 +1,114 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 20:56:24 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=20CompoundTag.accept(StreamT?=
+ =?UTF-8?q?agVisitor)=EF=BC=9Afastutil=20fastIterator=EF=BC=88=E4=B8=8E=20?=
+ =?UTF-8?q?write/merge=20=E5=90=8C=E6=AC=BE=E6=A8=A1=E5=BC=8F=EF=BC=8Centr?=
+ =?UTF-8?q?y=20=E4=B8=8D=E9=80=83=E9=80=B8=E3=80=81=E9=A1=BA=E5=BA=8F?=
+ =?UTF-8?q?=E4=B8=80=E8=87=B4=EF=BC=89=EF=BC=8C=E5=BE=AA=E7=8E=AF=E4=BD=93?=
+ =?UTF-8?q?=E6=8F=90=E5=8F=96=E4=B8=BA=20acceptEntry=20=E5=85=B1=E4=BA=AB?=
+ =?UTF-8?q?=E4=B8=A4=E8=B7=AF=E5=BE=84?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/nbt/CompoundTag.java b/net/minecraft/nbt/CompoundTag.java
+index c57bf4a698a37e2d34e259eed03079f26251be1d..bfe53823740a73cc7c4356dc10cec4872d2c9065 100644
+--- a/net/minecraft/nbt/CompoundTag.java
++++ b/net/minecraft/nbt/CompoundTag.java
+@@ -502,41 +502,65 @@ public final class CompoundTag implements Tag {
+ 
+     @Override
+     public StreamTagVisitor.ValueResult accept(StreamTagVisitor visitor) {
++        // Papo - fastutil fastIterator (same pattern as write()/merge()): the entry does not escape the
++        // loop body and iteration order is identical on the same backing array.
++        if (this.tags instanceof it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap) {
++            java.util.Iterator<it.unimi.dsi.fastutil.objects.Object2ObjectMap.Entry<String, Tag>> iterator = it.unimi.dsi.fastutil.objects.Object2ObjectMaps
++                .fastIterator((it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap<String, Tag>) this.tags);
++            while (iterator.hasNext()) {
++                it.unimi.dsi.fastutil.objects.Object2ObjectMap.Entry<String, Tag> entry = iterator.next();
++                StreamTagVisitor.ValueResult result = acceptEntry(visitor, entry.getKey(), entry.getValue());
++                if (result != null) {
++                    return result;
++                }
++            }
++            return visitor.visitContainerEnd();
++        }
+         for (Entry<String, Tag> entry : this.tags.entrySet()) {
+-            Tag tag = entry.getValue();
+-            TagType<?> type = tag.getType();
+-            StreamTagVisitor.EntryResult entryResult = visitor.visitEntry(type);
+-            switch (entryResult) {
+-                case HALT:
+-                    return StreamTagVisitor.ValueResult.HALT;
+-                case BREAK:
+-                    return visitor.visitContainerEnd();
+-                case SKIP:
+-                    break;
+-                default:
+-                    entryResult = visitor.visitEntry(type, entry.getKey());
+-                    switch (entryResult) {
+-                        case HALT:
+-                            return StreamTagVisitor.ValueResult.HALT;
+-                        case BREAK:
+-                            return visitor.visitContainerEnd();
+-                        case SKIP:
+-                            break;
+-                        default:
+-                            StreamTagVisitor.ValueResult valueResult = tag.accept(visitor);
+-                            switch (valueResult) {
+-                                case HALT:
+-                                    return StreamTagVisitor.ValueResult.HALT;
+-                                case BREAK:
+-                                    return visitor.visitContainerEnd();
+-                            }
+-                    }
++            StreamTagVisitor.ValueResult result = acceptEntry(visitor, entry.getKey(), entry.getValue());
++            if (result != null) {
++                return result;
+             }
+         }
+-
+         return visitor.visitContainerEnd();
+     }
+ 
++    // Papo - extracted loop body shared by the fastIterator and entrySet paths above.
++    // Returns null for "continue to next entry" (SKIP), non-null when accept() must return early.
++    @Nullable // Papo
++    private StreamTagVisitor.ValueResult acceptEntry(StreamTagVisitor visitor, String key, Tag tag) {
++        TagType<?> type = tag.getType();
++        StreamTagVisitor.EntryResult entryResult = visitor.visitEntry(type);
++        switch (entryResult) {
++            case HALT:
++                return StreamTagVisitor.ValueResult.HALT;
++            case BREAK:
++                return visitor.visitContainerEnd();
++            case SKIP:
++                return null;
++            default:
++                entryResult = visitor.visitEntry(type, key);
++                switch (entryResult) {
++                    case HALT:
++                        return StreamTagVisitor.ValueResult.HALT;
++                    case BREAK:
++                        return visitor.visitContainerEnd();
++                    case SKIP:
++                        return null;
++                    default:
++                        StreamTagVisitor.ValueResult valueResult = tag.accept(visitor);
++                        switch (valueResult) {
++                            case HALT:
++                                return StreamTagVisitor.ValueResult.HALT;
++                            case BREAK:
++                                return visitor.visitContainerEnd();
++                            default:
++                                return null;
++                        }
++                }
++        }
++    }
++
+     public <T> void store(String key, Codec<T> codec, T data) {
+         this.store(key, codec, NbtOps.INSTANCE, data);
+     }

@@ -1,0 +1,100 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 20:56:24 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=20=E5=8C=BA=E5=9D=97?=
+ =?UTF-8?q?=E5=8A=A0=E8=BD=BD=E8=B7=AF=E5=BE=84=EF=BC=9A=E5=AE=9E=E4=BD=93?=
+ =?UTF-8?q?/=E6=96=B9=E5=9D=97=E5=AE=9E=E4=BD=93=E5=88=97=E8=A1=A8?=
+ =?UTF-8?q?=E4=B8=8E=20SavedTick=20=E8=BF=87=E6=BB=A4=20stream=20=E6=94=B9?=
+ =?UTF-8?q?=E9=A2=84=E5=B0=BA=E5=AF=B8=E5=BE=AA=E7=8E=AF=EF=BC=88=E6=B6=88?=
+ =?UTF-8?q?=E8=B4=B9=E6=96=B9=E4=BB=85=E8=BF=AD=E4=BB=A3=EF=BC=89=EF=BC=9B?=
+ =?UTF-8?q?unpackStructureStart=20=E5=8F=8C=E9=87=8D=E5=93=88=E5=B8=8C?=
+ =?UTF-8?q?=E6=9F=A5=E6=89=BE=E6=8F=90=E5=8D=87=E4=B8=BA=E5=B1=80=E9=83=A8?=
+ =?UTF-8?q?=E5=8F=98=E9=87=8F=EF=BC=9B=E5=8C=BA=E5=9D=97=E5=8C=85=20blockE?=
+ =?UTF-8?q?ntitiesData=20=E9=A2=84=E5=B0=BA=E5=AF=B8?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/network/protocol/game/ClientboundLevelChunkPacketData.java b/net/minecraft/network/protocol/game/ClientboundLevelChunkPacketData.java
+index 1bef34100ec5c6b717878e0eb566671ba4b56a77..1c3557072345944acf6aab4c1476f5d5c038999c 100644
+--- a/net/minecraft/network/protocol/game/ClientboundLevelChunkPacketData.java
++++ b/net/minecraft/network/protocol/game/ClientboundLevelChunkPacketData.java
+@@ -65,7 +65,7 @@ public class ClientboundLevelChunkPacketData {
+             chunkPacketInfo.setBuffer(this.buffer);
+         }
+         extractChunkData(new FriendlyByteBuf(this.getWriteBuffer()), levelChunk, chunkPacketInfo);
+-        this.blockEntitiesData = Lists.newArrayList();
++        this.blockEntitiesData = Lists.newArrayListWithExpectedSize(levelChunk.getBlockEntities().size()); // Papo - presize (only appended here, only iterated later)
+         int totalTileEntities = 0; // Paper - Handle oversized block entities in chunks
+ 
+         for (Entry<BlockPos, BlockEntity> entry : levelChunk.getBlockEntities().entrySet()) {
+diff --git a/net/minecraft/world/level/chunk/storage/SerializableChunkData.java b/net/minecraft/world/level/chunk/storage/SerializableChunkData.java
+index 95c8d65a4b6db8d0721460ae55cb8fb8143ea9a2..c7cc66faf668a06527557a75e432a6e3e498903f 100644
+--- a/net/minecraft/world/level/chunk/storage/SerializableChunkData.java
++++ b/net/minecraft/world/level/chunk/storage/SerializableChunkData.java
+@@ -185,8 +185,22 @@ public record SerializableChunkData(
+                 }
+             }
+ 
+-            List<CompoundTag> list3 = tag.getList("entities").stream().flatMap(ListTag::compoundStream).toList();
+-            List<CompoundTag> list4 = tag.getList("block_entities").stream().flatMap(ListTag::compoundStream).toList();
++            // Papo start - plain loops instead of Optional.stream().flatMap(compoundStream).toList()
++            // (per chunk load, x2). getList() empty <=> getListOrEmpty() empty list; compoundStream keeps
++            // only CompoundTag elements; consumers only iterate the results.
++            List<CompoundTag> list3 = new ArrayList<>();
++            for (net.minecraft.nbt.Tag entityTag : tag.getListOrEmpty("entities")) {
++                if (entityTag instanceof CompoundTag entityCompound) {
++                    list3.add(entityCompound);
++                }
++            }
++            List<CompoundTag> list4 = new ArrayList<>();
++            for (net.minecraft.nbt.Tag blockEntityTag : tag.getListOrEmpty("block_entities")) {
++                if (blockEntityTag instanceof CompoundTag blockEntityCompound) {
++                    list4.add(blockEntityCompound);
++                }
++            }
++            // Papo end
+             CompoundTag compoundOrEmpty = tag.getCompoundOrEmpty("structures");
+             ListTag listOrEmpty1 = tag.getListOrEmpty("sections");
+             List<SerializableChunkData.SectionData> list5 = new ArrayList<>(listOrEmpty1.size());
+@@ -729,10 +743,12 @@ public record SerializableChunkData(
+             if (structure == null) {
+                 LOGGER.error("Unknown structure start: {}", identifier);
+             } else {
+-                StructureStart structureStart = StructureStart.loadStaticStart(context, compoundOrEmpty.getCompoundOrEmpty(string), seed);
++                // Papo - hoist the repeated getCompoundOrEmpty(string) (double hash lookup + Optional alloc)
++                CompoundTag startTag = compoundOrEmpty.getCompoundOrEmpty(string);
++                StructureStart structureStart = StructureStart.loadStaticStart(context, startTag, seed);
+                 if (structureStart != null) {
+                     // CraftBukkit start - load persistent data for structure start
+-                    net.minecraft.nbt.Tag persistentBase = compoundOrEmpty.getCompoundOrEmpty(string).get("StructureBukkitValues");
++                    net.minecraft.nbt.Tag persistentBase = startTag.get("StructureBukkitValues");
+                     if (persistentBase instanceof CompoundTag compoundTag) {
+                         structureStart.persistentDataContainer.putAll(compoundTag);
+                     }
+diff --git a/net/minecraft/world/ticks/SavedTick.java b/net/minecraft/world/ticks/SavedTick.java
+index 30a4dff64943898303ac7087cb9960f10d0a2fd2..f9f68b4107d6f8a84d32f28125ae3ae844a2677f 100644
+--- a/net/minecraft/world/ticks/SavedTick.java
++++ b/net/minecraft/world/ticks/SavedTick.java
+@@ -43,7 +43,19 @@ public record SavedTick<T>(T type, BlockPos pos, int delay, TickPriority priorit
+ 
+     public static <T> List<SavedTick<T>> filterTickListForChunk(List<SavedTick<T>> tickList, ChunkPos chunkPos) {
+         long packedChunkPos = chunkPos.toLong();
+-        return tickList.stream().filter(savedTick -> ChunkPos.asLong(savedTick.pos()) == packedChunkPos).toList();
++        // Papo start - plain loop instead of stream().filter().toList() (per chunk load, x2 for block/fluid
++        // ticks). Consumers only iterate the result.
++        if (tickList.isEmpty()) {
++            return List.of();
++        }
++        List<SavedTick<T>> result = new java.util.ArrayList<>(tickList.size());
++        for (SavedTick<T> savedTick : tickList) {
++            if (ChunkPos.asLong(savedTick.pos()) == packedChunkPos) {
++                result.add(savedTick);
++            }
++        }
++        return result;
++        // Papo end
+     }
+ 
+     public ScheduledTick<T> unpack(long gameTime, long subTickOrder) {
