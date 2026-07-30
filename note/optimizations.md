@@ -270,6 +270,15 @@
 
 ---
 
+## 批次 21（2026-07-30）：NBT int/long 数组批量写出（0068 对称面）
+
+### 0075 — IntArrayTag/LongArrayTag.write 批量编码
+- 读侧已在 0068 优化；写侧仍是逐元素 `writeInt/writeLong`（DataOutputStream 每元素 4/8 字节小缓冲拷贝 + 调用开销），区块保存（高度图、生物群系、`Position`/`UpgradeData` 等）热路径。
+- 改为 `ByteBuffer.wrap(buf).order(BIG_ENDIAN).asIntBuffer()/asLongBuffer().put(data)` 一次编码 + `output.write(buf)` 单次写出；`length > MAX_VALUE/4(/8)` 溢出保护回退逐元素（与读侧对称）。线上字节完全一致。
+- 基准：int 9.3-9.6×，long 5.4-6.3×。
+
+---
+
 ## 基准测试（2026-07-30）
 
 新增 `benchmark/`：JMH 1.37 微基准，忠实复刻 0067/0068/0040/0047/0048/0069/0045/0058/0070 的前后实现对比。
