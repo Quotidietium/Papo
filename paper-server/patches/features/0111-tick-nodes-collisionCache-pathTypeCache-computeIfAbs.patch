@@ -1,0 +1,100 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 05:58:08 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=E5=AF=BB=E8=B7=AF=E4=B8=8E?=
+ =?UTF-8?q?=E8=A1=8C=E4=B8=BA=20tick=EF=BC=9Anodes/collisionCache/pathType?=
+ =?UTF-8?q?Cache=20computeIfAbsent=20=E6=94=B9=E4=B8=A4=E6=AE=B5=E5=BC=8F?=
+ =?UTF-8?q?=E5=85=8D=E6=8D=95=E8=8E=B7=20lambda=20+=20GateBehavior.tickOrS?=
+ =?UTF-8?q?top=20=E9=81=97=E7=95=99=20stream=20=E6=B6=88=E9=99=A4?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/entity/ai/behavior/GateBehavior.java b/net/minecraft/world/entity/ai/behavior/GateBehavior.java
+index bd31d1cac0d022a72bd536c41d1ef811886e7068..03936b7b0f3fbcd0085b82b17e624d1ac7e736bc 100644
+--- a/net/minecraft/world/entity/ai/behavior/GateBehavior.java
++++ b/net/minecraft/world/entity/ai/behavior/GateBehavior.java
+@@ -67,13 +67,20 @@ public class GateBehavior<E extends LivingEntity> implements BehaviorControl<E>
+     @Override
+     public final void tickOrStop(ServerLevel level, E entity, long gameTime) {
+         // Paper start - Perf: Remove streams from hot code
++        // Papo - also drop the noneMatch stream below: behaviors that were STOPPED before this loop
++        // cannot be started by a sibling's tickOrStop (it only mutates its own status), so tracking
++        // "was RUNNING and still RUNNING after its tick" covers the whole list.
++        boolean anyRunning = false;
+         for (final BehaviorControl<? super E> behavior : this.behaviors) {
+             if (behavior.getStatus() == Behavior.Status.RUNNING) {
+                 behavior.tickOrStop(level, entity, gameTime);
++                if (behavior.getStatus() == Behavior.Status.RUNNING) {
++                    anyRunning = true;
++                }
+             }
+         }
+         // Paper end - Perf: Remove streams from hot code
+-        if (this.behaviors.stream().noneMatch(behavior -> behavior.getStatus() == Behavior.Status.RUNNING)) {
++        if (!anyRunning) {
+             this.doStop(level, entity, gameTime);
+         }
+     }
+diff --git a/net/minecraft/world/level/pathfinder/NodeEvaluator.java b/net/minecraft/world/level/pathfinder/NodeEvaluator.java
+index 73aacb7b64b5518937273b4a70df944ad05a1b2b..1a364b13d1da15e98d14cabb24af3363f1c1d449 100644
+--- a/net/minecraft/world/level/pathfinder/NodeEvaluator.java
++++ b/net/minecraft/world/level/pathfinder/NodeEvaluator.java
+@@ -42,7 +42,18 @@ public abstract class NodeEvaluator {
+     }
+ 
+     protected Node getNode(int x, int y, int z) {
+-        return this.nodes.computeIfAbsent(Node.createHash(x, y, z), key -> new Node(x, y, z));
++        // Papo start - two-phase lookup: fastutil computeIfAbsent is too big to inline, so the
++        // capturing lambda (x, y, z) is a real per-call allocation even on cache hits. get+put is
++        // equivalent here: pathfinding is single-threaded and the mapping (pure Node construction)
++        // never re-enters this map.
++        final int hash = Node.createHash(x, y, z);
++        Node node = this.nodes.get(hash);
++        if (node == null) {
++            node = new Node(x, y, z);
++            this.nodes.put(hash, node);
++        }
++        return node;
++        // Papo end
+     }
+ 
+     public abstract Node getStart();
+diff --git a/net/minecraft/world/level/pathfinder/WalkNodeEvaluator.java b/net/minecraft/world/level/pathfinder/WalkNodeEvaluator.java
+index 1f9a9c362898b5243fe818aa807383747d8279ca..28ec361a41bbccd30c67ba81a53b92eac36abfb4 100644
+--- a/net/minecraft/world/level/pathfinder/WalkNodeEvaluator.java
++++ b/net/minecraft/world/level/pathfinder/WalkNodeEvaluator.java
+@@ -357,11 +357,30 @@ public class WalkNodeEvaluator extends NodeEvaluator {
+     }
+ 
+     private boolean hasCollisions(AABB boundingBox) {
+-        return this.collisionCache.computeIfAbsent(boundingBox, key -> !this.currentContext.level().noCollision(this.mob, boundingBox));
++        // Papo start - two-phase lookup: avoids the capturing-lambda allocation of computeIfAbsent
++        // on cache hits. Equivalent: single-threaded pathfinding, and noCollision does not touch
++        // this cache.
++        if (this.collisionCache.containsKey(boundingBox)) {
++            return this.collisionCache.getBoolean(boundingBox);
++        }
++        final boolean result = !this.currentContext.level().noCollision(this.mob, boundingBox);
++        this.collisionCache.put(boundingBox, result);
++        return result;
++        // Papo end
+     }
+ 
+     protected PathType getCachedPathType(int x, int y, int z) {
+-        return this.pathTypesByPosCacheByMob.computeIfAbsent(BlockPos.asLong(x, y, z), l -> this.getPathTypeOfMob(this.currentContext, x, y, z, this.mob));
++        // Papo start - two-phase lookup (see hasCollisions above). getPathTypeOfMob never returns
++        // null and does not re-enter this cache (it goes through getPathTypeWithinMobBB ->
++        // getPathType, not getCachedPathType).
++        final long key = BlockPos.asLong(x, y, z);
++        PathType pathType = this.pathTypesByPosCacheByMob.get(key);
++        if (pathType == null) {
++            pathType = this.getPathTypeOfMob(this.currentContext, x, y, z, this.mob);
++            this.pathTypesByPosCacheByMob.put(key, pathType);
++        }
++        return pathType;
++        // Papo end
+     }
+ 
+     @Override
