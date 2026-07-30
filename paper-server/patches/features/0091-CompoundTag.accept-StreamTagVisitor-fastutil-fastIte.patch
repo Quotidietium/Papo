@@ -14,10 +14,10 @@ Content-Transfer-Encoding: 8bit
 
 
 diff --git a/net/minecraft/nbt/CompoundTag.java b/net/minecraft/nbt/CompoundTag.java
-index c57bf4a698a37e2d34e259eed03079f26251be1d..bfe53823740a73cc7c4356dc10cec4872d2c9065 100644
+index c57bf4a698a37e2d34e259eed03079f26251be1d..6648d65787ced83ada7e46682ed705eecc3866e4 100644
 --- a/net/minecraft/nbt/CompoundTag.java
 +++ b/net/minecraft/nbt/CompoundTag.java
-@@ -502,41 +502,65 @@ public final class CompoundTag implements Tag {
+@@ -502,41 +502,64 @@ public final class CompoundTag implements Tag {
  
      @Override
      public StreamTagVisitor.ValueResult accept(StreamTagVisitor visitor) {
@@ -75,8 +75,7 @@ index c57bf4a698a37e2d34e259eed03079f26251be1d..bfe53823740a73cc7c4356dc10cec487
  
 +    // Papo - extracted loop body shared by the fastIterator and entrySet paths above.
 +    // Returns null for "continue to next entry" (SKIP), non-null when accept() must return early.
-+    @Nullable // Papo
-+    private StreamTagVisitor.ValueResult acceptEntry(StreamTagVisitor visitor, String key, Tag tag) {
++    private StreamTagVisitor.@Nullable ValueResult acceptEntry(StreamTagVisitor visitor, String key, Tag tag) {
 +        TagType<?> type = tag.getType();
 +        StreamTagVisitor.EntryResult entryResult = visitor.visitEntry(type);
 +        switch (entryResult) {
