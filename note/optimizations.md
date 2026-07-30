@@ -214,7 +214,7 @@
 ## 批次 15（2026-07-30）：region 文件 deflate 压缩级别可配置
 
 ### 0066 — RegionFileVersion 压缩级别配置（config-gated）
-- 新增全局配置 `compressionLevel`（默认 6，与现状逐字节一致，见 note/config.md 的 `papo` 段）。
+- 新增全局配置 `unsupported-settings.compression-level`（默认 6，与现状逐字节一致；超出 [1,9] 回退 6）。
 - `PapoDeflaterOutputStream` 包装：自有 Deflater 在 close 时 `end()`，避免外部提供 Deflater 时原生内存泄漏（JDK 默认不 end 非自有 Deflater）。
 - 可选 `BEST_SPEED`(1)：保存 CPU 大幅下降、文件略大；默认不变保证兼容。
 
