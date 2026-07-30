@@ -1,0 +1,51 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 05:58:08 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=E5=AE=B9=E5=99=A8=E5=90=8C?=
+ =?UTF-8?q?=E6=AD=A5=EF=BC=9AInventoryMenu.broadcastSlotChange=20memoize?=
+ =?UTF-8?q?=20supplier=20=E9=97=A8=E6=8E=A7=EF=BC=88=E5=90=8C=20broadcastC?=
+ =?UTF-8?q?hanges=20=E5=85=88=E4=BE=8B=EF=BC=9BsuppressRemoteUpdates=20?=
+ =?UTF-8?q?=E6=94=BE=E5=AE=BD=20protected=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/inventory/AbstractContainerMenu.java b/net/minecraft/world/inventory/AbstractContainerMenu.java
+index 5b267fae9d87809837b9b9a28be74dbef944c242..2ff471c3de358f7546e4580297a59859062c171f 100644
+--- a/net/minecraft/world/inventory/AbstractContainerMenu.java
++++ b/net/minecraft/world/inventory/AbstractContainerMenu.java
+@@ -61,7 +61,7 @@ public abstract class AbstractContainerMenu {
+     public final Set<Slot> quickcraftSlots = Sets.newHashSet();
+     private final List<ContainerListener> containerListeners = Lists.newArrayList();
+     private @Nullable ContainerSynchronizer synchronizer;
+-    private boolean suppressRemoteUpdates;
++    protected boolean suppressRemoteUpdates; // Papo - widened from private so InventoryMenu.broadcastSlotChange can apply the same supplier gating as broadcastChanges
+     // CraftBukkit start
+     public boolean checkReachable = true;
+     public abstract org.bukkit.inventory.InventoryView getBukkitView();
+diff --git a/net/minecraft/world/inventory/InventoryMenu.java b/net/minecraft/world/inventory/InventoryMenu.java
+index a827ca0d8c327b64cb1ffe90f6ab8cff1df703aa..3b2a935e40da16f6ab1fa64ea4ad58b5d0292a88 100644
+--- a/net/minecraft/world/inventory/InventoryMenu.java
++++ b/net/minecraft/world/inventory/InventoryMenu.java
+@@ -237,9 +237,17 @@ public class InventoryMenu extends AbstractCraftingMenu {
+ 
+     private void broadcastSlotChange(int slot) {
+         ItemStack item = this.slots.get(slot).getItem();
+-        java.util.function.Supplier<net.minecraft.world.item.ItemStack> supplier = com.google.common.base.Suppliers.memoize(item::copy);
+-        this.triggerSlotListeners(slot, item, supplier);
+-        this.synchronizeSlotToRemote(slot, item, supplier);
++        // Papo start - only build the memoized copy-supplier when at least one consumer will
++        // actually use it; both callees are no-ops when the slot is unchanged (same gating as
++        // AbstractContainerMenu.broadcastChanges).
++        boolean listenerNeeds = !ItemStack.matches(this.lastSlots.get(slot), item);
++        boolean remoteNeeds = !this.suppressRemoteUpdates && !this.remoteSlots.get(slot).matches(item);
++        if (listenerNeeds || remoteNeeds) {
++            java.util.function.Supplier<net.minecraft.world.item.ItemStack> supplier = com.google.common.base.Suppliers.memoize(item::copy);
++            this.triggerSlotListeners(slot, item, supplier);
++            this.synchronizeSlotToRemote(slot, item, supplier);
++        }
++        // Papo end
+     }
+     // Paper end - utility methods for synchronizing slots usually not synchronized by the container menus
+ }
