@@ -27,12 +27,18 @@ cd benchmark
 | `StreamArgminBench` | 0069 | stream min() vs 手动 argmin 循环 |
 | `DistSqrAllocBench` | 0045/0058 | new Vec3 + distanceToSqr vs 纯标量 distToCenterSqr |
 | `EarlyExitBench` | 0070 | 构建完整列表判空 vs 命中即早退 |
+| `Utf8StringWriteBench` | 0084 | 临时 ByteBuf + 拷贝 vs utf8Bytes 精确长度 + 直写目标（含字节级等价自检 main） |
+| `LongArrayWriteBench` | 0085 | 逐元素 writeLong vs internalNioBuffer + LongBuffer 批量（含字节级等价自检 main） |
+| `SlotTakeOptionalBench` | 0087 | Optional.ofNullable + ifPresent vs @Nullable 内部路径 |
+| `IngredientOptionalBench` | 0088 | Optional map/orElseGet vs 三目 |
+| `SleepStatusBench` | 0089 | 双 stream 遍历 vs 单遍循环 |
+| `SavedTickFilterBench` | 0090 | stream filter/toList vs isEmpty 早退 + 预尺寸循环 |
 
 ## 依赖
 
 `run.sh` 会自动下载缺失的 jar 到 `lib/`（不入库）：JMH 1.37
-（jmh-core / jmh-generator-annprocess / jopt-simple / commons-math3）
-与 fastutil 8.5.18（与服务器运行时同版本）。
+（jmh-core / jmh-generator-annprocess / jopt-simple / commons-math3）、
+fastutil 8.5.18 与 netty-buffer/netty-common 4.2.7.Final（均与服务器运行时同版本）。
 
 ## 方法学说明
 

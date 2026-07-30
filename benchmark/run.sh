@@ -6,7 +6,7 @@ cd "$(dirname "$0")"
 
 LIB=lib
 OUT=build/classes
-CP="$LIB/jmh-core-1.37.jar;$LIB/jmh-generator-annprocess-1.37.jar;$LIB/jopt-simple-5.0.4.jar;$LIB/commons-math3-3.6.1.jar;$LIB/fastutil-8.5.18.jar"
+CP="$LIB/jmh-core-1.37.jar;$LIB/jmh-generator-annprocess-1.37.jar;$LIB/jopt-simple-5.0.4.jar;$LIB/commons-math3-3.6.1.jar;$LIB/fastutil-8.5.18.jar;$LIB/netty-buffer-4.2.7.Final.jar;$LIB/netty-common-4.2.7.Final.jar"
 
 mkdir -p "$OUT" results "$LIB"
 
@@ -17,6 +17,8 @@ dl org/openjdk/jmh/jmh-generator-annprocess/1.37/jmh-generator-annprocess-1.37.j
 dl net/sf/jopt-simple/jopt-simple/5.0.4/jopt-simple-5.0.4.jar jopt-simple-5.0.4.jar
 dl org/apache/commons/commons-math3/3.6.1/commons-math3-3.6.1.jar commons-math3-3.6.1.jar
 dl it/unimi/dsi/fastutil/8.5.18/fastutil-8.5.18.jar fastutil-8.5.18.jar
+dl io/netty/netty-buffer/4.2.7.Final/netty-buffer-4.2.7.Final.jar netty-buffer-4.2.7.Final.jar
+dl io/netty/netty-common/4.2.7.Final/netty-common-4.2.7.Final.jar netty-common-4.2.7.Final.jar
 
 echo "== 编译基准源码 =="
 find src -name '*.java' > build/sources.txt
