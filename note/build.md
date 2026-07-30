@@ -97,6 +97,20 @@ codechicken diffpatch 引擎非常严格：
 2. **hunk 头计数必须与行数一致**。`@@ -a,b +_,c @@` 中 b = (上下文行+删除行) 数，c = (上下文行+新增行) 数。把上下文行改成 -/+ 对**不改变**计数；只有纯增/删行才改变。校验脚本：`python note/check_patch_counts.py [files...]`。
 3. **`+` 侧起始行号用 `_`**（paperweight 约定，表示由引擎推算），`-` 侧必须写真实行号但引擎实际不校验它，只校验 b/c 计数。
 
+## 2026-07-31 补充：批次 29 踩坑记录
+
+### javap 不在 javapath 中
+
+`C:\Program Files\Common Files\Oracle\Java\javapath` 只有 java/javac/javaw/jshell 四个转发器，**没有 javap**。真实 JDK 在 `C:\Program Files\Java\latest`（junction）→ `F:\Java\21\`，反编译用 `/f/Java/21/bin/javap.exe`（实证 Netty/JDK 字节码语义时必需，如 0096 的 ByteBufInputStream.readLine 循环内不抛 EOF 就是 javap 核对才发现的）。
+
+### 消除 lambda 分配类候选必须先过微基准（0100 回退案例）
+
+`map.forEach(capturing-lambda)` → `entrySet` 循环这类"消除 lambda 分配"改动，在 JMH 下实测可能**回退**（HashMap.forEach 直接扫内部表无迭代器分配；单次调用的捕获 lambda 基本被 EA 消除；entrySet 反而引入 iterator）。批次 29 的 0100 因此从内部历史 rebase 摘除（`git rebase --onto <提交>^ <提交>`，补丁序列自动重编号）。规则：涉及"改遍历方式"的候选，先写微基准验证再落地；"纯减少分配次数不改遍历结构"的候选（ThreadLocal 适配器、静态单例、门控）不受此限。
+
+### 内部仓库 rebase 摘除提交是安全的（未推送前提下）
+
+批次 29 用 `git rebase --onto 608af24^ 608af24` 摘除中间一个 feature 提交后，rebuildPatches 正常重生成补丁并自动重编号。前提：内部仓库历史从未推送（它本来就在 .gitignore 里）。注意摘除后所有引用旧补丁号的文档（optimizations.md、基准类注释、报告、release note）要同步重编号。
+
 ## 2026-07-30 补充：批次 23-27 踩坑记录
 
 ### rebuildPatches 会自动暂存全部生成补丁

@@ -438,9 +438,83 @@
 
 ---
 
+## 批次 29（2026-07-31）：网络读侧与事件/追踪分配消除（0096-0103）
+
+三个 survey 子代理（网络编解码 / 实体同步与 tick / 区块 IO 与 NBT 读侧）共产出 21 个候选，逐个代码复核（含 javap 实证 Netty 4.2.7 与 JDK 21 字节码）后实现 9 个、基准后回退 1 个，最终 8 个。
+
+### 0096 — FriendlyByteBuf.readNbt ThreadLocal 轻量 DataInput 适配器（0095 读侧镜像）
+- **文件**：`net/minecraft/network/FriendlyByteBuf.java` `readNbt(ByteBuf, NbtAccounter)`
+- **热点**：入站 NBT 解码（创造模式带组件物品、自定义 payload 等）每次分配 `new ByteBufInputStream(buffer)` 且从不 close，纯垃圾。
+- **改法**：`PapoByteBufDataInput extends InputStream implements DataInput`（嵌套静态类），ThreadLocal 复用；bind 时快照 `endIndex = readerIndex + readableBytes`（与 Netty 构造器一致），save/restore 两字段防重入。
+- **等价性**：javap 反编译 Netty 4.2.7 `ByteBufInputStream` 逐方法实证后 1:1 复刻——`read()/read(byte[],off,len)` EOF 返回 -1 且允许部分读 vs `readXxx/readFully` 经 `checkAvailable` 抛 EOFException（**异常消息逐字符相同**）、`skipBytes` 静默截断、`available()` 快照语义、`readLine` 直读 buffer + 本地计数（**从不抛 EOF**——初版误用 `readUnsignedByte()` 会在无换行 EOF 时抛异常，javap 核对后修正）、mark/reset 直通 readerIndex 标记。基准 main 对真实 Netty jar 逐方法行为比对（含异常类型+消息、部分读、截断、readLine 四种换行形态、mark/reset、readUTF、树形读取）全等。
+- **风险**：低。
+
+### 0097 — VarInt.read 单字节快速路径
+- **文件**：`net/minecraft/network/VarInt.java` `read`
+- **热点**：每个入站包 id（全部 < 128）、每个集合长度前缀、枚举序数。
+- **改法**：首字节剥离，`b >= 0`（无 continuation 位）直接返回；否则以 `i=b&127, i1=1` 进入原 do-while。
+- **等价性**：`b >= 0 ⟺ (b&128)==0` 且此时 `b&127==b`，与循环一次迭代结果相同；第 6 字节抛 "VarInt too big" 的时机（先或入再判 `i1>5`）逐字节保持。基准 main：0..300/2^14/2^21/MAX_VALUE/负数/5 字节上限/6 字节异常全等。
+- **风险**：低。
+
+### 0098 — FriendlyByteBuf 枚举读写 ClassValue 缓存枚举常量数组
+- **文件**：`net/minecraft/network/FriendlyByteBuf.java` `readEnum`/`writeEnumSet`/`readEnumSet`
+- **热点**：`Class.getEnumConstants()` 每次克隆整个常量数组；入站 Swing/UseItemOn/PlayerAction/Interact 等高频包均经 readEnum。
+- **改法**：`ClassValue<Object[]>` 缓存（每个枚举类只取一次），三处调用点共用。
+- **等价性**：`getEnumConstants()` 返回共享数组的克隆，内容（单例、声明顺序）JVM 生命周期不变；三处只读索引/迭代，数组不逃逸。非枚举类传入时 getEnumConstants 返回 null，ClassValue 透传 null，NPE 位置与原来一致。基准 main 验证单例身份与顺序。
+- **风险**：低。
+
+### 0099 — ByteBufCodecs.registry 无状态 codec 提升为静态单例（3 个包类）
+- **文件**：`ClientboundAddEntityPacket`、`ClientboundLevelChunkPacketData`（BlockEntityInfo）、`ClientboundBlockEventPacket`
+- **热点**：`registry()` 每次调用 new 一个匿名 StreamCodec；AddEntity 每次实体进入追踪范围编码、BlockEntityInfo 每方块实体每区块包每接收玩家编码。
+- **改法**：各包类提升为 `private static final` codec 字段。
+- **等价性**：匿名 codec 仅捕获 registryKey 常量，注册表经 `buffer.registryAccess()` 每次解析（未缓存，运行时注册表变化仍生效）；单例与逐次新建实例编码逐字节相同（基准 main 字节级自检）。
+- **风险**：低。
+
+### ~~0100 — ByteBufCodecs.map / FriendlyByteBuf.writeMap 的 forEach lambda 改 entrySet 循环~~（已实现，基准回退后撤销）
+- **撤销原因**：JMH 实测 7 条目（区块包高度图规模）**回退 0.77×**（54.5ns→71.2ns）——`HashMap.forEach` 直接扫内部表无迭代器分配，且捕获型 BiConsumer 在热点下被 JIT 逃逸分析消除，"每次 encode 分配 lambda"的前提在 JIT 下不成立；entrySet 循环反而引入 iterator 分配与虚调用。3 条目持平。已 rebase 摘除该内部提交，补丁序列重编号。
+- **教训**：消除 lambda 分配类候选必须先过微基准——EA 对单次调用的捕获 lambda 基本都能消除，遍历方式本身的成本才是决定项。基准类 MapEncodeLoopBench 保留作为复评依据。
+
+### 0100 — EntityJumpEvent(3 处)/PlayerVelocityEvent 无插件监听器门控
+- **文件**：`LivingEntity.aiStep`、`Ravager`、`Panda`（EntityJumpEvent）+ `ServerEntity.sendChanges`（PlayerVelocityEvent）
+- **热点**：地面生物寻路翻越/史莱姆持续跳跃每 ≥10 tick 构建事件；PvP 服击退每 hurtMarked tick 构建事件 + Vector.clone。
+- **改法**：0050/0078/0079 同款 `getHandlerList().getRegisteredListeners().length` 门控（== 0 || 构建+派发；> 0 才进入原逻辑）。
+- **等价性**：两事件均无子类（paper-api 全库 grep 核实）、构造无副作用；零监听器时 callEvent 恒返回 true 且 PlayerVelocityEvent 的 velocity 不可能被改（不进入 setVelocity 分支），与原行为逐分支一致。
+- **风险**：低。
+
+### 0101 — GameEventDispatcher.post BY_DISTANCE 队列 + Player.aiStep 经验球列表惰性分配
+- **热点**：每次游戏事件 post（每 tick 数百至数千次）无条件 `new ArrayList<>()`，仅存在 BY_DISTANCE 监听器（sculk 类）时才装入；每玩家每 tick `Lists.newArrayList()` 经验球列表，绝大多数 tick 为空。
+- **改法**：GameEventDispatcher 提取有状态内部类 `PapoPostVisitor implements ListenerVisitor` 携带惰性 list（替代捕获 lambda）；Player.aiStep `list = null` 首个经验球命中时创建。
+- **等价性**：visit 调用序列与 ListenerInfo 内容不变；空队列原行为 = sort+遍历空表 no-op；经验球 touch 调用序列与随机选择输入完全相同。
+- **风险**：低。
+
+### 0102 — TrackedEntity 清理循环防御性 seenBy 拷贝改惰性移除列表（2 处）
+- **文件**：`net/minecraft/server/level/ChunkMap.java` `moonrise$tick` purge 分支 + `moonrise$removeNonTickThreadPlayers`
+- **热点**：玩家进出追踪范围/跨 chunk 移动时，每个被追踪实体每 tick `new ArrayList<>(seenBy)` 全量拷贝，即使无需移除任何玩家。
+- **改法**：直接迭代 seenBy，待移除玩家收集到首个命中才创建的 scratch list，循环后统一 removePlayer。`moonrise$clearPlayers` 不动（非空时必然全量移除，拷贝不可省）。
+- **等价性**：removePlayer 调用序列与逐一判定条件、顺序完全相同；迭代期间不变更 seenBy；零命中时零分配零调用。
+- **风险**：低。
+
+### 0103 — RegionFileVersion DEFLATE 读侧 Inflater ThreadLocal 池化 + fill 缓冲 512→8192
+- **文件**：`net/minecraft/world/level/chunk/storage/RegionFileVersion.java`（默认压缩格式的每次区块/实体/POI 读盘）
+- **热点**：`new InflaterInputStream(inputWrapper)` 每次读盘分配 native zlib 状态（inflateInit）+ Cleaner 注册，close 时 JNI `end()`；512B fill 缓冲对 30KB 压缩区块约 60 次 fill。
+- **改法**：`PapoInflaterInputStream extends InflaterInputStream` 经 `(in, pooledInflater, 8192)` 构造；close 时 `inf.reset()` 归还 ThreadLocal 单槽池；借出/归还均线程内平衡，池空新建、被顶替者交由 GC/Cleaner（有界：每线程 ≤ 打开流数）。
+- **等价性**：javap 实证 JDK 21 `InflaterInputStream(InputStream, Inflater, int)` 置 `usesDefaultInflater=false`，close 不 end 外部 Inflater；解压输出只取决于压缩输入与 fill 分块无关（基准 main：512/4096/32768 三尺寸 × 池化复用 3 轮 + 同线程双流并发，与全新 InflaterInputStream 逐字节全等）。与 0066 写侧 `PapoDeflaterOutputStream` 形成读写对称。
+- **风险**：低-中（原生资源生命周期变更；池容量有界，未 close 的流退化为原行为）。
+
+### 暂缓（批次 29 评估后未做，附原因）
+- **ClientboundLightUpdatePacketData BitSet.toLongArray 缓存**：4 个 BitSet 的 getter 为 public 且可逃逸修改，快照缓存不满足可证等价红线。
+- **PlayerNaturallySpawnCreaturesEvent 复用单实例**：事件对象被存入 `ServerPlayer.playerNaturallySpawnedEvent` 字段供两个读点消费，监听器动态注册/注销的边界状态（曾取消过的残留 cancelled）需额外管理，风险高于收益。
+- **Entity.computeSpeed Vec3 拆 double**：`getKnownSpeed()` 为公共 API，消除分配会把 Vec3 重建转移到 API 调用点，需先采样调用频率。
+- **Entity 流体检测路径 AABB/MutableBlockPos/section 数组**：候选成立但涉 moonrise 重写的边界算术，留待下批单独仔细核对。
+- **Varint21FrameDecoder helperBuf 消除**：收益过小（每帧 ≤3 字节抄写）。
+- **SectionStorage.PackedChunk.parse 的 `flag = dynamic != dynamic1` 恒 true**：疑似上游逻辑问题但"修复"会改变 versionChanged/resave 行为，仅记录上报，不动。
+- **GZIP 变体读侧池化**：GZIPInputStream 无接受外部 Inflater 的构造器，需复制头部解析，超出可证等价成本。
+
+---
+
 ## 候选后续批次（来自 survey，按 价值×置信/风险 排序）
 
-（旧清单中 Direction.Plane 迭代器、tickBlockEntities 移除集、NaturalSpawner 距离、pushableBy、LookControl Optional、distanceToSqr 批、CraftBukkit 枚举缓存均已完成，见对应批次。批次 28 完成：InventoryChangeTrigger 早退 0093、Utf8String 写侧 NBT ASCII 快速路径 0092、tickChildren SetTimePacket 惰性 0094、FriendlyByteBuf.writeNbt 适配器 0095。）
+（旧清单中 Direction.Plane 迭代器、tickBlockEntities 移除集、NaturalSpawner 距离、pushableBy、LookControl Optional、distanceToSqr 批、CraftBukkit 枚举缓存均已完成，见对应批次。批次 28 完成：InventoryChangeTrigger 早退 0093、Utf8String 写侧 NBT ASCII 快速路径 0092、tickChildren SetTimePacket 惰性 0094、FriendlyByteBuf.writeNbt 适配器 0095。批次 29 完成：FriendlyByteBuf.readNbt 读侧适配器 0096、VarInt.read 快速路径 0097、枚举常量缓存 0098、registry codec 单例 0099、EntityJumpEvent/PlayerVelocityEvent 门控 0100、惰性 list 0101、TrackedEntity 惰性移除 0102、Inflater 池化 0103；map 编码 forEach→entrySet 经基准实测回退 0.77× 已撤销（见批次 29 撤销条）。）
 
 ### 批次 23-27 survey 新增候选（2026-07-30，尚未做）
 
@@ -449,7 +523,15 @@
 - **Entity.checkSupportingBlock Optional 复用**（中，涉 Paper 碰撞补丁区）。**批次 28 评估：收益低（每调用 1 Optional + 1 AABB），暂缓。**
 - **Entity.checkInsideBlocks AtomicInteger 消除**（中，需 BlockGetter 加返回 index 的重载）。**批次 28 评估：周围分配中的噪声，改造复杂度高，暂缓。**
 - **DefaultRedstoneWireEvaluator.updatePowerStrength 去 HashSet**（中：更新顺序变化，不满足严格序等价，暂缓）。
-- **FriendlyByteBuf.readNbt 读侧轻量 DataInput 适配器**（低-中）：0095 的读侧镜像；Netty ByteBufInputStream 的 EOF 语义（checkAvailable）需逐方法实证后实现。
+- ~~**FriendlyByteBuf.readNbt 读侧轻量 DataInput 适配器**~~ **批次 29 已完成（0096）**。
 - **EntitySelector.getPredicate 特性谓词缓存**（中，收益小）。
+
+### 批次 29 survey 新增候选（2026-07-31，尚未做）
+
+- **Entity 流体检测路径分配消除**（中-高价值，中风险）：`updateFluidHeightAndDoFluidPushing` 每实体每 tick ×2 的 deflate/inflate AABB、MutableBlockPos、单 chunk section 包装数组；涉 moonrise 重写的边界算术，需单独仔细核对。
+- **Entity.computeSpeed Vec3 拆 double**（高频率，中风险）：每实体每 tick 1 个 Vec3；`getKnownSpeed()` 公共 API 消费，需先采样调用频率。
+- **ClientboundLightUpdatePacketData BitSet.toLongArray 缓存**（中价值）：getter public 可变，**不满足可证等价，暂缓**。
+- **PlayerNaturallySpawnCreaturesEvent 复用**（每玩家每 tick）：残留状态管理复杂，**暂缓**。
+- **Varint21FrameDecoder helperBuf 消除**（低价值）：每入站帧 ≤3 字节抄写。
 
 已确认**已优化、勿重复**：EntityTickList.forEach、LevelTicks、LevelChunk.getBlockState、getEntitiesOfClass、Entity.collide 数学、CompoundTag.copy、PatchedDataComponentMap、getNearestPlayer、PoiManager、Brigadier 子节点查找等。
