@@ -1,0 +1,71 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 01:57:22 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=E4=BA=8B=E4=BB=B6=E6=B4=BE?=
+ =?UTF-8?q?=E5=8F=91=EF=BC=9AEntityJumpEvent(3=E5=A4=84)/PlayerVelocityEve?=
+ =?UTF-8?q?nt=20=E6=97=A0=E6=8F=92=E4=BB=B6=E7=9B=91=E5=90=AC=E5=99=A8?=
+ =?UTF-8?q?=E6=97=B6=E8=B7=B3=E8=BF=87=E4=BA=8B=E4=BB=B6=E6=9E=84=E5=BB=BA?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/server/level/ServerEntity.java b/net/minecraft/server/level/ServerEntity.java
+index 3a817c92147bb78c60238f3ddc1644b721aed7a2..74a4a2280cc66eba5ca7785a7cb06c6193bc072c 100644
+--- a/net/minecraft/server/level/ServerEntity.java
++++ b/net/minecraft/server/level/ServerEntity.java
+@@ -248,7 +248,11 @@ public class ServerEntity {
+             // CraftBukkit start - Create PlayerVelocity event
+             boolean cancelled = false;
+ 
+-            if (this.entity instanceof ServerPlayer) {
++            if (this.entity instanceof ServerPlayer
++                // Papo - skip event construction when no plugin listens (PlayerVelocityEvent has no
++                // subclasses; with zero listeners callEvent() returns true and the velocity is never
++                // modified, so none of the three outcomes can occur): hot on PvP servers.
++                && org.bukkit.event.player.PlayerVelocityEvent.getHandlerList().getRegisteredListeners().length > 0) {
+                 org.bukkit.entity.Player player = (org.bukkit.entity.Player) this.entity.getBukkitEntity();
+                 org.bukkit.util.Vector velocity = player.getVelocity();
+ 
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index e440ab039705ce66619191fb658bc4ccc4e3e6bc..5891aa42e6f22cb68ae9f145d499928cd767302f 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -3689,7 +3689,10 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+             if (!flag || this.onGround() && !(fluidHeight > fluidJumpThreshold)) {
+                 if (!this.isInLava() || this.onGround() && !(fluidHeight > fluidJumpThreshold)) {
+                     if ((this.onGround() || flag && fluidHeight <= fluidJumpThreshold) && this.noJumpDelay == 0) {
+-                        if (new com.destroystokyo.paper.event.entity.EntityJumpEvent(getBukkitLivingEntity()).callEvent()) { // Paper - Entity Jump API
++                        // Papo - skip event construction when no plugin listens (EntityJumpEvent has
++                        // no subclasses; with zero listeners callEvent() always returns true, so the
++                        // guarded form takes the same branch): hot for pathing/slime-like mobs.
++                        if (com.destroystokyo.paper.event.entity.EntityJumpEvent.getHandlerList().getRegisteredListeners().length == 0 || new com.destroystokyo.paper.event.entity.EntityJumpEvent(getBukkitLivingEntity()).callEvent()) { // Paper - Entity Jump API
+                         this.jumpFromGround();
+                         this.noJumpDelay = 10;
+                         } else { this.setJumping(false); } // Paper - Entity Jump API; setJumping(false) stops a potential loop
+diff --git a/net/minecraft/world/entity/animal/panda/Panda.java b/net/minecraft/world/entity/animal/panda/Panda.java
+index c5425b36e96e4f41f0ed7d468f53ea3de6b9ef17..f19a79b83a9441ebae89275017b0046bcfb0329e 100644
+--- a/net/minecraft/world/entity/animal/panda/Panda.java
++++ b/net/minecraft/world/entity/animal/panda/Panda.java
+@@ -519,7 +519,7 @@ public class Panda extends Animal {
+ 
+         for (Panda panda : level.getEntitiesOfClass(Panda.class, this.getBoundingBox().inflate(10.0))) {
+             if (!panda.isBaby() && panda.onGround() && !panda.isInWater() && panda.canPerformAction()) {
+-                if (new com.destroystokyo.paper.event.entity.EntityJumpEvent(getBukkitLivingEntity()).callEvent()) { // Paper - Entity Jump API
++                if (com.destroystokyo.paper.event.entity.EntityJumpEvent.getHandlerList().getRegisteredListeners().length == 0 || new com.destroystokyo.paper.event.entity.EntityJumpEvent(getBukkitLivingEntity()).callEvent()) { // Paper - Entity Jump API // Papo - skip event construction when no plugin listens
+                 panda.jumpFromGround();
+                 } else { this.setJumping(false); } // Paper - Entity Jump API; setJumping(false) stops a potential loop
+             }
+diff --git a/net/minecraft/world/entity/monster/Ravager.java b/net/minecraft/world/entity/monster/Ravager.java
+index 631092f088355be45f598bb91bd5d38a39a55d5b..99eea8258ce75f839792381bfb577c0e82f3a54b 100644
+--- a/net/minecraft/world/entity/monster/Ravager.java
++++ b/net/minecraft/world/entity/monster/Ravager.java
+@@ -165,7 +165,7 @@ public class Ravager extends Raider {
+                 }
+ 
+                 if (!flag && this.onGround()) {
+-                    if (new com.destroystokyo.paper.event.entity.EntityJumpEvent(getBukkitLivingEntity()).callEvent()) { // Paper - Entity Jump API
++                    if (com.destroystokyo.paper.event.entity.EntityJumpEvent.getHandlerList().getRegisteredListeners().length == 0 || new com.destroystokyo.paper.event.entity.EntityJumpEvent(getBukkitLivingEntity()).callEvent()) { // Paper - Entity Jump API // Papo - skip event construction when no plugin listens
+                     this.jumpFromGround();
+                     } else { this.setJumping(false); } // Paper - Entity Jump API; setJumping(false) stops a potential loop
+                 }

@@ -1,0 +1,61 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 01:57:23 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=E5=AE=9E=E4=BD=93=E8=BF=BD?=
+ =?UTF-8?q?=E8=B8=AA=EF=BC=9ATrackedEntity=20=E6=B8=85=E7=90=86=E5=BE=AA?=
+ =?UTF-8?q?=E7=8E=AF=E9=98=B2=E5=BE=A1=E6=80=A7=20seenBy=20=E6=8B=B7?=
+ =?UTF-8?q?=E8=B4=9D=E6=94=B9=E6=83=B0=E6=80=A7=E7=A7=BB=E9=99=A4=E5=88=97?=
+ =?UTF-8?q?=E8=A1=A8=EF=BC=882=20=E5=A4=84=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/server/level/ChunkMap.java b/net/minecraft/server/level/ChunkMap.java
+index ab8893163ac85971a470e4a4d6fa76bd174e2bae..d3d5d08b234aea0e23b40e246aeff1761b5c2eae 100644
+--- a/net/minecraft/server/level/ChunkMap.java
++++ b/net/minecraft/server/level/ChunkMap.java
+@@ -1247,9 +1247,20 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
+ 
+             if (lastChunkUpdate != currChunkUpdate || lastTrackedChunk != chunk) {
+                 // need to purge any players possible not in the chunk list
+-                for (final ServerPlayerConnection conn : new java.util.ArrayList<>(this.seenBy)) {
++                // Papo - lazily collect removals instead of defensively copying seenBy
++                // (usually nobody needs purging; removePlayer call sequence unchanged).
++                java.util.List<ServerPlayer> toRemove = null;
++                for (final ServerPlayerConnection conn : this.seenBy) {
+                     final ServerPlayer player = conn.getPlayer();
+                     if (!players.contains(player)) {
++                        if (toRemove == null) {
++                            toRemove = new java.util.ArrayList<>();
++                        }
++                        toRemove.add(player);
++                    }
++                }
++                if (toRemove != null) {
++                    for (final ServerPlayer player : toRemove) {
+                         this.removePlayer(player);
+                     }
+                 }
+@@ -1270,9 +1281,20 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
+                 return;
+             }
+ 
+-            for (final ServerPlayerConnection conn : new java.util.ArrayList<>(this.seenBy)) {
++            // Papo - lazily collect removals instead of defensively copying seenBy
++            // (removePlayer call sequence unchanged).
++            java.util.List<ServerPlayer> toRemove = null;
++            for (final ServerPlayerConnection conn : this.seenBy) {
+                 ServerPlayer player = conn.getPlayer();
+                 if (!ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(player)) {
++                    if (toRemove == null) {
++                        toRemove = new java.util.ArrayList<>();
++                    }
++                    toRemove.add(player);
++                }
++            }
++            if (toRemove != null) {
++                for (final ServerPlayer player : toRemove) {
+                     this.removePlayer(player);
+                 }
+             }
