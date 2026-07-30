@@ -1929,6 +1929,15 @@ public class CraftEventFactory {
         CraftBlockState snapshot = CraftBlockStates.getBlockState(world, pos);
         snapshot.setData(state);
 
+        // Papo start - skip event allocation+fire when no plugin listens. EntityBlockFormEvent declares
+        // no own HandlerList (shares BlockFormEvent's), so one check covers both event shapes. With zero
+        // listeners callEvent() always returns true and the event object is never read, so placing
+        // directly is identical.
+        if (BlockFormEvent.getHandlerList().getRegisteredListeners().length == 0) {
+            boolean result = snapshot.place(flags);
+            return !checkSetResult || result;
+        }
+        // Papo end
         BlockFormEvent event = (entity == null) ? new BlockFormEvent(snapshot.getBlock(), snapshot) : new EntityBlockFormEvent(entity.getBukkitEntity(), snapshot.getBlock(), snapshot);
         if (event.callEvent()) {
             boolean result = snapshot.place(flags);
