@@ -838,6 +838,12 @@ public class CraftEventFactory {
     }
 
     public static boolean callItemMergeEvent(ItemEntity merging, ItemEntity mergingWith) {
+        // Papo start - no listeners: the event can never be cancelled, so the result is always true
+        // (also skips both getBukkitEntity() lookups).
+        if (ItemMergeEvent.getHandlerList().getRegisteredListeners().length == 0) {
+            return true;
+        }
+        // Papo end
         org.bukkit.entity.Item entityMerging = (org.bukkit.entity.Item) merging.getBukkitEntity();
         org.bukkit.entity.Item entityMergingWith = (org.bukkit.entity.Item) mergingWith.getBukkitEntity();
 
