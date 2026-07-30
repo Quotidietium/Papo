@@ -1,0 +1,51 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 05:58:07 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=E7=A7=BB=E5=8A=A8=E5=8C=85?=
+ =?UTF-8?q?=E5=A4=84=E7=90=86=EF=BC=9APlayerJumpEvent=20=E6=97=A0=E7=9B=91?=
+ =?UTF-8?q?=E5=90=AC=E5=99=A8=E9=97=A8=E6=8E=A7=20+=20=E6=9C=AA=E5=8A=A0?=
+ =?UTF-8?q?=E8=BD=BD=E5=8C=BA=E5=9D=97=E6=A3=80=E6=9F=A5=20Vec3=20?=
+ =?UTF-8?q?=E5=B7=AE=E5=80=BC=E6=8A=98=E5=8F=A0=E4=B8=BA=E5=8D=95=E5=88=86?=
+ =?UTF-8?q?=E9=85=8D?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+index 90bc2befe8e04794d0e41a5cf61d59b33bd2e3f1..8472523dacb8cc5208109928bf4a15461d13be66 100644
+--- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+@@ -1503,7 +1503,7 @@ public class ServerGamePacketListenerImpl
+                                         speed = this.player.getAbilities().walkingSpeed * 10f;
+                                     }
+                                     // Paper start - Prevent moving into unloaded chunks
+-                                    if (this.player.level().paperConfig().chunks.preventMovingIntoUnloadedChunks && (this.player.getX() != toX || this.player.getZ() != toZ) && !serverLevel.areChunksLoadedForMove(this.player.getBoundingBox().expandTowards(new Vec3(toX, toY, toZ).subtract(this.player.position())))) {
++                                    if (this.player.level().paperConfig().chunks.preventMovingIntoUnloadedChunks && (this.player.getX() != toX || this.player.getZ() != toZ) && !serverLevel.areChunksLoadedForMove(this.player.getBoundingBox().expandTowards(new Vec3(toX - this.player.getX(), toY - this.player.getY(), toZ - this.player.getZ())))) { // Papo - fold the delta into one Vec3: position() returns the stored field and a - b is bit-identical to Vec3.subtract's a + (-b)
+                                         // Paper start - Add fail move event
+                                         io.papermc.paper.event.player.PlayerFailMoveEvent event = fireFailMove(io.papermc.paper.event.player.PlayerFailMoveEvent.FailReason.MOVED_INTO_UNLOADED_CHUNK,
+                                                 toX, toY, toZ, toYaw, toPitch, false);
+@@ -1543,7 +1543,14 @@ public class ServerGamePacketListenerImpl
+                                 boolean flag = d4 > 0.0;
+                                 if (this.player.onGround() && !packet.isOnGround() && flag) {
+                                     // Paper start - Add PlayerJumpEvent
+-                                    org.bukkit.entity.Player player = this.getCraftPlayer();
++                                    // Papo start - skip event+Location allocations when no plugin listens:
++                                    // with zero listeners callEvent() always returns true and from/to are
++                                    // never read, so jumpFromGround() is the only observable effect.
++                                    if (com.destroystokyo.paper.event.player.PlayerJumpEvent.getHandlerList().getRegisteredListeners().length == 0) {
++                                        this.player.jumpFromGround();
++                                    } else {
++                                        // Papo end
++                                        org.bukkit.entity.Player player = this.getCraftPlayer();
+                                     Location from = new Location(player.getWorld(), this.lastPosX, this.lastPosY, this.lastPosZ, this.lastYaw, this.lastPitch); // Get the Players previous Event location.
+                                     Location to = player.getLocation().clone(); // Start off the To location as the Players current location.
+ 
+@@ -1569,6 +1576,7 @@ public class ServerGamePacketListenerImpl
+                                         this.internalTeleport(new PositionMoveRotation(org.bukkit.craftbukkit.util.CraftLocation.toVec3(from), Vec3.ZERO, from.getYaw(), from.getPitch()), Collections.emptySet());
+                                         return;
+                                     }
++                                    } // Papo - end no-listener gate
+                                     // Paper end - Add PlayerJumpEvent
+                                 }
+ 
