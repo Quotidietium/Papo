@@ -539,9 +539,67 @@
 
 ---
 
+## 批次 31（2026-07-31）：事件门控扩展 + 容器/寻路/行为 tick 分配消除（0106-0111）
+
+三个 survey 子代理（生物 AI 与寻路 / 区块方块 tick / 玩家物品网络）共产出 22 个候选，逐个代码复核后实现 6 个补丁。门控类全部沿用 0050/0078/0079/0100 已验证模式（paper-api 全库 grep 确认事件无子类、构造无副作用）。
+
+### 0106 — FlowingFluid：BlockFromToEvent 无监听器门控（2 处）+ tick 冗余 getBlockState 消除
+- **文件**：`net/minecraft/world/level/material/FlowingFluid.java`
+- **热点**：每次流体扩散（水/岩浆是服务器最热计划刻之一）`spread()` 向下分支与 `spreadToSides()` 每方向各构造 CraftBlock + BlockFromToEvent；`tick` 每个非源流体计划刻在已持有 `state` 的情况下重取 `level.getBlockState(pos)`（chunk holder 查找 + PalettedContainer get）。
+- **改法**：两处事件块以 `BlockFromToEvent.getHandlerList().getRegisteredListeners().length > 0` 门控（与同文件既有 FluidLevelChangeEvent 门控一致）；`tick` 改用传入的 `state`。
+- **等价性**：零监听器时事件不可取消、控制流落点逐分支相同（事件无子类，paper-api grep 实证）；`tick` 的两个调用点（`ServerLevel.tickFluid`、`LevelChunk.postProcessGeneration`）都在 `getBlockState` 之后无任何插入世界修改地同步调用 `FluidState.tick`，传入 state 与重取必然相同（补丁注释固定此契约）。
+- **风险**：低。
+
+### 0107 — 物品拾取/合并事件门控：PlayerAttemptPickupItemEvent + ItemMergeEvent
+- **文件**：`net/minecraft/world/entity/item/ItemEntity.java`（playerTouch）+ `CraftEventFactory.callItemMergeEvent`（直接提交的源码，非补丁）
+- **热点**：玩家站在掉落物上时 `playerTouch` 每 tick 每物品构造事件 + 2×getBukkitEntity；物品密集场景每 2 tick 每可合并邻居构造 ItemMergeEvent + 2×getBukkitEntity。
+- **改法**：attempt 事件块加 `> 0` 门控；`callItemMergeEvent` 入口零监听器直接返回 true（同时省掉两次 getBukkitEntity）。
+- **等价性**：零监听器时 attempt 事件 flyAtPlayer=false 且不可取消（默认字段，与跳过后控制流一致）；merge 事件不可取消 → 返回值恒 true。两事件均无子类。
+- **风险**：低。
+
+### 0108 — 经验球事件门控×4：PlayerPickupExperience / ExperienceOrbMerge / ExpCooldown / ItemMend
+- **文件**：`net/minecraft/world/entity/ExperienceOrb.java`
+- **热点**：XP 农场挂机场景：拾取每 2 tick 每球构造 PlayerPickupExperienceEvent + 每次拾取的 ExpCooldown 事件 + 有 mending 装备时的 ItemMend 事件；合并扫描每 20 tick 每候选球构造 ExperienceOrbMergeEvent + 2×getBukkitEntity。
+- **改法**：pickup 与 merge 用 `length == 0 ||` 短路门控；cooldown 三元（零监听器直接取传入值 2）；mend 整块包进 `> 0` 门控（零监听器时 getRepairAmount() 返回传入的 min、不可取消，min 保持不变即等价）。
+- **等价性**：各事件默认字段与跳过路径逐分支比对（cooldown 返回传入 newCooldown、mend 返回传入 repairAmount、pickup/merge 的 callEvent() 恒 true）；四事件均无子类、构造仅字段赋值。
+- **风险**：低。
+
+### 0109 — PlayerJumpEvent 无监听器门控 + 未加载区块检查 Vec3 差值折叠
+- **文件**：`net/minecraft/server/network/ServerGamePacketListenerImpl.java`（handleMovePlayer）
+- **热点**：每次起跳构造 2×Location + PlayerJumpEvent（PvP/跑酷高频）；开启 `preventMovingIntoUnloadedChunks` 时每个移动包 `new Vec3(to).subtract(position())` 2 个 Vec3。
+- **改法**：跳跃事件零监听器时直接 `jumpFromGround()`（原路径 callEvent 恒 true 后唯一副作用）；Vec3 折叠为 `new Vec3(toX - getX(), toY - getY(), toZ - getZ())` 单分配。
+- **等价性**：零监听器时 from/to Location 从不被读取；`position()` 返回存储字段且 getX/Y/Z 即其分量（Entity.java:5000-5038），`a - b` 与 `Vec3.subtract` 的 `a + (-b)` 位级一致。
+- **风险**：低。
+
+### 0110 — InventoryMenu.broadcastSlotChange memoize supplier 变更门控
+- **文件**：`net/minecraft/world/inventory/InventoryMenu.java`（+ `AbstractContainerMenu.suppressRemoteUpdates` 放宽为 protected）
+- **热点**：玩家打开任意容器时每个 containerUpdate tick ×6 槽位无条件 `Suppliers.memoize(item::copy)`（MemoizingSupplier 实例 + 捕获 lambda，逃逸进下游调用 EA 不可消除）；绝大多数 tick 槽位未变，两个消费方均 no-op。
+- **改法**：逐字照抄本仓库 AbstractContainerMenu.broadcastChanges 已合入的门控（listenerNeeds/remoteNeeds 双判定）。
+- **等价性**：两个下游方法在槽位未变时内部重新判定后 no-op（triggerSlotListeners 重判 `ItemStack.matches(lastSlots…)`，synchronizeSlotToRemote 重判 `remoteSlot.matches` 与 suppressRemoteUpdates），前置条件与先例逐字相同。
+- **风险**：极低（仓库内已有逐字先例）。
+
+### 0111 — 寻路缓存 computeIfAbsent 两段式（3 处）+ GateBehavior.tickOrStop 遗留 stream 消除
+- **文件**：`net/minecraft/world/level/pathfinder/NodeEvaluator.java`（getNode）、`WalkNodeEvaluator.java`（hasCollisions、getCachedPathType）、`net/minecraft/world/entity/ai/behavior/GateBehavior.java`
+- **热点**：寻路内层循环每节点多次调用三处缓存（一次 findPath 可达数千次）；fastutil computeIfAbsent 体积大不内联，捕获 lambda 命中也真实分配。处于 RUNNING 的 GateBehavior（村民 core activity 清醒时段长期存在）每 tick 分配 stream pipeline。
+- **改法**：三处缓存改 get→未命中计算→put 两段式；GateBehavior 循环内跟踪"tick 前 RUNNING 且 tick 后仍 RUNNING"的布尔，替代 noneMatch stream。
+- **等价性**：寻路单线程；三个映射函数均不重入同一缓存（getPathTypeOfMob→getPathTypeWithinMobBB→getPathType 不经 getCachedPathType；noCollision 不碰 collisionCache；Node 纯构造）且不返回 null（getPathTypeOfMob 全路径返回枚举常量）；boolean 缓存用 containsKey 区分未命中与存 false。GateBehavior：tick 前 STOPPED 的行为不会被兄弟行为的 tickOrStop 启动（tickOrStop 只改自身 status），故只看"曾 RUNNING"集合即等价（与 Paper 对同方法其余三处 stream 的移除同一论证）。
+- **风险**：低。
+
+### 暂缓（批次 31 评估后未做，附原因）
+- **PathNavigation 每 tick Vec3/BlockPos 拆分量**：`getGroundY(Vec3)` 是 protected 虚方法（3 个实现），NMS 插件 override 后会被改道绕过，不满足兼容红线；原版内可证等价但扩展点风险不可接受。
+- **declarative Behavior MemoryAccessor/Optional 复用**：需先全量审计是否存在跨 tick 持有 MemoryAccessor 的 trigger，工作量大，留待下批。
+- **getSpread EnumMap/SpreadContext 线程级复用**：需严格保序复刻（EnumMap ordinal 序 vs 插入序、i1<i clear 语义），改动面大且事件顺序可被插件观察，留待下批单独仔细核对。
+- **漏斗 AABB 缓存**：仅限 HopperBlockEntity 实例（HopperMinecart 会移动共享静态 helper），需 instanceof 分流，收益中等，暂缓。
+- **PlayerPickupItemEvent/EntityPickupItemEvent 双事件门控**：需复现两条默认取消规则（`!getCanPickupItems()`），比纯 callEvent 门控易错，暂缓。
+- **CraftEventFactory.handleBlockFormEvent 门控**：需确认 snapshot.place 不读事件状态，低-中风险，暂缓。
+- **Biome.shouldFreeze / tickPrecipitation BlockPos 复用**：频率受 randomTickSpeed/48 与 biome 限制，价值低。
+- **NearestLivingEntitySensor lambda/comparator 缓存、LookAtTargetSink Vec3、WalkNodeEvaluator.getPathType MutableBlockPos**：收益不确定（EA 可能已消除）或依赖不变量，暂缓。
+
+---
+
 ## 候选后续批次（来自 survey，按 价值×置信/风险 排序）
 
-（旧清单中 Direction.Plane 迭代器、tickBlockEntities 移除集、NaturalSpawner 距离、pushableBy、LookControl Optional、distanceToSqr 批、CraftBukkit 枚举缓存均已完成，见对应批次。批次 28 完成：InventoryChangeTrigger 早退 0093、Utf8String 写侧 NBT ASCII 快速路径 0092、tickChildren SetTimePacket 惰性 0094、FriendlyByteBuf.writeNbt 适配器 0095。批次 29 完成：FriendlyByteBuf.readNbt 读侧适配器 0096、VarInt.read 快速路径 0097、枚举常量缓存 0098、registry codec 单例 0099、EntityJumpEvent/PlayerVelocityEvent 门控 0100、惰性 list 0101、TrackedEntity 惰性移除 0102、Inflater 池化 0103；map 编码 forEach→entrySet 经基准实测回退 0.77× 已撤销（见批次 29 撤销条）。批次 30 完成：流体检测路径 3 处分配消除 0104、computeSpeed Vec3 消除 0105。）
+（旧清单中 Direction.Plane 迭代器、tickBlockEntities 移除集、NaturalSpawner 距离、pushableBy、LookControl Optional、distanceToSqr 批、CraftBukkit 枚举缓存均已完成，见对应批次。批次 28 完成：InventoryChangeTrigger 早退 0093、Utf8String 写侧 NBT ASCII 快速路径 0092、tickChildren SetTimePacket 惰性 0094、FriendlyByteBuf.writeNbt 适配器 0095。批次 29 完成：FriendlyByteBuf.readNbt 读侧适配器 0096、VarInt.read 快速路径 0097、枚举常量缓存 0098、registry codec 单例 0099、EntityJumpEvent/PlayerVelocityEvent 门控 0100、惰性 list 0101、TrackedEntity 惰性移除 0102、Inflater 池化 0103；map 编码 forEach→entrySet 经基准实测回退 0.77× 已撤销（见批次 29 撤销条）。批次 30 完成：流体检测路径 3 处分配消除 0104、computeSpeed Vec3 消除 0105。批次 31 完成：BlockFromToEvent 门控+流体 tick 去冗余查询 0106、物品拾取/合并门控 0107、经验球 4 事件门控 0108、PlayerJumpEvent 门控+Vec3 折叠 0109、broadcastSlotChange 门控 0110、寻路缓存两段式+GateBehavior stream 消除 0111。）
 
 ### 批次 23-27 survey 新增候选（2026-07-30，尚未做）
 
