@@ -1,0 +1,103 @@
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.DirectionCloneBench.after_cachedArray
+# Parameters: (loops = 1024)
+
+# Run progress: 0.00% complete, ETA 00:00:32
+# Fork: 1 of 2
+# Warmup Iteration   1: 1152.365 ns/op
+# Warmup Iteration   2: 1394.260 ns/op
+# Warmup Iteration   3: 1303.271 ns/op
+Iteration   1: 2084.319 ns/op
+Iteration   2: 1838.515 ns/op
+Iteration   3: 1728.564 ns/op
+Iteration   4: 1504.915 ns/op
+Iteration   5: 1458.389 ns/op
+
+# Run progress: 25.00% complete, ETA 00:00:25
+# Fork: 2 of 2
+# Warmup Iteration   1: 1320.715 ns/op
+# Warmup Iteration   2: 1612.299 ns/op
+# Warmup Iteration   3: 1515.005 ns/op
+Iteration   1: 1825.561 ns/op
+Iteration   2: 1769.798 ns/op
+Iteration   3: 1602.288 ns/op
+Iteration   4: 1681.877 ns/op
+Iteration   5: 1685.947 ns/op
+
+
+Result "papo.bench.DirectionCloneBench.after_cachedArray":
+  1718.017 ±(99.9%) 272.135 ns/op [Average]
+  (min, avg, max) = (1458.389, 1718.017, 2084.319), stdev = 180.001
+  CI (99.9%): [1445.882, 1990.153] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.DirectionCloneBench.before_valuesClone
+# Parameters: (loops = 1024)
+
+# Run progress: 50.00% complete, ETA 00:00:16
+# Fork: 1 of 2
+# Warmup Iteration   1: 4606.998 ns/op
+# Warmup Iteration   2: 3580.841 ns/op
+# Warmup Iteration   3: 3833.685 ns/op
+Iteration   1: 5188.285 ns/op
+Iteration   2: 5049.460 ns/op
+Iteration   3: 5168.565 ns/op
+Iteration   4: 5458.237 ns/op
+Iteration   5: 5209.804 ns/op
+
+# Run progress: 75.00% complete, ETA 00:00:08
+# Fork: 2 of 2
+# Warmup Iteration   1: 4514.503 ns/op
+# Warmup Iteration   2: 3810.860 ns/op
+# Warmup Iteration   3: 3613.277 ns/op
+Iteration   1: 3807.922 ns/op
+Iteration   2: 3616.175 ns/op
+Iteration   3: 3616.003 ns/op
+Iteration   4: 3647.160 ns/op
+Iteration   5: 3896.051 ns/op
+
+
+Result "papo.bench.DirectionCloneBench.before_valuesClone":
+  4465.766 ±(99.9%) 1210.179 ns/op [Average]
+  (min, avg, max) = (3616.003, 4465.766, 5458.237), stdev = 800.458
+  CI (99.9%): [3255.587, 5675.945] (assumes normal distribution)
+
+
+# Run complete. Total time: 00:00:33
+
+REMEMBER: The numbers below are just data. To gain reusable insights, you need to follow up on
+why the numbers are the way they are. Use profilers (see -prof, -lprof), design factorial
+experiments, perform baseline and negative tests that provide experimental control, make sure
+the benchmarking environment is safe on JVM/OS/HW level, ask for reviews from the domain experts.
+Do not assume the numbers tell you what you want them to tell.
+
+NOTE: Current JVM experimentally supports Compiler Blackholes, and they are in use. Please exercise
+extra caution when trusting the results, look into the generated code to check the benchmark still
+works, and factor in a small probability of new VM bugs. Additionally, while comparisons between
+different JVMs are already problematic, the performance difference caused by different Blackhole
+modes can be very significant. Please make sure you use the consistent Blackhole mode for comparisons.
+
+Benchmark                               (loops)  Mode  Cnt     Score      Error  Units
+DirectionCloneBench.after_cachedArray      1024  avgt   10  1718.017 ±  272.135  ns/op
+DirectionCloneBench.before_valuesClone     1024  avgt   10  4465.766 ± 1210.179  ns/op
+
+Benchmark result is saved to results/bench-20260730-170415.json
