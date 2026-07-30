@@ -211,6 +211,44 @@
 
 ---
 
+## 批次 15（2026-07-30）：region 文件 deflate 压缩级别可配置
+
+### 0066 — RegionFileVersion 压缩级别配置（config-gated）
+- 新增全局配置 `compressionLevel`（默认 6，与现状逐字节一致，见 note/config.md 的 `papo` 段）。
+- `PapoDeflaterOutputStream` 包装：自有 Deflater 在 close 时 `end()`，避免外部提供 Deflater 时原生内存泄漏（JDK 默认不 end 非自有 Deflater）。
+- 可选 `BEST_SPEED`(1)：保存 CPU 大幅下降、文件略大；默认不变保证兼容。
+
+## 批次 16（2026-07-30）：NBT 字符串读取 ASCII 快速路径
+
+### 0067 — CompoundTag.papoReadUtf + StringTag.readAccounted
+- `readUnsignedShort` + `readFully` + 字节扫描：全 ASCII 时 `new String(bytes, ISO_8859_1)` 一次解码，省 JDK `readUTF` 的 per-call byte[]/char[] scratch 与 modified-UTF-8 状态机。
+- 任一非 ASCII 字节即回退 JDK `readUTF`（长度前缀回填构造输入流），语义与 modified-UTF-8 完全一致（ASCII 子集两解码器结果逐字符相同）。
+- NBT 键名与绝大多数字符串值为 ASCII，命中快速路径为常态。
+
+## 批次 17（2026-07-30）：NBT int/long 数组批量读取
+
+### 0068 — IntArrayTag/LongArrayTag.readAccounted 批量读 + 大端解码
+- 逐元素 `readInt()/readLong()`（每次 4/8 次单字节拼接）→ `readFully(buf)` 一次系统调用 + `ByteBuffer.wrap(buf).order(BIG_ENDIAN).asIntBuffer()/asLongBuffer().get(...)` 批量解码。
+- IntArrayTag 有 Spigot 上限 `1<<24`，`_int<<2` 不溢出；LongArrayTag 无上限，`_int > Integer.MAX_VALUE/8` 时回退逐元素读取。
+- 区块高度图、生物群系、结构数据等大数组是区块加载期热点。
+
+## 批次 18（2026-07-30）：Raid 中心迁移 + 命令签名早退
+
+### 0069 — Raid.moveRaidCenterToNearbyVillageSection 手动 argmin
+- `SectionPos.cube(...).min(comparing(...))` 流 → 手动循环 argmin。`d < bestDist` 严格小于，与 `min()` 的首并列胜出语义一致；免流对象、Comparator、Optional 分配。
+
+### 0070 — SignableCommand.hasSignableArguments 早退
+- 原 `!of(parseResults).arguments().isEmpty()` 构建完整列表只为判空。新增 `hasSignableArgumentIn` 辅助：沿 context 链命中首个签名参数即返回 true，零列表分配。
+
+---
+
+## 基准测试（2026-07-30）
+
+新增 `benchmark/`：JMH 1.37 微基准，忠实复刻 0067/0068/0040/0047/0048/0069/0045/0058/0070 的前后实现对比。
+运行：`cd benchmark && ./run.sh`。对比报告见 `note/report/perf/`。
+
+---
+
 ## 候选后续批次（来自 survey，按 价值×置信/风险 排序）
 
 - **Direction.Plane 迭代器分配**（#2，高价值广覆盖）：`Direction.java` 加 `HORIZONTAL_FACES` 静态数组，把 FlowingFluid 等 6+ 处 enhanced-for 改索引循环。
