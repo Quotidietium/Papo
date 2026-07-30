@@ -1,0 +1,32 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 14:39:13 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=20PalettedContainer.getAll?=
+ =?UTF-8?q?=EF=BC=9A=E5=8D=95=E5=80=BC=E8=B0=83=E8=89=B2=E6=9D=BF=E5=BF=AB?=
+ =?UTF-8?q?=E9=80=9F=E8=B7=AF=E5=BE=84?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+getAll 在区块特征生成期对每个 section 调用并分配 IntArraySet。单值调色板
+（常见）只会出现索引 0，直接 accept(valueFor(0)) 一次即可，与 recalcBlockCounts
+的 paletteSize==1 特例同理。
+
+diff --git a/net/minecraft/world/level/chunk/PalettedContainer.java b/net/minecraft/world/level/chunk/PalettedContainer.java
+index 7c8f8772a6fba04dbafdb5dbf8098b6ebce6d6f2..ffa3921dd3c9afbcc550d0435f3296655b307b12 100644
+--- a/net/minecraft/world/level/chunk/PalettedContainer.java
++++ b/net/minecraft/world/level/chunk/PalettedContainer.java
+@@ -250,6 +250,13 @@ public class PalettedContainer<T> implements PaletteResize<T>, PalettedContainer
+     @Override
+     public void getAll(Consumer<T> consumer) {
+         Palette<T> palette = this.data.palette();
++        // Papo start - fast path for a single-value palette: only index 0 can appear, so skip
++        // the IntArraySet allocation entirely (mirrors the paletteSize==1 case in recalcBlockCounts).
++        if (palette.getSize() == 1) {
++            consumer.accept(palette.valueFor(0));
++            return;
++        }
++        // Papo end
+         IntSet set = new IntArraySet();
+         this.data.storage.getAll(set::add);
+         set.forEach(id -> consumer.accept(palette.valueFor(id)));
