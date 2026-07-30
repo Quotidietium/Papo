@@ -1,0 +1,103 @@
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.NeighborExpandBench.after_ordinalArray
+# Parameters: (expansions = 512)
+
+# Run progress: 0.00% complete, ETA 00:00:32
+# Fork: 1 of 2
+# Warmup Iteration   1: 9513.263 ns/op
+# Warmup Iteration   2: 8372.728 ns/op
+# Warmup Iteration   3: 7843.116 ns/op
+Iteration   1: 7724.959 ns/op
+Iteration   2: 8157.779 ns/op
+Iteration   3: 7786.366 ns/op
+Iteration   4: 7641.318 ns/op
+Iteration   5: 9152.045 ns/op
+
+# Run progress: 25.00% complete, ETA 00:00:25
+# Fork: 2 of 2
+# Warmup Iteration   1: 9283.192 ns/op
+# Warmup Iteration   2: 8719.328 ns/op
+# Warmup Iteration   3: 7764.396 ns/op
+Iteration   1: 7609.222 ns/op
+Iteration   2: 7707.694 ns/op
+Iteration   3: 7708.145 ns/op
+Iteration   4: 7798.945 ns/op
+Iteration   5: 7683.528 ns/op
+
+
+Result "papo.bench.NeighborExpandBench.after_ordinalArray":
+  7897.000 ±(99.9%) 705.508 ns/op [Average]
+  (min, avg, max) = (7609.222, 7897.000, 9152.045), stdev = 466.650
+  CI (99.9%): [7191.492, 8602.508] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.NeighborExpandBench.before_enumMapAndPlane
+# Parameters: (expansions = 512)
+
+# Run progress: 50.00% complete, ETA 00:00:16
+# Fork: 1 of 2
+# Warmup Iteration   1: 17075.061 ns/op
+# Warmup Iteration   2: 12457.729 ns/op
+# Warmup Iteration   3: 12708.870 ns/op
+Iteration   1: 11798.782 ns/op
+Iteration   2: 11653.414 ns/op
+Iteration   3: 11659.820 ns/op
+Iteration   4: 11599.229 ns/op
+Iteration   5: 12614.125 ns/op
+
+# Run progress: 75.00% complete, ETA 00:00:08
+# Fork: 2 of 2
+# Warmup Iteration   1: 15457.604 ns/op
+# Warmup Iteration   2: 12225.708 ns/op
+# Warmup Iteration   3: 11612.243 ns/op
+Iteration   1: 11615.828 ns/op
+Iteration   2: 11804.720 ns/op
+Iteration   3: 12026.277 ns/op
+Iteration   4: 11757.498 ns/op
+Iteration   5: 11893.683 ns/op
+
+
+Result "papo.bench.NeighborExpandBench.before_enumMapAndPlane":
+  11842.337 ±(99.9%) 456.918 ns/op [Average]
+  (min, avg, max) = (11599.229, 11842.337, 12614.125), stdev = 302.223
+  CI (99.9%): [11385.419, 12299.256] (assumes normal distribution)
+
+
+# Run complete. Total time: 00:00:33
+
+REMEMBER: The numbers below are just data. To gain reusable insights, you need to follow up on
+why the numbers are the way they are. Use profilers (see -prof, -lprof), design factorial
+experiments, perform baseline and negative tests that provide experimental control, make sure
+the benchmarking environment is safe on JVM/OS/HW level, ask for reviews from the domain experts.
+Do not assume the numbers tell you what you want them to tell.
+
+NOTE: Current JVM experimentally supports Compiler Blackholes, and they are in use. Please exercise
+extra caution when trusting the results, look into the generated code to check the benchmark still
+works, and factor in a small probability of new VM bugs. Additionally, while comparisons between
+different JVMs are already problematic, the performance difference caused by different Blackhole
+modes can be very significant. Please make sure you use the consistent Blackhole mode for comparisons.
+
+Benchmark                                   (expansions)  Mode  Cnt      Score     Error  Units
+NeighborExpandBench.after_ordinalArray               512  avgt   10   7897.000 ± 705.508  ns/op
+NeighborExpandBench.before_enumMapAndPlane           512  avgt   10  11842.337 ± 456.918  ns/op
+
+Benchmark result is saved to results/bench-20260730-180027.json
