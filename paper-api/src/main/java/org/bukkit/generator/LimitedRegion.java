@@ -3,9 +3,13 @@ package org.bukkit.generator;
 import java.util.List;
 import org.bukkit.Location;
 import org.bukkit.RegionAccessor;
+import org.bukkit.block.BlockState;
+// Paper start
 import org.bukkit.World;
 import org.bukkit.block.BlockState;
+import org.bukkit.block.data.BlockData;
 import org.bukkit.util.Vector;
+// Paper end
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -56,6 +60,18 @@ public interface LimitedRegion extends RegionAccessor {
     @NotNull
     List<BlockState> getTileEntities();
 
+
+    // Paper start
+    /**
+     * Sets the block at a vector location to the provided {@link BlockData}.
+     *
+     * @param vector {@link Vector} representing the position of the block to set.
+     * @param data   {@link BlockData} to set the block at the provided coordinates to.
+     */
+    default void setBlockData(@NotNull Vector vector, @NotNull BlockData data) {
+        setBlockData(vector.getBlockX(), vector.getBlockY(), vector.getBlockZ(), data);
+    }
+
     /**
      * Sets the {@link BlockState} at a location.
      *
@@ -73,7 +89,18 @@ public interface LimitedRegion extends RegionAccessor {
      * @param state The block state.
      */
     default void setBlockState(@NotNull Vector location, @NotNull BlockState state) {
-        this.setBlockState(location.getBlockX(), location.getBlockY(), location.getBlockZ(), state);
+        setBlockState(location.getBlockX(), location.getBlockY(), location.getBlockZ(), state);
+    }
+
+    /**
+     * Gets the {@link BlockState} at a location.
+     *
+     * @param location Location to get block state from.
+     * @return The block state.
+     */
+    @NotNull
+    default BlockState getBlockState(@NotNull Vector location) {
+        return getBlockState(location.getBlockX(), location.getBlockY(), location.getBlockZ());
     }
 
     /**
@@ -91,7 +118,7 @@ public interface LimitedRegion extends RegionAccessor {
      * @param location {@link Vector} representing the position of the block to update.
      */
     default void scheduleBlockUpdate(@NotNull Vector location) {
-        this.scheduleBlockUpdate(location.getBlockX(), location.getBlockY(), location.getBlockZ());
+        scheduleBlockUpdate(location.getBlockX(), location.getBlockY(), location.getBlockZ());
     }
 
     /**
@@ -109,7 +136,7 @@ public interface LimitedRegion extends RegionAccessor {
      * @param location {@link Vector} representing the position of the block to update.
      */
     default void scheduleFluidUpdate(@NotNull Vector location) {
-        this.scheduleFluidUpdate(location.getBlockX(), location.getBlockY(), location.getBlockZ());
+        scheduleFluidUpdate(location.getBlockX(), location.getBlockY(), location.getBlockZ());
     }
 
     /**
@@ -121,6 +148,17 @@ public interface LimitedRegion extends RegionAccessor {
      */
     @NotNull
     World getWorld();
+
+    /**
+     * Gets the {@link BlockData} of the block at the provided coordinates.
+     *
+     * @param vector {@link Vector} representing the position of the block to get.
+     * @return {@link BlockData} at the coordinates
+     */
+    @NotNull
+    default BlockData getBlockData(@NotNull Vector vector) {
+        return getBlockData(vector.getBlockX(), vector.getBlockY(), vector.getBlockZ());
+    }
 
     /**
      * Gets the X-coordinate of the chunk in the center of the region.
@@ -135,7 +173,7 @@ public interface LimitedRegion extends RegionAccessor {
      * @return The center chunk's X coordinate.
      */
     default int getCenterBlockX() {
-        return this.getCenterChunkX() << 4;
+        return getCenterChunkX() << 4;
     }
 
     /**
@@ -151,6 +189,7 @@ public interface LimitedRegion extends RegionAccessor {
      * @return The center chunk's Z coordinate.
      */
     default int getCenterBlockZ() {
-        return this.getCenterChunkZ() << 4;
+        return getCenterChunkZ() << 4;
     }
+    // Paper end
 }

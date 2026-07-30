@@ -29,6 +29,7 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.util.TriState;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.world.item.EitherHolder;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.JukeboxSongs;
 import org.bukkit.Color;
@@ -367,7 +368,7 @@ class ItemStackDataComponentTest {
     void testJukeboxWithEitherHolder() {
         final net.minecraft.world.item.ItemStack internalStack = new net.minecraft.world.item.ItemStack(Items.STONE);
         internalStack.set(DataComponents.JUKEBOX_PLAYABLE, new net.minecraft.world.item.JukeboxPlayable(
-            RegistryHelper.registryAccess().lookupOrThrow(Registries.JUKEBOX_SONG).getOrThrow(JukeboxSongs.FIVE)
+            new EitherHolder<>(RegistryHelper.registryAccess().lookupOrThrow(Registries.JUKEBOX_SONG).getOrThrow(JukeboxSongs.FIVE))
         ));
 
         final ItemStack apiStack = CraftItemStack.asBukkitCopy(internalStack);

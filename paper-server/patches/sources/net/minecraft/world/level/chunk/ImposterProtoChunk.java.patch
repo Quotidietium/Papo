@@ -12,5 +12,5 @@
 +    // Paper end
 +
      @Override
-     public FluidState getFluidState(final BlockPos pos) {
+     public FluidState getFluidState(BlockPos pos) {
          return this.wrapped.getFluidState(pos);

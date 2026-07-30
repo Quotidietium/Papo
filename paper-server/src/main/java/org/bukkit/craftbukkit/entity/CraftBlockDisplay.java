@@ -19,7 +19,7 @@ public class CraftBlockDisplay extends CraftDisplay implements BlockDisplay {
 
     @Override
     public BlockData getBlock() {
-        return this.getHandle().getBlockState().asBlockData();
+        return CraftBlockData.fromData(this.getHandle().getBlockState());
     }
 
     @Override

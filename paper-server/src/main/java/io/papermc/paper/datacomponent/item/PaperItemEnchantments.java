@@ -1,5 +1,6 @@
 package io.papermc.paper.datacomponent.item;
 
+import com.google.common.base.Preconditions;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import java.util.Collections;
@@ -9,8 +10,6 @@ import net.minecraft.core.Holder;
 import org.bukkit.craftbukkit.enchantments.CraftEnchantment;
 import org.bukkit.craftbukkit.util.Handleable;
 import org.bukkit.enchantments.Enchantment;
-
-import static io.papermc.paper.util.BoundChecker.requireRange;
 
 public record PaperItemEnchantments(
     net.minecraft.world.item.enchantment.ItemEnchantments impl,
@@ -43,7 +42,13 @@ public record PaperItemEnchantments(
 
         @Override
         public ItemEnchantments.Builder add(final Enchantment enchantment, final int level) {
-            this.enchantments.put(enchantment, requireRange(level, "level", 1, net.minecraft.world.item.enchantment.Enchantment.MAX_LEVEL));
+            Preconditions.checkArgument(
+                level >= 1 && level <= net.minecraft.world.item.enchantment.Enchantment.MAX_LEVEL,
+                "level must be between %s and %s, was %s",
+                1, net.minecraft.world.item.enchantment.Enchantment.MAX_LEVEL,
+                level
+            );
+            this.enchantments.put(enchantment, level);
             return this;
         }
 

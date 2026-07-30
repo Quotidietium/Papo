@@ -1,8 +1,7 @@
 package io.papermc.paper.datacomponent.item;
 
-import io.papermc.paper.registry.RegistryKey;
-import io.papermc.paper.registry.set.PaperRegistrySets;
-import io.papermc.paper.registry.set.RegistryKeySet;
+import io.papermc.paper.registry.PaperRegistries;
+import io.papermc.paper.registry.tag.TagKey;
 import org.bukkit.craftbukkit.util.Handleable;
 import org.bukkit.damage.DamageType;
 
@@ -16,7 +15,7 @@ public record PaperDamageResistant(
     }
 
     @Override
-    public RegistryKeySet<DamageType> types() {
-        return PaperRegistrySets.convertToApi(RegistryKey.DAMAGE_TYPE, this.impl.types());
+    public TagKey<DamageType> types() {
+        return PaperRegistries.fromNms(this.impl.types());
     }
 }

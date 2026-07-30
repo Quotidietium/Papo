@@ -45,7 +45,7 @@ public class CraftAnimals extends CraftAgeable implements Animals {
 
     @Override
     public int getLoveModeTicks() {
-        return this.getHandle().getInLoveTime();
+        return this.getHandle().inLove;
     }
 
     @Override

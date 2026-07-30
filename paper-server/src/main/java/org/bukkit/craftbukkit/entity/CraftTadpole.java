@@ -26,11 +26,11 @@ public class CraftTadpole extends CraftFish implements org.bukkit.entity.Tadpole
 
     @Override
     public void setAgeLock(boolean lock) {
-        this.getHandle().setAgeLocked(lock);
+        this.getHandle().ageLocked = lock;
     }
 
     @Override
     public boolean getAgeLock() {
-        return this.getHandle().isAgeLocked();
+        return this.getHandle().ageLocked;
     }
 }

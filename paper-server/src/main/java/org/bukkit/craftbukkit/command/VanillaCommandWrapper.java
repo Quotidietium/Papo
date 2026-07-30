@@ -87,7 +87,7 @@ public class VanillaCommandWrapper extends BukkitCommand { // Paper
             return entity.getHandle().createCommandSourceStackForNameResolution((ServerLevel) entity.getHandle().level());
         }
         if (sender instanceof BlockCommandSender) {
-            return ((CraftBlockCommandSender) sender).getSourceStack();
+            return ((CraftBlockCommandSender) sender).getWrapper();
         }
         if (sender instanceof RemoteConsoleCommandSender) {
             return ((CraftRemoteConsoleCommandSender) sender).getListener().createCommandSourceStack();

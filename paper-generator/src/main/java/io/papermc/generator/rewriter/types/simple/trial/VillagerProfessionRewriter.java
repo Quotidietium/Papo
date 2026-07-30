@@ -8,8 +8,10 @@ import io.papermc.typewriter.parser.token.CharSequenceBlockToken;
 import io.papermc.typewriter.parser.token.CharSequenceToken;
 import io.papermc.typewriter.parser.token.TokenType;
 import io.papermc.typewriter.replace.SearchMetadata;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Predicate;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.Registries;
@@ -22,6 +24,11 @@ public class VillagerProfessionRewriter extends RegistryFieldRewriter<VillagerPr
         super(Registries.VILLAGER_PROFESSION, "getProfession");
     }
 
+    private static final Set<TokenType> FORMAT_TOKENS = EnumSet.of(
+        TokenType.COMMENT,
+        TokenType.SINGLE_COMMENT
+    );
+
     private @MonotonicNonNull Map<String, CharSequenceBlockToken> javadocsPerConstant;
 
     private Map<String, CharSequenceBlockToken> parseConstantJavadocs(String content) {
@@ -29,11 +36,11 @@ public class VillagerProfessionRewriter extends RegistryFieldRewriter<VillagerPr
 
         Lexer lex = new Lexer(content.toCharArray());
         lex.checkMarkdownDocComments = !this.sourcesMetadata.canSkipMarkdownDocComments();
-        SequenceTokens.wrap(lex, TokenTypeSets.COMMENT_TOKENS)
+        SequenceTokens.wrap(lex, FORMAT_TOKENS)
             .group(action -> {
                 ProtoConstant constant = new ProtoConstant();
                 action
-                    .map(TokenTypeSets.JAVADOC_TOKENS::contains, token -> {
+                    .map(TokenType.JAVADOC, token -> {
                         constant.javadocs(((CharSequenceBlockToken) token));
                     }, TokenTaskBuilder::asOptional)
                     .skipQualifiedName(Predicate.isEqual(TokenType.JAVADOC))
@@ -42,7 +49,7 @@ public class VillagerProfessionRewriter extends RegistryFieldRewriter<VillagerPr
                     })
                     .skip(TokenType.IDENTIFIER)
                     .skipClosure(TokenType.LPAREN, TokenType.RPAREN, true)
-                    .map(TokenType.SECO, _ -> {
+                    .map(TokenType.SECO, $ -> {
                         if (constant.isComplete()) {
                             map.put(constant.name(), constant.javadocs());
                         }
@@ -64,7 +71,7 @@ public class VillagerProfessionRewriter extends RegistryFieldRewriter<VillagerPr
                     })
                     .skipClosure(TokenType.LPAREN, TokenType.RPAREN, true)
                     .skipClosure(TokenType.LSCOPE, TokenType.RSCOPE, true)
-                    .map(endMarkers::contains, _ -> {
+                    .map(endMarkers::contains, $ -> {
                         // this part will probably fail for the last entry for enum without end (,;)
                         if (constant.isComplete()) {
                             map.put(constant.name(), constant.javadocs());

@@ -10,8 +10,6 @@ import java.util.function.Supplier;
 import net.minecraft.network.protocol.game.ClientboundBossEventPacket;
 import net.minecraft.server.level.ServerBossEvent;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.util.Mth;
-import net.minecraft.util.RandomSource;
 import net.minecraft.world.BossEvent;
 import org.bukkit.boss.BarColor;
 import org.bukkit.boss.BarFlag;
@@ -28,10 +26,9 @@ public class CraftBossBar implements BossBar {
 
     public CraftBossBar(String title, BarColor color, BarStyle style, BarFlag... flags) {
         this.handle = new ServerBossEvent(
-            Mth.createInsecureUUID(RandomSource.create()),
-            CraftChatMessage.fromString(title, true)[0],
-            this.convertColor(color),
-            this.convertStyle(style)
+                CraftChatMessage.fromString(title, true)[0],
+                this.convertColor(color),
+                this.convertStyle(style)
         );
 
         this.initialize();
@@ -44,8 +41,8 @@ public class CraftBossBar implements BossBar {
         this.setStyle(style);
     }
 
-    public CraftBossBar(ServerBossEvent bossEvent) {
-        this.handle = bossEvent;
+    public CraftBossBar(ServerBossEvent bossBattleServer) {
+        this.handle = bossBattleServer;
         this.initialize();
     }
 
@@ -184,7 +181,7 @@ public class CraftBossBar implements BossBar {
 
     @Override
     public boolean isVisible() {
-        return this.handle.isVisible();
+        return this.handle.visible;
     }
 
     @Override

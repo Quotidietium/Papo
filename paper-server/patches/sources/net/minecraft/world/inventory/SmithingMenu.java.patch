@@ -8,28 +8,28 @@
 +    private org.bukkit.craftbukkit.inventory.CraftInventoryView bukkitEntity;
 +    // CraftBukkit end
  
-     public SmithingMenu(final int containerId, final Inventory inventory) {
-         this(containerId, inventory, ContainerLevelAccess.NULL);
-@@ -103,6 +_,7 @@
-                 && this.getSlot(2).hasItem()
-                 && !this.getSlot(this.getResultSlot()).hasItem();
-             this.hasRecipeError.set(hasRecipeError ? 1 : 0);
+     public SmithingMenu(int containerId, Inventory playerInventory) {
+         this(containerId, playerInventory, ContainerLevelAccess.NULL);
+@@ -100,6 +_,7 @@
+         if (this.level instanceof ServerLevel) {
+             boolean flag = this.getSlot(0).hasItem() && this.getSlot(1).hasItem() && this.getSlot(2).hasItem() && !this.getSlot(this.getResultSlot()).hasItem();
+             this.hasRecipeError.set(flag ? 1 : 0);
 +            org.bukkit.craftbukkit.event.CraftEventFactory.callPrepareResultEvent(this, RESULT_SLOT); // Paper - Add PrepareResultEvent
          }
      }
  
-@@ -119,7 +_,9 @@
-         foundRecipe.ifPresentOrElse(recipe -> {
-             ItemStack result = recipe.value().assemble(input);
+@@ -116,7 +_,9 @@
+         recipeFor.ifPresentOrElse(recipe -> {
+             ItemStack itemStack = recipe.value().assemble(smithingRecipeInput, this.level.registryAccess());
              this.resultSlots.setRecipeUsed((RecipeHolder<?>)recipe);
--            this.resultSlots.setItem(0, result);
+-            this.resultSlots.setItem(0, itemStack);
 +            // CraftBukkit start
-+            org.bukkit.craftbukkit.event.CraftEventFactory.callPrepareSmithingEvent(this.getBukkitView(), result);
++            org.bukkit.craftbukkit.event.CraftEventFactory.callPrepareSmithingEvent(this.getBukkitView(), itemStack);
 +            // CraftBukkit end
          }, () -> {
              this.resultSlots.setRecipeUsed(null);
              this.resultSlots.setItem(0, ItemStack.EMPTY);
-@@ -141,4 +_,18 @@
+@@ -138,4 +_,18 @@
      public boolean hasRecipeError() {
          return this.hasRecipeError.get() > 0;
      }

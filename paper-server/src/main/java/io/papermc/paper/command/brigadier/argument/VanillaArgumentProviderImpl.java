@@ -1,6 +1,7 @@
 package io.papermc.paper.command.brigadier.argument;
 
 import com.destroystokyo.paper.profile.CraftPlayerProfile;
+import com.google.common.collect.Collections2;
 import com.google.common.collect.ForwardingSet;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Range;
@@ -36,6 +37,7 @@ import io.papermc.paper.registry.RegistryKey;
 import io.papermc.paper.registry.TypedKey;
 import io.papermc.paper.util.MCUtil;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
@@ -47,9 +49,10 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.Style;
 import net.kyori.adventure.text.format.TextColor;
-import net.minecraft.advancements.predicates.MinMaxBounds;
+import net.minecraft.advancements.criterion.MinMaxBounds;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.arguments.AngleArgument;
+import net.minecraft.commands.arguments.ColorArgument;
 import net.minecraft.commands.arguments.ComponentArgument;
 import net.minecraft.commands.arguments.DimensionArgument;
 import net.minecraft.commands.arguments.EntityAnchorArgument;
@@ -58,15 +61,14 @@ import net.minecraft.commands.arguments.GameModeArgument;
 import net.minecraft.commands.arguments.GameProfileArgument;
 import net.minecraft.commands.arguments.HeightmapTypeArgument;
 import net.minecraft.commands.arguments.HexColorArgument;
-import net.minecraft.commands.arguments.IdentifierArgument;
 import net.minecraft.commands.arguments.MessageArgument;
 import net.minecraft.commands.arguments.ObjectiveCriteriaArgument;
 import net.minecraft.commands.arguments.RangeArgument;
 import net.minecraft.commands.arguments.ResourceArgument;
 import net.minecraft.commands.arguments.ResourceKeyArgument;
+import net.minecraft.commands.arguments.IdentifierArgument;
 import net.minecraft.commands.arguments.ScoreboardSlotArgument;
 import net.minecraft.commands.arguments.StyleArgument;
-import net.minecraft.commands.arguments.TeamColorArgument;
 import net.minecraft.commands.arguments.TemplateMirrorArgument;
 import net.minecraft.commands.arguments.TemplateRotationArgument;
 import net.minecraft.commands.arguments.TimeArgument;
@@ -156,9 +158,9 @@ public class VanillaArgumentProviderImpl implements VanillaArgumentProvider {
     public ArgumentType<PlayerProfileListResolver> playerProfiles() {
         return this.wrap(GameProfileArgument.gameProfile(), result -> {
             if (result instanceof GameProfileArgument.SelectorResult) {
-                return sourceStack -> MCUtil.transformUnmodifiable(result.getNames((CommandSourceStack) sourceStack), CraftPlayerProfile::new);
+                return sourceStack -> Collections.unmodifiableCollection(Collections2.transform(result.getNames((CommandSourceStack) sourceStack), CraftPlayerProfile::new));
             } else {
-                return sourceStack -> MCUtil.transformUnmodifiable(result.getNames((CommandSourceStack) sourceStack), CraftPlayerProfile::new);
+                return sourceStack -> Collections.unmodifiableCollection(Collections2.transform(result.getNames((CommandSourceStack) sourceStack), CraftPlayerProfile::new));
             }
         });
     }
@@ -187,7 +189,7 @@ public class VanillaArgumentProviderImpl implements VanillaArgumentProvider {
             result -> (block, loadChunk) -> {
                 final BlockInWorld blockInWorld = new BlockInWorld(
                     ((CraftWorld) block.getWorld()).getHandle(),
-                    CraftLocation.toBlockPos(block.getLocation()),
+                    CraftLocation.toBlockPosition(block.getLocation()),
                     loadChunk
                 );
                 // Get state lazy loads the state, will remain null if chunk is unloaded.
@@ -248,7 +250,7 @@ public class VanillaArgumentProviderImpl implements VanillaArgumentProvider {
         return this.wrap(SwizzleArgument.swizzle(), (result) -> {
             final EnumSet<Axis> bukkitAxes = EnumSet.noneOf(Axis.class);
             for (final Direction.Axis nmsAxis : result) {
-                bukkitAxes.add(CraftBlockData.fromVanilla(nmsAxis, Axis.class));
+                bukkitAxes.add(CraftBlockData.toBukkit(nmsAxis, Axis.class));
             }
             return new AxisSetImpl(bukkitAxes);
         });
@@ -268,7 +270,7 @@ public class VanillaArgumentProviderImpl implements VanillaArgumentProvider {
     @Override
     public ArgumentType<ItemStack> itemStack() {
         return this.wrap(ItemArgument.item(PaperCommands.INSTANCE.getBuildContext()), (result) -> {
-            return CraftItemStack.asBukkitCopy(result.createItemStack(1));
+            return CraftItemStack.asBukkitCopy(result.createItemStack(1, true));
         });
     }
 
@@ -279,8 +281,14 @@ public class VanillaArgumentProviderImpl implements VanillaArgumentProvider {
 
     @Override
     public ArgumentType<NamedTextColor> namedColor() {
-        return this.wrap(TeamColorArgument.teamColor(), result ->
-            requireNonNull(NamedTextColor.NAMES.value(result.getSerializedName()), () -> result.getSerializedName() + " didn't map to an adventure named color"));
+        return this.wrap(ColorArgument.color(), result ->
+            requireNonNull(
+                NamedTextColor.namedColor(
+                    requireNonNull(result.getColor(), () -> result + " didn't have a color")
+                ),
+                () -> result.getColor() + " didn't map to an adventure named color"
+            )
+        );
     }
 
     @Override

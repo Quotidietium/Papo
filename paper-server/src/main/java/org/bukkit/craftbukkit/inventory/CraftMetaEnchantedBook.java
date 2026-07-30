@@ -12,7 +12,7 @@ import org.bukkit.enchantments.Enchantment;
 import org.bukkit.inventory.meta.EnchantmentStorageMeta;
 
 @DelegateDeserialization(SerializableMeta.class)
-public class CraftMetaEnchantedBook extends CraftMetaItem implements EnchantmentStorageMeta {
+class CraftMetaEnchantedBook extends CraftMetaItem implements EnchantmentStorageMeta {
     static final ItemMetaKeyType<ItemEnchantments> STORED_ENCHANTMENTS = new ItemMetaKeyType<>(DataComponents.STORED_ENCHANTMENTS, "stored-enchants");
 
     private Map<Enchantment, Integer> enchantments;
@@ -29,11 +29,11 @@ public class CraftMetaEnchantedBook extends CraftMetaItem implements Enchantment
         }
     }
 
-    CraftMetaEnchantedBook(DataComponentPatch patch, java.util.Set<net.minecraft.core.component.DataComponentType<?>> extraHandledComponents) {
-        super(patch, extraHandledComponents);
+    CraftMetaEnchantedBook(DataComponentPatch tag, java.util.Set<net.minecraft.core.component.DataComponentType<?>> extraHandledDcts) {
+        super(tag, extraHandledDcts);
 
-        getOrEmpty(patch, CraftMetaEnchantedBook.STORED_ENCHANTMENTS).ifPresent((enchantments) -> {
-            this.enchantments = buildEnchantments(enchantments);
+        getOrEmpty(tag, CraftMetaEnchantedBook.STORED_ENCHANTMENTS).ifPresent((itemEnchantments) -> {
+            this.enchantments = buildEnchantments(itemEnchantments);
         });
     }
 

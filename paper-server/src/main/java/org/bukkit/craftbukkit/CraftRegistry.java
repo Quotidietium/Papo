@@ -218,7 +218,7 @@ public class CraftRegistry<B extends Keyed, M> implements Registry<B> {
     @NotNull
     @Override
     public Stream<B> stream() {
-        return this.minecraftRegistry.keySet().stream().map(key -> this.get(CraftNamespacedKey.fromMinecraft(key)));
+        return this.minecraftRegistry.keySet().stream().map(minecraftKey -> this.get(CraftNamespacedKey.fromMinecraft(minecraftKey)));
     }
 
     @NotNull
@@ -272,12 +272,5 @@ public class CraftRegistry<B extends Keyed, M> implements Registry<B> {
     // Paper end - RegistrySet API
 
     final class InvalidHolderOwner implements HolderOwner<M> {
-    }
-
-    @Override
-    public String toString() {
-        return "CraftRegistry{" +
-            "minecraftRegistry=" + minecraftRegistry.key() +
-            '}';
     }
 }

@@ -1,14 +1,14 @@
 --- a/net/minecraft/CrashReport.java
 +++ b/net/minecraft/CrashReport.java
 @@ -34,6 +_,7 @@
-     public CrashReport(final String title, final Throwable t) {
+     public CrashReport(String title, Throwable exception) {
          this.title = title;
-         this.exception = t;
+         this.exception = exception;
 +        this.systemReport.setDetail("CraftBukkit Information", new org.bukkit.craftbukkit.CraftCrashReport()); // CraftBukkit
      }
  
      public String getTitle() {
-@@ -235,7 +_,7 @@
+@@ -217,7 +_,7 @@
      }
  
      public static void preload() {

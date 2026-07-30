@@ -1,6 +1,6 @@
 package org.bukkit.damage;
 
-import io.papermc.paper.InternalAPIBridge;
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.entity.Entity;
 import org.jetbrains.annotations.NotNull;
@@ -104,8 +104,9 @@ public interface DamageSource {
      * @return a {@link DamageSource.Builder}
      */
     @NotNull
+    @SuppressWarnings("deprecation")
     public static Builder builder(@NotNull DamageType damageType) {
-        return InternalAPIBridge.get().createDamageSourceBuilder(damageType);
+        return Bukkit.getUnsafe().createDamageSourceBuilder(damageType);
     }
 
     /**

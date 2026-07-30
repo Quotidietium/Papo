@@ -60,7 +60,7 @@ public class ShapelessRecipe extends CraftingRecipe {
      */
     @NotNull
     public ShapelessRecipe addIngredient(@NotNull Material ingredient) {
-        return addIngredient(1, ingredient);
+        return addIngredient(1, ingredient, 0);
     }
 
     /**
@@ -100,12 +100,7 @@ public class ShapelessRecipe extends CraftingRecipe {
      */
     @NotNull
     public ShapelessRecipe addIngredient(int count, @NotNull Material ingredient) {
-        Preconditions.checkArgument(this.ingredients.size() + count <= 9, "Shapeless recipes cannot have more than 9 ingredients");
-
-        while (count-- > 0) {
-            this.ingredients.add(new RecipeChoice.MaterialChoice(Collections.singletonList(ingredient)));
-        }
-        return this;
+        return addIngredient(count, ingredient, 0);
     }
 
     /**
@@ -120,14 +115,24 @@ public class ShapelessRecipe extends CraftingRecipe {
     @Deprecated(since = "1.6.2")
     @NotNull
     public ShapelessRecipe addIngredient(int count, @NotNull Material ingredient, int rawdata) {
-        return this.addIngredient(count, ingredient);
+        Preconditions.checkArgument(ingredients.size() + count <= 9, "Shapeless recipes cannot have more than 9 ingredients");
+
+        // -1 is the old wildcard, map to Short.MAX_VALUE as the new one
+        if (rawdata == -1) {
+            rawdata = Short.MAX_VALUE;
+        }
+
+        while (count-- > 0) {
+            ingredients.add(new RecipeChoice.MaterialChoice(Collections.singletonList(ingredient)));
+        }
+        return this;
     }
 
     @NotNull
     public ShapelessRecipe addIngredient(@NotNull RecipeChoice ingredient) {
-        Preconditions.checkArgument(this.ingredients.size() + 1 <= 9, "Shapeless recipes cannot have more than 9 ingredients");
+        Preconditions.checkArgument(ingredients.size() + 1 <= 9, "Shapeless recipes cannot have more than 9 ingredients");
 
-        this.ingredients.add(ingredient.validate(false).clone()); // Paper
+        ingredients.add(ingredient.validate(false).clone()); // Paper
         return this;
     }
 
@@ -139,11 +144,11 @@ public class ShapelessRecipe extends CraftingRecipe {
 
     @NotNull
     public ShapelessRecipe addIngredient(int count, @NotNull ItemStack item) {
-        Preconditions.checkArgument(this.ingredients.size() + count <= 9, "Shapeless recipes cannot have more than 9 ingredients");
+        Preconditions.checkArgument(ingredients.size() + count <= 9, "Shapeless recipes cannot have more than 9 ingredients");
         Preconditions.checkArgument(!item.getType().isAir(), "Item cannot be air"); // Paper
         item = item.clone(); // Paper
         while (count-- > 0) {
-            this.ingredients.add(new RecipeChoice.ExactChoice(item));
+            ingredients.add(new RecipeChoice.ExactChoice(item));
         }
         return this;
     }
@@ -155,7 +160,7 @@ public class ShapelessRecipe extends CraftingRecipe {
 
     @NotNull
     public ShapelessRecipe removeIngredient(int count, @NotNull ItemStack item) {
-        Iterator<RecipeChoice> iterator = this.ingredients.iterator();
+        Iterator<RecipeChoice> iterator = ingredients.iterator();
         while (count > 0 && iterator.hasNext()) {
             RecipeChoice choice = iterator.next();
             if (choice.test(item)) {
@@ -175,7 +180,7 @@ public class ShapelessRecipe extends CraftingRecipe {
      */
     @NotNull
     public ShapelessRecipe removeIngredient(@NotNull RecipeChoice ingredient) {
-        this.ingredients.remove(ingredient);
+        ingredients.remove(ingredient);
 
         return this;
     }
@@ -268,7 +273,7 @@ public class ShapelessRecipe extends CraftingRecipe {
     @Deprecated(since = "1.6.2")
     @NotNull
     public ShapelessRecipe removeIngredient(int count, @NotNull Material ingredient, int rawdata) {
-        Iterator<RecipeChoice> iterator = this.ingredients.iterator();
+        Iterator<RecipeChoice> iterator = ingredients.iterator();
         while (count > 0 && iterator.hasNext()) {
             ItemStack stack = iterator.next().getItemStack();
             if (stack.getType() == ingredient && stack.getDurability() == rawdata) {
@@ -288,8 +293,8 @@ public class ShapelessRecipe extends CraftingRecipe {
     @Deprecated // Paper
     @NotNull
     public List<ItemStack> getIngredientList() {
-        ArrayList<ItemStack> result = new ArrayList<ItemStack>(this.ingredients.size());
-        for (RecipeChoice ingredient : this.ingredients) {
+        ArrayList<ItemStack> result = new ArrayList<ItemStack>(ingredients.size());
+        for (RecipeChoice ingredient : ingredients) {
             result.add(ingredient.getItemStack().clone());
         }
         return result;
@@ -297,8 +302,8 @@ public class ShapelessRecipe extends CraftingRecipe {
 
     @NotNull
     public List<RecipeChoice> getChoiceList() {
-        List<RecipeChoice> result = new ArrayList<>(this.ingredients.size());
-        for (RecipeChoice ingredient : this.ingredients) {
+        List<RecipeChoice> result = new ArrayList<>(ingredients.size());
+        for (RecipeChoice ingredient : ingredients) {
             result.add(ingredient.clone());
         }
         return result;

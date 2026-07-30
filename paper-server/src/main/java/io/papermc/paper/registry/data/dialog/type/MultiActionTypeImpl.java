@@ -5,8 +5,6 @@ import io.papermc.paper.registry.data.dialog.ActionButton;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 
-import static io.papermc.paper.util.BoundChecker.requirePositive;
-
 public record MultiActionTypeImpl(
     List<ActionButton> actions,
     @Nullable ActionButton exitAction,
@@ -35,7 +33,8 @@ public record MultiActionTypeImpl(
 
         @Override
         public Builder columns(final int columns) {
-            this.columns = requirePositive(columns, "columns");
+            Preconditions.checkArgument(columns > 0, "columns must be greater than 0");
+            this.columns = columns;
             return this;
         }
 

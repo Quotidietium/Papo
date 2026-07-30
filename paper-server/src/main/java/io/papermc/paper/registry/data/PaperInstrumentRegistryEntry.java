@@ -19,8 +19,8 @@ import org.checkerframework.checker.index.qual.Positive;
 import org.jspecify.annotations.Nullable;
 
 import static io.papermc.paper.registry.data.util.Checks.asArgument;
+import static io.papermc.paper.registry.data.util.Checks.asArgumentMinExclusive;
 import static io.papermc.paper.registry.data.util.Checks.asConfigured;
-import static io.papermc.paper.util.BoundChecker.requirePositive;
 
 public class PaperInstrumentRegistryEntry implements InstrumentRegistryEntry {
 
@@ -89,13 +89,13 @@ public class PaperInstrumentRegistryEntry implements InstrumentRegistryEntry {
 
         @Override
         public Builder duration(final @Positive float duration) {
-            this.useDuration = requirePositive(duration, "useDuration");
+            this.useDuration = asArgumentMinExclusive(duration, "useDuration", 0);
             return this;
         }
 
         @Override
         public Builder range(final @Positive float range) {
-            this.range = requirePositive(range, "range");
+            this.range = asArgumentMinExclusive(range, "range", 0);
             return this;
         }
 

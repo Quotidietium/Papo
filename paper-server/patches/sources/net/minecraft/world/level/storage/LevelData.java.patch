@@ -1,11 +1,15 @@
 --- a/net/minecraft/world/level/storage/LevelData.java
 +++ b/net/minecraft/world/level/storage/LevelData.java
-@@ -62,5 +_,21 @@
+@@ -72,5 +_,25 @@
          public BlockPos pos() {
              return this.globalPos.pos();
          }
 +
 +        // Paper start
++        public RespawnData withLevel(ResourceKey<Level> dimension) {
++            return new RespawnData(GlobalPos.of(dimension, this.pos()), this.yaw, this.pitch);
++        }
++
 +        /**
 +         * Equals without checking dimension.
 +         *

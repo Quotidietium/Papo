@@ -128,6 +128,7 @@ public final class LegacyPaperConfig {
         moveFromRoot(builder, "track-plugin-scoreboards", "scoreboards");
 
         moveFromRoot(builder, "suggest-player-names-when-null-tab-completions", "commands");
+        moveFromRoot(builder, "time-command-affects-all-worlds", "commands");
         moveFromRoot(builder, "fix-target-selector-tag-completion", "commands");
 
         moveFromRoot(builder, "log-player-ip-addresses", "loggers");

@@ -1,6 +1,6 @@
 package org.bukkit.event.entity;
 
-import org.bukkit.entity.AbstractCubeMob;
+import org.bukkit.entity.Slime;
 import org.bukkit.event.Cancellable;
 import org.bukkit.event.HandlerList;
 import org.jetbrains.annotations.ApiStatus;
@@ -17,15 +17,15 @@ public class SlimeSplitEvent extends EntityEvent implements Cancellable {
     private boolean cancelled;
 
     @ApiStatus.Internal
-    public SlimeSplitEvent(@NotNull final AbstractCubeMob cubeMob, final int count) {
-        super(cubeMob);
+    public SlimeSplitEvent(@NotNull final Slime slime, final int count) {
+        super(slime);
         this.count = count;
     }
 
     @NotNull
     @Override
-    public AbstractCubeMob getEntity() {
-        return (AbstractCubeMob) this.entity;
+    public Slime getEntity() {
+        return (Slime) this.entity;
     }
 
     /**

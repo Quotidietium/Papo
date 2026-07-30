@@ -212,7 +212,7 @@ public class PaperMobGoals implements MobGoals {
         if (types.contains(GoalType.TARGET)) {
             return mob.getHandle().targetSelector;
         } else {
-            return mob.getHandle().getGoalSelector();
+            return mob.getHandle().goalSelector;
         }
     }
 
@@ -220,7 +220,7 @@ public class PaperMobGoals implements MobGoals {
         if (type == GoalType.TARGET) {
             return mob.getHandle().targetSelector;
         } else {
-            return mob.getHandle().getGoalSelector();
+            return mob.getHandle().goalSelector;
         }
     }
 }

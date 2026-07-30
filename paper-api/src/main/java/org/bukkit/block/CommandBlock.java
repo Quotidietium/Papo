@@ -41,7 +41,8 @@ public interface CommandBlock extends TileState, io.papermc.paper.command.Comman
 
     /**
      * Sets the name of this CommandBlock. The name is used with commands
-     * that this CommandBlock executes.
+     * that this CommandBlock executes. Setting the name to null is the
+     * same as setting it to "@".
      *
      * @param name New name for this CommandBlock.
      * @deprecated in favour of {@link #name(net.kyori.adventure.text.Component)}
@@ -60,7 +61,8 @@ public interface CommandBlock extends TileState, io.papermc.paper.command.Comman
 
     /**
      * Sets the name of this CommandBlock. The name is used with commands
-     * that this CommandBlock executes.
+     * that this CommandBlock executes. Setting the name to null is the
+     * same as setting it to a {@link net.kyori.adventure.text.TextComponent} containing {@code @}.
      *
      * @param name New name for this CommandBlock.
      */

@@ -232,16 +232,18 @@ public interface Block extends Metadatable, Translatable, net.kyori.adventure.tr
     }
     // Paper end
 
+    // Paper start - add isValidTool
     /**
      * Checks if the itemstack is a valid tool to
      * break the block with
      *
-     * @param tool The tool
+     * @param itemStack The (tool) itemstack
      * @return whether the block will drop items
      * @deprecated partially replaced by {@link Block#isPreferredTool(ItemStack)}
      */
     @Deprecated(since = "1.21", forRemoval = true) // Paper
-    boolean isValidTool(@NotNull ItemStack tool);
+    boolean isValidTool(@NotNull ItemStack itemStack);
+    // Paper end - add isValidTool
 
     /**
      * Gets the Location of the block
@@ -436,18 +438,11 @@ public interface Block extends Metadatable, Translatable, net.kyori.adventure.tr
     int getBlockPower(@NotNull BlockFace face);
 
     /**
-     * Returns the redstone power being provided to this block.
-     * <p>
-     * Equivalent to:
-     * {@snippet lang="java" :
-     * getBlockPower(BlockFace.SELF);
-     * }
+     * Returns the redstone power being provided to this block
      *
      * @return The power level.
      */
-    default int getBlockPower() {
-        return this.getBlockPower(BlockFace.SELF);
-    }
+    int getBlockPower();
 
     /**
      * Checks if this block is empty.

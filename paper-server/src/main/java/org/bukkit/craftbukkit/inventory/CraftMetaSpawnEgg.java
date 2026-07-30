@@ -37,11 +37,11 @@ public class CraftMetaSpawnEgg extends CraftMetaItem implements SpawnEggMeta {
         this.entityTag = spawnEggMeta.entityTag;
     }
 
-    CraftMetaSpawnEgg(DataComponentPatch patch, java.util.Set<net.minecraft.core.component.DataComponentType<?>> extraHandledComponents) {
-        super(patch, extraHandledComponents);
+    CraftMetaSpawnEgg(DataComponentPatch tag, java.util.Set<net.minecraft.core.component.DataComponentType<?>> extraHandledDcts) {
+        super(tag, extraHandledDcts);
 
-        getOrEmpty(patch, CraftMetaSpawnEgg.ENTITY_TAG).ifPresent((entityData) -> {
-            this.entityTag = entityData.copyTagWithEntityId();
+        getOrEmpty(tag, CraftMetaSpawnEgg.ENTITY_TAG).ifPresent((nbt) -> {
+            this.entityTag = nbt.copyTagWithEntityId();
         });
     }
 

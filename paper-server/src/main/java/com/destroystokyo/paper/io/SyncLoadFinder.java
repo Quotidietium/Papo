@@ -50,7 +50,7 @@ public class SyncLoadFinder {
 
                 ++valueInMap.times;
 
-                valueInMap.coordinateTimes.compute(ChunkPos.pack(chunkX, chunkZ), (Long keyInMap1, Integer valueInMap1) -> {
+                valueInMap.coordinateTimes.compute(ChunkPos.asLong(chunkX, chunkZ), (Long keyInMap1, Integer valueInMap1) -> {
                     return valueInMap1 == null ? Integer.valueOf(1) : Integer.valueOf(valueInMap1.intValue() + 1);
                 });
 
@@ -71,7 +71,7 @@ public class SyncLoadFinder {
 
             final JsonObject worldData = new JsonObject();
 
-            worldData.addProperty("key", world.getWorld().key().asString());
+            worldData.addProperty("name", world.getWorld().getName());
 
             final List<Pair<ThrowableWithEquals, SyncLoadInformation>> data = new ArrayList<>();
 
@@ -103,7 +103,8 @@ public class SyncLoadFinder {
                 for (Long2IntMap.Entry coordinate : pair.getSecond().coordinateTimes.long2IntEntrySet()) {
                     final long key = coordinate.getLongKey();
                     final int times = coordinate.getIntValue();
-                    coordinates.add("(" + ChunkPos.getX(key) + "," + ChunkPos.getZ(key) + "): " + times);
+                    final ChunkPos chunkPos = new ChunkPos(key);
+                    coordinates.add("(" + chunkPos.x + "," + chunkPos.z + "): " + times);
                 }
 
                 stacktrace.add("coordinates", coordinates);

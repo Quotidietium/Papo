@@ -2,11 +2,14 @@ package org.bukkit.craftbukkit.generator;
 
 import com.google.common.base.Preconditions;
 import com.mojang.serialization.MapCodec;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.stream.Stream;
 import net.minecraft.core.Holder;
-import net.minecraft.core.QuartPos;
+import net.minecraft.core.Registry;
 import net.minecraft.world.level.biome.BiomeSource;
 import net.minecraft.world.level.biome.Climate;
+import org.bukkit.block.Biome;
 import org.bukkit.craftbukkit.block.CraftBiome;
 import org.bukkit.generator.BiomeProvider;
 import org.bukkit.generator.WorldInfo;
@@ -15,12 +18,27 @@ public class CustomWorldChunkManager extends BiomeSource {
 
     private final WorldInfo worldInfo;
     private final BiomeProvider biomeProvider;
-    public final BiomeSource vanillaBiomeSource;
+    private final Registry<net.minecraft.world.level.biome.Biome> registry;
 
-    public CustomWorldChunkManager(WorldInfo worldInfo, BiomeProvider biomeProvider, BiomeSource vanillaBiomeSource) {
+    private static List<Holder<net.minecraft.world.level.biome.Biome>> biomeListToBiomeBaseList(List<Biome> biomes, Registry<net.minecraft.world.level.biome.Biome> registry) {
+        List<Holder<net.minecraft.world.level.biome.Biome>> biomeBases = new ArrayList<>();
+
+        for (Biome biome : biomes) {
+            Preconditions.checkArgument(biome != Biome.CUSTOM, "Cannot use the biome %s", biome);
+            biomeBases.add(CraftBiome.bukkitToMinecraftHolder(biome));
+        }
+
+        return biomeBases;
+    }
+
+    // Paper start - add vanillaBiomeProvider
+    public final BiomeSource vanillaBiomeSource;
+    public CustomWorldChunkManager(WorldInfo worldInfo, BiomeProvider biomeProvider, Registry<net.minecraft.world.level.biome.Biome> registry, BiomeSource vanillaBiomeSource) {
+        this.vanillaBiomeSource = vanillaBiomeSource;
+        // Paper end - add vanillaBiomeProvider
         this.worldInfo = worldInfo;
         this.biomeProvider = biomeProvider;
-        this.vanillaBiomeSource = vanillaBiomeSource;
+        this.registry = registry;
     }
 
     @Override
@@ -30,20 +48,14 @@ public class CustomWorldChunkManager extends BiomeSource {
 
     @Override
     public Holder<net.minecraft.world.level.biome.Biome> getNoiseBiome(int x, int y, int z, Climate.Sampler noise) {
-        Holder<net.minecraft.world.level.biome.Biome> biome = CraftBiome.bukkitToMinecraftHolder(
-            this.biomeProvider.getBiome(this.worldInfo, QuartPos.toBlock(x), QuartPos.toBlock(y), QuartPos.toBlock(z), CraftBiomeParameterPoint.createBiomeParameterPoint(noise, noise.sample(x, y, z)))
-        );
-        Preconditions.checkArgument(biome != null, "Cannot set the biome to %s", biome);
+        Biome biome = this.biomeProvider.getBiome(this.worldInfo, x << 2, y << 2, z << 2, CraftBiomeParameterPoint.createBiomeParameterPoint(noise, noise.sample(x, y, z)));
+        Preconditions.checkArgument(biome != Biome.CUSTOM, "Cannot set the biome to %s", biome);
 
-        return biome;
+        return CraftBiome.bukkitToMinecraftHolder(biome);
     }
 
     @Override
     protected Stream<Holder<net.minecraft.world.level.biome.Biome>> collectPossibleBiomes() {
-        return this.biomeProvider.getBiomes(this.worldInfo).stream().map(biome -> {
-            Holder<net.minecraft.world.level.biome.Biome> b = CraftBiome.bukkitToMinecraftHolder(biome);
-            Preconditions.checkArgument(b != null, "Cannot use the biome %s", biome);
-            return b;
-        });
+        return CustomWorldChunkManager.biomeListToBiomeBaseList(this.biomeProvider.getBiomes(this.worldInfo), this.registry).stream();
     }
 }

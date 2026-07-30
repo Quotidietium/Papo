@@ -7,8 +7,6 @@ import java.util.Optional;
 import java.util.ServiceLoader;
 import java.util.function.Consumer;
 import org.bukkit.MusicInstrument;
-import org.bukkit.inventory.meta.trim.TrimMaterial;
-import org.bukkit.inventory.meta.trim.TrimPattern;
 import org.jetbrains.annotations.ApiStatus;
 
 /**
@@ -28,8 +26,4 @@ public interface InlinedRegistryBuilderProvider {
     MusicInstrument createInstrument(Consumer<RegistryBuilderFactory<MusicInstrument, ? extends InstrumentRegistryEntry.Builder>> value);
 
     Dialog createDialog(Consumer<RegistryBuilderFactory<Dialog, ? extends DialogRegistryEntry.Builder>> value);
-
-    TrimMaterial createTrimMaterial(Consumer<RegistryBuilderFactory<TrimMaterial, ? extends TrimMaterialRegistryEntry.Builder>> value);
-
-    TrimPattern createTrimPattern(Consumer<RegistryBuilderFactory<TrimPattern, ? extends TrimPatternRegistryEntry.Builder>> value);
 }

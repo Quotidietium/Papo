@@ -54,11 +54,6 @@ public class CraftAttribute extends OldEnumHolderable<Attribute, net.minecraft.w
     }
 
     @Override
-    public double getDefaultValue() {
-        return this.getHandle().getDefaultValue();
-    }
-
-    @Override
     public String getTranslationKey() {
         return this.getHandle().getDescriptionId();
     }

@@ -27,7 +27,7 @@ public interface ItemDisplay extends Display {
     /**
      * Gets the item display transform for this entity.
      *
-     * Defaults to {@link ItemDisplayTransform#NONE}.
+     * Defaults to {@link ItemDisplayTransform#FIXED}.
      *
      * @return item display transform
      */
@@ -37,7 +37,7 @@ public interface ItemDisplay extends Display {
     /**
      * Sets the item display transform for this entity.
      *
-     * Defaults to {@link ItemDisplayTransform#NONE}.
+     * Defaults to {@link ItemDisplayTransform#FIXED}.
      *
      * @param display new display
      */

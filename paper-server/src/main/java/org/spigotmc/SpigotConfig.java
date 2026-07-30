@@ -68,8 +68,8 @@ public class SpigotConfig {
         SpigotConfig.commands = new HashMap<>();
         SpigotConfig.commands.put("spigot", new SpigotCommand("spigot"));
 
-        SpigotConfig.version = SpigotConfig.getInt("config-version", 13);
-        SpigotConfig.set("config-version", 13);
+        SpigotConfig.version = SpigotConfig.getInt("config-version", 12);
+        SpigotConfig.set("config-version", 12);
         SpigotConfig.readConfig(SpigotConfig.class, null);
     }
 
@@ -289,12 +289,12 @@ public class SpigotConfig {
 
     public static double movedWronglyThreshold;
     private static void movedWronglyThreshold() {
-        SpigotConfig.movedWronglyThreshold = SpigotConfig.getDouble("settings.moved-wrongly-threshold", 0.0625);
+        SpigotConfig.movedWronglyThreshold = SpigotConfig.getDouble("settings.moved-wrongly-threshold", 0.0625D);
     }
 
     public static double movedTooQuicklyMultiplier;
     private static void movedTooQuicklyMultiplier() {
-        SpigotConfig.movedTooQuicklyMultiplier = SpigotConfig.getDouble("settings.moved-too-quickly-multiplier", 10.0);
+        SpigotConfig.movedTooQuicklyMultiplier = SpigotConfig.getDouble("settings.moved-too-quickly-multiplier", 10.0D);
     }
 
     public static double maxAbsorption = 2048;

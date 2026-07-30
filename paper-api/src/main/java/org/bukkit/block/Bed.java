@@ -4,10 +4,9 @@ import org.bukkit.material.Colorable;
 
 /**
  * Represents a captured state of a bed.
- *
- * @deprecated bed block entity no longer exists
  */
-@Deprecated(forRemoval = true, since = "26.2")
+// Paper start
+// @Deprecated(since = "1.13")
 public interface Bed extends TileState, Colorable {
 
     @Override
@@ -22,4 +21,5 @@ public interface Bed extends TileState, Colorable {
     @org.jetbrains.annotations.Contract("_ -> fail")
     @Deprecated(forRemoval = true)
     void setColor(@org.bukkit.UndefinedNullability("not supported") org.bukkit.DyeColor color);
+// Paper end
 }

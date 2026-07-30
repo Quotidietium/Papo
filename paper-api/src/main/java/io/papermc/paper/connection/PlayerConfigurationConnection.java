@@ -1,5 +1,6 @@
 package io.papermc.paper.connection;
 
+import com.destroystokyo.paper.ClientOption;
 import com.destroystokyo.paper.profile.PlayerProfile;
 import net.kyori.adventure.audience.Audience;
 

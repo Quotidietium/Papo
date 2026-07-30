@@ -1,7 +1,6 @@
 package io.papermc.paper.datacomponent.item;
 
 import io.papermc.paper.datacomponent.DataComponentBuilder;
-import org.checkerframework.checker.index.qual.NonNegative;
 import org.jetbrains.annotations.ApiStatus;
 import org.jspecify.annotations.NullMarked;
 
@@ -24,7 +23,7 @@ public interface Weapon {
      *
      * @return durability
      */
-    @NonNegative int itemDamagePerAttack();
+    int itemDamagePerAttack();
 
     /**
      * The number of seconds that blocking is disabled.
@@ -47,7 +46,7 @@ public interface Weapon {
          * @return the builder for chaining
          * @see #itemDamagePerAttack()
          */
-        Builder itemDamagePerAttack(@NonNegative int damage);
+        Builder itemDamagePerAttack(int damage);
 
         /**
          * Sets the disable blocking duration (in seconds).

@@ -3,12 +3,12 @@
 @@ -19,9 +_,11 @@
      }
  
-     private static void pack(final List<SynchedEntityData.DataValue<?>> items, final RegistryFriendlyByteBuf output) {
+     private static void pack(List<SynchedEntityData.DataValue<?>> dataValues, RegistryFriendlyByteBuf buffer) {
 +        try (io.papermc.paper.util.sanitizer.ItemObfuscationSession ignored = io.papermc.paper.util.sanitizer.ItemObfuscationSession.start(io.papermc.paper.configuration.GlobalConfiguration.get().anticheat.obfuscation.items.binding.level)) { // Paper - data sanitization
-         for (SynchedEntityData.DataValue<?> item : items) {
-             item.write(output);
+         for (SynchedEntityData.DataValue<?> dataValue : dataValues) {
+             dataValue.write(buffer);
          }
 +        } // Paper - data sanitization
  
-         output.writeByte(255);
+         buffer.writeByte(255);
      }

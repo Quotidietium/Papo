@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.Map;
 import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.core.component.DataComponents;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.item.crafting.Recipe;
 import org.bukkit.NamespacedKey;
@@ -31,10 +30,10 @@ public class CraftMetaKnowledgeBook extends CraftMetaItem implements KnowledgeBo
         }
     }
 
-    CraftMetaKnowledgeBook(DataComponentPatch patch, java.util.Set<net.minecraft.core.component.DataComponentType<?>> extraHandledComponents) {
-        super(patch, extraHandledComponents);
+    CraftMetaKnowledgeBook(DataComponentPatch tag, java.util.Set<net.minecraft.core.component.DataComponentType<?>> extraHandledDcts) {
+        super(tag, extraHandledDcts);
 
-        getOrEmpty(patch, CraftMetaKnowledgeBook.BOOK_RECIPES).ifPresent((recipes) -> {
+        getOrEmpty(tag, CraftMetaKnowledgeBook.BOOK_RECIPES).ifPresent((recipes) -> {
             for (ResourceKey<?> recipe : recipes) {
                 this.addRecipe(CraftNamespacedKey.fromMinecraft(recipe.identifier()));
             }
@@ -61,7 +60,7 @@ public class CraftMetaKnowledgeBook extends CraftMetaItem implements KnowledgeBo
         if (this.hasRecipes()) {
             List<ResourceKey<Recipe<?>>> list = new ArrayList<>();
             for (NamespacedKey recipe : this.recipes) {
-                list.add(CraftNamespacedKey.toResourceKey(Registries.RECIPE, recipe));
+                list.add(CraftRecipe.toMinecraft(recipe));
             }
             tag.put(CraftMetaKnowledgeBook.BOOK_RECIPES, list);
         }

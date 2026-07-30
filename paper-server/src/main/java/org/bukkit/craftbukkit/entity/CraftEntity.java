@@ -16,7 +16,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import io.papermc.paper.math.Angle;
 import net.kyori.adventure.pointer.PointersSupplier;
 import net.kyori.adventure.util.TriState;
 import net.md_5.bungee.api.chat.BaseComponent;
@@ -34,9 +33,9 @@ import net.minecraft.util.ProblemReporter;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityProcessor;
 import net.minecraft.world.entity.EntitySpawnReason;
-import net.minecraft.world.entity.EntitySpawnRequest;
-import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragonPart;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
+import net.minecraft.world.entity.projectile.arrow.AbstractArrow;
 import net.minecraft.world.level.portal.TeleportTransition;
 import net.minecraft.world.level.storage.TagValueOutput;
 import net.minecraft.world.level.storage.ValueInput;
@@ -47,7 +46,6 @@ import org.bukkit.EntityEffect;
 import org.bukkit.Location;
 import org.bukkit.Server;
 import org.bukkit.Sound;
-import org.bukkit.SoundCategory;
 import org.bukkit.World;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.PistonMoveReaction;
@@ -256,6 +254,9 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
 
     @Override
     public boolean isOnGround() {
+        if (this.entity instanceof AbstractArrow abstractArrow) {
+            return abstractArrow.isInGround();
+        }
         return this.entity.onGround();
     }
 
@@ -278,17 +279,6 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
         pitch = Location.normalizePitch(pitch);
 
         this.getHandle().forceSetRotation(yaw, false, pitch, false);
-    }
-
-    @Override
-    public void setRotation(Angle yaw, Angle pitch) {
-        NumberConversions.checkFinite(pitch.degrees(), "pitch not finite");
-        NumberConversions.checkFinite(yaw.degrees(), "yaw not finite");
-
-        float yawValue = Location.normalizeYaw(yaw.degrees());
-        float pitchValue = Location.normalizePitch(pitch.degrees());
-
-        this.getHandle().forceSetRotation(yawValue, yaw.relative(), pitchValue, pitch.relative());
     }
 
     @Override
@@ -330,12 +320,9 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
             Vec3.ZERO,
             location.getYaw(),
             location.getPitch(),
-            false,
-            false,
             relativeFlags,
             TeleportTransition.DO_NOTHING,
-            cause,
-            TeleportTransition.PassengerTeleportationMode.POSITION_RIDER
+            cause
         )) != null;
     }
 
@@ -613,16 +600,6 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
         Preconditions.checkArgument(effect.isApplicableTo(this), "Entity effect cannot apply to this entity");
 
         this.getHandle().level().broadcastEntityEvent(this.getHandle(), effect.getData());
-    }
-
-    @Override
-    public SoundCategory getSoundCategory() {
-        return SoundCategory.valueOf(this.getHandle().getSoundSource().name());
-    }
-
-    @Override
-    public net.kyori.adventure.sound.Sound.Source soundSource() {
-        return this.getSoundCategory().soundSource();
     }
 
     @Override
@@ -936,7 +913,7 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
 
     @Override
     public Set<String> getScoreboardTags() {
-        return this.getHandle().entityTags();
+        return this.getHandle().getTags();
     }
 
     @Override
@@ -1056,7 +1033,7 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
             final TagValueOutput output = TagValueOutput.createWithContext(problemReporter, level.registryAccess());
             this.getHandle().saveAsPassenger(output, false, true, true);
 
-            return net.minecraft.world.entity.EntityType.loadEntityRecursive(output.buildResult(), level, new EntitySpawnRequest(EntitySpawnReason.LOAD, false), EntityProcessor.NOP);
+            return net.minecraft.world.entity.EntityType.loadEntityRecursive(output.buildResult(), level, EntitySpawnReason.LOAD, EntityProcessor.NOP);
         }
     }
 

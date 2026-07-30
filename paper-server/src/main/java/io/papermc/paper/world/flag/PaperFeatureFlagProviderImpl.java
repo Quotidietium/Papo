@@ -9,6 +9,8 @@ import net.minecraft.world.flag.FeatureElement;
 import net.minecraft.world.flag.FeatureFlagSet;
 import net.minecraft.world.flag.FeatureFlags;
 import org.bukkit.FeatureFlag;
+import org.bukkit.GameRule;
+import org.bukkit.craftbukkit.CraftGameRule;
 import org.bukkit.craftbukkit.entity.CraftEntityType;
 import org.bukkit.craftbukkit.potion.CraftPotionType;
 import org.bukkit.entity.EntityType;
@@ -47,6 +49,8 @@ public class PaperFeatureFlagProviderImpl implements FeatureFlagProvider {
             return CraftEntityType.bukkitToMinecraft(entityType);
         } else if (dependant instanceof final PotionType potionType) {
             return CraftPotionType.bukkitToMinecraft(potionType);
+        } else if (dependant instanceof final GameRule<?> gameRule) {
+            return () -> CraftGameRule.bukkitToMinecraft(gameRule).requiredFeatures();
         } else {
             throw new IllegalArgumentException(dependant + " is not a valid feature dependant");
         }

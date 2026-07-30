@@ -1,12 +1,12 @@
 package io.papermc.paper.text;
 
-import io.papermc.paper.InternalAPIBridge;
 import java.io.IOException;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.flattener.ComponentFlattener;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.serializer.gson.GsonComponentSerializer;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import net.kyori.adventure.text.serializer.plain.PlainComponentSerializer;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
@@ -80,8 +80,9 @@ public final class PaperComponents {
      * @return the resolved component
      * @throws IOException if a syntax error tripped during resolving
      */
+    @SuppressWarnings("deprecation") // using unsafe as a bridge
     public static Component resolveWithContext(final Component input, final @Nullable CommandSender context, final @Nullable Entity scoreboardSubject, final boolean bypassPermissions) throws IOException {
-        return InternalAPIBridge.get().resolveWithContext(input, context, scoreboardSubject, bypassPermissions);
+        return Bukkit.getUnsafe().resolveWithContext(input, context, scoreboardSubject, bypassPermissions);
     }
 
     /**
@@ -89,8 +90,24 @@ public final class PaperComponents {
      *
      * @return a component flattener
      */
+    @SuppressWarnings("deprecation") // using unsafe as a bridge
     public static ComponentFlattener flattener() {
-        return InternalAPIBridge.get().componentFlattener();
+        return Bukkit.getUnsafe().componentFlattener();
+    }
+
+    /**
+     * Get a serializer for {@link Component}s that will convert components to
+     * a plain-text string.
+     *
+     * <p>Implementations may provide a serializer capable of processing any
+     * information that requires access to implementation details.</p>
+     *
+     * @return a serializer to plain text
+     * @deprecated will be removed in adventure 5.0.0, use {@link PlainTextComponentSerializer#plainText()}
+     */
+    @Deprecated(forRemoval = true, since = "1.18.1")
+    public static PlainComponentSerializer plainSerializer() {
+        return Bukkit.getUnsafe().plainComponentSerializer();
     }
 
     /**
@@ -105,7 +122,7 @@ public final class PaperComponents {
      */
     @Deprecated(forRemoval = true, since = "1.18.2")
     public static PlainTextComponentSerializer plainTextSerializer() {
-        return PlainTextComponentSerializer.plainText();
+        return Bukkit.getUnsafe().plainTextSerializer();
     }
 
     /**
@@ -121,7 +138,7 @@ public final class PaperComponents {
      */
     @Deprecated(forRemoval = true, since = "1.18.2")
     public static GsonComponentSerializer gsonSerializer() {
-        return GsonComponentSerializer.gson();
+        return Bukkit.getUnsafe().gsonComponentSerializer();
     }
 
     /**
@@ -138,7 +155,7 @@ public final class PaperComponents {
      */
     @Deprecated(forRemoval = true, since = "1.18.2")
     public static GsonComponentSerializer colorDownsamplingGsonSerializer() {
-        return GsonComponentSerializer.colorDownsamplingGson();
+        return Bukkit.getUnsafe().colorDownsamplingGsonComponentSerializer();
     }
 
     /**
@@ -158,6 +175,6 @@ public final class PaperComponents {
      */
     @Deprecated(forRemoval = true, since = "1.18.2")
     public static LegacyComponentSerializer legacySectionSerializer() {
-        return LegacyComponentSerializer.legacySection();
+        return Bukkit.getUnsafe().legacyComponentSerializer();
     }
 }

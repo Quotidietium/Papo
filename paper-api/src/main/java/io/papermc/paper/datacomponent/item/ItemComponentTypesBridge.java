@@ -100,7 +100,7 @@ interface ItemComponentTypesBridge {
 
     UseCooldown.Builder useCooldown(final float seconds);
 
-    DamageResistant damageResistant(RegistryKeySet<DamageType> types);
+    DamageResistant damageResistant(TagKey<DamageType> types);
 
     Enchantable enchantable(int level);
 
@@ -129,6 +129,4 @@ interface ItemComponentTypesBridge {
     SwingAnimation.Builder swingAnimation();
 
     KineticWeapon.Condition kineticWeaponCondition(int maxDurationTicks, float minSpeed, float minRelativeSpeed);
-
-    SulfurCubeContent sulfurCubeContent(ItemStack absorbedItem);
 }

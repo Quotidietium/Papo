@@ -13,9 +13,8 @@ import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Collections;
 import java.util.List;
-import java.util.Locale;
+
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.event.HoverEvent;
 import net.minecraft.server.MinecraftServer;
@@ -39,10 +38,7 @@ public final class SyncLoadInfoCommand implements PaperSubcommand {
 
     @Override
     public List<String> tabComplete(final CommandSender sender, final String subCommand, final String[] args) {
-        if (args.length == 1) {
-            return CommandUtil.getListMatchingLast(sender, args, "clear");
-        }
-        return Collections.emptyList();
+        return CommandUtil.getListMatchingLast(sender, args, "clear");
     }
 
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH.mm.ss");
@@ -57,7 +53,7 @@ public final class SyncLoadInfoCommand implements PaperSubcommand {
             return;
         }
 
-        if (args.length > 0 && args[0].toLowerCase(Locale.ROOT).equals("clear")) {
+        if (args.length > 0 && args[0].equals("clear")) {
             SyncLoadFinder.clear();
             sender.sendMessage(text("Sync load data cleared.", GRAY));
             return;

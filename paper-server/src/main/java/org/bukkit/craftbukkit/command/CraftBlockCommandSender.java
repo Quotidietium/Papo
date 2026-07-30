@@ -28,12 +28,12 @@ public class CraftBlockCommandSender extends ServerCommandSender implements Bloc
             throw new UnsupportedOperationException("Cannot change operator status of a block");
         }
     });
-    private final CommandSourceStack sourceStack;
+    private final CommandSourceStack block;
     private final BlockEntity blockEntity;
 
-    public CraftBlockCommandSender(CommandSourceStack sourceStack, BlockEntity blockEntity) {
+    public CraftBlockCommandSender(CommandSourceStack commandBlockListenerAbstract, BlockEntity blockEntity) {
         super(CraftBlockCommandSender.SHARED_PERM);
-        this.sourceStack = sourceStack;
+        this.block = commandBlockListenerAbstract;
         this.blockEntity = blockEntity;
     }
 
@@ -45,7 +45,7 @@ public class CraftBlockCommandSender extends ServerCommandSender implements Bloc
     @Override
     public void sendMessage(String message) {
         for (Component component : CraftChatMessage.fromString(message)) {
-            this.sourceStack.source.sendSystemMessage(component);
+            this.block.source.sendSystemMessage(component);
         }
     }
 
@@ -58,17 +58,17 @@ public class CraftBlockCommandSender extends ServerCommandSender implements Bloc
 
     @Override
     public String getName() {
-        return this.sourceStack.getTextName();
+        return this.block.getTextName();
     }
 
     @Override
-    public void sendMessage(final net.kyori.adventure.text.Component message) {
-        this.sourceStack.source.sendSystemMessage(io.papermc.paper.adventure.PaperAdventure.asVanilla(message));
+    public void sendMessage(net.kyori.adventure.identity.Identity identity, net.kyori.adventure.text.Component message, net.kyori.adventure.audience.MessageType type) {
+        this.block.source.sendSystemMessage(io.papermc.paper.adventure.PaperAdventure.asVanilla(message));
     }
 
     @Override
     public net.kyori.adventure.text.Component name() {
-        return io.papermc.paper.adventure.PaperAdventure.asAdventure(this.sourceStack.getDisplayName());
+        return io.papermc.paper.adventure.PaperAdventure.asAdventure(this.block.getDisplayName());
     }
 
     @Override
@@ -81,7 +81,7 @@ public class CraftBlockCommandSender extends ServerCommandSender implements Bloc
         CraftBlockCommandSender.SHARED_PERM.setOp(value);
     }
 
-    public CommandSourceStack getSourceStack() {
-        return this.sourceStack;
+    public CommandSourceStack getWrapper() {
+        return this.block;
     }
 }

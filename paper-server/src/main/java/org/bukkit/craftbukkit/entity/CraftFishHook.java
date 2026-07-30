@@ -171,23 +171,26 @@ public class CraftFishHook extends CraftProjectile implements FishHook {
 
     @Override
     public Entity getHookedEntity() {
-        net.minecraft.world.entity.Entity hooked = this.getHandle().getHookedIn();
+        net.minecraft.world.entity.Entity hooked = this.getHandle().hookedIn;
         return (hooked != null) ? hooked.getBukkitEntity() : null;
     }
 
     @Override
     public void setHookedEntity(Entity entity) {
-        this.getHandle().setHookedEntity(entity != null ? ((CraftEntity) entity).getHandle() : null);
+        FishingHook hook = this.getHandle();
+
+        hook.hookedIn = (entity != null) ? ((CraftEntity) entity).getHandle() : null;
+        hook.getEntityData().set(FishingHook.DATA_HOOKED_ENTITY, hook.hookedIn != null ? hook.hookedIn.getId() + 1 : 0);
     }
 
     @Override
     public boolean pullHookedEntity() {
         FishingHook hook = this.getHandle();
-        if (hook.getHookedIn() == null) {
+        if (hook.hookedIn == null) {
             return false;
         }
 
-        hook.pullEntity(hook.getHookedIn());
+        hook.pullEntity(hook.hookedIn);
         return true;
     }
 
@@ -219,7 +222,7 @@ public class CraftFishHook extends CraftProjectile implements FishHook {
         // Reset the fish angle hook only when this call "enters" the fish into the lure stage.
         final boolean alreadyInLuringPhase = hook.timeUntilHooked > 0 && hook.timeUntilLured <= 0;
         if (!alreadyInLuringPhase) {
-            hook.fishAngle = net.minecraft.util.Mth.nextFloat(hook.getRandom(), hook.minLureAngle, hook.maxLureAngle);
+            hook.fishAngle = net.minecraft.util.Mth.nextFloat(hook.random, hook.minLureAngle, hook.maxLureAngle);
             hook.timeUntilLured = 0;
         }
 

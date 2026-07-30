@@ -34,10 +34,10 @@ public class CraftMetaSuspiciousStew extends CraftMetaItem implements Suspicious
         }
     }
 
-    CraftMetaSuspiciousStew(DataComponentPatch patch, java.util.Set<net.minecraft.core.component.DataComponentType<?>> extraHandledComponents) {
-        super(patch, extraHandledComponents);
-        getOrEmpty(patch, CraftMetaSuspiciousStew.EFFECTS).ifPresent((suspiciousStew) -> {
-            List<SuspiciousStewEffects.Entry> list = suspiciousStew.effects();
+    CraftMetaSuspiciousStew(DataComponentPatch tag, java.util.Set<net.minecraft.core.component.DataComponentType<?>> extraHandledDcts) {
+        super(tag, extraHandledDcts);
+        getOrEmpty(tag, CraftMetaSuspiciousStew.EFFECTS).ifPresent((suspiciousStewEffects) -> {
+            List<SuspiciousStewEffects.Entry> list = suspiciousStewEffects.effects();
             int length = list.size();
             this.customEffects = new ArrayList<>(length);
 
@@ -56,14 +56,14 @@ public class CraftMetaSuspiciousStew extends CraftMetaItem implements Suspicious
     CraftMetaSuspiciousStew(Map<String, Object> map) {
         super(map);
 
-        Iterable<?> effects = SerializableMeta.getObject(Iterable.class, map, CraftMetaSuspiciousStew.EFFECTS.BUKKIT, true);
-        if (effects == null) {
+        Iterable<?> rawEffectList = SerializableMeta.getObject(Iterable.class, map, CraftMetaSuspiciousStew.EFFECTS.BUKKIT, true);
+        if (rawEffectList == null) {
             return;
         }
 
-        for (Object effect : effects) {
-            Preconditions.checkArgument(effect instanceof PotionEffect, "Object (%s) in effect list is not valid", effect.getClass());
-            this.addCustomEffect((PotionEffect) effect, true);
+        for (Object obj : rawEffectList) {
+            Preconditions.checkArgument(obj instanceof PotionEffect, "Object (%s) in effect list is not valid", obj.getClass());
+            this.addCustomEffect((PotionEffect) obj, true);
         }
     }
 

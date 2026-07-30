@@ -93,21 +93,21 @@ public class CraftMetaBlockState extends CraftMetaItem implements BlockStateMeta
         this.blockEntityTag = metaBlockState.blockEntityTag;
     }
 
-    CraftMetaBlockState(DataComponentPatch patch, Material material, final Set<DataComponentType<?>> extraHandledComponents) { // Paper
-        super(patch, extraHandledComponents); // Paper
+    CraftMetaBlockState(DataComponentPatch tag, Material material, final Set<DataComponentType<?>> extraHandledDcts) { // Paper
+        super(tag, extraHandledDcts); // Paper
         this.material = material;
 
         // Paper start - move to separate method to be re-called
-        this.updateBlockState(patch);
+        this.updateBlockState(tag);
     }
 
-    private void updateBlockState(final DataComponentPatch patch) {
+    private void updateBlockState(final DataComponentPatch tag) {
         // Paper end
-        getOrEmpty(patch, CraftMetaBlockState.BLOCK_ENTITY_TAG).ifPresent((entityData) -> {
-            this.blockEntityTag = entityData.copyTagWithBlockEntityId();
+        getOrEmpty(tag, CraftMetaBlockState.BLOCK_ENTITY_TAG).ifPresent((nbt) -> {
+            this.blockEntityTag = nbt.copyTagWithBlockEntityId();
         });
 
-        if (!patch.isEmpty()) {
+        if (!tag.isEmpty()) {
             // Paper start - store data in a DataComponentMap to be used to construct CraftBlockEntityStates
             final DataComponentMap.Builder map = DataComponentMap.builder();
             final net.minecraft.world.level.block.entity.BlockEntity dummyBlockEntity = java.util.Objects.requireNonNull(
@@ -126,7 +126,7 @@ public class CraftMetaBlockState extends CraftMetaItem implements BlockStateMeta
             if (!applied.isEmpty()) {
                 for (final DataComponentType type : applied) {
                     if (CraftMetaItem.DEFAULT_HANDLED_DCTS.contains(type)) continue;
-                    getOrEmpty(patch, type).ifPresent(value -> {
+                    getOrEmpty(tag, type).ifPresent(value -> {
                         map.set(type, value);
                     });
                 }

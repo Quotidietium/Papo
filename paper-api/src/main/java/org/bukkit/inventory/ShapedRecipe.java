@@ -88,7 +88,7 @@ public class ShapedRecipe extends CraftingRecipe {
                     continue;
                 }
 
-                newIngredients.put(c, this.ingredients.get(c));
+                newIngredients.put(c, ingredients.get(c));
             }
         }
         this.ingredients = newIngredients;
@@ -129,11 +129,7 @@ public class ShapedRecipe extends CraftingRecipe {
      */
     @NotNull
     public ShapedRecipe setIngredient(char key, @NotNull Material ingredient) {
-        Preconditions.checkArgument(key != ' ', "Space in recipe shape must represent no ingredient");
-        Preconditions.checkArgument(this.ingredients.containsKey(key), "Symbol does not appear in the shape:", key);
-
-        this.ingredients.put(key, new RecipeChoice.MaterialChoice(Collections.singletonList(ingredient)));
-        return this;
+        return setIngredient(key, ingredient, 0);
     }
 
     /**
@@ -153,7 +149,16 @@ public class ShapedRecipe extends CraftingRecipe {
     @Deprecated(since = "1.6.2")
     @NotNull
     public ShapedRecipe setIngredient(char key, @NotNull Material ingredient, int raw) {
-        return setIngredient(key, ingredient);
+        Preconditions.checkArgument(key != ' ', "Space in recipe shape must represent no ingredient");
+        Preconditions.checkArgument(ingredients.containsKey(key), "Symbol does not appear in the shape:", key);
+
+        // -1 is the old wildcard, map to Short.MAX_VALUE as the new one
+        if (raw == -1) {
+            raw = Short.MAX_VALUE;
+        }
+
+        ingredients.put(key, new RecipeChoice.MaterialChoice(Collections.singletonList(ingredient)));
+        return this;
     }
 
     /**
@@ -171,17 +176,19 @@ public class ShapedRecipe extends CraftingRecipe {
     @NotNull
     public ShapedRecipe setIngredient(char key, @NotNull RecipeChoice ingredient) {
         Preconditions.checkArgument(key != ' ', "Space in recipe shape must represent no ingredient");
-        Preconditions.checkArgument(this.ingredients.containsKey(key), "Symbol does not appear in the shape:", key);
+        Preconditions.checkArgument(ingredients.containsKey(key), "Symbol does not appear in the shape:", key);
 
-        this.ingredients.put(key, ingredient.validate(false).clone()); // Paper
+        ingredients.put(key, ingredient.validate(false).clone()); // Paper
         return this;
     }
 
+    // Paper start
     @NotNull
     public ShapedRecipe setIngredient(char key, @NotNull ItemStack item) {
         Preconditions.checkArgument(!item.getType().isAir(), "Item cannot be air"); // Paper
         return setIngredient(key, new RecipeChoice.ExactChoice(item.clone())); // Paper
     }
+    // Paper end
 
     /**
      * Get a copy of the ingredients map.
@@ -192,8 +199,8 @@ public class ShapedRecipe extends CraftingRecipe {
     @Deprecated // Paper
     @NotNull
     public Map<Character, ItemStack> getIngredientMap() {
-        HashMap<Character, ItemStack> result = new HashMap<>();
-        for (Map.Entry<Character, RecipeChoice> ingredient : this.ingredients.entrySet()) {
+        HashMap<Character, ItemStack> result = new HashMap<Character, ItemStack>();
+        for (Map.Entry<Character, RecipeChoice> ingredient : ingredients.entrySet()) {
             if (ingredient.getValue() == null) {
                 result.put(ingredient.getKey(), null);
             } else {
@@ -211,7 +218,7 @@ public class ShapedRecipe extends CraftingRecipe {
     @NotNull
     public Map<Character, RecipeChoice> getChoiceMap() {
         Map<Character, RecipeChoice> result = new HashMap<>();
-        for (Map.Entry<Character, RecipeChoice> ingredient : this.ingredients.entrySet()) {
+        for (Map.Entry<Character, RecipeChoice> ingredient : ingredients.entrySet()) {
             if (ingredient.getValue() == null) {
                 result.put(ingredient.getKey(), null);
             } else {
@@ -228,6 +235,6 @@ public class ShapedRecipe extends CraftingRecipe {
      * @throws NullPointerException when not set yet
      */
     public @NotNull String @NotNull [] getShape() {
-        return this.rows.clone();
+        return rows.clone();
     }
 }

@@ -1,6 +1,5 @@
 package org.bukkit.craftbukkit.configuration;
 
-import com.google.common.collect.ImmutableMap;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -46,12 +45,6 @@ public final class ConfigSerializationUtil {
     }
 
     public static void setHolderSet(Map<String, Object> result, String key, HolderSet<?> holders) {
-        holders.unwrap()
-            .ifLeft(tag -> result.put(key, "#" + tag.location().toString())) // Tag
-            .ifRight(list -> result.put(key, list.stream().map((entry) -> entry.unwrapKey().orElseThrow().identifier().toString()).toList())); // List
-    }
-
-    public static void setHolderSet(ImmutableMap.Builder<String, Object> result, String key, HolderSet<?> holders) {
         holders.unwrap()
             .ifLeft(tag -> result.put(key, "#" + tag.location().toString())) // Tag
             .ifRight(list -> result.put(key, list.stream().map((entry) -> entry.unwrapKey().orElseThrow().identifier().toString()).toList())); // List

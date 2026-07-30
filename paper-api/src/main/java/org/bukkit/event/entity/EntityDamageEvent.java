@@ -42,7 +42,6 @@ public class EntityDamageEvent extends EntityEvent implements Cancellable {
     }
 
     @ApiStatus.Internal
-    @Deprecated(forRemoval = true)
     public EntityDamageEvent(@NotNull final Entity damagee, @NotNull final DamageCause cause, @NotNull final DamageSource damageSource, final double damage) {
         this(damagee, cause, damageSource, new EnumMap<>(ImmutableMap.of(DamageModifier.BASE, damage)), new EnumMap<DamageModifier, Function<? super Double, Double>>(ImmutableMap.of(DamageModifier.BASE, ZERO)));
     }
@@ -310,8 +309,8 @@ public class EntityDamageEvent extends EntityEvent implements Cancellable {
          */
         WORLD_BORDER,
         /**
-         * Damage caused when an entity contacts another entity (sulfur cube) or block (cactus, dripstone stalagmite,
-         * berry bush, campfire, magma block).
+         * Damage caused when an entity contacts a block such as a Cactus,
+         * Dripstone (Stalagmite) or Berry Bush.
          * <p>
          * Damage: variable
          */
@@ -455,7 +454,7 @@ public class EntityDamageEvent extends EntityEvent implements Cancellable {
          * @deprecated never used without help of commands or plugins,
          * {@link #ENTITY_ATTACK} will be used instead
          */
-        @Deprecated(since = "1.21.5")
+        @Deprecated
         DRAGON_BREATH,
         /**
          * Damage caused when an entity runs into a wall.
@@ -467,19 +466,13 @@ public class EntityDamageEvent extends EntityEvent implements Cancellable {
          * Damage caused when an entity steps on {@link Material#MAGMA_BLOCK}.
          * <p>
          * Damage: 1
-         *
-         * @deprecated use {@link #CONTACT}, the block will be exposed in the event
          */
-        @Deprecated(since = "26.2")
         HOT_FLOOR,
         /**
          * Damage caused when an entity steps on {@link Material#CAMPFIRE} or {@link Material#SOUL_CAMPFIRE}.
          * <p>
          * Damage: 1 or 2 (for soul fire)
-         *
-         * @deprecated use {@link #CONTACT}, the block will be exposed in the event
          */
-        @Deprecated(since = "26.2")
         CAMPFIRE,
         /**
          * Damage caused when an entity is colliding with too many entities due

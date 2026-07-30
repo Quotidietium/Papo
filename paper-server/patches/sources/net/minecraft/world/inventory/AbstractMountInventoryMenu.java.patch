@@ -13,7 +13,7 @@
      protected static final int INVENTORY_ROWS = 3;
  
 +    // CraftBukkit start
-+    private org.bukkit.craftbukkit.inventory.@org.jspecify.annotations.Nullable CraftInventoryView view;
++    private @javax.annotation.Nullable org.bukkit.craftbukkit.inventory.CraftInventoryView view;
 +    private final Inventory inventory;
 +
 +    @Override
@@ -26,9 +26,9 @@
 +    }
 +    // CraftBukkit end
 +
-     protected AbstractMountInventoryMenu(final int containerId, final Inventory playerInventory, final Container mountInventory, final LivingEntity mount) {
+     protected AbstractMountInventoryMenu(int containerId, Inventory playerInventory, Container mountContainer, LivingEntity mount) {
          super(null, containerId);
 +        this.inventory = playerInventory; // CraftBukkit
-         this.mountContainer = mountInventory;
+         this.mountContainer = mountContainer;
          this.mount = mount;
-         mountInventory.startOpen(playerInventory.player);
+         mountContainer.startOpen(playerInventory.player);

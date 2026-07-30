@@ -21,7 +21,7 @@ public class TicksPerSecondCommand extends Command {
     public TicksPerSecondCommand(String name) {
         super(name);
         this.description = "Gets the current ticks per second for the server";
-        this.usageMessage = "/tps [mem]";
+        this.usageMessage = "/tps";
         this.setPermission("bukkit.command.tps");
     }
 

@@ -42,7 +42,7 @@ public abstract class CraftMinecart extends CraftVehicle implements Minecart {
 
     @Override
     public void setMaxSpeed(double speed) {
-        if (speed >= 0) {
+        if (speed >= 0D) {
             this.getHandle().maxSpeed = speed;
         }
     }
@@ -102,7 +102,8 @@ public abstract class CraftMinecart extends CraftVehicle implements Minecart {
 
     @Override
     public BlockData getDisplayBlockData() {
-        return this.getHandle().getDisplayBlockState().asBlockData();
+        BlockState state = this.getHandle().getDisplayBlockState();
+        return CraftBlockData.fromData(state);
     }
 
     @Override

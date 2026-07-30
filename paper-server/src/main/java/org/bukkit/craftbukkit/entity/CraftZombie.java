@@ -23,8 +23,8 @@ public class CraftZombie extends CraftMonster implements Zombie {
     }
 
     @Override
-    public void setBaby(boolean baby) {
-        CraftAgeable.setBaby(this.getHandle(), baby);
+    public void setBaby(boolean flag) {
+        this.getHandle().setBaby(flag);
     }
 
     @Override
@@ -62,7 +62,8 @@ public class CraftZombie extends CraftMonster implements Zombie {
     @Override
     public void setConversionTime(int time) {
         if (time < 0) {
-            this.getHandle().stopDrowning();
+            this.getHandle().conversionTime = -1;
+            this.getHandle().getEntityData().set(net.minecraft.world.entity.monster.zombie.Zombie.DATA_DROWNED_CONVERSION_ID, false);
         } else {
             this.getHandle().startUnderWaterConversion(time);
         }
@@ -74,47 +75,52 @@ public class CraftZombie extends CraftMonster implements Zombie {
     }
 
     @Override
-    public void setAge(int age) {
-        this.getHandle().setBaby(age < 0);
+    public void setAge(int i) {
+        this.getHandle().setBaby(i < 0);
     }
 
     @Override
-    public void setAgeLock(boolean lock) {
+    public void setAgeLock(boolean b) {
     }
 
     @Override
     public boolean isDrowning() {
-        return this.getHandle().isUnderWaterConverting();
+        return getHandle().isUnderWaterConverting();
     }
 
     @Override
-    public void startDrowning(int time) {
-        this.getHandle().startUnderWaterConversion(time);
+    public void startDrowning(int drownedConversionTime) {
+        getHandle().startUnderWaterConversion(drownedConversionTime);
     }
 
     @Override
     public void stopDrowning() {
-        this.getHandle().stopDrowning();
+        getHandle().stopDrowning();
     }
 
     @Override
     public boolean shouldBurnInDay() {
-        return this.getHandle().isSunSensitive();
+        return getHandle().isSunSensitive();
     }
 
     @Override
     public boolean isArmsRaised() {
-        return this.getHandle().isAggressive();
+        return getHandle().isAggressive();
     }
 
     @Override
     public void setArmsRaised(final boolean raised) {
-        this.getHandle().setAggressive(raised);
+        getHandle().setAggressive(raised);
     }
 
     @Override
     public void setShouldBurnInDay(boolean shouldBurnInDay) {
-        this.getHandle().setShouldBurnInDay(shouldBurnInDay);
+        getHandle().setShouldBurnInDay(shouldBurnInDay);
+    }
+
+    @Override
+    public boolean supportsBreakingDoors() {
+        return true; // All zombies are now capable of breaking doors, see https://bugs.mojang.com/browse/MC-137053
     }
 
     @Override
@@ -124,12 +130,12 @@ public class CraftZombie extends CraftMonster implements Zombie {
 
     @Override
     public void setBaby() {
-        CraftAgeable.setBaby(this.getHandle(), true);
+        this.getHandle().setBaby(true);
     }
 
     @Override
     public void setAdult() {
-        CraftAgeable.setBaby(this.getHandle(), false);
+        this.getHandle().setBaby(false);
     }
 
     @Override
@@ -143,7 +149,7 @@ public class CraftZombie extends CraftMonster implements Zombie {
     }
 
     @Override
-    public void setBreed(boolean breed) {
+    public void setBreed(boolean b) {
     }
 
     @Override

@@ -1,6 +1,5 @@
 package org.bukkit;
 
-import io.papermc.paper.world.MoonPhase;
 import java.util.Collection;
 import java.util.List;
 import java.util.Random;
@@ -13,7 +12,6 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.event.entity.CreatureSpawnEvent;
-import org.bukkit.util.Vector;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -101,17 +99,6 @@ public interface RegionAccessor extends Keyed, io.papermc.paper.world.flag.Featu
     }
 
     /**
-     * Gets the {@link BlockState} at the given {@link Location}.
-     *
-     * @param location The location of the block state
-     * @return Block state at the given location
-     */
-    @NotNull
-    default BlockState getBlockState(@NotNull Vector location) {
-        return this.getBlockState(location.getBlockX(), location.getBlockY(), location.getBlockZ());
-    }
-
-    /**
      * Gets the {@link BlockState} at the given coordinates.
      *
      * @param x X-coordinate of the block state
@@ -142,7 +129,7 @@ public interface RegionAccessor extends Keyed, io.papermc.paper.world.flag.Featu
      */
     @NotNull
     default io.papermc.paper.block.fluid.FluidData getFluidData(@NotNull io.papermc.paper.math.Position position) {
-        return this.getFluidData(position.blockX(), position.blockY(), position.blockZ());
+        return getFluidData(position.blockX(), position.blockY(), position.blockZ());
     }
 
     /**
@@ -153,7 +140,7 @@ public interface RegionAccessor extends Keyed, io.papermc.paper.world.flag.Featu
      */
     @NotNull
     default io.papermc.paper.block.fluid.FluidData getFluidData(@NotNull Location location) {
-        return this.getFluidData(location.blockX(), location.blockY(), location.blockZ());
+        return getFluidData(location.blockX(), location.blockY(), location.blockZ());
     }
     // Paper end
 
@@ -165,17 +152,6 @@ public interface RegionAccessor extends Keyed, io.papermc.paper.world.flag.Featu
      */
     @NotNull
     default BlockData getBlockData(@NotNull Location location) {
-        return this.getBlockData(location.getBlockX(), location.getBlockY(), location.getBlockZ());
-    }
-
-    /**
-     * Gets the {@link BlockData} at the given {@link Location}.
-     *
-     * @param location The location of the block data
-     * @return Block data at the given location
-     */
-    @NotNull
-    default BlockData getBlockData(@NotNull Vector location) {
         return this.getBlockData(location.getBlockX(), location.getBlockY(), location.getBlockZ());
     }
 
@@ -219,16 +195,6 @@ public interface RegionAccessor extends Keyed, io.papermc.paper.world.flag.Featu
      * @param blockData The block data to set the block to
      */
     default void setBlockData(@NotNull Location location, @NotNull BlockData blockData) {
-        this.setBlockData(location.getBlockX(), location.getBlockY(), location.getBlockZ(), blockData);
-    }
-
-    /**
-     * Sets the {@link BlockData} at the given {@link Location}.
-     *
-     * @param location The location of the block
-     * @param blockData The block data to set the block to
-     */
-    default void setBlockData(@NotNull Vector location, @NotNull BlockData blockData) {
         this.setBlockData(location.getBlockX(), location.getBlockY(), location.getBlockZ(), blockData);
     }
 
@@ -560,12 +526,12 @@ public interface RegionAccessor extends Keyed, io.papermc.paper.world.flag.Featu
     @NotNull
     public <T extends Entity> T addEntity(@NotNull T entity);
 
+    // Paper start
     /**
      * @return the current moon phase at the current time in the world
-     * @apiNote the returned value may be inaccurate in custom biome using environmental attribute override
      */
     @NotNull
-    MoonPhase getMoonPhase();
+    io.papermc.paper.world.MoonPhase getMoonPhase();
 
     /**
      * Get the world's key
@@ -593,4 +559,5 @@ public interface RegionAccessor extends Keyed, io.papermc.paper.world.flag.Featu
      * @return collides or not
      */
     boolean hasCollisionsIn(@NotNull org.bukkit.util.BoundingBox boundingBox);
+    // Paper end
 }

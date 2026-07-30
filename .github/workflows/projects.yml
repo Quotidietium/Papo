@@ -18,13 +18,14 @@ jobs:
     steps:
       - name: "authenticate"
         id: "authenticate"
-        uses: actions/create-github-app-token@v3.2.0
+        uses: "tibdex/github-app-token@3beb63f4bd073e61482598c45c71c1019b59b73a" # v2.1.0
         with:
-          app-id: "${{ secrets.PROJECTS_APP_ID }}"
-          private-key: "${{ secrets.PROJECTS_PRIVATE_KEY }}"
-          owner: "${{ github.repository_owner }}"
+          installation_retrieval_mode: id
+          installation_retrieval_payload: "36153445"
+          app_id: "${{ secrets.PROJECTS_APP_ID }}"
+          private_key: "${{ secrets.PROJECTS_PRIVATE_KEY }}"
 
-      - uses: PaperMC/update-projects-action@v0.3.0
+      - uses: PaperMC/update-projects-action@v0.2.0
         name: Update open issue
         if: github.event.issue.state == 'open'
         with:
@@ -52,7 +53,7 @@ jobs:
               "status: unlikely": "✅ Accepted"
             }
 
-      - uses: PaperMC/update-projects-action@v0.3.0
+      - uses: PaperMC/update-projects-action@v0.2.0
         name: Update closed issue
         if: github.event.issue.state == 'closed'
         with:

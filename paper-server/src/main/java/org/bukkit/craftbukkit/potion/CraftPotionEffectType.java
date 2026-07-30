@@ -61,7 +61,7 @@ public class CraftPotionEffectType extends PotionEffectType implements Holderabl
 
     @Override
     public double getDurationModifier() {
-        return 1.0;
+        return 1.0D;
     }
 
     @Override
@@ -116,7 +116,7 @@ public class CraftPotionEffectType extends PotionEffectType implements Holderabl
 
     @Override
     public boolean isInstant() {
-        return this.getHandle().isInstantaneous();
+        return this.getHandle().isInstantenous();
     }
 
     @Override

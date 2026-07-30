@@ -1,7 +1,9 @@
 package io.papermc.paper.datacomponent.item;
 
+import net.minecraft.world.item.EitherHolder;
 import org.bukkit.JukeboxSong;
 import org.bukkit.craftbukkit.CraftJukeboxSong;
+import org.bukkit.craftbukkit.CraftRegistry;
 import org.bukkit.craftbukkit.util.Handleable;
 
 public record PaperJukeboxPlayable(
@@ -15,7 +17,10 @@ public record PaperJukeboxPlayable(
 
     @Override
     public JukeboxSong jukeboxSong() {
-        return CraftJukeboxSong.minecraftHolderToBukkit(this.impl.song());
+        return this.impl.song()
+            .unwrap(CraftRegistry.getMinecraftRegistry())
+            .map(CraftJukeboxSong::minecraftHolderToBukkit)
+            .orElseThrow();
     }
 
     static final class BuilderImpl implements JukeboxPlayable.Builder {
@@ -35,7 +40,7 @@ public record PaperJukeboxPlayable(
         @Override
         public JukeboxPlayable build() {
             return new PaperJukeboxPlayable(new net.minecraft.world.item.JukeboxPlayable(
-                CraftJukeboxSong.bukkitToMinecraftHolder(this.song)
+                new EitherHolder<>(CraftJukeboxSong.bukkitToMinecraftHolder(this.song))
             ));
         }
     }

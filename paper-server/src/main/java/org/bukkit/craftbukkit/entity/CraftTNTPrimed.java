@@ -72,6 +72,6 @@ public class CraftTNTPrimed extends CraftEntity implements TNTPrimed {
 
     @Override
     public org.bukkit.block.data.BlockData getBlockData() {
-        return this.getHandle().getBlockState().asBlockData();
+        return org.bukkit.craftbukkit.block.data.CraftBlockData.fromData(this.getHandle().getBlockState());
     }
 }

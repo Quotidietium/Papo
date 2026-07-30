@@ -1,26 +1,26 @@
 --- a/net/minecraft/world/level/block/RedstoneLampBlock.java
 +++ b/net/minecraft/world/level/block/RedstoneLampBlock.java
-@@ -42,6 +_,11 @@
-                 if (isLit) {
+@@ -40,6 +_,11 @@
+                 if (litValue) {
                      level.scheduleTick(pos, this, 4);
                  } else {
-+                    // Paper start - Call BlockRedstoneEvent
-+                    if (!org.bukkit.craftbukkit.event.CraftEventFactory.callBinaryRedstoneChange(level, pos, true)) {
++                    // CraftBukkit start
++                    if (org.bukkit.craftbukkit.event.CraftEventFactory.callRedstoneChange(level, pos, 0, 15).getNewCurrent() != 15) {
 +                        return;
 +                    }
-+                    // Paper end - Call BlockRedstoneEvent
++                    // CraftBukkit end
                      level.setBlock(pos, state.cycle(LIT), Block.UPDATE_CLIENTS);
                  }
              }
-@@ -51,6 +_,11 @@
+@@ -49,6 +_,11 @@
      @Override
-     protected void tick(final BlockState state, final ServerLevel level, final BlockPos pos, final RandomSource random) {
+     protected void tick(BlockState state, ServerLevel level, BlockPos pos, RandomSource random) {
          if (state.getValue(LIT) && !level.hasNeighborSignal(pos)) {
-+            // Paper start - Call BlockRedstoneEvent
-+            if (!org.bukkit.craftbukkit.event.CraftEventFactory.callBinaryRedstoneChange(level, pos, false)) {
++            // CraftBukkit start
++            if (org.bukkit.craftbukkit.event.CraftEventFactory.callRedstoneChange(level, pos, 15, 0).getNewCurrent() != 0) {
 +                return;
 +            }
-+            // Paper end - Call BlockRedstoneEvent
++            // CraftBukkit end
              level.setBlock(pos, state.cycle(LIT), Block.UPDATE_CLIENTS);
          }
      }

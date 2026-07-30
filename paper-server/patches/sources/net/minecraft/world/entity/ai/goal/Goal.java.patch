@@ -15,8 +15,8 @@
 +    }
 +    // Paper end - Mob Goal API
 +
-     protected int adjustedTickDelay(final int ticks) {
-         return this.requiresUpdateEveryTick() ? ticks : reducedTickDelay(ticks);
+     protected int adjustedTickDelay(int adjustment) {
+         return this.requiresUpdateEveryTick() ? adjustment : reducedTickDelay(adjustment);
      }
 @@ -62,7 +_,19 @@
          return (ServerLevel)level;
@@ -33,7 +33,7 @@
 +    }
 +    // Paper end - Mob goal api
 +
-     public enum Flag {
+     public static enum Flag {
 +        UNKNOWN_BEHAVIOR, // Paper - add UNKNOWN_BEHAVIOR
          MOVE,
          LOOK,

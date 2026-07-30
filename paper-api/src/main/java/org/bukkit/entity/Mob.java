@@ -19,6 +19,7 @@ public interface Mob extends LivingEntity, Lootable, Leashable {
 
     /**
      * Check if a mob should be despawned when the world is set to peaceful difficulty.
+     * This also takes the {@link Mob#getDespawnInPeacefulOverride()} into account.
      *
      * @return True if the entity should be removed in peaceful
      */
@@ -33,9 +34,7 @@ public interface Mob extends LivingEntity, Lootable, Leashable {
      * </ul>
      *
      * @param state a TriState representing the state of the override
-     * @deprecated the client no longer allow to change that setting and will not render the entity
      */
-    @Deprecated(since = "26.2")
     void setDespawnInPeacefulOverride(TriState state);
 
     /**
@@ -48,9 +47,7 @@ public interface Mob extends LivingEntity, Lootable, Leashable {
      *
      * @return a TriState representing the state of the override
      * @see Mob#setDespawnInPeacefulOverride(TriState)
-     * @deprecated the client no longer allow to change that setting and will not render the entity
      */
-    @Deprecated(since = "26.2")
     TriState getDespawnInPeacefulOverride();
 
     @Override

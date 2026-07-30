@@ -3,6 +3,7 @@ package com.destroystokyo.paper.entity.ai;
 import com.destroystokyo.paper.entity.RangedEntity;
 import com.google.common.base.CaseFormat;
 import io.papermc.paper.entity.SchoolableFish;
+import io.papermc.paper.util.ObfHelper;
 import it.unimi.dsi.fastutil.ints.Int2BooleanFunction;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Modifier;
@@ -68,7 +69,7 @@ public class MobGoalHelper {
         map.put(net.minecraft.world.entity.animal.golem.IronGolem.class, IronGolem.class);
         map.put(net.minecraft.world.entity.animal.equine.Llama.class, Llama.class);
         map.put(net.minecraft.world.entity.animal.equine.TraderLlama.class, TraderLlama.class);
-        map.put(net.minecraft.world.entity.monster.cubemob.MagmaCube.class, MagmaCube.class);
+        map.put(net.minecraft.world.entity.monster.MagmaCube.class, MagmaCube.class);
         map.put(net.minecraft.world.entity.monster.Monster.class, Monster.class);
         map.put(net.minecraft.world.entity.monster.PatrollingMonster.class, Raider.class);
         map.put(net.minecraft.world.entity.animal.cow.MushroomCow.class, MushroomCow.class);
@@ -93,7 +94,7 @@ public class MobGoalHelper {
         map.put(net.minecraft.world.entity.monster.skeleton.AbstractSkeleton.class, AbstractSkeleton.class);
         map.put(net.minecraft.world.entity.monster.skeleton.Stray.class, Stray.class);
         map.put(net.minecraft.world.entity.monster.skeleton.WitherSkeleton.class, WitherSkeleton.class);
-        map.put(net.minecraft.world.entity.monster.cubemob.Slime.class, Slime.class);
+        map.put(net.minecraft.world.entity.monster.Slime.class, Slime.class);
         map.put(net.minecraft.world.entity.animal.golem.SnowGolem.class, Snowman.class);
         map.put(net.minecraft.world.entity.monster.spider.Spider.class, Spider.class);
         map.put(net.minecraft.world.entity.animal.squid.Squid.class, Squid.class);
@@ -139,8 +140,6 @@ public class MobGoalHelper {
         map.put(net.minecraft.world.entity.animal.nautilus.ZombieNautilus.class, ZombieNautilus.class);
         map.put(net.minecraft.world.entity.animal.camel.CamelHusk.class, CamelHusk.class);
         map.put(net.minecraft.world.entity.monster.skeleton.Parched.class, Parched.class);
-        map.put(net.minecraft.world.entity.monster.cubemob.SulfurCube.class, SulfurCube.class);
-        map.put(net.minecraft.world.entity.monster.cubemob.AbstractCubeMob.class, AbstractCubeMob.class);
         // End generate - MobGoalHelper#BUKKIT_BRIDGE
         //</editor-fold>
     });
@@ -161,8 +160,7 @@ public class MobGoalHelper {
         RangedEntity.class,
         Tameable.class,
         Monster.class,
-        PufferFish.class, // weird case
-        AbstractCubeMob.class
+        PufferFish.class // weird case
     );
 
     private static String getPathName(Class<? extends Mob> type, Class<?> holderClass, String name) {
@@ -251,6 +249,9 @@ public class MobGoalHelper {
         Class<T> type = getGenericType(goalClass);
 
         String name = goalClass.getName();
+        if (io.papermc.paper.util.MappingEnvironment.reobf()) {
+            name = ObfHelper.INSTANCE.deobfClassName(name);
+        }
 
         Class<?> holderClass = getTopLevelClass(goalClass);
         name = getPathName(type, holderClass, name);

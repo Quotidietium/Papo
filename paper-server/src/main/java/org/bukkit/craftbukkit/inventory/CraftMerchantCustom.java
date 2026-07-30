@@ -4,14 +4,13 @@ import com.google.common.base.Preconditions;
 import net.minecraft.network.chat.Component;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
-import net.minecraft.world.entity.EntityTypes;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.trading.Merchant;
 import net.minecraft.world.item.trading.MerchantOffer;
 import net.minecraft.world.item.trading.MerchantOffers;
 import org.bukkit.craftbukkit.util.CraftChatMessage;
-import org.jspecify.annotations.Nullable;
 
 public class CraftMerchantCustom implements CraftMerchant {
 
@@ -58,7 +57,7 @@ public class CraftMerchantCustom implements CraftMerchant {
         }
 
         public MinecraftMerchant() {
-            this.title = EntityTypes.VILLAGER.getDescription();
+            this.title = EntityType.VILLAGER.getDescription();
         }
         // Paper end
 
@@ -84,7 +83,7 @@ public class CraftMerchantCustom implements CraftMerchant {
 
         // Paper start - Add PlayerTradeEvent and PlayerPurchaseEvent
         @Override
-        public void processTrade(MerchantOffer offer, io.papermc.paper.event.player.@Nullable PlayerPurchaseEvent event) { // The MerchantRecipe passed in here is the one set by the PlayerPurchaseEvent
+        public void processTrade(MerchantOffer offer, @javax.annotation.Nullable io.papermc.paper.event.player.PlayerPurchaseEvent event) { // The MerchantRecipe passed in here is the one set by the PlayerPurchaseEvent
             /* Based on {@link net.minecraft.world.entity.npc.villager.AbstractVillager#processTrade(MerchantOffer, io.papermc.paper.event.player.PlayerPurchaseEvent)} */
             if (getTradingPlayer() instanceof net.minecraft.server.level.ServerPlayer) {
                 if (event == null || event.willIncreaseTradeUses()) {

@@ -1,7 +1,6 @@
 package org.bukkit.inventory.meta;
 
 import java.util.List;
-import net.kyori.adventure.inventory.BookLike;
 import org.bukkit.Material;
 import org.jetbrains.annotations.NotNull;
 
@@ -15,7 +14,7 @@ import org.jetbrains.annotations.NotNull;
  * the meta instance is not sufficient due to unusual inheritance
  * with relation to {@link BookMeta}.
  */
-public interface WritableBookMeta extends ItemMeta, BookLike {
+public interface WritableBookMeta extends ItemMeta {
 
     /**
      * Checks for the existence of pages in the book.

@@ -6,9 +6,11 @@ import org.bukkit.craftbukkit.inventory.CraftInventory;
 import org.bukkit.inventory.Inventory;
 
 public abstract class CraftChestBoat extends CraftBoat implements org.bukkit.entity.ChestBoat, com.destroystokyo.paper.loottable.PaperLootableEntityInventory { // Paper
+    private final Inventory inventory;
 
     public CraftChestBoat(CraftServer server, AbstractChestBoat entity) {
         super(server, entity);
+        this.inventory = new CraftInventory(entity);
     }
 
     @Override
@@ -18,6 +20,6 @@ public abstract class CraftChestBoat extends CraftBoat implements org.bukkit.ent
 
     @Override
     public Inventory getInventory() {
-        return new CraftInventory(getHandle());
+        return this.inventory;
     }
 }

@@ -1,5 +1,6 @@
 package io.papermc.paper.plugin.entrypoint.classloader;
 
+import io.papermc.paper.pluginremap.reflect.ReflectionRemapper;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -15,6 +16,9 @@ import java.util.function.Function;
 import java.util.jar.Attributes;
 import java.util.jar.Manifest;
 import org.checkerframework.checker.nullness.qual.Nullable;
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassVisitor;
+import org.objectweb.asm.ClassWriter;
 
 import static java.util.Objects.requireNonNullElse;
 
@@ -41,7 +45,16 @@ public final class BytecodeModifyingURLClassLoader extends URLClassLoader {
         final URL[] urls,
         final ClassLoader parent
     ) {
-        this(urls, parent, bytes -> bytes);
+        this(urls, parent, bytes -> {
+            final ClassReader classReader = new ClassReader(bytes);
+            final ClassWriter classWriter = new ClassWriter(classReader, 0);
+            final ClassVisitor visitor = ReflectionRemapper.visitor(classWriter);
+            if (visitor == classWriter) {
+                return bytes;
+            }
+            classReader.accept(visitor, 0);
+            return classWriter.toByteArray();
+        });
     }
 
     @Override
@@ -144,7 +157,7 @@ public final class BytecodeModifyingURLClassLoader extends URLClassLoader {
         Manifest man = null;
         if (url.getProtocol().equals("jar")) {
             try {
-                final Object computedManifest = this.manifests.computeIfAbsent(jarName(url), _ -> {
+                final Object computedManifest = this.manifests.computeIfAbsent(jarName(url), $ -> {
                     try {
                         final Manifest m = ((JarURLConnection) url.openConnection()).getManifest();
                         return requireNonNullElse(m, MISSING_MANIFEST);

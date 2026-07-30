@@ -1,23 +1,17 @@
 package org.bukkit.entity;
 
-import io.papermc.paper.datacomponent.DataComponentTypes;
-import java.util.UUID;
-import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.FireworkMeta;
-import org.jetbrains.annotations.ApiStatus;
-import org.jspecify.annotations.NullMarked;
-import org.jspecify.annotations.Nullable;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
-@NullMarked
 public interface Firework extends Projectile {
 
     /**
      * Get a copy of the fireworks meta
      *
      * @return A copy of the current Firework meta
-     * @apiNote obsolete in favor of {@link #getItem()} / {@link #setItem(ItemStack)} with the equivalent {@link DataComponentTypes#FIREWORKS} component
      */
-    @ApiStatus.Obsolete
+    @NotNull
     FireworkMeta getFireworkMeta();
 
     /**
@@ -26,10 +20,8 @@ public interface Firework extends Projectile {
      * Adjusts detonation ticks automatically.
      *
      * @param meta The FireworkMeta to apply
-     * @apiNote obsolete in favor of {@link #getItem()} / {@link #setItem(ItemStack)} with the equivalent {@link DataComponentTypes#FIREWORKS} component
      */
-    @ApiStatus.Obsolete
-    void setFireworkMeta(FireworkMeta meta);
+    void setFireworkMeta(@NotNull FireworkMeta meta);
 
     /**
      * Set the {@link LivingEntity} to which this firework is attached.
@@ -56,7 +48,8 @@ public interface Firework extends Projectile {
      *
      * @return the attached entity, or null if none
      */
-    @Nullable LivingEntity getAttachedTo();
+    @Nullable
+    LivingEntity getAttachedTo();
 
     /**
      * Set the ticks that this firework has been alive. If this value exceeds
@@ -66,7 +59,7 @@ public interface Firework extends Projectile {
      * @deprecated use {@link #setTicksFlown(int)}
      * @return true if the life was set, false if this firework has already detonated
      */
-    @Deprecated(forRemoval = true, since = "1.18.2")
+    @Deprecated(forRemoval = true) // Paper
     boolean setLife(int ticks);
 
     /**
@@ -76,10 +69,8 @@ public interface Firework extends Projectile {
      * @deprecated use {@link #getTicksFlown()}
      * @return the life ticks
      */
-    @Deprecated(forRemoval = true, since = "1.18.2")
-    default int getLife() {
-        return this.getTicksFlown();
-    }
+    @Deprecated(forRemoval = true) // Paper
+    int getLife();
 
     /**
      * Set the time in ticks this firework will exist until it is detonated.
@@ -88,7 +79,7 @@ public interface Firework extends Projectile {
      * @deprecated use {@link #setTicksToDetonate(int)}
      * @return true if the time was set, false if this firework has already detonated
      */
-    @Deprecated(forRemoval = true, since = "1.18.2")
+    @Deprecated(forRemoval = true) // Paper
     boolean setMaxLife(int ticks);
 
     /**
@@ -97,10 +88,8 @@ public interface Firework extends Projectile {
      * @deprecated use {@link #getTicksToDetonate()}
      * @return the maximum life in ticks
      */
-    @Deprecated(forRemoval = true, since = "1.18.2")
-    default int getMaxLife() {
-        return this.getTicksToDetonate();
-    }
+    @Deprecated(forRemoval = true) // Paper
+    int getMaxLife();
 
     /**
      * Cause this firework to explode at earliest opportunity, as if it has no
@@ -133,30 +122,30 @@ public interface Firework extends Projectile {
      */
     void setShotAtAngle(boolean shotAtAngle);
 
-    /**
-     * Retrieves the UUID of the entity responsible for spawning this firework.
-     *
-     * @return the UUID of the spawning entity, or null if no spawning entity is associated
-     */
-    @Nullable UUID getSpawningEntity();
-
+    // Paper start
+    @org.jetbrains.annotations.Nullable
+    public java.util.UUID getSpawningEntity();
     /**
      * If this firework is boosting an entity, return it
      * @deprecated use {@link #getAttachedTo()}
      * @see #setAttachedTo(LivingEntity)
      * @return The entity being boosted
      */
-    @Deprecated(since = "1.18.2")
-    default @Nullable LivingEntity getBoostedEntity() {
-        return this.getAttachedTo();
+    @org.jetbrains.annotations.Nullable
+    @Deprecated
+    default LivingEntity getBoostedEntity() {
+        return getAttachedTo();
     }
+    // Paper end
 
+    // Paper start - Firework API
     /**
      * Gets the item used in the firework.
      *
      * @return firework item
      */
-    ItemStack getItem();
+    @NotNull
+    public org.bukkit.inventory.ItemStack getItem();
 
     /**
      * Sets the item used in the firework.
@@ -165,7 +154,7 @@ public interface Firework extends Projectile {
      *
      * @param itemStack item to set
      */
-    void setItem(@Nullable ItemStack itemStack);
+    void setItem(@org.jetbrains.annotations.Nullable org.bukkit.inventory.ItemStack itemStack);
 
     /**
      * Gets the number of ticks the firework has flown.
@@ -195,4 +184,5 @@ public interface Firework extends Projectile {
      * @param ticks ticks to detonate on
      */
     void setTicksToDetonate(int ticks);
+    // Paper end
 }

@@ -10,5 +10,5 @@
 +    }
 +    // Paper end - Anti-Xray
  
-     public ClientboundLevelChunkWithLightPacket(
-         final LevelChunk levelChunk,
+     public ClientboundLevelChunkWithLightPacket(LevelChunk chunk, LevelLightEngine lightEngine, @Nullable BitSet skyLight, @Nullable BitSet blockLight) {
+         ChunkPos pos = chunk.getPos();

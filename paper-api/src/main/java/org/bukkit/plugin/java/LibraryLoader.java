@@ -46,7 +46,8 @@ public class LibraryLoader {
     private final RepositorySystem repository;
     private final DefaultRepositorySystemSession session;
     private final List<RemoteRepository> repositories;
-    public static java.util.function.BiFunction<URL[], ClassLoader, URLClassLoader> LIBRARY_LOADER_FACTORY; // Paper - bytecode rewriting hook
+    public static java.util.function.BiFunction<URL[], ClassLoader, URLClassLoader> LIBRARY_LOADER_FACTORY; // Paper - rewrite reflection in libraries
+    public static java.util.function.Function<List<java.nio.file.Path>, List<java.nio.file.Path>> REMAPPER; // Paper - remap libraries
 
     private static List<RemoteRepository> getRepositories() {
         return List.of(new RemoteRepository.Builder("central", "default", MavenLibraryResolver.MAVEN_CENTRAL_DEFAULT_MIRROR).build());
@@ -130,6 +131,9 @@ public class LibraryLoader {
                 jarPaths.add(artifact.getArtifact().getFile().toPath());
             }
         }
+        if (REMAPPER != null) {
+            jarPaths = REMAPPER.apply(jarPaths);
+        }
         for (java.nio.file.Path path : jarPaths) {
             File file = path.toFile();
             // Paper end - remap libraries
@@ -148,14 +152,14 @@ public class LibraryLoader {
                 });
         }
 
-        // Paper start - bytecode rewriting hook
+        // Paper start - rewrite reflection in libraries
         URLClassLoader loader;
         if (LIBRARY_LOADER_FACTORY == null) {
             loader = new URLClassLoader(jarFiles.toArray(new URL[jarFiles.size()]), getClass().getClassLoader());
         } else {
             loader = LIBRARY_LOADER_FACTORY.apply(jarFiles.toArray(new URL[jarFiles.size()]), getClass().getClassLoader());
         }
-        // Paper end - bytecode rewriting hook
+        // Paper end - rewrite reflection in libraries
 
         return loader;
     }

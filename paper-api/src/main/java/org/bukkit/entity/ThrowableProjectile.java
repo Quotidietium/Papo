@@ -1,9 +1,8 @@
 package org.bukkit.entity;
 
 import org.bukkit.inventory.ItemStack;
-import org.jspecify.annotations.NullMarked;
+import org.jetbrains.annotations.NotNull;
 
-@NullMarked
 public interface ThrowableProjectile extends Projectile {
 
     /**
@@ -11,6 +10,7 @@ public interface ThrowableProjectile extends Projectile {
      *
      * @return The thrown item display ItemStack
      */
+    @NotNull
     ItemStack getItem();
 
     /**
@@ -18,5 +18,5 @@ public interface ThrowableProjectile extends Projectile {
      *
      * @param item ItemStack set to be displayed
      */
-    void setItem(ItemStack item);
+    void setItem(@NotNull ItemStack item);
 }

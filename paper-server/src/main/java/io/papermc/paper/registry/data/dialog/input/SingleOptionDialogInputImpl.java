@@ -7,8 +7,6 @@ import net.minecraft.commands.functions.StringTemplate;
 import net.minecraft.server.dialog.body.PlainMessage;
 import org.jspecify.annotations.Nullable;
 
-import static io.papermc.paper.util.BoundChecker.requireRange;
-
 public record SingleOptionDialogInputImpl(
     String key,
     int width,
@@ -44,7 +42,8 @@ public record SingleOptionDialogInputImpl(
 
         @Override
         public BuilderImpl width(final int width) {
-            this.width = requireRange(width, "width", 1, 1024);
+            Preconditions.checkArgument(width >= 1 && width <= 1024, "width must be between 1 and 1024");
+            this.width = width;
             return this;
         }
 

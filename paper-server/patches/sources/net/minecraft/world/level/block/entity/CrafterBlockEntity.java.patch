@@ -39,12 +39,12 @@
 +    }
 +
 +    @Override
-+    public org.bukkit.@org.jspecify.annotations.Nullable Location getLocation() {
++    public @javax.annotation.Nullable org.bukkit.Location getLocation() {
 +        if (this.level == null) return null;
 +        return org.bukkit.craftbukkit.util.CraftLocation.toBukkit(this.worldPosition, this.level);
 +    }
 +    // CraftBukkit end
 +
-     public CrafterBlockEntity(final BlockPos worldPosition, final BlockState blockState) {
-         super(BlockEntityTypes.CRAFTER, worldPosition, blockState);
+     public CrafterBlockEntity(BlockPos pos, BlockState blockState) {
+         super(BlockEntityType.CRAFTER, pos, blockState);
      }

@@ -1,18 +1,18 @@
 --- a/net/minecraft/gametest/framework/GameTestServer.java
 +++ b/net/minecraft/gametest/framework/GameTestServer.java
-@@ -156,6 +_,8 @@
-         final int repeatCount
+@@ -146,6 +_,8 @@
+         boolean verify
      ) {
          super(
 +            null, // Paper
 +            null, // Paper
              serverThread,
-             levelStorageSource,
+             storageSource,
              packRepository,
-@@ -175,9 +_,17 @@
+@@ -161,9 +_,17 @@
  
      @Override
-     protected boolean initServer() {
+     public boolean initServer() {
 -        this.setPlayerList(new PlayerList(this, this.registries(), this.playerDataStorage, new EmptyNotificationService()) {});
 +        // Paper start
 +        this.setPlayerList(new PlayerList(this, this.registries(), this.playerDataStorage, new EmptyNotificationService()) {
@@ -26,10 +26,10 @@
 -        this.loadLevel();
 +        this.loadLevel("blah");
 +        // Paper end
-         ServerLevel level = this.overworld();
-         this.testBatches = this.evaluateTestsToRun(level);
+         ServerLevel serverLevel = this.overworld();
+         this.testBatches = this.evaluateTestsToRun(serverLevel);
          LOGGER.info("Started game test server");
-@@ -393,6 +_,13 @@
+@@ -348,6 +_,13 @@
          return false;
      }
  
@@ -41,9 +41,9 @@
 +    // Paper end
 +
      @Override
-     public boolean isSingleplayerOwner(final NameAndId nameAndId) {
+     public boolean isSingleplayerOwner(NameAndId nameAndId) {
          return false;
-@@ -440,5 +_,16 @@
+@@ -395,5 +_,16 @@
          @Override
          public void save() {
          }

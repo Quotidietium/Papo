@@ -8,6 +8,7 @@ import net.minecraft.world.item.component.InstrumentComponent;
 import org.bukkit.MusicInstrument;
 import org.bukkit.configuration.serialization.DelegateDeserialization;
 import org.bukkit.craftbukkit.CraftMusicInstrument;
+import org.bukkit.craftbukkit.CraftRegistry;
 import org.bukkit.inventory.meta.MusicInstrumentMeta;
 
 @DelegateDeserialization(SerializableMeta.class)
@@ -24,11 +25,12 @@ public class CraftMetaMusicInstrument extends CraftMetaItem implements MusicInst
         }
     }
 
-    CraftMetaMusicInstrument(DataComponentPatch patch, java.util.Set<net.minecraft.core.component.DataComponentType<?>> extraHandledComponents) { // Paper
-        super(patch, extraHandledComponents); // Paper
+    CraftMetaMusicInstrument(DataComponentPatch tag, java.util.Set<net.minecraft.core.component.DataComponentType<?>> extraHandledDcts) { // Paper
+        super(tag, extraHandledDcts); // Paper
 
-        getOrEmpty(patch, CraftMetaMusicInstrument.GOAT_HORN_INSTRUMENT).ifPresent((instrumentComponent) -> {
-            this.instrument = CraftMusicInstrument.minecraftHolderToBukkit(instrumentComponent.instrument());
+        getOrEmpty(tag, CraftMetaMusicInstrument.GOAT_HORN_INSTRUMENT).ifPresent((en) -> {
+            en.instrument().unwrap(CraftRegistry.getMinecraftRegistry())
+                .ifPresent(instrument -> this.instrument = CraftMusicInstrument.minecraftHolderToBukkit(instrument));
         });
     }
 

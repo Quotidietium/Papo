@@ -57,12 +57,11 @@ public interface Vex extends Monster {
      * Gets the remaining lifespan of this entity.
      *
      * @return life in ticks
-     * @deprecated use {@link #getLimitedLifetimeTicks()}
+     * @deprecated This API duplicates existing API which uses the more
+     * preferable name due to mirroring internals better
      */
     @Deprecated
-    default int getLifeTicks() {
-        return this.getLimitedLifetimeTicks();
-    }
+    int getLifeTicks();
 
     /**
      * Sets the remaining lifespan of this entity.
@@ -78,50 +77,27 @@ public interface Vex extends Monster {
      * Gets if the entity has a limited life.
      *
      * @return true if the entity has limited life
-     * @deprecated use {@link #hasLimitedLifetime()}
+     * @deprecated This API duplicates existing API which uses the more
+     * preferable name due to mirroring internals better
      */
     @Deprecated
-    default boolean hasLimitedLife() {
-        return this.hasLimitedLifetime();
-    }
+    boolean hasLimitedLife();
     // Paper start
 
     /**
-     * Gets the Mob that summoned this vex
+     * Get the Mob that summoned this vex
      *
-     * @return mob that summoned this vex
-     * @deprecated use {@link #getOwner()}
+     * @return Mob that summoned this vex
      */
-    @Deprecated(forRemoval = true, since = "26.2")
-    default @Nullable Mob getSummoner() {
-        return this.getOwner() instanceof Mob mob ? mob : null;
-    }
+    @Nullable
+    Mob getSummoner();
 
     /**
-     * Sets the summoner of this vex
+     * Set the summoner of this vex
      *
-     * @param summoner new summoner
-     * @deprecated use {@link #setOwner(LivingEntity)}
+     * @param summoner New summoner
      */
-    @Deprecated(forRemoval = true, since = "26.2")
-    default void setSummoner(final @Nullable Mob summoner) {
-        this.setOwner(summoner);
-    }
-
-    /**
-     * Gets the owner of this vex which is
-     * often its summoner.
-     *
-     * @return new owner
-     */
-    @Nullable LivingEntity getOwner();
-
-    /**
-     * Sets the owner of this vex.
-     *
-     * @param owner new owner
-     */
-    void setOwner(@Nullable LivingEntity owner);
+    void setSummoner(@Nullable Mob summoner);
 
     /**
      * Gets if this vex should start to take damage

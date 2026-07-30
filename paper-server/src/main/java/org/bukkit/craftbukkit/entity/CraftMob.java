@@ -3,9 +3,7 @@ package org.bukkit.craftbukkit.entity;
 import com.google.common.base.Preconditions;
 import java.util.Optional;
 import net.kyori.adventure.util.TriState;
-import net.minecraft.Optionull;
 import net.minecraft.sounds.SoundEvent;
-import net.minecraft.world.entity.Entity;
 import org.bukkit.Sound;
 import org.bukkit.craftbukkit.CraftLootTable;
 import org.bukkit.craftbukkit.CraftServer;
@@ -36,16 +34,18 @@ public abstract class CraftMob extends CraftLivingEntity implements Mob, io.pape
 
     @Override
     public boolean shouldDespawnInPeaceful() {
-        return !this.getHandle().getType().isAllowedInPeaceful(); // todo should be in the entity type at some point
+        return this.getHandle().shouldDespawnInPeaceful();
     }
 
     @Override
     public void setDespawnInPeacefulOverride(final TriState state) {
+        Preconditions.checkArgument(state != null, "TriState cannot be null");
+        this.getHandle().despawnInPeacefulOverride = state;
     }
 
     @Override
     public TriState getDespawnInPeacefulOverride() {
-        return TriState.NOT_SET;
+        return this.getHandle().despawnInPeacefulOverride;
     }
 
     @Override
@@ -66,8 +66,10 @@ public abstract class CraftMob extends CraftLivingEntity implements Mob, io.pape
     }
 
     @Override
-    public LivingEntity getTarget() {
-        return (LivingEntity) Optionull.map(this.getHandle().getTarget(), Entity::getBukkitEntity);
+    public CraftLivingEntity getTarget() {
+        if (this.getHandle().getTarget() == null) return null;
+
+        return (CraftLivingEntity) this.getHandle().getTarget().getBukkitEntity();
     }
 
     @Override
@@ -103,7 +105,7 @@ public abstract class CraftMob extends CraftLivingEntity implements Mob, io.pape
 
     @Override
     public long getSeed() {
-        return this.getHandle().getLootTableSeed();
+        return this.getHandle().lootTableSeed;
     }
 
     @Override

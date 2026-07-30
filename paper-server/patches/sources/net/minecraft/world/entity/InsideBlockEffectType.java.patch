@@ -18,11 +18,11 @@
 -    private final Consumer<Entity> effect;
 +    private final Applier effect; // Paper - track position inside effect was triggered on
  
-     InsideBlockEffectType(final Consumer<Entity> effect) {
+     private InsideBlockEffectType(final Consumer<Entity> effect) {
 +    // Paper start - track position inside effect was triggered on
 +        this((entity, block) -> effect.accept(entity));
 +    }
-+    InsideBlockEffectType(final Applier effect) {
++    private InsideBlockEffectType(final Applier effect) {
 +    // Paper end - track position inside effect was triggered on
          this.effect = effect;
      }

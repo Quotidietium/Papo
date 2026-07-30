@@ -4,7 +4,6 @@ import static org.bukkit.support.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import java.lang.reflect.Field;
-import java.lang.reflect.ParameterizedType;
 import org.bukkit.Material;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.ItemType;
@@ -25,11 +24,10 @@ public class ItemTypeTest {
     @Test
     public void testItemMetaClasses() throws Exception {
         for (Field f : ItemType.class.getDeclaredFields()) {
-            if (!ItemType.Typed.class.isAssignableFrom(f.getType())) {
+            ItemType type = (ItemType) f.get(null);
+            if (type == ItemType.AIR) {
                 continue;
             }
-
-            ItemType type = (ItemType) f.get(null);
 
             ItemMeta meta = new ItemStack(type.asMaterial()).getItemMeta();
             Class<?> internal = meta == null ? CraftMetaItem.class : meta.getClass();
@@ -42,13 +40,10 @@ public class ItemTypeTest {
             }
 
             Class<?> actual = type.getItemMetaClass();
-            assertThat(actual, is(expected), "Bad registered item meta class for item type " + type.getKey());
-            if (f.getGenericType() instanceof ParameterizedType paramType) {
-                assertThat(paramType.getActualTypeArguments()[0], is(expected), "Bad generic type for item type " + type.getKey());
-            }
+            assertThat(actual, is(expected));
         }
 
-        assertThrows(UnsupportedOperationException.class, ItemType.AIR::getItemMetaClass);
+        assertThrows(UnsupportedOperationException.class, () -> ItemType.AIR.getItemMetaClass());
     }
 
     @Test

@@ -4,7 +4,7 @@ import io.papermc.generator.utils.BlockEntityMapping;
 import io.papermc.generator.utils.Formatting;
 import io.papermc.typewriter.replace.SearchMetadata;
 import io.papermc.typewriter.replace.SearchReplaceRewriter;
-import net.minecraft.world.level.block.entity.BlockEntityTypes;
+import net.minecraft.world.level.block.entity.BlockEntityType;
 
 public class CraftBlockEntityStateMapping extends SearchReplaceRewriter {
 
@@ -13,7 +13,7 @@ public class CraftBlockEntityStateMapping extends SearchReplaceRewriter {
         BlockEntityMapping.MAPPING.entrySet().stream().sorted(Formatting.alphabeticKeyOrder(entry -> entry.getKey().identifier().getPath())).forEach(entry -> {
             builder.append(metadata.indent());
             builder.append("register(%s.%s, %s.class, %s::new);".formatted(
-                BlockEntityTypes.class.getSimpleName(), Formatting.formatKeyAsField(entry.getKey().identifier().getPath()),
+                BlockEntityType.class.getSimpleName(), Formatting.formatKeyAsField(entry.getKey().identifier().getPath()),
                 entry.getValue(), entry.getValue()));
             builder.append('\n');
         });

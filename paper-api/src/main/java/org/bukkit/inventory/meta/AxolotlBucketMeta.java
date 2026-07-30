@@ -1,23 +1,21 @@
 package org.bukkit.inventory.meta;
 
 import org.bukkit.entity.Axolotl;
-import org.jspecify.annotations.NullMarked;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * Represents a bucket of axolotl.
  */
-@NullMarked
 public interface AxolotlBucketMeta extends ItemMeta {
 
     /**
      * Get the variant of the axolotl in the bucket.
      * <p>
-     * Plugins should check that hasVariant() returns {@code true} before
+     * Plugins should check that hasVariant() returns <code>true</code> before
      * calling this method.
-     *
      * @return axolotl variant
-     * @throws IllegalStateException if hasVariant() returns {@code false}
      */
+    @NotNull
     Axolotl.Variant getVariant();
 
     /**
@@ -25,10 +23,10 @@ public interface AxolotlBucketMeta extends ItemMeta {
      *
      * @param variant axolotl variant
      */
-    void setVariant(Axolotl.Variant variant);
+    void setVariant(@NotNull Axolotl.Variant variant);
 
     /**
-     * Checks for the existence of a variant indicating a specific axolotl will be
+     * Checks for existence of a variant tag indicating a specific axolotl will be
      * spawned.
      *
      * @return if there is a variant
@@ -36,5 +34,6 @@ public interface AxolotlBucketMeta extends ItemMeta {
     boolean hasVariant();
 
     @Override
+    @NotNull
     AxolotlBucketMeta clone();
 }

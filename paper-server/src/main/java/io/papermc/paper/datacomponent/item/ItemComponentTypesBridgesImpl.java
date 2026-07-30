@@ -2,9 +2,11 @@ package io.papermc.paper.datacomponent.item;
 
 import com.destroystokyo.paper.profile.PlayerProfile;
 import com.google.common.base.Preconditions;
+import io.papermc.paper.registry.PaperRegistries;
 import io.papermc.paper.registry.data.util.Conversions;
 import io.papermc.paper.registry.set.PaperRegistrySets;
 import io.papermc.paper.registry.set.RegistryKeySet;
+import io.papermc.paper.registry.tag.TagKey;
 import io.papermc.paper.text.Filtered;
 import net.kyori.adventure.key.Key;
 import net.kyori.adventure.util.TriState;
@@ -20,10 +22,6 @@ import org.bukkit.inventory.ItemType;
 import org.bukkit.inventory.meta.trim.ArmorTrim;
 import org.bukkit.map.MapCursor;
 import org.jspecify.annotations.Nullable;
-
-import static io.papermc.paper.util.BoundChecker.requireNonNegative;
-import static io.papermc.paper.util.BoundChecker.requirePositive;
-import static io.papermc.paper.util.BoundChecker.requireRange;
 
 public final class ItemComponentTypesBridgesImpl implements ItemComponentTypesBridge {
 
@@ -183,11 +181,11 @@ public final class ItemComponentTypesBridgesImpl implements ItemComponentTypesBr
     }
 
     @Override
-    public UseRemainder useRemainder(final ItemStack item) {
-        Preconditions.checkArgument(item != null, "item cannot be null");
-        Preconditions.checkArgument(!item.isEmpty(), "item cannot be empty!");
+    public UseRemainder useRemainder(final ItemStack stack) {
+        Preconditions.checkArgument(stack != null, "Item cannot be null");
+        Preconditions.checkArgument(!stack.isEmpty(), "Remaining item cannot be empty!");
         return new PaperUseRemainder(
-            new net.minecraft.world.item.component.UseRemainder(CraftItemStack.asTemplate(item))
+            new net.minecraft.world.item.component.UseRemainder(CraftItemStack.asNMSCopy(stack))
         );
     }
 
@@ -198,12 +196,13 @@ public final class ItemComponentTypesBridgesImpl implements ItemComponentTypesBr
 
     @Override
     public UseCooldown.Builder useCooldown(final float seconds) {
-        return new PaperUseCooldown.BuilderImpl(requirePositive(seconds, "seconds"));
+        Preconditions.checkArgument(seconds > 0, "seconds must be positive, was %s", seconds);
+        return new PaperUseCooldown.BuilderImpl(seconds);
     }
 
     @Override
-    public DamageResistant damageResistant(final RegistryKeySet<DamageType> types) {
-        return new PaperDamageResistant(new net.minecraft.world.item.component.DamageResistant(PaperRegistrySets.convertToNms(Registries.DAMAGE_TYPE, Conversions.global().lookup(), types)));
+    public DamageResistant damageResistant(final TagKey<DamageType> types) {
+        return new PaperDamageResistant(new net.minecraft.world.item.component.DamageResistant(PaperRegistries.toNms(types)));
     }
 
     @Override
@@ -235,8 +234,11 @@ public final class ItemComponentTypesBridgesImpl implements ItemComponentTypesBr
 
     @Override
     public PaperOminousBottleAmplifier ominousBottleAmplifier(final int amplifier) {
+        Preconditions.checkArgument(OminousBottleAmplifier.MIN_AMPLIFIER <= amplifier && amplifier <= OminousBottleAmplifier.MAX_AMPLIFIER,
+            "amplifier must be between %s-%s, was %s", OminousBottleAmplifier.MIN_AMPLIFIER, OminousBottleAmplifier.MAX_AMPLIFIER, amplifier
+        );
         return new PaperOminousBottleAmplifier(
-            new OminousBottleAmplifier(requireRange(amplifier, "amplifier", OminousBottleAmplifier.MIN_AMPLIFIER, OminousBottleAmplifier.MAX_AMPLIFIER))
+            new OminousBottleAmplifier(amplifier)
         );
     }
 
@@ -282,15 +284,9 @@ public final class ItemComponentTypesBridgesImpl implements ItemComponentTypesBr
 
     @Override
     public KineticWeapon.Condition kineticWeaponCondition(int maxDurationTicks, float minSpeed, float minRelativeSpeed) {
+        Preconditions.checkArgument(maxDurationTicks >= 0, "maxDurationTicks must be non-negative");
         return new PaperKineticWeapon.PaperKineticWeaponCondition(new net.minecraft.world.item.component.KineticWeapon.Condition(
-            maxDurationTicks, minSpeed, requireNonNegative(minRelativeSpeed, "minRelativeSpeed")
+                maxDurationTicks, minSpeed, minRelativeSpeed
         ));
-    }
-
-    @Override
-    public SulfurCubeContent sulfurCubeContent(final ItemStack absorbedItem) {
-        Preconditions.checkArgument(absorbedItem != null, "absorbedItem cannot be null");
-        Preconditions.checkArgument(!absorbedItem.isEmpty(), "absorbedItem cannot be empty");
-        return new PaperSulfurCubeContent(new net.minecraft.world.item.component.SulfurCubeContent(CraftItemStack.asTemplate(absorbedItem)));
     }
 }

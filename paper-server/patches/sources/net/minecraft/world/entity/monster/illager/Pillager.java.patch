@@ -2,10 +2,10 @@
 +++ b/net/minecraft/world/entity/monster/illager/Pillager.java
 @@ -215,7 +_,7 @@
              this.onItemPickup(entity);
-             ItemStack remainder = this.inventory.addItem(itemStack);
-             if (remainder.isEmpty()) {
+             ItemStack itemStack = this.inventory.addItem(item);
+             if (itemStack.isEmpty()) {
 -                entity.discard();
 +                entity.discard(org.bukkit.event.entity.EntityRemoveEvent.Cause.PICKUP); // CraftBukkit - add Bukkit remove cause
              } else {
-                 itemStack.setCount(remainder.getCount());
+                 item.setCount(itemStack.getCount());
              }

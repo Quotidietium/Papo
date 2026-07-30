@@ -6,32 +6,31 @@ package org.bukkit.entity;
 public interface Tadpole extends Fish {
 
     /**
-     * Gets the age of this tadpole.
+     * Gets the age of this mob.
      *
      * @return Age
      */
     public int getAge();
 
     /**
-     * Sets the age of this tadpole.
+     * Sets the age of this mob.
      *
      * @param age New age
      */
     public void setAge(int age);
 
     /**
-     * Lock the age of the tadpole, setting this will prevent the tadpole from
-     * maturing. Plugins can still increase the age manually, however.
+     * Lock the age of the animal, setting this will prevent the animal from
+     * maturing.
      *
-     * @param lock new lock state
+     * @param lock new lock
      */
     void setAgeLock(boolean lock);
 
     /**
-     * Checks if the age of the tadpole is locked.
+     * Gets the current agelock.
      *
-     * @return the current lock state
-     * @see #setAgeLock(boolean)
+     * @return the current agelock
      */
     boolean getAgeLock();
 }

@@ -1,12 +1,9 @@
 package org.bukkit;
 
 import com.google.common.base.Enums;
-import java.util.HashMap;
-import java.util.List;
+import com.google.common.collect.Maps;
 import java.util.Map;
 import org.bukkit.block.BlockFace;
-import org.bukkit.block.data.BlockData;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -15,28 +12,26 @@ import org.jetbrains.annotations.Nullable;
  */
 public enum Effect {
     /**
-     * Sound when a dispenser interaction succeeded.
+     * An alternate click sound.
      */
-    DISPENSER_DISPENSE(1000, Type.SOUND),
+    CLICK2(1000, Type.SOUND),
     /**
-     * Sound when a dispenser interaction failed.
+     * A click sound.
      */
-    DISPENSER_FAIL(1001, Type.SOUND),
+    CLICK1(1001, Type.SOUND),
     /**
-     * Sound when a projectile is launched from a dispenser.
+     * Sound of a bow firing.
      */
-    DISPENSER_PROJECTILE_LAUNCH(1002, Type.SOUND),
+    BOW_FIRE(1002, Type.SOUND),
     /**
      * Sound of a door opening.
-     *
      * @deprecated no longer exists
      * @see Sound#BLOCK_WOODEN_DOOR_OPEN
      */
     @Deprecated(since = "1.19.3", forRemoval = true)
     DOOR_TOGGLE(1006, Type.SOUND),
     /**
-     * Sound of an iron door opening.
-     *
+     * Sound of a door opening.
      * @deprecated no longer exists
      * @see Sound#BLOCK_IRON_DOOR_OPEN
      */
@@ -44,23 +39,20 @@ public enum Effect {
     IRON_DOOR_TOGGLE(1005, Type.SOUND),
     /**
      * Sound of a trapdoor opening.
-     *
      * @deprecated no longer exists
      * @see Sound#BLOCK_WOODEN_TRAPDOOR_OPEN
      */
     @Deprecated(since = "1.19.3", forRemoval = true)
     TRAPDOOR_TOGGLE(1007, Type.SOUND),
     /**
-     * Sound of an iron trapdoor opening.
-     *
+     * Sound of a door opening.
      * @deprecated no longer exists
      * @see Sound#BLOCK_IRON_TRAPDOOR_OPEN
      */
     @Deprecated(since = "1.19.3", forRemoval = true)
     IRON_TRAPDOOR_TOGGLE(1037, Type.SOUND),
     /**
-     * Sound of a fence gate opening.
-     *
+     * Sound of a door opening.
      * @deprecated no longer exists
      * @see Sound#BLOCK_FENCE_GATE_OPEN
      */
@@ -68,15 +60,13 @@ public enum Effect {
     FENCE_GATE_TOGGLE(1008, Type.SOUND),
     /**
      * Sound of a door closing.
-     *
      * @deprecated no longer exists
      * @see Sound#BLOCK_WOODEN_DOOR_CLOSE
      */
     @Deprecated(since = "1.19.3", forRemoval = true)
     DOOR_CLOSE(1012, Type.SOUND),
     /**
-     * Sound of an iron door closing.
-     *
+     * Sound of a door closing.
      * @deprecated no longer exists
      * @see Sound#BLOCK_IRON_DOOR_CLOSE
      */
@@ -84,53 +74,33 @@ public enum Effect {
     IRON_DOOR_CLOSE(1011, Type.SOUND),
     /**
      * Sound of a trapdoor closing.
-     *
      * @deprecated no longer exists
      * @see Sound#BLOCK_WOODEN_TRAPDOOR_CLOSE
      */
     @Deprecated(since = "1.19.3", forRemoval = true)
     TRAPDOOR_CLOSE(1013, Type.SOUND),
     /**
-     * Sound of an iron trapdoor closing.
-     *
+     * Sound of a door closing.
      * @deprecated no longer exists
      * @see Sound#BLOCK_IRON_TRAPDOOR_CLOSE
      */
     @Deprecated(since = "1.19.3", forRemoval = true)
     IRON_TRAPDOOR_CLOSE(1036, Type.SOUND),
     /**
-     * Sound of a fence gate closing.
-     *
+     * Sound of a door closing.
      * @deprecated no longer exists
      * @see Sound#BLOCK_FENCE_GATE_CLOSE
      */
     @Deprecated(since = "1.19.3", forRemoval = true)
     FENCE_GATE_CLOSE(1014, Type.SOUND),
     /**
-     * The sound played when launching an ender eye.
-     *
-     * @deprecated no longer exists
-     */
-    @Deprecated(since = "1.21", forRemoval = true)
-    ENDEREYE_LAUNCH(1003, Type.SOUND),
-    /**
-     * The sound played when launching a firework.
-     */
-    FIREWORK_SHOOT(1004, Type.SOUND),
-    /**
      * Sound of fire being extinguished.
-     * {@link Boolean} param is true if the fire is extinguished by the powder snow.
      */
-    EXTINGUISH(1009, Type.SOUND, Boolean.class),
+    EXTINGUISH(1009, Type.SOUND),
     /**
-     * Play a song from a jukebox.
-     * {@link JukeboxSong} param is the song to play.
+     * A song from a record. Needs the record {@link Material} as additional info.
      */
-    RECORD_PLAY(1010, Type.SOUND, JukeboxSong.class, Material.class), // jukebox song is more correct, but the impl of the methods will still work with Material
-    /**
-     * Stop the song currently played.
-     */
-    RECORD_STOP(1011, Type.SOUND),
+    RECORD_PLAY(1010, Type.SOUND, Material.class),
     /**
      * Sound of ghast shrieking.
      */
@@ -139,10 +109,6 @@ public enum Effect {
      * Sound of ghast firing.
      */
     GHAST_SHOOT(1016, Type.SOUND),
-    /**
-     * Sound of an ender dragon firing.
-     */
-    ENDER_DRAGON_SHOOT(1017, Type.SOUND),
     /**
      * Sound of blaze firing.
      */
@@ -160,65 +126,115 @@ public enum Effect {
      */
     ZOMBIE_DESTROY_DOOR(1021, Type.SOUND),
     /**
-     * Sound played when a wither breaks a block.
+     * A visual smoke effect. Needs a {@link BlockFace} direction as additional info.
      */
-    WITHER_BREAK_BLOCK(1022, Type.SOUND),
+    SMOKE(2000, Type.VISUAL, BlockFace.class),
     /**
-     * Sound of a wither spawning.
+     * Sound of a block breaking. Needs {@link org.bukkit.block.data.BlockData} as additional info.
      */
-    WITHER_SPAWNED(1023, Type.SOUND),
+    STEP_SOUND(2001, Type.SOUND, org.bukkit.block.data.BlockData.class, Material.class), // Paper - block data is more correct, but the impl of the mtehods will still work with Material
     /**
-     * Sound of a wither shooting.
+     * Visual effect of a splash potion breaking. Needs {@link Color} data value as
+     * additional info.
      */
-    WITHER_SHOOT(1024, Type.SOUND),
+    POTION_BREAK(2002, Type.VISUAL, Color.class),
     /**
-     * Sound played by a bat taking off.
+     * Visual effect of an instant splash potion breaking. Needs {@link Color} data
+     * value as additional info.
      */
-    BAT_TAKEOFF(1025, Type.SOUND),
+    INSTANT_POTION_BREAK(2007, Type.VISUAL, Color.class),
     /**
-     * The sound played when a zombie infects a target.
+     * An ender eye signal; a visual effect.
      */
-    ZOMBIE_INFECT(1026, Type.SOUND),
+    ENDER_SIGNAL(2003, Type.VISUAL),
     /**
-     * The sound played when a villager is converted by a zombie.
+     * The flames seen on a mobspawner; a visual effect.
      */
-    ZOMBIE_CONVERTED_TO_VILLAGER(1027, Type.SOUND),
+    MOBSPAWNER_FLAMES(2004, Type.VISUAL),
     /**
-     * The sound of an ender dragon dying.
-     */
-    ENDER_DRAGON_DEATH(1028, Type.SOUND),
-    /**
-     * The sound played when an anvil breaks.
-     */
-    ANVIL_BREAK(1029, Type.SOUND),
-    /**
-     * The sound played when an anvil is used.
-     */
-    ANVIL_USE(1030, Type.SOUND),
-    /**
-     * The sound played when an anvil lands after falling.
-     */
-    ANVIL_LAND(1031, Type.SOUND),
-    /**
-     * The sound played when traveling through a portal.
-     */
-    PORTAL_TRAVEL(1032, Type.SOUND),
-    /**
-     * The sound played when a chorus flower grows.
-     */
-    CHORUS_FLOWER_GROW(1033, Type.SOUND),
-    /**
-     * The sound played when a chorus flower dies.
-     */
-    CHORUS_FLOWER_DEATH(1034, Type.SOUND),
-    /**
-     * The sound played by brewing stands when brewing.
+     * The sound played by brewing stands when brewing
      */
     BREWING_STAND_BREW(1035, Type.SOUND),
     /**
-     * The sound of an ender portal being created in the overworld.
+     * The sound played when a chorus flower grows
      */
-    END_PORTAL_CREATED_IN_OVERWORLD(1038, Type.SOUND),
+    CHORUS_FLOWER_GROW(1033, Type.SOUND),
+    /**
+     * The sound played when a chorus flower dies
+     */
+    CHORUS_FLOWER_DEATH(1034, Type.SOUND),
+    /**
+     * The sound played when traveling through a portal
+     */
+    PORTAL_TRAVEL(1032, Type.SOUND),
+    /**
+     * The sound played when launching an endereye
+     * @deprecated No longer exists
+     */
+    @Deprecated(forRemoval = true, since = "1.21") // Paper
+    ENDEREYE_LAUNCH(1003, Type.SOUND),
+    /**
+     * The sound played when launching a firework
+     */
+    FIREWORK_SHOOT(1004, Type.SOUND),
+    /**
+     * Particles displayed when a villager grows a plant, data
+     * is the number of particles
+     * @deprecated partially replaced by {@link #BEE_GROWTH}
+     */
+    @Deprecated(forRemoval = true, since = "1.20.5") // Paper
+    VILLAGER_PLANT_GROW(2005, Type.VISUAL, Integer.class),
+    /**
+     * The sound/particles used by the enderdragon's breath
+     * attack.
+     */
+    DRAGON_BREATH(2006, Type.VISUAL),
+    /**
+     * The sound played when an anvil breaks
+     */
+    ANVIL_BREAK(1029, Type.SOUND),
+    /**
+     * The sound played when an anvil is used
+     */
+    ANVIL_USE(1030, Type.SOUND),
+    /**
+     * The sound played when an anvil lands after
+     * falling
+     */
+    ANVIL_LAND(1031, Type.SOUND),
+    /**
+     * Sound of an enderdragon firing
+     */
+    ENDERDRAGON_SHOOT(1017, Type.SOUND),
+    /**
+     * The sound played when a wither breaks a block
+     */
+    WITHER_BREAK_BLOCK(1022, Type.SOUND),
+    /**
+     * Sound of a wither shooting
+     */
+    WITHER_SHOOT(1024, Type.SOUND),
+    /**
+     * The sound played when a zombie infects a target
+     */
+    ZOMBIE_INFECT(1026, Type.SOUND),
+    /**
+     * The sound played when a villager is converted by
+     * a zombie
+     */
+    ZOMBIE_CONVERTED_VILLAGER(1027, Type.SOUND),
+    /**
+     * Sound played by a bat taking off
+     */
+    BAT_TAKEOFF(1025, Type.SOUND),
+    /**
+     * The sound/particles caused by an end gateway spawning
+     */
+    END_GATEWAY_SPAWN(3000, Type.VISUAL),
+    /**
+     * The sound of an enderdragon growling
+     */
+    ENDERDRAGON_GROWL(3001, Type.SOUND),
     /**
      * The sound played when phantom bites.
      */
@@ -259,19 +275,16 @@ public enum Effect {
      * The sound played when a skeleton converts to a stray.
      */
     SKELETON_CONVERTED_TO_STRAY(1048, Type.SOUND),
-    CRAFTER_CRAFT(1049, Type.SOUND),
-    CRAFTER_FAIL(1050, Type.SOUND),
-    WIND_CHARGE_SHOOT(1051, Type.SOUND),
-    SULFUR_SPIKE_LAND(1052, Type.SOUND),
     /**
      * The sound played / particles shown when a composter is being attempted to
      * fill.
-     * {@link Boolean} param is true for a successful attempt.
+     *
+     * True for a successful attempt false for an unsuccessful attempt.
      */
     COMPOSTER_FILL_ATTEMPT(1500, Type.VISUAL, Boolean.class),
     /**
      * The sound played / particles shown when lava interacts with the world.
-     * <p>
+     *
      * For example by forming stone, obsidian, basalt or destroying blocks such
      * as torches.
      */
@@ -287,7 +300,7 @@ public enum Effect {
     END_PORTAL_FRAME_FILL(1503, Type.VISUAL),
     /**
      * The particles shown when a dripstone drips lava or water.
-     * <p>
+     *
      * This effect requires a dripstone at the location as well as lava or water
      * at the root of the dripstone.
      */
@@ -295,51 +308,10 @@ public enum Effect {
     /**
      * The sound played / particles shown when bone meal is used to grow a
      * plant.
-     * {@link Integer} param is the number of particles.
+     *
+     * Data is the number of particles.
      */
     BONE_MEAL_USE(1505, Type.VISUAL, Integer.class),
-    /**
-     * A visual smoke effect.
-     * {@link BlockFace} param is the direction to shoot.
-     */
-    SMOKE_SHOOT(2000, Type.VISUAL, BlockFace.class),
-    /**
-     * Sound of a block breaking.
-     * {@link BlockData} param is the block being broken.
-     *
-     * @deprecated use {@link #DESTROY_BLOCK}
-     */
-    @Deprecated(since = "26.2", forRemoval = true)
-    STEP_SOUND(2001, Type.SOUND, BlockData.class, Material.class), // block data is more correct, but the impl of the methods will still work with Material
-    /**
-     * Block breaking.
-     * {@link BlockData} param is the block being broken.
-     */
-    DESTROY_BLOCK(2001, Type.VISUAL, BlockData.class),
-    /**
-     * Visual effect of a splash potion breaking.
-     * {@link Color} param is the color of the potion.
-     */
-    POTION_BREAK(2002, Type.VISUAL, Color.class),
-    /**
-     * An ender eye signal; a visual effect.
-     */
-    ENDER_SIGNAL(2003, Type.VISUAL),
-    /**
-     * The flames seen on a mobspawner; a visual effect.
-     */
-    MOBSPAWNER_FLAMES(2004, Type.VISUAL),
-    /**
-     * The sound/particles used by the ender dragon's breath
-     * attack.
-     * {@link Boolean} param is true if the sound is muted.
-     */
-    ENDER_DRAGON_BREATH(2006, Type.VISUAL, Boolean.class),
-    /**
-     * Visual effect of an instant splash potion breaking.
-     * {@link Color} param is the color of the potion.
-     */
-    INSTANT_POTION_BREAK(2007, Type.VISUAL, Color.class),
     /**
      * The particles shown when an ender dragon destroys blocks.
      */
@@ -349,33 +321,10 @@ public enum Effect {
      */
     SPONGE_DRY(2009, Type.VISUAL),
     /**
-     * {@link BlockFace} param is the direction to shoot.
-     */
-    WHITE_SMOKE_SHOOT(2010, Type.VISUAL, BlockFace.class),
-    /**
-     * {@link Integer} param is the number of particles.
-     */
-    BEE_GROWTH(2011, Type.VISUAL, Integer.class),
-    /**
-     * {@link Integer} param is the number of particles.
-     */
-    TURTLE_EGG_PLACEMENT(2012, Type.VISUAL, Integer.class),
-    /**
-     * {@link Integer} param is relative to the number of particles.
-     */
-    SMASH_ATTACK(2013, Type.VISUAL, Integer.class),
-    /**
-     * The sound/particles caused by an end gateway spawning.
-     */
-    END_GATEWAY_SPAWN(3000, Type.VISUAL),
-    /**
-     * The sound of an ender dragon growling.
-     */
-    ENDER_DRAGON_GROWL(3001, Type.SOUND),
-    /**
      * The particles shown when a lightning hits a lightning rod or oxidized
      * copper.
-     * {@link Axis} param is the axis which the particle should be shown. If no data is
+     *
+     * Data is the {@link Axis} at which the particle should be shown. If no data is
      * provided it will show the particles at the block faces.
      */
     ELECTRIC_SPARK(3002, Type.VISUAL, Axis.class),
@@ -388,181 +337,127 @@ public enum Effect {
      */
     COPPER_WAX_OFF(3004, Type.VISUAL),
     /**
-     * The particles shown when oxidation is scraped of an oxidized copper.
+     * The particles shown when oxidation is scraped of an oxidized copper
      * block.
      */
     OXIDISED_COPPER_SCRAPE(3005, Type.VISUAL),
-    SCULK_CHARGE(3006, Type.VISUAL, Integer.class), // not worth to implement properly without a new api
-    SCULK_SHRIEK(3007, Type.SOUND),
+    // Paper start - add missing effects
     /**
-     * {@link BlockData} param is the block being brushed.
+     * The sound of a wither spawning
      */
-    BRUSH_BLOCK_COMPLETE(3008, Type.VISUAL, BlockData.class),
-    EGG_CRACK(3009, Type.VISUAL),
+    WITHER_SPAWNED(1023, Type.SOUND),
     /**
-     * @deprecated no longer exists
+     * The sound of an ender dragon dying
      */
-    @Deprecated(since = "1.20.5", forRemoval = true)
+    ENDER_DRAGON_DEATH(1028, Type.SOUND),
+    /**
+     * The sound of an ender portal being created in the overworld
+     */
+    END_PORTAL_CREATED_IN_OVERWORLD(1038, Type.SOUND),
+
+    SOUND_STOP_JUKEBOX_SONG(1011, Type.SOUND),
+
+    CRAFTER_CRAFT(1049, Type.SOUND),
+
+    CRAFTER_FAIL(1050, Type.SOUND),
+
+    /**
+     * {@link BlockFace} param is the direction to shoot
+     */
+    SHOOT_WHITE_SMOKE(2010, Type.VISUAL, BlockFace.class),
+
+    /**
+     * {@link Integer} param is the number of particles
+     */
+    BEE_GROWTH(2011, Type.VISUAL, Integer.class),
+
+    /**
+     * {@link Integer} param is the number of particles
+     */
+    TURTLE_EGG_PLACEMENT(2012, Type.VISUAL, Integer.class),
+
+    /**
+     * {@link Integer} param is relative to the number of particles
+     */
+    SMASH_ATTACK(2013, Type.VISUAL, Integer.class),
+
+    PARTICLES_SCULK_CHARGE(3006, Type.VISUAL, Integer.class),
+
+    PARTICLES_SCULK_SHRIEK(3007, Type.SOUND),
+
+    /**
+     * Requires a {@link org.bukkit.block.data.BlockData} param
+     */
+    PARTICLES_AND_SOUND_BRUSH_BLOCK_COMPLETE(3008, Type.VISUAL, org.bukkit.block.data.BlockData.class),
+
+    PARTICLES_EGG_CRACK(3009, Type.VISUAL),
+
+    @Deprecated(forRemoval = true, since = "1.20.5")
     GUST_DUST(3010, Type.VISUAL),
+
     /**
-     * {@link Boolean} param is true for "ominous" trial spawners.
+     * {@link Boolean} param is true for "ominous" vaults
      */
     TRIAL_SPAWNER_SPAWN(3011, Type.VISUAL, Boolean.class),
+
     /**
-     * {@link Boolean} param is true for "ominous" trial spawners.
+     * {@link Boolean} param is true for "ominous" vaults
      */
     TRIAL_SPAWNER_SPAWN_MOB_AT(3012, Type.VISUAL, Boolean.class),
+
     /**
-     * {@link Integer} param is the number of players.
+     * {@link Integer} param is the number of players
      */
     TRIAL_SPAWNER_DETECT_PLAYER(3013, Type.VISUAL, Integer.class),
+
     TRIAL_SPAWNER_EJECT_ITEM(3014, Type.VISUAL),
+
     /**
-     * {@link Boolean} param is true for "ominous" vaults.
+     * {@link Boolean} param is true for "ominous" vaults
      */
     VAULT_ACTIVATE(3015, Type.VISUAL, Boolean.class),
+
     /**
-     * {@link Boolean} param is true for "ominous" vaults.
+     * {@link Boolean} param is true for "ominous" vaults
      */
     VAULT_DEACTIVATE(3016, Type.VISUAL, Boolean.class),
+
     VAULT_EJECT_ITEM(3017, Type.VISUAL),
+
     SPAWN_COBWEB(3018, Type.VISUAL),
+
     /**
-     * {@link Integer} param is the number of players.
+     * {@link Integer} param is the number of players
      */
     TRIAL_SPAWNER_DETECT_PLAYER_OMINOUS(3019, Type.VISUAL, Integer.class),
+
     /**
-     * {@link Boolean} param is true for changing to "ominous".
+     * {@link Boolean} param is true for changing to "ominous"
      */
     TRIAL_SPAWNER_BECOME_OMINOUS(3020, Type.VISUAL, Boolean.class),
+
     /**
-     * {@link Boolean} param is true for "ominous" trial spawners.
+     * {@link Boolean} param is true for "ominous" vaults
      */
     TRIAL_SPAWNER_SPAWN_ITEM(3021, Type.VISUAL, Boolean.class),
+
+    SOUND_WITH_CHARGE_SHOT(1051, Type.SOUND),
     ;
-
-    //<editor-fold desc="Replaced effects" defaultstate="collapsed">
-    /**
-     * An alternate click sound.
-     *
-     * @deprecated use {@link #DISPENSER_DISPENSE}
-     */
-    @Deprecated(since = "26.2", forRemoval = true)
-    public static final Effect CLICK2 = DISPENSER_DISPENSE;
-    /**
-     * A click sound.
-     *
-     * @deprecated use {@link #DISPENSER_FAIL}
-     */
-    @Deprecated(since = "26.2", forRemoval = true)
-    public static final Effect CLICK1 = DISPENSER_FAIL;
-    /**
-     * Sound of a bow firing.
-     *
-     * @deprecated use {@link #DISPENSER_PROJECTILE_LAUNCH}
-     */
-    @Deprecated(since = "26.2", forRemoval = true)
-    public static final Effect BOW_FIRE = DISPENSER_PROJECTILE_LAUNCH;
-    /**
-     * @deprecated use {@link #RECORD_STOP}
-     */
-    @Deprecated(since = "26.2", forRemoval = true)
-    public static final Effect SOUND_STOP_JUKEBOX_SONG = RECORD_STOP;
-    /**
-     * Sound of an ender dragon firing.
-     *
-     * @deprecated use {@link #ENDER_DRAGON_SHOOT}
-     */
-    @Deprecated(since = "26.2", forRemoval = true)
-    public static final Effect ENDERDRAGON_SHOOT = ENDER_DRAGON_SHOOT;
-    /**
-     * The sound played when a villager is converted by a zombie.
-     *
-     * @deprecated use {@link #ZOMBIE_CONVERTED_TO_VILLAGER}
-     */
-    @Deprecated(since = "26.2", forRemoval = true)
-    public static final Effect ZOMBIE_CONVERTED_VILLAGER = ZOMBIE_CONVERTED_TO_VILLAGER;
-    /**
-     * @deprecated use {@link #WIND_CHARGE_SHOOT}
-     */
-    @Deprecated(since = "26.2", forRemoval = true)
-    public static final Effect SOUND_WITH_CHARGE_SHOT = WIND_CHARGE_SHOOT;
-    /**
-     * The sound/particles used by the ender dragon's breath
-     * attack.
-     * {@link Boolean} param is true if the sound is muted.
-     * @deprecated use {@link #ENDER_DRAGON_BREATH}
-     */
-    @Deprecated(since = "26.2", forRemoval = true)
-    public static final Effect DRAGON_BREATH = ENDER_DRAGON_BREATH;
-    /**
-     * Particles displayed when a villager grows a plant.
-     * {@link Integer} param is the number of particles.
-     *
-     * @deprecated partially replaced by {@link #BEE_GROWTH}
-     */
-    @Deprecated(since = "1.20.5", forRemoval = true)
-    public static final Effect VILLAGER_PLANT_GROW = BEE_GROWTH;
-    /**
-     * A visual smoke effect.
-     * {@link BlockFace} param is the direction the smoke is launched.
-     *
-     * @deprecated use {@link #SMOKE_SHOOT}
-     */
-    @Deprecated(since = "26.2", forRemoval = true)
-    public static final Effect SMOKE = SMOKE_SHOOT;
-    /**
-     * {@link BlockFace} param is the direction to shoot.
-     *
-     * @deprecated use {@link #WHITE_SMOKE_SHOOT}
-     */
-    @Deprecated(since = "26.2", forRemoval = true)
-    public static final Effect SHOOT_WHITE_SMOKE = WHITE_SMOKE_SHOOT;
-    /**
-     * The sound of an ender dragon growling.
-     *
-     * @deprecated use {@link #ENDER_DRAGON_GROWL}
-     */
-    @Deprecated(since = "26.2", forRemoval = true)
-    public static final Effect ENDERDRAGON_GROWL = ENDER_DRAGON_GROWL;
-    /**
-     * @deprecated use {@link #SCULK_CHARGE}
-     */
-    @Deprecated(since = "26.2", forRemoval = true)
-    public static final Effect PARTICLES_SCULK_CHARGE = SCULK_CHARGE;
-    /**
-     * @deprecated use {@link #SCULK_SHRIEK}
-     */
-    @Deprecated(since = "26.2", forRemoval = true)
-    public static final Effect PARTICLES_SCULK_SHRIEK = SCULK_SHRIEK;
-    /**
-     * {@link BlockData} param is the block being brushed.
-     *
-     * @deprecated use {@link #BRUSH_BLOCK_COMPLETE}
-     */
-    @Deprecated(since = "26.2", forRemoval = true)
-    public static final Effect PARTICLES_AND_SOUND_BRUSH_BLOCK_COMPLETE = BRUSH_BLOCK_COMPLETE;
-    /**
-     * @deprecated use {@link #EGG_CRACK}
-     */
-    @Deprecated(since = "26.2", forRemoval = true)
-    public static final Effect PARTICLES_EGG_CRACK = EGG_CRACK;
-    //</editor-fold>
-
-    private static final Map<Integer, Effect> BY_ID = new HashMap<>();
+    // Paper end
 
     private final int id;
     private final Type type;
-    private final List<Class<?>> data;
+    private final java.util.List<Class<?>> data; // Paper - support multiple data types
+    private static final Map<Integer, Effect> BY_ID = Maps.newHashMap();
 
-    Effect(int id, Type type) {
-        this(id, type, (Class<?>[]) null);
+    Effect(int id, /*@NotNull*/ Type type) {
+        this(id, type, (Class<?>[]) null); // Paper - support multiple data types
     }
 
-    Effect(int id, Type type, Class<?>... data) {
+    Effect(int id, /*@NotNull*/ Type type, /*@Nullable*/ Class<?>...data) { // Paper - support multiple data types
         this.id = id;
         this.type = type;
-        this.data = data != null ? List.of(data) : null;
+        this.data = data != null ? java.util.List.of(data) : null; // Paper - support multiple data types
     }
 
     /**
@@ -571,7 +466,7 @@ public enum Effect {
      * @return ID of this effect
      * @apiNote Internal Use Only
      */
-    @ApiStatus.Internal
+    @org.jetbrains.annotations.ApiStatus.Internal // Paper
     public int getId() {
         return this.id;
     }
@@ -581,7 +476,7 @@ public enum Effect {
      * @deprecated some effects can be both or neither
      */
     @NotNull
-    @Deprecated
+    @Deprecated // Paper - both
     public Type getType() {
         return this.type;
     }
@@ -592,13 +487,15 @@ public enum Effect {
      */
     @Nullable
     public Class<?> getData() {
-        return this.data == null ? null : this.data.getFirst();
+        return this.data == null ? null : this.data.get(0); // Paper
     }
 
-    @ApiStatus.Internal
+    // Paper start - support deprecated data types
+    @org.jetbrains.annotations.ApiStatus.Internal
     public boolean isApplicable(Object obj) {
-        return this.data != null && this.data.stream().anyMatch(aClass -> aClass.isAssignableFrom(obj.getClass()));
+        return this.data != null && com.google.common.collect.Iterables.any(this.data, aClass -> aClass.isAssignableFrom(obj.getClass()));
     }
+    // Paper end - support deprecated data types
 
     /**
      * Gets the Effect associated with the given ID.
@@ -607,7 +504,7 @@ public enum Effect {
      * @return Effect with the given ID
      * @apiNote Internal Use Only
      */
-    @ApiStatus.Internal
+    @org.jetbrains.annotations.ApiStatus.Internal // Paper
     @Nullable
     public static Effect getById(int id) {
         return BY_ID.get(id);
@@ -624,9 +521,8 @@ public enum Effect {
 
     /**
      * Represents the type of an effect.
-     *
      * @deprecated not representative of what Effect does
      */
-    @Deprecated
+    @Deprecated // Paper
     public enum Type { SOUND, VISUAL }
 }

@@ -1,14 +1,14 @@
 --- a/net/minecraft/network/chat/MutableComponent.java
 +++ b/net/minecraft/network/chat/MutableComponent.java
-@@ -102,6 +_,11 @@
+@@ -97,6 +_,11 @@
  
      @Override
-     public boolean equals(final Object o) {
+     public boolean equals(Object other) {
 +        // Paper start - make AdventureComponent equivalent
-+        if (o instanceof io.papermc.paper.adventure.AdventureComponent adventureComponent) {
-+            return this.equals(adventureComponent.deepConverted());
++        if (other instanceof io.papermc.paper.adventure.AdventureComponent adventureComponent) {
++            other = adventureComponent.deepConverted();
 +        }
 +        // Paper end - make AdventureComponent equivalent
-         return this == o
-             || o instanceof MutableComponent that
-                 && this.contents.equals(that.contents)
+         return this == other
+             || other instanceof MutableComponent mutableComponent
+                 && this.contents.equals(mutableComponent.contents)

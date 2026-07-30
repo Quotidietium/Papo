@@ -4,10 +4,6 @@ import org.jspecify.annotations.NullMarked;
 
 @NullMarked
 public final class CraftDifficulty {
-
-    private CraftDifficulty() {
-    }
-
     public static org.bukkit.Difficulty toBukkit(net.minecraft.world.Difficulty difficulty) {
         return switch (difficulty) {
             case EASY -> org.bukkit.Difficulty.EASY;

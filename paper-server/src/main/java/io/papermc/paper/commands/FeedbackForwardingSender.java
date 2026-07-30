@@ -2,6 +2,8 @@ package io.papermc.paper.commands;
 
 import io.papermc.paper.adventure.PaperAdventure;
 import java.util.function.Consumer;
+import net.kyori.adventure.audience.MessageType;
+import net.kyori.adventure.identity.Identity;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.minecraft.commands.CommandSource;
@@ -41,7 +43,7 @@ public final class FeedbackForwardingSender extends ServerCommandSender {
     }
 
     @Override
-    public void sendMessage(final Component message) {
+    public void sendMessage(final Identity identity, final Component message, final MessageType type) {
         this.feedback.accept(message);
     }
 
@@ -83,7 +85,7 @@ public final class FeedbackForwardingSender extends ServerCommandSender {
     private record Source(FeedbackForwardingSender sender) implements CommandSource {
         @Override
         public void sendSystemMessage(final net.minecraft.network.chat.Component message) {
-            this.sender.sendMessage(PaperAdventure.asAdventure(message));
+            this.sender.sendMessage(Identity.nil(), PaperAdventure.asAdventure(message));
         }
 
         @Override

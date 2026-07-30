@@ -1,5 +1,6 @@
 package io.papermc.paper.datacomponent.item.blocksattacks;
 
+import com.google.common.base.Preconditions;
 import io.papermc.paper.registry.RegistryKey;
 import io.papermc.paper.registry.data.util.Conversions;
 import io.papermc.paper.registry.set.PaperRegistrySets;
@@ -10,8 +11,6 @@ import net.minecraft.core.registries.Registries;
 import org.bukkit.damage.DamageType;
 import org.checkerframework.checker.index.qual.Positive;
 import org.jspecify.annotations.Nullable;
-
-import static io.papermc.paper.util.BoundChecker.requirePositive;
 
 public record PaperDamageReduction(
     net.minecraft.world.item.component.BlocksAttacks.DamageReduction internal
@@ -53,7 +52,8 @@ public record PaperDamageReduction(
 
         @Override
         public Builder horizontalBlockingAngle(final @Positive float horizontalBlockingAngle) {
-            this.horizontalBlockingAngle = requirePositive(horizontalBlockingAngle, "horizontalBlockingAngle");
+            Preconditions.checkArgument(horizontalBlockingAngle > 0, "horizontalBlockingAngle must be positive and not zero, was %s", horizontalBlockingAngle);
+            this.horizontalBlockingAngle = horizontalBlockingAngle;
             return this;
         }
 

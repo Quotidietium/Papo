@@ -45,10 +45,10 @@ public class CraftBlockProjectileSource implements BlockProjectileSource {
         Preconditions.checkArgument(this.getBlock().getType() == Material.DISPENSER, "Block is no longer dispenser");
 
         // Copied from DispenserBlock#dispenseFrom
-        BlockSource source = new BlockSource((ServerLevel) this.dispenserBlock.getLevel(), this.dispenserBlock.getBlockPos(), this.dispenserBlock.getBlockState(), this.dispenserBlock);
+        BlockSource blockSource = new BlockSource((ServerLevel) this.dispenserBlock.getLevel(), this.dispenserBlock.getBlockPos(), this.dispenserBlock.getBlockState(), this.dispenserBlock);
         // Copied from ProjectileDispenseBehavior
-        ServerLevel level = source.level();
-        Direction direction = source.state().getValue(DispenserBlock.FACING);
+        Direction direction = blockSource.state().getValue(DispenserBlock.FACING);
+        net.minecraft.world.level.Level world = this.dispenserBlock.getLevel();
         net.minecraft.world.item.Item item = null;
 
         if (Snowball.class.isAssignableFrom(projectile)) {
@@ -87,8 +87,8 @@ public class CraftBlockProjectileSource implements BlockProjectileSource {
         ProjectileItem projectileItem = (ProjectileItem) item;
         ProjectileItem.DispenseConfig dispenseConfig = projectileItem.createDispenseConfig();
 
-        Position position = dispenseConfig.positionFunction().getDispensePosition(source, direction);
-        net.minecraft.world.entity.projectile.Projectile launch = projectileItem.asProjectile(level, position, itemstack, direction);
+        Position position = dispenseConfig.positionFunction().getDispensePosition(blockSource, direction);
+        net.minecraft.world.entity.projectile.Projectile launch = projectileItem.asProjectile(world, position, itemstack, direction);
         launch.projectileSource = this;
         projectileItem.shoot(launch, direction.getStepX(), direction.getStepY(), direction.getStepZ(), dispenseConfig.power(), dispenseConfig.uncertainty());
 
@@ -99,7 +99,7 @@ public class CraftBlockProjectileSource implements BlockProjectileSource {
             function.accept((T) launch.getBukkitEntity());
         }
 
-        level.addFreshEntity(launch);
+        world.addFreshEntity(launch);
         return (T) launch.getBukkitEntity();
     }
 }

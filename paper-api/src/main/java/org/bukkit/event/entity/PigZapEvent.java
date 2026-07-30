@@ -1,25 +1,28 @@
 package org.bukkit.event.entity;
 
 import com.destroystokyo.paper.event.entity.EntityZapEvent;
-import org.bukkit.Warning;
 import org.bukkit.entity.LightningStrike;
 import org.bukkit.entity.Pig;
 import org.bukkit.entity.PigZombie;
+import org.bukkit.event.Cancellable;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 /**
  * Stores data for pigs being zapped
- *
- * @deprecated use {@link EntityZapEvent}
  */
-@Deprecated(since = "26.2")
-@Warning(reason = "This event has become obsolete, the more generic EntityZapEvent should be used instead.")
-public class PigZapEvent extends EntityZapEvent {
+public class PigZapEvent extends EntityZapEvent implements Cancellable {
+
+    private final PigZombie zombifiedPiglin;
+    private final LightningStrike bolt;
+
+    private boolean cancelled;
 
     @ApiStatus.Internal
     public PigZapEvent(@NotNull final Pig pig, @NotNull final LightningStrike bolt, @NotNull final PigZombie zombifiedPiglin) {
         super(pig, bolt, zombifiedPiglin);
+        this.bolt = bolt;
+        this.zombifiedPiglin = zombifiedPiglin;
     }
 
     @NotNull
@@ -32,12 +35,10 @@ public class PigZapEvent extends EntityZapEvent {
      * Gets the bolt which is striking the pig.
      *
      * @return lightning entity
-     * @deprecated use {@link EntityZapEvent#getBolt()}
      */
     @NotNull
-    @Deprecated(since = "26.2")
     public LightningStrike getLightning() {
-        return super.getBolt();
+        return this.bolt;
     }
 
     /**
@@ -45,21 +46,21 @@ public class PigZapEvent extends EntityZapEvent {
      * not cancelled first.
      *
      * @return resulting entity
-     * @deprecated use {@link EntityZapEvent#getReplacementEntity()}
+     * @deprecated use {@link EntityTransformEvent#getTransformedEntity()}
      */
     @NotNull
     @Deprecated(since = "1.13.2")
     public PigZombie getPigZombie() {
-        return (PigZombie) super.getReplacementEntity();
+        return this.zombifiedPiglin;
     }
 
     @Override
     public boolean isCancelled() {
-        return super.isCancelled();
+        return this.cancelled;
     }
 
     @Override
     public void setCancelled(boolean cancel) {
-        super.setCancelled(cancel);
+        this.cancelled = cancel;
     }
 }

@@ -3,7 +3,6 @@ package org.bukkit.craftbukkit.generator;
 import com.google.common.base.Preconditions;
 import java.lang.ref.WeakReference;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.QuartPos;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -29,21 +28,22 @@ public final class CraftChunkData implements ChunkGenerator.ChunkData {
     private final int minHeight;
     private final WeakReference<ChunkAccess> weakChunk;
 
-    public CraftChunkData(World world, ChunkAccess chunk) {
-        this(world.getMaxHeight(), world.getMinHeight(), chunk);
+    public CraftChunkData(World world, ChunkAccess chunkAccess) {
+        this(world.getMaxHeight(), world.getMinHeight(), chunkAccess);
     }
 
-    CraftChunkData(int maxHeight, int minHeight, ChunkAccess chunk) {
+    CraftChunkData(int maxHeight, int minHeight, ChunkAccess chunkAccess) {
         this.maxHeight = maxHeight;
         this.minHeight = minHeight;
-        this.weakChunk = new WeakReference<>(chunk);
+        this.weakChunk = new WeakReference<>(chunkAccess);
     }
 
     public ChunkAccess getHandle() {
-        ChunkAccess chunk = this.weakChunk.get();
-        Preconditions.checkState(chunk != null, "ChunkAccess no longer present, are you using it in a different tick?");
+        ChunkAccess access = this.weakChunk.get();
 
-        return chunk;
+        Preconditions.checkState(access != null, "IChunkAccess no longer present, are you using it in a different tick?");
+
+        return access;
     }
 
     public void breakLink() {
@@ -62,9 +62,7 @@ public final class CraftChunkData implements ChunkGenerator.ChunkData {
 
     @Override
     public Biome getBiome(int x, int y, int z) {
-        return CraftBiome.minecraftHolderToBukkit(this.getHandle().getNoiseBiome(
-            QuartPos.fromBlock(x), QuartPos.fromBlock(y), QuartPos.fromBlock(z))
-        );
+        return CraftBiome.minecraftHolderToBukkit(this.getHandle().getNoiseBiome(x >> 2, y >> 2, z >> 2));
     }
 
     @Override
@@ -109,7 +107,7 @@ public final class CraftChunkData implements ChunkGenerator.ChunkData {
 
     @Override
     public BlockData getBlockData(int x, int y, int z) {
-        return this.getTypeId(x, y, z).asBlockData();
+        return CraftBlockData.fromData(this.getTypeId(x, y, z));
     }
 
     public void setRegion(int xMin, int yMin, int zMin, int xMax, int yMax, int zMax, BlockState type) {
@@ -152,8 +150,8 @@ public final class CraftChunkData implements ChunkGenerator.ChunkData {
             return Blocks.AIR.defaultBlockState();
         }
 
-        ChunkAccess chunk = this.getHandle();
-        return chunk.getBlockState(new BlockPos(chunk.getPos().getMinBlockX() + x, y, chunk.getPos().getMinBlockZ() + z));
+        ChunkAccess access = this.getHandle();
+        return access.getBlockState(new BlockPos(access.getPos().getMinBlockX() + x, y, access.getPos().getMinBlockZ() + z));
     }
 
     @Override
@@ -161,26 +159,26 @@ public final class CraftChunkData implements ChunkGenerator.ChunkData {
         return CraftMagicNumbers.toLegacyData(this.getTypeId(x, y, z));
     }
 
-    private void setBlock(int x, int y, int z, BlockState state) {
+    private void setBlock(int x, int y, int z, BlockState type) {
         if (x != (x & 0xf) || y < this.minHeight || y >= this.maxHeight || z != (z & 0xf)) {
             return;
         }
 
-        ChunkAccess chunk = this.getHandle();
-        BlockPos pos = new BlockPos(chunk.getPos().getMinBlockX() + x, y, chunk.getPos().getMinBlockZ() + z);
-        BlockState oldBlockState = chunk.setBlockState(pos, state);
+        ChunkAccess access = this.getHandle();
+        BlockPos pos = new BlockPos(access.getPos().getMinBlockX() + x, y, access.getPos().getMinBlockZ() + z);
+        BlockState oldBlockState = access.setBlockState(pos, type);
 
-        if (state.hasBlockEntity()) {
-            BlockEntity blockEntity = ((EntityBlock) state.getBlock()).newBlockEntity(pos, state);
+        if (type.hasBlockEntity()) {
+            BlockEntity blockEntity = ((EntityBlock) type.getBlock()).newBlockEntity(pos, type);
 
-            // newBlockEntity can return null, currently only the case with MovingPistonBlock
+            // newBlockEntity can return null, currently only the case with material MOVING_PISTON
             if (blockEntity == null) {
-                chunk.removeBlockEntity(pos);
+                access.removeBlockEntity(pos);
             } else {
-                chunk.setBlockEntity(blockEntity);
+                access.setBlockEntity(blockEntity);
             }
         } else if (oldBlockState != null && oldBlockState.hasBlockEntity()) {
-            chunk.removeBlockEntity(pos);
+            access.removeBlockEntity(pos);
         }
     }
 
@@ -189,6 +187,6 @@ public final class CraftChunkData implements ChunkGenerator.ChunkData {
         Preconditions.checkArgument(heightMap != null, "HeightMap cannot be null");
         Preconditions.checkArgument(x >= 0 && x <= 15 && z >= 0 && z <= 15, "Cannot get height outside of a chunks bounds, must be between 0 and 15, got x: %s, z: %s", x, z);
 
-        return this.getHandle().getHeight(CraftHeightMap.toNMS(heightMap), x, z);
+        return getHandle().getHeight(CraftHeightMap.toNMS(heightMap), x, z);
     }
 }

@@ -13,9 +13,7 @@ public enum WorldType {
     NORMAL("DEFAULT"),
     FLAT("FLAT"),
     LARGE_BIOMES("LARGEBIOMES"),
-    AMPLIFIED("AMPLIFIED"),
-    SINGLE_BIOME_SURFACE("SINGLE_BIOME_SURFACE"),
-    DEBUG_ALL_BLOCK_STATES("DEBUG");
+    AMPLIFIED("AMPLIFIED");
 
     private static final Map<String, WorldType> BY_NAME = Maps.newHashMap();
     private final String name;

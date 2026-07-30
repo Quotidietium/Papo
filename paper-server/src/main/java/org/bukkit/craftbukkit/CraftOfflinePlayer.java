@@ -42,7 +42,7 @@ public class CraftOfflinePlayer implements OfflinePlayer, ConfigurationSerializa
     protected CraftOfflinePlayer(CraftServer server, NameAndId nameAndId) {
         this.server = server;
         this.nameAndId = nameAndId;
-        this.storage = server.console.getPlayerList().playerIo;
+        this.storage = server.console.playerDataStorage;
     }
 
     @Override

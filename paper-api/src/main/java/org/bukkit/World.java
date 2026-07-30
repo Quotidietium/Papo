@@ -1,8 +1,5 @@
 package org.bukkit;
 
-import io.papermc.paper.entity.poi.PoiSearchResult;
-import io.papermc.paper.entity.poi.PoiType;
-import io.papermc.paper.math.Position;
 import io.papermc.paper.raytracing.PositionedRayTraceConfigurationBuilder;
 import java.io.File;
 import java.nio.file.Path;
@@ -46,7 +43,6 @@ import org.bukkit.util.BoundingBox;
 import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.StructureSearchResult;
 import org.bukkit.util.Vector;
-import org.checkerframework.checker.index.qual.Positive;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
@@ -1813,7 +1809,7 @@ public interface World extends RegionAccessor, WorldInfo, PluginMessageRecipient
      */
     @Nullable
     default RayTraceResult rayTraceEntities(@NotNull Location start, @NotNull Vector direction, double maxDistance, @Nullable Predicate<? super Entity> filter) {
-        return this.rayTraceEntities(start, direction, maxDistance, 0.0, filter);
+        return this.rayTraceEntities(start, direction, maxDistance, 0.0D, filter);
     }
 
     /**
@@ -2055,7 +2051,7 @@ public interface World extends RegionAccessor, WorldInfo, PluginMessageRecipient
     }
 
     /**
-     * Gets the relative in-game time of this world, or {@code 0} if this world does not have a world clock.
+     * Gets the relative in-game time of this world.
      * <p>
      * The relative time is analogous to hours * 1000
      *
@@ -2080,7 +2076,7 @@ public interface World extends RegionAccessor, WorldInfo, PluginMessageRecipient
     public void setTime(long time);
 
     /**
-     * Gets the full in-game time on this world, or {@code 0} if this world does not have a world clock.
+     * Gets the full in-game time on this world
      *
      * @return The current absolute time
      * @see #getTime() Returns a relative time of this world
@@ -2095,7 +2091,6 @@ public interface World extends RegionAccessor, WorldInfo, PluginMessageRecipient
      *
      * @param time The new absolute time to set this world to
      * @see #setTime(long) Sets the relative time of this world
-     * @throws IllegalArgumentException if this world does not have a world clock (e.g. the nether)
      */
     public void setFullTime(long time);
 
@@ -2648,17 +2643,6 @@ public interface World extends RegionAccessor, WorldInfo, PluginMessageRecipient
     public ChunkSnapshot getEmptyChunkSnapshot(int x, int z, boolean includeBiome, boolean includeBiomeTemp);
 
     /**
-     * Sets if this world can spawn monsters.
-     * <p>Note that setting {@code false} only affects
-     * natural spawning. It doesn't affect spawn eggs, summon command, mobs
-     * spawned from structure generation, spawners, etc.</p>
-     *
-     * @param allowMonsters - if true, monsters are allowed to spawn in this
-     *     world via natural spawning mechanisms.
-     */
-    public void setAllowMonsterSpawning(boolean allowMonsters);
-
-    /**
      * Sets the spawn flags for this.
      * <p>Note that setting {@code false} for either only affects
      * natural spawning. It doesn't affect spawn eggs, summon command, mobs
@@ -2668,20 +2652,14 @@ public interface World extends RegionAccessor, WorldInfo, PluginMessageRecipient
      *     world via natural spawning mechanisms.
      * @param allowAnimals - if true, animals are allowed to spawn in this
      *     world via natural spawning mechanisms.
-     * @deprecated the vanilla server no longer maintains this functionality.
-     * See {@link #setAllowMonsterSpawning(boolean)} if you want to dis/allow monster spawning.
-     * Plugins can control natural spawning of animals via events like {@link org.bukkit.event.entity.EntitySpawnEvent} and the {@link org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason#NATURAL}.
      */
-    @Deprecated(since = "26.2", forRemoval = true)
     public void setSpawnFlags(boolean allowMonsters, boolean allowAnimals);
 
     /**
      * Gets whether animals can spawn in this world.
      *
      * @return whether animals can spawn in this world.
-     * @deprecated the vanilla server no longer maintains this functionality. Plugins can control natural spawning via events like {@link org.bukkit.event.entity.EntitySpawnEvent} and the {@link org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason#NATURAL}.
      */
-    @Deprecated(since = "26.2", forRemoval = true)
     public boolean getAllowAnimals();
 
     /**
@@ -2788,11 +2766,10 @@ public interface World extends RegionAccessor, WorldInfo, PluginMessageRecipient
     /**
      * Gets if this world is natural.
      * <p>
-     * When true, eyeblossoms cycle open/close, nether portals can spawn
-     * zombified piglins and creaking heart works
+     * When false, the moon is not visible and eyeblossoms do not open/close
      *
      * @return true if world is natural
-     * @deprecated replaced by the gameplay/nether_portal_spawns_piglin, gameplay/eyeblossom_open and gameplay/creaking_active environmental attributes
+     * @deprecated replaced by the gameplay/eyeblossom_open and gameplay/creaking_active environment attributes
      */
     @Deprecated(since = "1.21.11")
     public boolean isNatural();
@@ -2804,7 +2781,7 @@ public interface World extends RegionAccessor, WorldInfo, PluginMessageRecipient
      * not always be the case.
      *
      * @return true if beds work in this world
-     * @deprecated due to 1.21.11 beds changes, a boolean no longer
+     * @deprecated Due to 1.21.11 beds changes, a boolean no longer
      * represents if they work. There is no replacement API yet
      */
     @ApiStatus.Obsolete(since = "1.21.11")
@@ -2829,7 +2806,6 @@ public interface World extends RegionAccessor, WorldInfo, PluginMessageRecipient
      * transforming to zombified piglins.
      *
      * @return true if piglins will not transform to zombified piglins
-     * @apiNote the returned value may be inaccurate in custom biome using environmental attribute override
      */
     public boolean isPiglinSafe();
 
@@ -2837,7 +2813,6 @@ public interface World extends RegionAccessor, WorldInfo, PluginMessageRecipient
      * Gets if this world allows players to charge and use respawn anchors.
      *
      * @return true if players can charge and use respawn anchors
-     * @apiNote the returned value may be inaccurate in custom biome using environmental attribute override
      */
     public boolean isRespawnAnchorWorks();
 
@@ -2846,7 +2821,6 @@ public interface World extends RegionAccessor, WorldInfo, PluginMessageRecipient
      * raid.
      *
      * @return true if raids will be triggered
-     * @apiNote the returned value may be inaccurate in custom biome using environmental attribute override
      */
     public boolean hasRaids();
 
@@ -2860,7 +2834,7 @@ public interface World extends RegionAccessor, WorldInfo, PluginMessageRecipient
      * </ul>
      *
      * @return true if this world has the above mechanics
-     * @deprecated replaced by the gameplay/water_evaporates and gameplay/fast_lava environmental attributes
+     * @deprecated as of 1.21.11, ultra warm is replaced by the WATER_EVAPORATES, FAST_LAVA, and DEFAULT_DRIPSTONE_PARTICLE environment attributes.
      */
     @Deprecated(since = "1.21.11")
     public boolean isUltraWarm();
@@ -3774,16 +3748,6 @@ public interface World extends RegionAccessor, WorldInfo, PluginMessageRecipient
     void playSound(@NotNull Entity entity, @NotNull String sound, @NotNull SoundCategory category, float volume, float pitch, long seed);
 
     /**
-     * Plays a sound at a position.
-     *
-     * @param sound a sound
-     * @param pos position
-     */
-    default void playSound(net.kyori.adventure.sound.@NotNull Sound sound, @NotNull Position pos) {
-        playSound(sound, pos.x(), pos.y(), pos.z());
-    }
-
-    /**
      * Get an array containing the names of all the {@link GameRule}s.
      *
      * @return An array of {@link GameRule} names.
@@ -3835,7 +3799,8 @@ public interface World extends RegionAccessor, WorldInfo, PluginMessageRecipient
      * @param <T> the GameRule's type
      * @return the current value
      */
-    public @NotNull <T> T getGameRuleValue(@NotNull GameRule<T> rule);
+    @Nullable
+    public <T> T getGameRuleValue(@NotNull GameRule<T> rule);
 
     /**
      * Get the default value for a given {@link GameRule}. This value is not
@@ -3844,12 +3809,9 @@ public interface World extends RegionAccessor, WorldInfo, PluginMessageRecipient
      * @param rule the rule to return a default value for
      * @param <T> the type of GameRule
      * @return the default value
-     * @deprecated use {@link GameRule#getDefaultValue()} instead
      */
-    @Deprecated(since = "26.1.2")
-    default <T> @NotNull T getGameRuleDefault(@NotNull GameRule<T> rule) {
-        return rule.getDefaultValue();
-    }
+    @Nullable
+    public <T> T getGameRuleDefault(@NotNull GameRule<T> rule);
 
     /**
      * Set the given {@link GameRule}'s new value.
@@ -4142,6 +4104,7 @@ public interface World extends RegionAccessor, WorldInfo, PluginMessageRecipient
     public <T> void spawnParticle(@NotNull Particle particle, @Nullable List<Player> receivers, @Nullable Player source, double x, double y, double z, int count, double offsetX, double offsetY, double offsetZ, double extra, @Nullable T data, boolean force);
     // Paper end
 
+
     /**
      * Spawns the particle (the number of times specified by count)
      * at the target location. The position of each particle will be
@@ -4327,69 +4290,6 @@ public interface World extends RegionAccessor, WorldInfo, PluginMessageRecipient
     default Location locateNearestBiome(@NotNull Location origin, @NotNull Biome biome, int radius, int step) {
         return java.util.Optional.ofNullable(this.locateNearestBiome(origin, radius, step, step, biome)).map(BiomeSearchResult::getLocation).orElse(null);
     }
-
-    /**
-     * Finds the nearest point of interest closest to the given location
-     * without any occupancy restriction.
-     *
-     * @param origin where to start looking for a new point of interest at
-     * @param poiType the poi type to find
-     * @param radius the radius
-     * @return a location at the nearest PoiType or {@code null} if no poi was found
-     */
-    @Nullable
-    default Location locateNearestPoi(@NotNull Location origin, @NotNull PoiType poiType, @Positive int radius) {
-        return this.locateNearestPoi(origin, poiType, radius, PoiType.Occupancy.ANY);
-    }
-
-    /**
-     * Finds the nearest point of interest closest to the given location.
-     * <p>
-     * {@link PoiType} that return {@code false} for {@link PoiType#hasOccupants()}
-     * may not behave as expected for given occupancies other than
-     * {@link PoiType.Occupancy#ANY}.
-     *
-     * @param origin where to start looking for a new point of interest at
-     * @param poiType the poi type to find
-     * @param radius the radius
-     * @param occupancy the current required occupancy of the point of interest
-     * @return a location at the nearest PoiType or {@code null} if no poi was found
-     */
-    @Nullable
-    Location locateNearestPoi(@NotNull Location origin, @NotNull PoiType poiType, @Positive int radius, @NotNull PoiType.Occupancy occupancy);
-
-    /**
-     * Finds all valid {@link PoiType} in the provided radius and returns them
-     * in a list format without any occupancy restriction.
-     *
-     * @param origin the center point of the radius
-     * @param poiTypePredicate the predicate to test whether a PoiType
-     *                         can be collected into the result
-     * @param radius           the radius
-     * @return a list of search results containing all found Poi's in the range
-     */
-    @NotNull
-    default List<PoiSearchResult> locateAllPoiInRange(@NotNull Location origin, @NotNull Predicate<PoiType> poiTypePredicate, @Positive int radius) {
-        return this.locateAllPoiInRange(origin, poiTypePredicate, radius, PoiType.Occupancy.ANY);
-    }
-
-    /**
-     * Finds all valid {@link PoiType} in the provided radius and returns them
-     * in a list format.
-     * <p>
-     * {@link PoiType} that return false for {@link PoiType#hasOccupants()}
-     * may not behave as expected for given occupancies other than
-     * {@link PoiType.Occupancy#ANY}.
-     *
-     * @param origin the center point of the radius
-     * @param poiTypePredicate the predicate to test whether a PoiType
-     *                         can be collected into the result
-     * @param radius           the radius
-     * @param occupancy the current required occupancy of the point of interest
-     * @return a list of search results containing all found Poi's in the range
-     */
-    @NotNull
-    List<PoiSearchResult> locateAllPoiInRange(@NotNull Location origin, @NotNull Predicate<PoiType> poiTypePredicate, @Positive int radius, @NotNull PoiType.Occupancy occupancy);
 
     /**
      * Gets the coordinate scaling of this world.

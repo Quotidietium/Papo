@@ -132,8 +132,6 @@ public interface Biome extends OldEnum<Biome>, Keyed, net.kyori.adventure.transl
 
     Biome STONY_SHORE = getBiome("stony_shore");
 
-    Biome SULFUR_CAVES = getBiome("sulfur_caves");
-
     Biome SUNFLOWER_PLAINS = getBiome("sunflower_plains");
 
     Biome SWAMP = getBiome("swamp");

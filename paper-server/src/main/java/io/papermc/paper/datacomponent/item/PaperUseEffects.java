@@ -1,8 +1,7 @@
 package io.papermc.paper.datacomponent.item;
 
+import com.google.common.base.Preconditions;
 import org.bukkit.craftbukkit.util.Handleable;
-
-import static io.papermc.paper.util.BoundChecker.requireRange;
 
 public record PaperUseEffects(
     net.minecraft.world.item.component.UseEffects impl
@@ -48,7 +47,8 @@ public record PaperUseEffects(
 
         @Override
         public UseEffects.Builder speedMultiplier(final float speedMultiplier) {
-            this.speedMultiplier = requireRange(speedMultiplier, "speedMultiplier", 0.0F, 1.0F);
+            Preconditions.checkArgument(speedMultiplier >= 0.0F && speedMultiplier <= 1.0F, "speedMultiplier must be between 0.0 and 1.0 (inclusive)");
+            this.speedMultiplier = speedMultiplier;
             return this;
         }
 

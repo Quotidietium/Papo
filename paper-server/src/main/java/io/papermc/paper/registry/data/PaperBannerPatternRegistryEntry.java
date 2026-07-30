@@ -9,8 +9,7 @@ import net.minecraft.world.level.block.entity.BannerPattern;
 import org.bukkit.block.banner.PatternType;
 import org.jspecify.annotations.Nullable;
 
-import static io.papermc.paper.registry.data.util.Checks.asArgument;
-import static io.papermc.paper.registry.data.util.Checks.asConfigured;
+import static io.papermc.paper.registry.data.util.Checks.*;
 
 public class PaperBannerPatternRegistryEntry implements BannerPatternRegistryEntry {
 

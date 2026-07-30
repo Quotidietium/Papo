@@ -4,16 +4,16 @@
  
      ConsumeEffect.Type<? extends ConsumeEffect> getType();
  
--    boolean apply(final Level level, final ItemStack stack, final LivingEntity user);
+-    boolean apply(Level level, ItemStack stack, LivingEntity entity);
 +    // CraftBukkit start
-+    default boolean apply(final Level level, final ItemStack stack, final LivingEntity user) {
-+        return this.apply(level, stack, user, org.bukkit.event.entity.EntityPotionEffectEvent.Cause.UNKNOWN);
++    default boolean apply(Level level, ItemStack stack, LivingEntity entity) {
++        return this.apply(level, stack, entity, org.bukkit.event.entity.EntityPotionEffectEvent.Cause.UNKNOWN);
 +    }
 +
-+    default boolean apply(Level level, ItemStack stack, LivingEntity user, org.bukkit.event.entity.EntityPotionEffectEvent.Cause cause) {
-+        return this.apply(level, stack, user);
++    default boolean apply(Level level, ItemStack stack, LivingEntity entity, org.bukkit.event.entity.EntityPotionEffectEvent.Cause cause) {
++        return this.apply(level, stack, entity);
 +    }
 +    // CraftBukkit end
  
-     record Type<T extends ConsumeEffect>(MapCodec<T> codec, StreamCodec<RegistryFriendlyByteBuf, T> streamCodec) {
+     public record Type<T extends ConsumeEffect>(MapCodec<T> codec, StreamCodec<RegistryFriendlyByteBuf, T> streamCodec) {
          public static final ConsumeEffect.Type<ApplyStatusEffectsConsumeEffect> APPLY_EFFECTS = register(

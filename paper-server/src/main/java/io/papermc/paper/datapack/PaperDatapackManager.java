@@ -1,7 +1,8 @@
 package io.papermc.paper.datapack;
 
-import io.papermc.paper.util.MCUtil;
+import com.google.common.collect.Collections2;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.function.Predicate;
 import net.minecraft.server.packs.repository.Pack;
 import net.minecraft.server.packs.repository.PackRepository;
@@ -35,15 +36,20 @@ public class PaperDatapackManager implements DatapackManager {
     @Override
     public Collection<Datapack> getPacks() {
         final Collection<Pack> enabledPacks = this.repository.getSelectedPacks();
-        return transformPacks(this.repository.getAvailablePacks(), enabledPacks::contains);
+        return this.transformPacks(this.repository.getAvailablePacks(), enabledPacks::contains);
     }
 
     @Override
     public Collection<Datapack> getEnabledPacks() {
-        return transformPacks(this.repository.getSelectedPacks(), _ -> true);
+        return this.transformPacks(this.repository.getSelectedPacks(), pack -> true);
     }
 
-    private static Collection<Datapack> transformPacks(final Collection<Pack> packs, final Predicate<Pack> enabled) {
-        return MCUtil.transformUnmodifiable(packs, pack -> new PaperDatapack(pack, enabled.test(pack)));
+    private Collection<Datapack> transformPacks(final Collection<Pack> packs, final Predicate<Pack> enabled) {
+        return Collections.unmodifiableCollection(
+            Collections2.transform(
+                packs,
+                pack -> new PaperDatapack(pack, enabled.test(pack))
+            )
+        );
     }
 }

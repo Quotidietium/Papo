@@ -22,7 +22,7 @@ public class BlockPlaceEvent extends BlockEvent implements Cancellable {
     protected Block placedAgainst;
     protected ItemStack itemInHand;
     protected Player player;
-    protected BlockState replacedState;
+    protected BlockState replacedBlockState;
     protected boolean canBuild;
     protected EquipmentSlot hand;
 
@@ -30,17 +30,17 @@ public class BlockPlaceEvent extends BlockEvent implements Cancellable {
 
     @ApiStatus.Internal
     @Deprecated(since = "1.9", forRemoval = true)
-    public BlockPlaceEvent(@NotNull final Block placedBlock, @NotNull final BlockState replacedState, @NotNull final Block placedAgainst, @NotNull final ItemStack itemInHand, @NotNull final Player thePlayer, final boolean canBuild) {
-        this(placedBlock, replacedState, placedAgainst, itemInHand, thePlayer, canBuild, EquipmentSlot.HAND);
+    public BlockPlaceEvent(@NotNull final Block placedBlock, @NotNull final BlockState replacedBlockState, @NotNull final Block placedAgainst, @NotNull final ItemStack itemInHand, @NotNull final Player thePlayer, final boolean canBuild) {
+        this(placedBlock, replacedBlockState, placedAgainst, itemInHand, thePlayer, canBuild, EquipmentSlot.HAND);
     }
 
     @ApiStatus.Internal
-    public BlockPlaceEvent(@NotNull final Block placedBlock, @NotNull final BlockState replacedState, @NotNull final Block placedAgainst, @NotNull final ItemStack itemInHand, @NotNull final Player thePlayer, final boolean canBuild, @NotNull final EquipmentSlot hand) {
+    public BlockPlaceEvent(@NotNull final Block placedBlock, @NotNull final BlockState replacedBlockState, @NotNull final Block placedAgainst, @NotNull final ItemStack itemInHand, @NotNull final Player thePlayer, final boolean canBuild, @NotNull final EquipmentSlot hand) {
         super(placedBlock);
         this.placedAgainst = placedAgainst;
         this.itemInHand = itemInHand;
         this.player = thePlayer;
-        this.replacedState = replacedState;
+        this.replacedBlockState = replacedBlockState;
         this.canBuild = canBuild;
         this.hand = hand;
     }
@@ -95,7 +95,7 @@ public class BlockPlaceEvent extends BlockEvent implements Cancellable {
      */
     @NotNull
     public BlockState getBlockReplacedState() {
-        return this.replacedState;
+        return this.replacedBlockState;
     }
 
     /**

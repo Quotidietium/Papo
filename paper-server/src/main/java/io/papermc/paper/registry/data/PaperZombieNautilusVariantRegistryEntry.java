@@ -3,7 +3,6 @@ package io.papermc.paper.registry.data;
 import io.papermc.paper.registry.PaperRegistryBuilder;
 import io.papermc.paper.registry.data.client.ClientTextureAsset;
 import io.papermc.paper.registry.data.util.Conversions;
-import io.papermc.paper.util.MCUtil;
 import net.minecraft.core.ClientAsset;
 import net.minecraft.world.entity.animal.nautilus.ZombieNautilusVariant;
 import net.minecraft.world.entity.variant.ModelAndTexture;
@@ -20,10 +19,13 @@ public class PaperZombieNautilusVariantRegistryEntry implements ZombieNautilusVa
     protected ClientAsset.@Nullable ResourceTexture clientTextureAsset;
     protected SpawnPrioritySelectors spawnConditions;
 
+    protected final Conversions conversions;
+
     public PaperZombieNautilusVariantRegistryEntry(
-        final Conversions ignoredConversions,
+        final Conversions conversions,
         final @Nullable ZombieNautilusVariant internal
     ) {
+        this.conversions = conversions;
         if (internal == null) {
             this.spawnConditions = SpawnPrioritySelectors.EMPTY;
             return;
@@ -36,14 +38,14 @@ public class PaperZombieNautilusVariantRegistryEntry implements ZombieNautilusVa
 
     @Override
     public ClientTextureAsset clientTextureAsset() {
-        return MCUtil.toTextureAsset(asConfigured(this.clientTextureAsset, "clientTextureAsset"));
+        return this.conversions.asBukkit(asConfigured(this.clientTextureAsset, "clientTextureAsset"));
     }
 
     @Override
-    public Model model() {
+    public ZombieNautilusVariantRegistryEntry.Model model() {
         return switch (asConfigured(this.model, "model")) {
-            case NORMAL -> Model.NORMAL;
-            case WARM -> Model.WARM;
+            case NORMAL -> ZombieNautilusVariantRegistryEntry.Model.NORMAL;
+            case WARM -> ZombieNautilusVariantRegistryEntry.Model.WARM;
         };
     }
 
@@ -54,13 +56,13 @@ public class PaperZombieNautilusVariantRegistryEntry implements ZombieNautilusVa
         }
 
         @Override
-        public Builder clientTextureAsset(final ClientTextureAsset clientTextureAsset) {
-            this.clientTextureAsset = MCUtil.toResourceTexture(asArgument(clientTextureAsset, "clientTextureAsset"));
+        public ZombieNautilusVariantRegistryEntry.Builder clientTextureAsset(final ClientTextureAsset clientTextureAsset) {
+            this.clientTextureAsset = this.conversions.asVanilla(asArgument(clientTextureAsset, "clientTextureAsset"));
             return this;
         }
 
         @Override
-        public Builder model(final Model model) {
+        public ZombieNautilusVariantRegistryEntry.Builder model(final ZombieNautilusVariantRegistryEntry.Model model) {
             this.model = switch (asArgument(model, "model")) {
                 case NORMAL -> ZombieNautilusVariant.ModelType.NORMAL;
                 case WARM -> ZombieNautilusVariant.ModelType.WARM;

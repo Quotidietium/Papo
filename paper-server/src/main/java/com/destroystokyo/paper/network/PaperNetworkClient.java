@@ -7,26 +7,26 @@ import net.minecraft.network.Connection;
 
 public class PaperNetworkClient implements NetworkClient {
 
-    private final Connection connection;
+    private final Connection networkManager;
 
-    PaperNetworkClient(Connection connection) {
-        this.connection = connection;
+    PaperNetworkClient(Connection networkManager) {
+        this.networkManager = networkManager;
     }
 
     @Override
     public InetSocketAddress getAddress() {
-        return (InetSocketAddress) this.connection.getRemoteAddress();
+        return (InetSocketAddress) this.networkManager.getRemoteAddress();
     }
 
     @Override
     public int getProtocolVersion() {
-        return this.connection.protocolVersion;
+        return this.networkManager.protocolVersion;
     }
 
     @Nullable
     @Override
     public InetSocketAddress getVirtualHost() {
-        return this.connection.virtualHost;
+        return this.networkManager.virtualHost;
     }
 
     public static InetSocketAddress prepareVirtualHost(String host, int port) {

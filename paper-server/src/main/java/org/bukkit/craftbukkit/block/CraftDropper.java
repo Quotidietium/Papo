@@ -42,8 +42,9 @@ public class CraftDropper extends CraftLootable<DropperBlockEntity> implements D
         Block block = this.getBlock();
         if (block.getType() == Material.DROPPER) {
             CraftWorld world = (CraftWorld) this.getWorld();
+            DropperBlock drop = (DropperBlock) Blocks.DROPPER;
 
-            ((DropperBlock) Blocks.DROPPER).dispenseFrom(world.getHandle(), this.getHandle(), this.getPosition());
+            drop.dispenseFrom(world.getHandle(), this.getHandle(), this.getPosition());
         }
     }
 

@@ -34,7 +34,8 @@ import org.spongepowered.configurate.yaml.YamlConfigurationLoader;
 public abstract class Configurations<G, W> {
 
     private static final Logger LOGGER = LogUtils.getClassLogger();
-    public static final Identifier WORLD_DEFAULTS_KEY = Identifier.fromNamespaceAndPath("configurations", "__world_defaults__");
+    public static final String WORLD_DEFAULTS = "__world_defaults__";
+    public static final Identifier WORLD_DEFAULTS_KEY = Identifier.fromNamespaceAndPath("configurations", WORLD_DEFAULTS);
     protected final Path globalFolder;
     protected final Class<G> globalConfigClass;
     protected final Class<W> worldConfigClass;
@@ -154,6 +155,7 @@ public abstract class Configurations<G, W> {
     @MustBeInvokedByOverriders
     protected ContextMap.Builder createDefaultContextMap(final RegistryAccess registryAccess) {
         return ContextMap.builder()
+            .put(WORLD_NAME, WORLD_DEFAULTS)
             .put(WORLD_KEY, WORLD_DEFAULTS_KEY)
             .put(REGISTRY_ACCESS, registryAccess);
     }
@@ -242,20 +244,20 @@ public abstract class Configurations<G, W> {
 
     protected void verifyWorldConfigVersion(final ContextMap contextMap, final ConfigurationNode worldNode) {
         final ConfigurationNode version = worldNode.node(Configuration.VERSION_FIELD);
-        final Identifier worldKey = contextMap.require(WORLD_KEY);
+        final String worldName = contextMap.require(WORLD_NAME);
         if (version.virtual()) {
-            if (worldKey.equals(WORLD_DEFAULTS_KEY)) {
+            if (worldName.equals(WORLD_DEFAULTS)) {
                 LOGGER.warn("The world defaults config file didn't have a version set, assuming latest");
             } else {
-                LOGGER.warn("The world config file for " + worldKey + " didn't have a version set, assuming latest");
+                LOGGER.warn("The world config file for " + worldName + " didn't have a version set, assuming latest");
             }
             version.raw(this.worldConfigVersion());
         } else if (version.getInt() > this.worldConfigVersion()) {
             String msg = "Loading a newer configuration than is supported ({} > {})! ";
-            if (worldKey.equals(WORLD_DEFAULTS_KEY)) {
+            if (worldName.equals(WORLD_DEFAULTS)) {
                 msg += "You may have to backup & delete the world defaults config file to start the server.";
             } else {
-                msg += "You may have to backup & delete the " + worldKey + " config file to start the server.";
+                msg += "You may have to backup & delete the " + worldName + " config file to start the server.";
             }
             LOGGER.error(msg, version.getInt(), this.worldConfigVersion());
         }
@@ -274,7 +276,7 @@ public abstract class Configurations<G, W> {
     }
 
     public Path getWorldConfigFile(ServerLevel level) {
-        return level.getServer().storageSource.getDimensionPath(level.dimension()).resolve(this.worldConfigFileName);
+        return level.levelStorageAccess.levelDirectory.path().resolve(this.worldConfigFileName);
     }
 
     public static class ContextMap {
@@ -338,6 +340,7 @@ public abstract class Configurations<G, W> {
     }
 
     public static final ContextKey<Path> WORLD_DIRECTORY = new ContextKey<>(Path.class, "world directory");
+    public static final ContextKey<String> WORLD_NAME = new ContextKey<>(String.class, "world name"); // TODO remove when we deprecate level names
     public static final ContextKey<Identifier> WORLD_KEY = new ContextKey<>(Identifier.class, "world key");
     public static final ContextKey<Void> FIRST_DEFAULT = new ContextKey<>(Void.class, "first default");
     public static final ContextKey<RegistryAccess> REGISTRY_ACCESS = new ContextKey<>(RegistryAccess.class, "registry access");

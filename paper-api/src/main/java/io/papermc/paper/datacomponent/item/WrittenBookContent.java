@@ -3,7 +3,6 @@ package io.papermc.paper.datacomponent.item;
 import io.papermc.paper.datacomponent.DataComponentBuilder;
 import io.papermc.paper.text.Filtered;
 import java.util.List;
-import net.kyori.adventure.inventory.BookLike;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.ComponentLike;
 import org.checkerframework.common.value.qual.IntRange;
@@ -19,7 +18,7 @@ import org.jspecify.annotations.NullMarked;
 @NullMarked
 @ApiStatus.Experimental
 @ApiStatus.NonExtendable
-public interface WrittenBookContent extends BookLike {
+public interface WrittenBookContent {
 
     @Contract(value = "_, _ -> new", pure = true)
     static WrittenBookContent.Builder writtenBookContent(final String title, final String author) {

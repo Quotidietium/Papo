@@ -24,6 +24,7 @@ import org.bukkit.block.BlockState;
 import org.bukkit.block.DecoratedPot;
 import org.bukkit.block.Jukebox;
 import org.bukkit.block.data.BlockData;
+import org.bukkit.craftbukkit.block.data.CraftBlockData;
 import org.bukkit.craftbukkit.inventory.CraftItemType;
 import org.bukkit.craftbukkit.legacy.reroute.InjectPluginVersion;
 import org.bukkit.craftbukkit.legacy.reroute.RerouteStatic;
@@ -251,7 +252,7 @@ public class MaterialRerouting {
 
     @Deprecated
     public static void sendBlockChange(Player player, Location location, Material material, byte data) {
-        player.sendBlockChange(location, CraftMagicNumbers.getBlock(material, data).asBlockData());
+        player.sendBlockChange(location, CraftBlockData.fromData(CraftMagicNumbers.getBlock(material, data)));
     }
 
     public static Material getSteerMaterial(Steerable steerable, @InjectPluginVersion ApiVersion version) {
@@ -572,7 +573,7 @@ public class MaterialRerouting {
 
     @Deprecated
     public static FallingBlock spawnFallingBlock(World world, Location location, Material material, byte data) {
-        return world.spawnFallingBlock(location, CraftMagicNumbers.getBlock(material, data).asBlockData());
+        return world.spawnFallingBlock(location, CraftBlockData.fromData(CraftMagicNumbers.getBlock(material, data)));
     }
 
     public static ToolComponent.ToolRule addRule(ToolComponent toolComponent, Material block, Float speed, Boolean correctForDrops) {
