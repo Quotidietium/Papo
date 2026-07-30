@@ -1,0 +1,84 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 20:56:22 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=20=E5=87=BB=E6=9D=80/?=
+ =?UTF-8?q?=E4=BA=A4=E4=BA=92/=E6=8B=BE=E5=8F=96=E8=A7=A6=E5=8F=91?=
+ =?UTF-8?q?=E5=99=A8=EF=BC=9AhasListeners=20=E6=97=A9=E9=80=80=EF=BC=88?=
+ =?UTF-8?q?=E6=97=A0=E7=9B=91=E5=90=AC=E5=99=A8=E6=97=B6=E5=9F=BA=E7=B1=BB?=
+ =?UTF-8?q?=E6=9C=AC=E5=B0=B1=E6=97=A0=E6=93=8D=E4=BD=9C=EF=BC=8C=E6=8F=90?=
+ =?UTF-8?q?=E5=89=8D=E8=BF=94=E5=9B=9E=E8=B7=B3=E8=BF=87=E6=AF=8F=E6=AC=A1?=
+ =?UTF-8?q?=E5=87=BB=E6=9D=80/=E5=91=BD=E4=B8=AD/=E4=BA=A4=E4=BA=92?=
+ =?UTF-8?q?=E7=9A=84=20LootContext=20=E6=80=A5=E5=88=87=E6=9E=84=E5=BB=BA?=
+ =?UTF-8?q?=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/advancements/criterion/KilledTrigger.java b/net/minecraft/advancements/criterion/KilledTrigger.java
+index f1ea7f70ca5fa92f2c17b7f2fffde1f31fda1831..a64ebd5c9721215e581cb6a980846bbe46fdbb9f 100644
+--- a/net/minecraft/advancements/criterion/KilledTrigger.java
++++ b/net/minecraft/advancements/criterion/KilledTrigger.java
+@@ -17,6 +17,7 @@ public class KilledTrigger extends SimpleCriterionTrigger<KilledTrigger.TriggerI
+     }
+ 
+     public void trigger(ServerPlayer player, Entity entity, DamageSource damageSource) {
++        if (!this.hasListeners(player)) return; // Papo - skip eager LootContext build when nobody listens
+         LootContext lootContext = EntityPredicate.createContext(player, entity);
+         this.trigger(player, instance -> instance.matches(player, lootContext, damageSource));
+     }
+diff --git a/net/minecraft/advancements/criterion/PickedUpItemTrigger.java b/net/minecraft/advancements/criterion/PickedUpItemTrigger.java
+index 49e5e309faf41f5ea22f2e7f7bd60281896354e9..af2b3dfbe7997fd4973f3f2946ff92ff02621846 100644
+--- a/net/minecraft/advancements/criterion/PickedUpItemTrigger.java
++++ b/net/minecraft/advancements/criterion/PickedUpItemTrigger.java
+@@ -18,6 +18,7 @@ public class PickedUpItemTrigger extends SimpleCriterionTrigger<PickedUpItemTrig
+     }
+ 
+     public void trigger(ServerPlayer player, ItemStack stack, @Nullable Entity entity) {
++        if (!this.hasListeners(player)) return; // Papo - skip eager LootContext build when nobody listens
+         LootContext lootContext = EntityPredicate.createContext(player, entity);
+         this.trigger(player, instance -> instance.matches(player, stack, lootContext));
+     }
+diff --git a/net/minecraft/advancements/criterion/PlayerHurtEntityTrigger.java b/net/minecraft/advancements/criterion/PlayerHurtEntityTrigger.java
+index be34086e410638823c492ef4217eb2395d77fa5b..946930de93e37667cf98012f5a194302545684da 100644
+--- a/net/minecraft/advancements/criterion/PlayerHurtEntityTrigger.java
++++ b/net/minecraft/advancements/criterion/PlayerHurtEntityTrigger.java
+@@ -17,6 +17,7 @@ public class PlayerHurtEntityTrigger extends SimpleCriterionTrigger<PlayerHurtEn
+     }
+ 
+     public void trigger(ServerPlayer player, Entity entity, DamageSource damageSource, float dealtDamage, float takenDamage, boolean blocked) {
++        if (!this.hasListeners(player)) return; // Papo - skip eager LootContext build when nobody listens
+         LootContext lootContext = EntityPredicate.createContext(player, entity);
+         this.trigger(player, instance -> instance.matches(player, lootContext, damageSource, dealtDamage, takenDamage, blocked));
+     }
+diff --git a/net/minecraft/advancements/criterion/PlayerInteractTrigger.java b/net/minecraft/advancements/criterion/PlayerInteractTrigger.java
+index 333e0d4dd3ca3b0f7556f3563f8356b333710d63..a5c160f939d091e711c331f550d41f6191cf6bf7 100644
+--- a/net/minecraft/advancements/criterion/PlayerInteractTrigger.java
++++ b/net/minecraft/advancements/criterion/PlayerInteractTrigger.java
+@@ -17,6 +17,7 @@ public class PlayerInteractTrigger extends SimpleCriterionTrigger<PlayerInteract
+     }
+ 
+     public void trigger(ServerPlayer player, ItemStack item, Entity entity) {
++        if (!this.hasListeners(player)) return; // Papo - skip eager LootContext build when nobody listens
+         LootContext lootContext = EntityPredicate.createContext(player, entity);
+         this.trigger(player, instance -> instance.matches(item, lootContext));
+     }
+diff --git a/net/minecraft/advancements/criterion/SimpleCriterionTrigger.java b/net/minecraft/advancements/criterion/SimpleCriterionTrigger.java
+index 368a9d33f93c2e85abe4cf10df5a85c09fb03dd6..78481dc201fdf262e90706505361deb1f7eeadf9 100644
+--- a/net/minecraft/advancements/criterion/SimpleCriterionTrigger.java
++++ b/net/minecraft/advancements/criterion/SimpleCriterionTrigger.java
+@@ -38,6 +38,14 @@ public abstract class SimpleCriterionTrigger<T extends SimpleCriterionTrigger.Si
+         playerAdvancements.criterionData.remove(this); // Paper - fix PlayerAdvancements leak
+     }
+ 
++    // Papo start - let subclasses skip eagerly-built trigger arguments (e.g. EntityPredicate.createContext)
++    // when nobody listens; trigger() below already no-ops on an absent/empty listener set.
++    protected final boolean hasListeners(ServerPlayer player) {
++        Set<CriterionTrigger.Listener<T>> set = (Set) player.getAdvancements().criterionData.get(this); // Paper - fix PlayerAdvancements leak
++        return set != null && !set.isEmpty();
++    }
++    // Papo end
++
+     protected void trigger(ServerPlayer player, Predicate<T> testTrigger) {
+         PlayerAdvancements advancements = player.getAdvancements();
+         Set<CriterionTrigger.Listener<T>> set = (Set) advancements.criterionData.get(this); // Paper - fix PlayerAdvancements leak

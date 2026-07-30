@@ -1,0 +1,156 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 20:56:22 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=20=E8=83=8C=E5=8C=85?=
+ =?UTF-8?q?=E7=82=B9=E5=87=BB=E8=B7=AF=E5=BE=84=EF=BC=9ASlot.tryRemove=20?=
+ =?UTF-8?q?=E6=8B=86=E5=87=BA=20@Nullable=20=E5=8C=85=E5=86=85=E8=B7=AF?=
+ =?UTF-8?q?=E5=BE=84=EF=BC=88safeTake/doClick=202=20=E5=A4=84=E5=85=8D=20O?=
+ =?UTF-8?q?ptional+ifPresent=20lambda=20=E5=88=86=E9=85=8D=EF=BC=8C?=
+ =?UTF-8?q?=E5=85=AC=E5=85=B1=20API=20=E5=A7=94=E6=89=98=E4=BF=9D=E6=8C=81?=
+ =?UTF-8?q?=E5=85=BC=E5=AE=B9=EF=BC=89=EF=BC=9Bcarried=20SlotAccess=20?=
+ =?UTF-8?q?=E6=97=A0=E7=8A=B6=E6=80=81=E5=A7=94=E6=89=98=E7=BC=93=E5=AD=98?=
+ =?UTF-8?q?=E4=B8=BA=E6=AF=8F=20menu=20=E5=8D=95=E4=BE=8B?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/inventory/AbstractContainerMenu.java b/net/minecraft/world/inventory/AbstractContainerMenu.java
+index e6a6a01f8acb0bbe2a5fb87ed697c9a1291dd1b2..5b267fae9d87809837b9b9a28be74dbef944c242 100644
+--- a/net/minecraft/world/inventory/AbstractContainerMenu.java
++++ b/net/minecraft/world/inventory/AbstractContainerMenu.java
+@@ -10,7 +10,6 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
+ import it.unimi.dsi.fastutil.ints.IntList;
+ import java.util.ArrayList;
+ import java.util.List;
+-import java.util.Optional;
+ import java.util.OptionalInt;
+ import java.util.Set;
+ import java.util.function.Supplier;
+@@ -549,11 +548,12 @@ public abstract class AbstractContainerMenu {
+                     } else if (slot.mayPickup(player)) {
+                         if (carried2.isEmpty()) {
+                             int i3 = clickAction == ClickAction.PRIMARY ? carried.getCount() : (carried.getCount() + 1) / 2;
+-                            Optional<ItemStack> optional = slot.tryRemove(i3, Integer.MAX_VALUE, player);
+-                            optional.ifPresent(itemStack2 -> {
+-                                this.setCarried(itemStack2);
+-                                slot.onTake(player, itemStack2);
+-                            });
++                            // Papo - @Nullable internal path (Optional + lambda alloc per click)
++                            ItemStack optional = slot.tryRemoveInternal(i3, Integer.MAX_VALUE, player);
++                            if (optional != null) {
++                                this.setCarried(optional);
++                                slot.onTake(player, optional);
++                            }
+                         } else if (slot.mayPlace(carried2)) {
+                             if (ItemStack.isSameItemSameComponents(carried, carried2)) {
+                                 int i3 = clickAction == ClickAction.PRIMARY ? carried2.getCount() : 1;
+@@ -563,11 +563,12 @@ public abstract class AbstractContainerMenu {
+                                 slot.setByPlayer(carried2);
+                             }
+                         } else if (ItemStack.isSameItemSameComponents(carried, carried2)) {
+-                            Optional<ItemStack> optional1 = slot.tryRemove(carried.getCount(), carried2.getMaxStackSize() - carried2.getCount(), player);
+-                            optional1.ifPresent(itemStack2 -> {
+-                                carried2.grow(itemStack2.getCount());
+-                                slot.onTake(player, itemStack2);
+-                            });
++                            // Papo - @Nullable internal path (Optional + lambda alloc per click)
++                            ItemStack optional1 = slot.tryRemoveInternal(carried.getCount(), carried2.getMaxStackSize() - carried2.getCount(), player);
++                            if (optional1 != null) {
++                                carried2.grow(optional1.getCount());
++                                slot.onTake(player, optional1);
++                            }
+                         }
+                     }
+                 }
+@@ -685,19 +686,27 @@ public abstract class AbstractContainerMenu {
+                 && clickedItem.overrideOtherStackedOnMe(carriedItem, slot, action, player, this.createCarriedSlotAccess());
+     }
+ 
++    // Papo - cached per-menu instance; the anonymous SlotAccess is a stateless delegate to
++    // getCarried/setCarried (captures only `this`), so one instance per menu is identical to
++    // allocating a fresh one per click.
++    private SlotAccess carriedSlotAccess;
++
+     private SlotAccess createCarriedSlotAccess() {
+-        return new SlotAccess() {
+-            @Override
+-            public ItemStack get() {
+-                return AbstractContainerMenu.this.getCarried();
+-            }
++        if (this.carriedSlotAccess == null) {
++            this.carriedSlotAccess = new SlotAccess() {
++                @Override
++                public ItemStack get() {
++                    return AbstractContainerMenu.this.getCarried();
++                }
+ 
+-            @Override
+-            public boolean set(ItemStack carried) {
+-                AbstractContainerMenu.this.setCarried(carried);
+-                return true;
+-            }
+-        };
++                @Override
++                public boolean set(ItemStack carried) {
++                    AbstractContainerMenu.this.setCarried(carried);
++                    return true;
++                }
++            };
++        }
++        return this.carriedSlotAccess;
+     }
+ 
+     public boolean canTakeItemForPickAll(ItemStack stack, Slot slot) {
+diff --git a/net/minecraft/world/inventory/Slot.java b/net/minecraft/world/inventory/Slot.java
+index 2b7e245ebf3bb471a1d817c4b5d56a64790cbab7..4212d488127138f91adebe03473de81f290910e6 100644
+--- a/net/minecraft/world/inventory/Slot.java
++++ b/net/minecraft/world/inventory/Slot.java
+@@ -95,29 +95,40 @@ public class Slot {
+     }
+ 
+     public Optional<ItemStack> tryRemove(int count, int decrement, Player player) {
++        return Optional.ofNullable(this.tryRemoveInternal(count, decrement, player)); // Papo - delegate to @Nullable internal path
++    }
++
++    // Papo start - Optional-free internal path for hot container-click callers (safeTake, doClick).
++    // Identical branching to the public Optional wrapper above; null == Optional.empty().
++    @Nullable
++    ItemStack tryRemoveInternal(int count, int decrement, Player player) {
+         if (!this.mayPickup(player)) {
+-            return Optional.empty();
++            return null;
+         } else if (!this.allowModification(player) && decrement < this.getItem().getCount()) {
+-            return Optional.empty();
++            return null;
+         } else {
+             count = Math.min(count, decrement);
+             ItemStack itemStack = this.remove(count);
+             if (itemStack.isEmpty()) {
+-                return Optional.empty();
++                return null;
+             } else {
+                 if (this.getItem().isEmpty()) {
+                     this.setByPlayer(ItemStack.EMPTY, itemStack);
+                 }
+ 
+-                return Optional.of(itemStack);
++                return itemStack;
+             }
+         }
+     }
++    // Papo end
+ 
+     public ItemStack safeTake(int count, int decrement, Player player) {
+-        Optional<ItemStack> optional = this.tryRemove(count, decrement, player);
+-        optional.ifPresent(stack -> this.onTake(player, stack));
+-        return optional.orElse(ItemStack.EMPTY);
++        // Papo - use the @Nullable internal path (Optional + ifPresent lambda alloc per take)
++        ItemStack optional = this.tryRemoveInternal(count, decrement, player);
++        if (optional != null) {
++            this.onTake(player, optional);
++        }
++        return optional == null ? ItemStack.EMPTY : optional;
+     }
+ 
+     public ItemStack safeInsert(ItemStack stack) {

@@ -1,0 +1,65 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 20:56:23 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=20SleepStatus.areEnoughDeepS?=
+ =?UTF-8?q?leeping=20=E5=8F=8C=20stream=20=E5=90=88=E5=8D=95=E9=81=8D?=
+ =?UTF-8?q?=EF=BC=88=E8=B0=93=E8=AF=8D=E6=97=A0=E5=89=AF=E4=BD=9C=E7=94=A8?=
+ =?UTF-8?q?=E5=90=8C=E6=80=81=EF=BC=89=EF=BC=9BServerFunctionManager.tick?=
+ =?UTF-8?q?=20=E7=A9=BA=20ticking=20=E8=A1=A8=E6=97=A9=E9=80=80=EF=BC=88?=
+ =?UTF-8?q?=E7=A9=BA=E9=9B=86=E5=90=88=20executeTagFunctions=20=E6=97=A0?=
+ =?UTF-8?q?=E6=95=88=E6=9E=9C=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/server/ServerFunctionManager.java b/net/minecraft/server/ServerFunctionManager.java
+index 747e51132cfddc0c1d619dca81a4dd34605475bd..3b03122851ab4df3bf5ddcde8ad9451344439c76 100644
+--- a/net/minecraft/server/ServerFunctionManager.java
++++ b/net/minecraft/server/ServerFunctionManager.java
+@@ -46,7 +46,11 @@ public class ServerFunctionManager {
+                 this.executeTagFunctions(tag, LOAD_FUNCTION_TAG);
+             }
+ 
+-            this.executeTagFunctions(this.ticking, TICK_FUNCTION_TAG);
++            // Papo - skip profiler push/pop + method-ref lambda when the #tick tag is empty
++            // (executeTagFunctions on an empty collection has no effect).
++            if (!this.ticking.isEmpty()) {
++                this.executeTagFunctions(this.ticking, TICK_FUNCTION_TAG);
++            }
+         }
+     }
+ 
+diff --git a/net/minecraft/server/players/SleepStatus.java b/net/minecraft/server/players/SleepStatus.java
+index 2a7ae521654ad5c9f392baa5562e64bb71b13097..ec9a4f7e22a2c7911e872cc8c6d3b35ab9316dcb 100644
+--- a/net/minecraft/server/players/SleepStatus.java
++++ b/net/minecraft/server/players/SleepStatus.java
+@@ -3,7 +3,6 @@ package net.minecraft.server.players;
+ import java.util.List;
+ import net.minecraft.server.level.ServerPlayer;
+ import net.minecraft.util.Mth;
+-import net.minecraft.world.entity.player.Player;
+ 
+ public class SleepStatus {
+     private int activePlayers;
+@@ -15,8 +14,18 @@ public class SleepStatus {
+ 
+     public boolean areEnoughDeepSleeping(int requiredSleepPercentage, List<ServerPlayer> sleepingPlayers) {
+         // CraftBukkit start
+-        int i = (int) sleepingPlayers.stream().filter(player -> player.isSleepingLongEnough() || player.fauxSleeping).count();
+-        boolean anyDeepSleep = sleepingPlayers.stream().anyMatch(Player::isSleepingLongEnough);
++        // Papo - single pass instead of two stream traversals (both predicates are side-effect free
++        // and read the same moment-in-time state, so fused evaluation is identical).
++        int i = 0;
++        boolean anyDeepSleep = false;
++        for (ServerPlayer player : sleepingPlayers) {
++            if (player.isSleepingLongEnough()) {
++                i++;
++                anyDeepSleep = true;
++            } else if (player.fauxSleeping) {
++                i++;
++            }
++        }
+         return anyDeepSleep && i >= this.sleepersNeeded(requiredSleepPercentage);
+         // CraftBukkit end
+     }
