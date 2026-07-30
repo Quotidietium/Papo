@@ -1,0 +1,121 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 18:02:15 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=20=E5=AF=BB=E8=B7=AF?=
+ =?UTF-8?q?=E9=82=BB=E5=B1=85=E5=B1=95=E5=BC=80=EF=BC=9APlane.HORIZONTAL?=
+ =?UTF-8?q?=20=E8=BF=AD=E4=BB=A3=E5=99=A8=E4=B8=8E=E6=AF=8F=E8=B0=83?=
+ =?UTF-8?q?=E7=94=A8=20EnumMap=20=E6=94=B9=E7=BC=93=E5=AD=98=E6=95=B0?=
+ =?UTF-8?q?=E7=BB=84/ordinal=20=E7=B4=A2=E5=BC=95=E6=95=B0=E7=BB=84?=
+ =?UTF-8?q?=EF=BC=8CgetFloorLevel/=E6=B5=81=E4=BD=93=E6=9F=A5=E8=AF=A2?=
+ =?UTF-8?q?=E5=A4=8D=E7=94=A8=20MutableBlockPos?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/level/pathfinder/SwimNodeEvaluator.java b/net/minecraft/world/level/pathfinder/SwimNodeEvaluator.java
+index cf14aaaaed0ffda72429d04434fa7fc2f398aef9..70af02881bb573b025ae91055bee605635c210ec 100644
+--- a/net/minecraft/world/level/pathfinder/SwimNodeEvaluator.java
++++ b/net/minecraft/world/level/pathfinder/SwimNodeEvaluator.java
+@@ -1,9 +1,7 @@
+ package net.minecraft.world.level.pathfinder;
+ 
+-import com.google.common.collect.Maps;
+ import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
+ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+-import java.util.Map;
+ import net.minecraft.core.BlockPos;
+ import net.minecraft.core.Direction;
+ import net.minecraft.tags.FluidTags;
+@@ -16,6 +14,10 @@ import org.jspecify.annotations.Nullable;
+ 
+ public class SwimNodeEvaluator extends NodeEvaluator {
+     private static final Direction[] DIRECTIONS = Direction.values(); // Papo - cache enum array, values() clones per call
++    // Papo start - cached horizontal array in exact Plane.HORIZONTAL order + scratch mutable pos
++    private static final Direction[] HORIZONTAL = {Direction.NORTH, Direction.EAST, Direction.SOUTH, Direction.WEST};
++    private final BlockPos.MutableBlockPos fluidPos = new BlockPos.MutableBlockPos();
++    // Papo end
+     private final boolean allowBreaching;
+     private final Long2ObjectMap<PathType> pathTypesByPosCache = new Long2ObjectOpenHashMap<>();
+ 
+@@ -50,19 +52,22 @@ public class SwimNodeEvaluator extends NodeEvaluator {
+     @Override
+     public int getNeighbors(Node[] outputArray, Node node) {
+         int i = 0;
+-        Map<Direction, Node> map = Maps.newEnumMap(Direction.class);
++        // Papo start - replace per-call EnumMap with an ordinal-indexed array (identical
++        // get/put/overwrite/null semantics; Direction has exactly 6 ordinals), and iterate a
++        // cached horizontal array in exact Plane.HORIZONTAL order (iterator alloc per for-each).
++        Node[] byDirection = new Node[6];
+ 
+         for (Direction direction : DIRECTIONS) { // Papo - cached array
+             Node node1 = this.findAcceptedNode(node.x + direction.getStepX(), node.y + direction.getStepY(), node.z + direction.getStepZ());
+-            map.put(direction, node1);
++            byDirection[direction.ordinal()] = node1;
+             if (this.isNodeValid(node1)) {
+                 outputArray[i++] = node1;
+             }
+         }
+ 
+-        for (Direction direction1 : Direction.Plane.HORIZONTAL) {
++        for (Direction direction1 : HORIZONTAL) { // Papo - cached array
+             Direction clockWise = direction1.getClockWise();
+-            if (hasMalus(map.get(direction1)) && hasMalus(map.get(clockWise))) {
++            if (hasMalus(byDirection[direction1.ordinal()]) && hasMalus(byDirection[clockWise.ordinal()])) {
+                 Node node2 = this.findAcceptedNode(
+                     node.x + direction1.getStepX() + clockWise.getStepX(), node.y, node.z + direction1.getStepZ() + clockWise.getStepZ()
+                 );
+@@ -71,6 +76,7 @@ public class SwimNodeEvaluator extends NodeEvaluator {
+                 }
+             }
+         }
++        // Papo end
+ 
+         return i;
+     }
+@@ -92,7 +98,7 @@ public class SwimNodeEvaluator extends NodeEvaluator {
+                 node = this.getNode(x, y, z);
+                 node.type = cachedBlockType;
+                 node.costMalus = Math.max(node.costMalus, pathfindingMalus);
+-                if (this.currentContext.level().getFluidState(new BlockPos(x, y, z)).isEmpty()) {
++                if (this.currentContext.level().getFluidState(this.fluidPos.set(x, y, z)).isEmpty()) { // Papo - reuse mutable pos
+                     node.costMalus += 8.0F;
+                 }
+             }
+diff --git a/net/minecraft/world/level/pathfinder/WalkNodeEvaluator.java b/net/minecraft/world/level/pathfinder/WalkNodeEvaluator.java
+index 696dc52a0d45ca12710387ac46c4d8a49e500ca1..1f9a9c362898b5243fe818aa807383747d8279ca 100644
+--- a/net/minecraft/world/level/pathfinder/WalkNodeEvaluator.java
++++ b/net/minecraft/world/level/pathfinder/WalkNodeEvaluator.java
+@@ -34,6 +34,11 @@ public class WalkNodeEvaluator extends NodeEvaluator {
+     private final Long2ObjectMap<PathType> pathTypesByPosCacheByMob = new Long2ObjectOpenHashMap<>();
+     private final Object2BooleanMap<AABB> collisionCache = new Object2BooleanOpenHashMap<>();
+     private final Node[] reusableNeighbors = new Node[Direction.Plane.HORIZONTAL.length()];
++    // Papo start - cache horizontal array (Plane.HORIZONTAL iteration allocates an iterator per
++    // for-each) in exact Plane.HORIZONTAL order, and reuse a mutable pos for getFloorLevel.
++    private static final Direction[] HORIZONTAL = {Direction.NORTH, Direction.EAST, Direction.SOUTH, Direction.WEST};
++    private final BlockPos.MutableBlockPos floorLevelPos = new BlockPos.MutableBlockPos();
++    // Papo end
+ 
+     @Override
+     public void prepare(PathNavigationRegion level, Mob mob) {
+@@ -127,9 +132,9 @@ public class WalkNodeEvaluator extends NodeEvaluator {
+             i1 = Mth.floor(Math.max(1.0F, this.mob.maxUpStep()));
+         }
+ 
+-        double floorLevel = this.getFloorLevel(new BlockPos(node.x, node.y, node.z));
++        double floorLevel = this.getFloorLevel(this.floorLevelPos.set(node.x, node.y, node.z)); // Papo - reuse mutable pos
+ 
+-        for (Direction direction : Direction.Plane.HORIZONTAL) {
++        for (Direction direction : HORIZONTAL) { // Papo - cached array
+             Node node1 = this.findAcceptedNode(node.x + direction.getStepX(), node.y, node.z + direction.getStepZ(), i1, floorLevel, direction, cachedPathType1);
+             this.reusableNeighbors[direction.get2DDataValue()] = node1;
+             if (this.isNeighborValid(node1, node)) {
+@@ -137,7 +142,7 @@ public class WalkNodeEvaluator extends NodeEvaluator {
+             }
+         }
+ 
+-        for (Direction directionx : Direction.Plane.HORIZONTAL) {
++        for (Direction directionx : HORIZONTAL) { // Papo - cached array
+             Direction clockWise = directionx.getClockWise();
+             if (this.isDiagonalValid(node, this.reusableNeighbors[directionx.get2DDataValue()], this.reusableNeighbors[clockWise.get2DDataValue()])) {
+                 Node node2 = this.findAcceptedNode(
