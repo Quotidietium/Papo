@@ -182,24 +182,39 @@ public class GlobalConfiguration extends ConfigurationPart {
         public boolean allowHeadlessPistons = false;
         @Comment("This setting controls if the vanilla damage tick should be skipped if damage was blocked via a shield.")
         public boolean skipVanillaDamageTickWhenShieldBlocked = false;
+        @Comment("This setting controls what compression format is used for region files.")
+        public CompressionFormat compressionFormat = CompressionFormat.ZLIB;
+        @Comment("Compression level for region files when using ZLIB (deflate) compression.\n"
+            + "1 = best speed, 9 = best compression. 6 (default) matches vanilla byte-for-byte;\n"
+            + "lower levels dramatically cut chunk-save CPU at the cost of slightly larger files.\n"
+            + "Values outside [1,9] fall back to 6.")
+        public int compressionLevel = 6;
         @Comment("This setting controls if equipment should be updated when handling certain player actions.")
         public boolean updateEquipmentOnPlayerActions = true;
         @Comment("This setting controls what item data components don't need to be sanitized in oversized item obfuscation. Adding them re-enables exploits, but may be needed for certain resource packs. (Expected: minecraft:container, minecraft:charged_projectiles and minecraft:bundle_contents)")
         public OversizedItemComponentSanitizer.AssetOversizedItemComponentSanitizerConfiguration oversizedItemComponentSanitizer = new OversizedItemComponentSanitizer.AssetOversizedItemComponentSanitizerConfiguration(Set.of());
+
+        public enum CompressionFormat {
+            GZIP,
+            ZLIB,
+            LZ4,
+            NONE
+        }
     }
 
     public Commands commands;
 
     public class Commands extends ConfigurationPart {
         public boolean suggestPlayerNamesWhenNullTabCompletions = true;
+        public boolean timeCommandAffectsAllWorlds = false;
         @Comment("Allow mounting entities to a player in the Vanilla '/ride' command.")
         public boolean rideCommandAllowPlayerAsVehicle = false;
     }
 
-    public Time time;
+    public Logging logging;
 
-    public class Time extends ConfigurationPart {
-        public boolean affectsAllWorlds = false;
+    public class Logging extends ConfigurationPart {
+        public boolean deobfuscateStacktraces = true;
     }
 
     public Scoreboards scoreboards;
@@ -319,8 +334,6 @@ public class GlobalConfiguration extends ConfigurationPart {
             }
         }
         public int maxJoinsPerTick = 5;
-        @Constraints.Min(0)
-        public IntOr.Default catchupTicks = IntOr.Default.USE_DEFAULT;
         public boolean sendFullPosForItemEntities = false;
         public boolean loadPermissionsYmlBeforePlugins = true;
         @Constraints.Min(4)

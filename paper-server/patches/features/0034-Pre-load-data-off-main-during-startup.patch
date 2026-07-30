@@ -5,11 +5,11 @@ Subject: [PATCH] Pre-load data off-main during startup
 
 
 diff --git a/net/minecraft/server/Main.java b/net/minecraft/server/Main.java
-index a4d608d64b7d3477c9144d93547fd3b4f39a1b02..e2939cc39a8c103e4c4d7b01d39b5546486e4fbc 100644
+index 3e8870c..20725ac 100644
 --- a/net/minecraft/server/Main.java
 +++ b/net/minecraft/server/Main.java
-@@ -102,7 +102,10 @@ public class Main {
-                 writePidFile(pidFilePath);
+@@ -100,7 +100,10 @@ public class Main {
+                 writePidFile(path);
              }
  
 -            CrashReport.preload();
@@ -17,11 +17,11 @@ index a4d608d64b7d3477c9144d93547fd3b4f39a1b02..e2939cc39a8c103e4c4d7b01d39b5546
 +            // The actual result is discarded/irrelevant, but hardware and software info is memoized
 +            Thread.ofPlatform().daemon().name("CrashReport preload thread").start(CrashReport::preload);
 +            // Paper end - Perf: Run CrashReport preload asynchronously
-             if (options.has("jfrProfile")) { // CraftBukkit
+             if (optionSet.has("jfrProfile")) { // CraftBukkit
                  JvmProfiler.INSTANCE.start(Environment.SERVER);
              }
-@@ -110,6 +113,12 @@ public class Main {
-             io.papermc.paper.plugin.PluginInitializerManager.load(options); // Paper
+@@ -108,6 +111,12 @@ public class Main {
+             io.papermc.paper.plugin.PluginInitializerManager.load(optionSet); // Paper
              Bootstrap.bootStrap();
              Bootstrap.validate();
 +            // Paper start - Perf: Init DataConverter asynchronously
@@ -31,13 +31,13 @@ index a4d608d64b7d3477c9144d93547fd3b4f39a1b02..e2939cc39a8c103e4c4d7b01d39b5546
 +            Thread.ofPlatform().daemon().name("DataFixers init thread").start(DataFixers::getDataFixer);
 +            // Paper end - Perf: Init DataConverter asynchronously
              Util.startTimerHackThread();
-             Path settingsFile = Paths.get("server.properties");
-             DedicatedServerSettings settings = new DedicatedServerSettings(options); // CraftBukkit - CLI argument support
+             Path path1 = Paths.get("server.properties");
+             DedicatedServerSettings dedicatedServerSettings = new DedicatedServerSettings(optionSet); // CraftBukkit - CLI argument support
 diff --git a/net/minecraft/world/level/block/Blocks.java b/net/minecraft/world/level/block/Blocks.java
-index 3ee7f5c578e4721fd95390d76105d6f8976747a1..f94f8049572c860652c97c10ecd888ef2c338262 100644
+index 2eb6fe7..4b41400 100644
 --- a/net/minecraft/world/level/block/Blocks.java
 +++ b/net/minecraft/world/level/block/Blocks.java
-@@ -5996,11 +5996,23 @@ public class Blocks {
+@@ -7291,11 +7291,23 @@ public class Blocks {
      }
  
      static {
@@ -46,14 +46,14 @@ index 3ee7f5c578e4721fd95390d76105d6f8976747a1..f94f8049572c860652c97c10ecd888ef
 +        final java.util.List<BlockState> statesToInit = new java.util.ArrayList<>();
          for (Block block : BuiltInRegistries.BLOCK) {
 +            boolean first = true;
-             for (BlockState state : block.getStateDefinition().getPossibleStates()) {
-                 Block.BLOCK_STATE_REGISTRY.add(state);
--                state.initCache();
+             for (BlockState blockState : block.getStateDefinition().getPossibleStates()) {
+                 Block.BLOCK_STATE_REGISTRY.add(blockState);
+-                blockState.initCache();
 +                if (first) {
 +                    first = false;
-+                    state.initCache();
++                    blockState.initCache();
 +                } else {
-+                    statesToInit.add(state);
++                    statesToInit.add(blockState);
 +                }
              }
          }

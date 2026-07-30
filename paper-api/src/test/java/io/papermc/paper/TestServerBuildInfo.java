@@ -24,7 +24,9 @@ public class TestServerBuildInfo implements ServerBuildInfo {
 
     @Override
     public @NotNull String minecraftVersionId() {
-        throw new UnsupportedOperationException();
+        // Papo - Bukkit#getVersionMessage now reads this; return a dummy instead of
+        // throwing so the paper-api test harness can initialise (see ServerBuildInfo).
+        return "1.21.11";
     }
 
     @Override

@@ -98,6 +98,20 @@ public interface ServerBuildInfo {
      */
     Optional<String> gitCommit();
 
+    // Papo start - papo version
+    /**
+     * Gets the Papo version of the server build.
+     * <p>
+     * Absent for non-Papo servers.
+     *
+     * @return the Papo version, if this is a Papo build
+     */
+    @ApiStatus.Experimental
+    default Optional<String> papoVersion() {
+        return Optional.empty();
+    }
+    // Papo end - papo version
+
     /**
      * Creates a string representation of the server build information.
      *

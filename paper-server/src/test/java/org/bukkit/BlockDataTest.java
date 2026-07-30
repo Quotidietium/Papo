@@ -1,5 +1,9 @@
 package org.bukkit;
 
+import static org.bukkit.support.MatcherAssert.*;
+import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
+
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.CakeBlock;
@@ -13,66 +17,56 @@ import org.bukkit.craftbukkit.block.data.CraftBlockData;
 import org.bukkit.support.environment.VanillaFeature;
 import org.junit.jupiter.api.Test;
 
-import static org.bukkit.support.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.not;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertNotSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 @VanillaFeature
 public class BlockDataTest {
 
     @Test
     public void testParsing() {
-        BlockData cakeTest = Blocks.CAKE.defaultBlockState().setValue(CakeBlock.BITES, 3).asBlockData();
+        BlockData cakeTest = CraftBlockData.fromData(Blocks.CAKE.defaultBlockState().setValue(CakeBlock.BITES, 3));
 
-        BlockData materialString = CraftBlockData.fromString(BlockType.CAKE, "[bites=3]");
+        BlockData materialString = CraftBlockData.newData(BlockType.CAKE, "[bites=3]");
         assertThat(materialString, is(cakeTest));
 
-        BlockData combined = CraftBlockData.fromString(null, "cake[bites=3]");
+        BlockData combined = CraftBlockData.newData(null, "cake[bites=3]");
         assertThat(combined, is(cakeTest));
 
-        BlockData combinedMinecraft = CraftBlockData.fromString(null, "minecraft:cake[bites=3]");
+        BlockData combinedMinecraft = CraftBlockData.newData(null, "minecraft:cake[bites=3]");
         assertThat(combinedMinecraft, is(cakeTest));
 
-        BlockData inverted = CraftBlockData.fromString(null, cakeTest.getAsString());
+        BlockData inverted = CraftBlockData.newData(null, cakeTest.getAsString());
         assertThat(inverted, is(cakeTest));
     }
 
     @Test
     public void testBadMaterial() {
-        assertThrows(IllegalArgumentException.class, () -> CraftBlockData.fromString(null, "invalid"));
+        assertThrows(IllegalArgumentException.class, () -> CraftBlockData.newData(null, "invalid"));
     }
 
     @Test
     public void testBadSyntax() {
-        assertThrows(IllegalArgumentException.class, () -> CraftBlockData.fromString(null, "minecraft:cake[bites=3"));
+        assertThrows(IllegalArgumentException.class, () -> CraftBlockData.newData(null, "minecraft:cake[bites=3"));
     }
 
     @Test
     public void testDoubleMaterial() {
-        assertThrows(IllegalArgumentException.class, () -> CraftBlockData.fromString(BlockType.CAKE, "minecraft:cake[bites=3]"));
+        assertThrows(IllegalArgumentException.class, () -> CraftBlockData.newData(BlockType.CAKE, "minecraft:cake[bites=3]"));
     }
 
     @Test
     public void testMistake() {
-        BlockData cakeTest = Blocks.CAKE.defaultBlockState().setValue(CakeBlock.BITES, 3).asBlockData();
+        BlockData cakeTest = CraftBlockData.fromData(Blocks.CAKE.defaultBlockState().setValue(CakeBlock.BITES, 3));
 
-        assertThrows(IllegalArgumentException.class, () -> CraftBlockData.fromString(BlockType.CAKE, cakeTest.toString()));
+        assertThrows(IllegalArgumentException.class, () -> CraftBlockData.newData(BlockType.CAKE, cakeTest.toString()));
     }
 
     @Test
     public void testItemParse() {
-        assertThrows(IllegalArgumentException.class, () -> CraftBlockData.fromString(null, "minecraft:diamond_axe"));
+        assertThrows(IllegalArgumentException.class, () -> CraftBlockData.newData(null, "minecraft:diamond_axe"));
     }
 
     @Test
     public void testClone() {
-        Cake cakeTest = (Cake) Blocks.CAKE.defaultBlockState().setValue(CakeBlock.BITES, 3).asBlockData();
+        Cake cakeTest = (Cake) CraftBlockData.fromData(Blocks.CAKE.defaultBlockState().setValue(CakeBlock.BITES, 3));
         Cake clone = (Cake) cakeTest.clone();
 
         assertNotSame(cakeTest, clone, "Clone did not return new object");
@@ -84,9 +78,9 @@ public class BlockDataTest {
 
     @Test
     public void testMerge() {
-        Chest trueTarget = (Chest) CraftBlockData.fromString(null, "minecraft:chest[facing=east,waterlogged=true]");
-        Chest falseTarget = (Chest) CraftBlockData.fromString(null, "minecraft:chest[facing=east,waterlogged=false]");
-        Chest waterlogged = (Chest) CraftBlockData.fromString(null, "minecraft:chest[waterlogged=true]");
+        Chest trueTarget = (Chest) CraftBlockData.newData(null, "minecraft:chest[facing=east,waterlogged=true]");
+        Chest falseTarget = (Chest) CraftBlockData.newData(null, "minecraft:chest[facing=east,waterlogged=false]");
+        Chest waterlogged = (Chest) CraftBlockData.newData(null, "minecraft:chest[waterlogged=true]");
 
         BlockData candidate;
 
@@ -101,25 +95,25 @@ public class BlockDataTest {
 
     @Test
     public void testMergeFullySpecifiedBannerData() {
-        BlockData banner = CraftBlockData.fromString(null, "minecraft:light_gray_banner");
-        BlockData rotation = CraftBlockData.fromString(null, "minecraft:light_gray_banner[rotation=1]");
+        BlockData banner = CraftBlockData.newData(null, "minecraft:light_gray_banner");
+        BlockData rotation = CraftBlockData.newData(null, "minecraft:light_gray_banner[rotation=1]");
 
         assertEquals(rotation, banner.merge(rotation));
     }
 
     @Test
     public void testMergeFullySpecifiedLogData() {
-        BlockData log = CraftBlockData.fromString(BlockType.OAK_LOG, null);
-        BlockData axis = CraftBlockData.fromString(BlockType.OAK_LOG, "[axis=y]");
+        BlockData log = CraftBlockData.newData(BlockType.OAK_LOG, null);
+        BlockData axis = CraftBlockData.newData(BlockType.OAK_LOG, "[axis=y]");
 
         assertEquals(axis, log.merge(axis));
     }
 
     @Test
     public void testMergeAny() {
-        Chest trueTarget = (Chest) CraftBlockData.fromString(null, "minecraft:chest[facing=east,waterlogged=true]");
-        Chest falseTarget = (Chest) CraftBlockData.fromString(null, "minecraft:chest[facing=east,waterlogged=false]");
-        Chest any = (Chest) CraftBlockData.fromString(null, "minecraft:chest");
+        Chest trueTarget = (Chest) CraftBlockData.newData(null, "minecraft:chest[facing=east,waterlogged=true]");
+        Chest falseTarget = (Chest) CraftBlockData.newData(null, "minecraft:chest[facing=east,waterlogged=false]");
+        Chest any = (Chest) CraftBlockData.newData(null, "minecraft:chest");
 
         BlockData candidate;
 
@@ -134,16 +128,16 @@ public class BlockDataTest {
 
     @Test
     public void testCannotMerge1() {
-        Chest one = (Chest) CraftBlockData.fromString(null, "minecraft:chest[facing=east,waterlogged=true]");
-        Chest two = (Chest) Blocks.CHEST.defaultBlockState().asBlockData();
+        Chest one = (Chest) CraftBlockData.newData(null, "minecraft:chest[facing=east,waterlogged=true]");
+        Chest two = (Chest) CraftBlockData.fromData(Blocks.CHEST.defaultBlockState());
 
         assertThrows(IllegalArgumentException.class, () -> one.merge(two));
     }
 
     @Test
     public void testCannotMerge2() {
-        Chest one = (Chest) CraftBlockData.fromString(null, "minecraft:chest[waterlogged=true]");
-        Chest two = (Chest) CraftBlockData.fromString(null, "minecraft:chest[waterlogged=true]");
+        Chest one = (Chest) CraftBlockData.newData(null, "minecraft:chest[waterlogged=true]");
+        Chest two = (Chest) CraftBlockData.newData(null, "minecraft:chest[waterlogged=true]");
 
         one.merge(two);
 
@@ -153,22 +147,22 @@ public class BlockDataTest {
 
     @Test
     public void testCannotMerge3() {
-        Chest one = (Chest) CraftBlockData.fromString(null, "minecraft:chest[waterlogged=true]");
-        Chest two = (Chest) CraftBlockData.fromString(null, "minecraft:trapped_chest[waterlogged=true]");
+        Chest one = (Chest) CraftBlockData.newData(null, "minecraft:chest[waterlogged=true]");
+        Chest two = (Chest) CraftBlockData.newData(null, "minecraft:trapped_chest[waterlogged=true]");
 
         assertThrows(IllegalArgumentException.class, () -> one.merge(two));
     }
 
     @Test
     public void testMatch() {
-        assertTrue(CraftBlockData.fromString(null, "minecraft:chest[facing=east,waterlogged=true]").matches(CraftBlockData.fromString(null, "minecraft:chest[waterlogged=true]")));
-        assertFalse(CraftBlockData.fromString(null, "minecraft:chest[facing=east,waterlogged=false]").matches(CraftBlockData.fromString(null, "minecraft:chest[waterlogged=true]")));
-        assertTrue(CraftBlockData.fromString(null, "minecraft:chest[facing=east,waterlogged=true]").matches(CraftBlockData.fromString(null, "minecraft:chest")));
-        assertFalse(CraftBlockData.fromString(null, "minecraft:trapped_chest[facing=east,waterlogged=false]").matches(CraftBlockData.fromString(null, "minecraft:chest[waterlogged=true]")));
-        assertTrue(CraftBlockData.fromString(null, "minecraft:chest[facing=east,waterlogged=true]").matches(CraftBlockData.fromString(null, "minecraft:chest[waterlogged=true,facing=east]")));
+        assertTrue(CraftBlockData.newData(null, "minecraft:chest[facing=east,waterlogged=true]").matches(CraftBlockData.newData(null, "minecraft:chest[waterlogged=true]")));
+        assertFalse(CraftBlockData.newData(null, "minecraft:chest[facing=east,waterlogged=false]").matches(CraftBlockData.newData(null, "minecraft:chest[waterlogged=true]")));
+        assertTrue(CraftBlockData.newData(null, "minecraft:chest[facing=east,waterlogged=true]").matches(CraftBlockData.newData(null, "minecraft:chest")));
+        assertFalse(CraftBlockData.newData(null, "minecraft:trapped_chest[facing=east,waterlogged=false]").matches(CraftBlockData.newData(null, "minecraft:chest[waterlogged=true]")));
+        assertTrue(CraftBlockData.newData(null, "minecraft:chest[facing=east,waterlogged=true]").matches(CraftBlockData.newData(null, "minecraft:chest[waterlogged=true,facing=east]")));
 
-        Chest one = (Chest) Blocks.CHEST.defaultBlockState().setValue(ChestBlock.FACING, Direction.EAST).asBlockData();
-        Chest two = (Chest) CraftBlockData.fromString(null, "minecraft:chest[waterlogged=false]");
+        Chest one = (Chest) CraftBlockData.fromData(Blocks.CHEST.defaultBlockState().setValue(ChestBlock.FACING, Direction.EAST));
+        Chest two = (Chest) CraftBlockData.newData(null, "minecraft:chest[waterlogged=false]");
 
         assertTrue(one.matches(two));
         assertFalse(two.matches(one));
@@ -177,7 +171,7 @@ public class BlockDataTest {
     @Test
     public void testGetAsString() {
         String dataString = "minecraft:chest[facing=east,waterlogged=true]";
-        BlockData data = CraftBlockData.fromString(null, dataString);
+        BlockData data = CraftBlockData.newData(null, dataString);
 
         assertThat(data.getAsString(true), is(dataString));
         assertThat(data.getAsString(false), is("minecraft:chest[facing=east,type=single,waterlogged=true]"));
@@ -185,7 +179,7 @@ public class BlockDataTest {
 
     @Test
     public void testGetAsString2() {
-        Chest data = (Chest) Blocks.CHEST.defaultBlockState().setValue(ChestBlock.FACING, Direction.EAST).asBlockData();
+        Chest data = (Chest) CraftBlockData.fromData(Blocks.CHEST.defaultBlockState().setValue(ChestBlock.FACING, Direction.EAST));
 
         assertThat(data.getAsString(true), is("minecraft:chest[facing=east,type=single,waterlogged=false]"));
         assertThat(data.getAsString(false), is("minecraft:chest[facing=east,type=single,waterlogged=false]"));

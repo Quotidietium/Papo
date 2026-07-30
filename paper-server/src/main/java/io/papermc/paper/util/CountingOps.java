@@ -57,22 +57,12 @@ public final class CountingOps implements DynamicOps<CountingOps.Value> {
     }
 
     @Override
-    public Value createBoolean(final boolean value) {
-        return Value.PRIMITIVE;
-    }
-
-    @Override
     public DataResult<Number> getNumberValue(final Value input) {
         throw new UnsupportedOperationException();
     }
 
     @Override
     public DataResult<String> getStringValue(final Value input) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public DataResult<Boolean> getBooleanValue(final Value input) {
         throw new UnsupportedOperationException();
     }
 

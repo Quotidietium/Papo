@@ -1,0 +1,23 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 04:21:17 +0800
+Subject: [PATCH] Remove dead ArrayList allocation in Level.getEntities
+
+The Paper chunk-system rewrite below allocates and returns its own 'ret'
+list, so the preceding Lists.newArrayList() was discarded on every call
+(every projectile/collision entity lookup).
+
+diff --git a/net/minecraft/world/level/Level.java b/net/minecraft/world/level/Level.java
+index 579bbba4e823d4d0318e58759ca732b7c8e4d865..bc5ef428d07f723b63a47a41a9aa1a7a3bd74c89 100644
+--- a/net/minecraft/world/level/Level.java
++++ b/net/minecraft/world/level/Level.java
+@@ -1673,7 +1673,8 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
+     @Override
+     public List<Entity> getEntities(@Nullable Entity entity, AABB boundingBox, Predicate<? super Entity> predicate) {
+         Profiler.get().incrementCounter("getEntities");
+-        List<Entity> list = Lists.newArrayList();
++        // Papo - the ArrayList below is dead: the Paper chunk-system rewrite uses and
++        // returns its own `ret` list, so this allocation was discarded on every call.
+ 
+         // Paper start - rewrite chunk system
+         final List<Entity> ret = new java.util.ArrayList<>();

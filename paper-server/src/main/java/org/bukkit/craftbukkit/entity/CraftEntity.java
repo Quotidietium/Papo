@@ -91,6 +91,8 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
 
     private static PermissibleBase perm;
     private static final CraftPersistentDataTypeRegistry DATA_TYPE_REGISTRY = new CraftPersistentDataTypeRegistry();
+    private static final Pose[] POSE_VALUES = Pose.values(); // Papo - cache enum arrays to avoid per-call clone in getPose/setPose
+    private static final net.minecraft.world.entity.Pose[] NMS_POSE_VALUES = net.minecraft.world.entity.Pose.values(); // Papo
     static final PointersSupplier<org.bukkit.entity.Entity> POINTERS_SUPPLIER = PointersSupplier.<org.bukkit.entity.Entity>builder()
         .resolving(net.kyori.adventure.identity.Identity.DISPLAY_NAME, org.bukkit.entity.Entity::name)
         .resolving(net.kyori.adventure.identity.Identity.UUID, org.bukkit.entity.Entity::getUniqueId)
@@ -965,7 +967,7 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
 
     @Override
     public Pose getPose() {
-        return Pose.values()[this.getHandle().getPose().ordinal()];
+        return POSE_VALUES[this.getHandle().getPose().ordinal()]; // Papo - cached enum array
     }
 
     @Override
@@ -981,7 +983,7 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
     @Override
     public void setPose(Pose pose, boolean fixed) {
         Preconditions.checkArgument(pose != null, "pose cannot be null");
-        this.setPose0(net.minecraft.world.entity.Pose.values()[pose.ordinal()], fixed);
+        this.setPose0(NMS_POSE_VALUES[pose.ordinal()], fixed); // Papo - cached enum array
     }
 
     public void setPose0(net.minecraft.world.entity.Pose pose, boolean fixed) {

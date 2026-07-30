@@ -1,0 +1,60 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 15:43:30 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=20NBT=20int/long=20=E6=95=B0?=
+ =?UTF-8?q?=E7=BB=84=E8=AF=BB=E5=8F=96=EF=BC=9A=E6=89=B9=E9=87=8F=E8=AF=BB?=
+ =?UTF-8?q?=20+=20=E5=A4=A7=E7=AB=AF=E8=A7=A3=E7=A0=81?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+IntArrayTag/LongArrayTag.readAccounted 原逐元素 readInt/readLong（每个一次虚调用
++边界检查+整数装配）。改为 readFully 一次读完 + ByteBuffer 大端解码（线格式即大端，
+等价）。heightmap(256 元素)/biomes/packed 索引等热路径受益。LongArrayTag 无 Spigot
+上限，对 _int<<3 溢出的极端尺寸回退逐元素。
+
+diff --git a/net/minecraft/nbt/IntArrayTag.java b/net/minecraft/nbt/IntArrayTag.java
+index 5472fb36c04a4553f7574d05cd3321f899ddc644..cf33772961011bca0f1eca8ce335d4503cdebe85 100644
+--- a/net/minecraft/nbt/IntArrayTag.java
++++ b/net/minecraft/nbt/IntArrayTag.java
+@@ -27,9 +27,12 @@ public final class IntArrayTag implements CollectionTag {
+             accounter.accountBytes(4L, _int);
+             int[] ints = new int[_int];
+ 
+-            for (int i = 0; i < _int; i++) {
+-                ints[i] = input.readInt();
+-            }
++            // Papo start - bulk read + big-endian decode instead of per-element readInt
++            // (_int is Spigot-capped at 1<<24, so _int<<2 cannot overflow).
++            byte[] buf = new byte[_int << 2];
++            input.readFully(buf);
++            java.nio.ByteBuffer.wrap(buf).order(java.nio.ByteOrder.BIG_ENDIAN).asIntBuffer().get(ints);
++            // Papo end
+ 
+             return ints;
+         }
+diff --git a/net/minecraft/nbt/LongArrayTag.java b/net/minecraft/nbt/LongArrayTag.java
+index 4e7de76b8acfdf6108ddb3bceabb3feb8e0cc623..d2bca367383b37aadcd29d4b047c6c097c93c55f 100644
+--- a/net/minecraft/nbt/LongArrayTag.java
++++ b/net/minecraft/nbt/LongArrayTag.java
+@@ -26,9 +26,18 @@ public final class LongArrayTag implements CollectionTag {
+             accounter.accountBytes(8L, _int);
+             long[] longs = new long[_int];
+ 
+-            for (int i = 0; i < _int; i++) {
+-                longs[i] = input.readLong();
++            // Papo start - bulk read + big-endian decode instead of per-element readLong.
++            // LongArrayTag has no Spigot size cap, so guard _int<<3 overflow (absurd sizes fall back).
++            if (_int > Integer.MAX_VALUE / 8) {
++                for (int i = 0; i < _int; i++) {
++                    longs[i] = input.readLong();
++                }
++            } else {
++                byte[] buf = new byte[_int << 3];
++                input.readFully(buf);
++                java.nio.ByteBuffer.wrap(buf).order(java.nio.ByteOrder.BIG_ENDIAN).asLongBuffer().get(longs);
+             }
++            // Papo end
+ 
+             return longs;
+         }

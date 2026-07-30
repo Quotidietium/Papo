@@ -1,0 +1,46 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 16:15:52 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=20Raid.moveRaidCenterToNearb?=
+ =?UTF-8?q?yVillageSection=EF=BC=9Astream=20=E6=94=B9=E6=89=8B=E5=8A=A8=20?=
+ =?UTF-8?q?argmin=20=E5=BE=AA=E7=8E=AF=EF=BC=8C=E5=85=8D=E5=8E=BB=E6=B5=81?=
+ =?UTF-8?q?=E5=AF=B9=E8=B1=A1=E4=B8=8E=E4=B8=AD=E9=97=B4=E5=88=86=E9=85=8D?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/entity/raid/Raid.java b/net/minecraft/world/entity/raid/Raid.java
+index 8b63faae76da27714ba97d2ebbb066360a044169..6b122944fa5705c4858dff10dc6ec80eeee204cf 100644
+--- a/net/minecraft/world/entity/raid/Raid.java
++++ b/net/minecraft/world/entity/raid/Raid.java
+@@ -454,8 +454,27 @@ public class Raid {
+     }
+ 
+     private void moveRaidCenterToNearbyVillageSection(ServerLevel level) {
+-        Stream<SectionPos> stream = SectionPos.cube(SectionPos.of(this.center), 2);
+-        stream.filter(level::isVillage).map(SectionPos::center).min(Comparator.comparingDouble(pos -> pos.distSqr(this.center))).ifPresent(this::setCenter);
++        // Papo start - manual argmin over the cube instead of stream.filter.map.min.ifPresent
++        // (avoids the 4 lambdas + Optional allocation). min() keeps the first minimum on ties,
++        // which a strict `d < bestDist` comparison reproduces.
++        BlockPos best = null;
++        double bestDist = Double.MAX_VALUE;
++        java.util.Iterator<SectionPos> it = SectionPos.cube(SectionPos.of(this.center), 2).iterator();
++        while (it.hasNext()) {
++            SectionPos sectionPos = it.next();
++            if (level.isVillage(sectionPos)) {
++                BlockPos center = sectionPos.center();
++                double d = center.distSqr(this.center);
++                if (d < bestDist) {
++                    bestDist = d;
++                    best = center;
++                }
++            }
++        }
++        if (best != null) {
++            this.setCenter(best);
++        }
++        // Papo end
+     }
+ 
+     private Optional<BlockPos> getValidSpawnPos(ServerLevel level) {

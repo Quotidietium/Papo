@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 05:31:18 +0800
+Subject: [PATCH] Resolve PlayerChunkSender selected chunks with a loop, not a
+ second stream
+
+collectChunksToSend keeps the Comparators.least selection exactly, but resolves
+the selected chunk keys to LevelChunks via a plain loop instead of a second
+stream().mapToLong().mapToObj().filter().toList() pipeline. Same selection and
+result order; removes the resolution pipeline allocation per call during chunk
+send bursts (login/travel).
+
+diff --git a/net/minecraft/server/network/PlayerChunkSender.java b/net/minecraft/server/network/PlayerChunkSender.java
+index 644948d64791d0ffa4166375d0f4419f1ffa214a..6a04b9b9d90f3d65a81a84f3610865ead5ec6748 100644
+--- a/net/minecraft/server/network/PlayerChunkSender.java
++++ b/net/minecraft/server/network/PlayerChunkSender.java
+@@ -100,14 +100,19 @@ public class PlayerChunkSender {
+         int floor = Mth.floor(this.batchQuota);
+         List<LevelChunk> list;
+         if (!this.memoryConnection && this.pendingChunks.size() > floor) {
+-            list = this.pendingChunks
+-                .stream()
+-                .collect(Comparators.least(floor, Comparator.comparingInt(chunkPos::distanceSquared)))
++            // Papo start - keep Comparators.least selection exactly, but resolve the selected
++            // keys with a plain loop instead of a second stream pipeline (mapToLong/mapToObj/filter/toList).
++            java.util.List<Long> leastKeys = this.pendingChunks
+                 .stream()
+-                .mapToLong(Long::longValue)
+-                .mapToObj(chunkMap::getChunkToSend)
+-                .filter(Objects::nonNull)
+-                .toList();
++                .collect(Comparators.least(floor, Comparator.comparingInt(chunkPos::distanceSquared)));
++            list = new java.util.ArrayList<>(leastKeys.size());
++            for (Long key : leastKeys) {
++                LevelChunk levelChunk = chunkMap.getChunkToSend(key.longValue());
++                if (levelChunk != null) {
++                    list.add(levelChunk);
++                }
++            }
++            // Papo end
+         } else {
+             list = this.pendingChunks
+                 .longStream()

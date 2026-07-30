@@ -1,0 +1,36 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 05:24:09 +0800
+Subject: [PATCH] Avoid stream/Collector allocation when building chunk
+ heightmap packet data
+
+Replace the stream().filter().collect(toMap) over the <=7 heightmap entries
+with a plain loop into a HashMap. Preserves the original map type and
+encounter order, so the serialised packet bytes are identical.
+
+diff --git a/net/minecraft/network/protocol/game/ClientboundLevelChunkPacketData.java b/net/minecraft/network/protocol/game/ClientboundLevelChunkPacketData.java
+index 19547e22620f16d01f05bbd13a4dcb9c0df636df..1bef34100ec5c6b717878e0eb566671ba4b56a77 100644
+--- a/net/minecraft/network/protocol/game/ClientboundLevelChunkPacketData.java
++++ b/net/minecraft/network/protocol/game/ClientboundLevelChunkPacketData.java
+@@ -48,10 +48,17 @@ public class ClientboundLevelChunkPacketData {
+     }
+     public ClientboundLevelChunkPacketData(LevelChunk levelChunk, io.papermc.paper.antixray.ChunkPacketInfo<net.minecraft.world.level.block.state.BlockState> chunkPacketInfo) {
+         // Paper end - Anti-Xray - Add chunk packet info
+-        this.heightmaps = levelChunk.getHeightmaps()
+-            .stream()
+-            .filter(entry1 -> entry1.getKey().sendToClient())
+-            .collect(Collectors.toMap(Entry::getKey, entry1 -> (long[])entry1.getValue().getRawData().clone()));
++        // Papo start - avoid stream/Collector/lambda allocation per chunk send (only <=7 heightmap entries).
++        // A plain loop into a HashMap preserves the original map type and insertion (encounter) order,
++        // so the serialised packet bytes are identical to Collectors.toMap.
++        java.util.Map<Heightmap.Types, long[]> heightmapsMap = new java.util.HashMap<>();
++        for (Entry<Heightmap.Types, Heightmap> entry1 : levelChunk.getHeightmaps()) {
++            if (entry1.getKey().sendToClient()) {
++                heightmapsMap.put(entry1.getKey(), entry1.getValue().getRawData().clone());
++            }
++        }
++        this.heightmaps = heightmapsMap;
++        // Papo end
+         this.buffer = new byte[calculateChunkSize(levelChunk)];
+         // Paper start - Anti-Xray - Add chunk packet info
+         if (chunkPacketInfo != null) {

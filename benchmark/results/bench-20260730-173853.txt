@@ -1,0 +1,533 @@
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.NbtArrayWriteBench.after_intBulk
+# Parameters: (size = 256)
+
+# Run progress: 0.00% complete, ETA 00:03:12
+# Fork: 1 of 2
+# Warmup Iteration   1: 249.085 ns/op
+# Warmup Iteration   2: 163.767 ns/op
+# Warmup Iteration   3: 179.484 ns/op
+Iteration   1: 151.220 ns/op
+Iteration   2: 165.701 ns/op
+Iteration   3: 163.051 ns/op
+Iteration   4: 150.620 ns/op
+Iteration   5: 153.018 ns/op
+
+# Run progress: 4.17% complete, ETA 00:03:18
+# Fork: 2 of 2
+# Warmup Iteration   1: 248.463 ns/op
+# Warmup Iteration   2: 176.813 ns/op
+# Warmup Iteration   3: 153.423 ns/op
+Iteration   1: 162.465 ns/op
+Iteration   2: 164.816 ns/op
+Iteration   3: 157.426 ns/op
+Iteration   4: 153.566 ns/op
+Iteration   5: 153.874 ns/op
+
+
+Result "papo.bench.NbtArrayWriteBench.after_intBulk":
+  157.576 ±(99.9%) 8.897 ns/op [Average]
+  (min, avg, max) = (150.620, 157.576, 165.701), stdev = 5.885
+  CI (99.9%): [148.679, 166.473] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.NbtArrayWriteBench.after_intBulk
+# Parameters: (size = 4096)
+
+# Run progress: 8.33% complete, ETA 00:03:09
+# Fork: 1 of 2
+# Warmup Iteration   1: 3826.563 ns/op
+# Warmup Iteration   2: 2846.015 ns/op
+# Warmup Iteration   3: 2332.497 ns/op
+Iteration   1: 2418.227 ns/op
+Iteration   2: 2505.670 ns/op
+Iteration   3: 2541.965 ns/op
+Iteration   4: 2451.440 ns/op
+Iteration   5: 2726.897 ns/op
+
+# Run progress: 12.50% complete, ETA 00:03:00
+# Fork: 2 of 2
+# Warmup Iteration   1: 3683.850 ns/op
+# Warmup Iteration   2: 2919.785 ns/op
+# Warmup Iteration   3: 2484.807 ns/op
+Iteration   1: 2361.236 ns/op
+Iteration   2: 2503.442 ns/op
+Iteration   3: 2550.149 ns/op
+Iteration   4: 2268.274 ns/op
+Iteration   5: 2273.883 ns/op
+
+
+Result "papo.bench.NbtArrayWriteBench.after_intBulk":
+  2460.118 ±(99.9%) 209.624 ns/op [Average]
+  (min, avg, max) = (2268.274, 2460.118, 2726.897), stdev = 138.653
+  CI (99.9%): [2250.494, 2669.742] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.NbtArrayWriteBench.after_intBulk
+# Parameters: (size = 65536)
+
+# Run progress: 16.67% complete, ETA 00:02:52
+# Fork: 1 of 2
+# Warmup Iteration   1: 45067.434 ns/op
+# Warmup Iteration   2: 36116.347 ns/op
+# Warmup Iteration   3: 37560.065 ns/op
+Iteration   1: 43972.204 ns/op
+Iteration   2: 35790.018 ns/op
+Iteration   3: 37857.751 ns/op
+Iteration   4: 45877.743 ns/op
+Iteration   5: 45341.449 ns/op
+
+# Run progress: 20.83% complete, ETA 00:02:42
+# Fork: 2 of 2
+# Warmup Iteration   1: 49150.391 ns/op
+# Warmup Iteration   2: 36885.861 ns/op
+# Warmup Iteration   3: 36335.166 ns/op
+Iteration   1: 37300.067 ns/op
+Iteration   2: 40628.710 ns/op
+Iteration   3: 40389.704 ns/op
+Iteration   4: 38587.979 ns/op
+Iteration   5: 38344.864 ns/op
+
+
+Result "papo.bench.NbtArrayWriteBench.after_intBulk":
+  40409.049 ±(99.9%) 5334.935 ns/op [Average]
+  (min, avg, max) = (35790.018, 40409.049, 45877.743), stdev = 3528.729
+  CI (99.9%): [35074.114, 45743.984] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.NbtArrayWriteBench.after_longBulk
+# Parameters: (size = 256)
+
+# Run progress: 25.00% complete, ETA 00:02:34
+# Fork: 1 of 2
+# Warmup Iteration   1: 412.904 ns/op
+# Warmup Iteration   2: 267.104 ns/op
+# Warmup Iteration   3: 274.641 ns/op
+Iteration   1: 294.633 ns/op
+Iteration   2: 301.343 ns/op
+Iteration   3: 296.102 ns/op
+Iteration   4: 273.828 ns/op
+Iteration   5: 271.330 ns/op
+
+# Run progress: 29.17% complete, ETA 00:02:25
+# Fork: 2 of 2
+# Warmup Iteration   1: 402.983 ns/op
+# Warmup Iteration   2: 259.920 ns/op
+# Warmup Iteration   3: 260.072 ns/op
+Iteration   1: 266.979 ns/op
+Iteration   2: 245.504 ns/op
+Iteration   3: 231.217 ns/op
+Iteration   4: 251.340 ns/op
+Iteration   5: 260.182 ns/op
+
+
+Result "papo.bench.NbtArrayWriteBench.after_longBulk":
+  269.246 ±(99.9%) 35.057 ns/op [Average]
+  (min, avg, max) = (231.217, 269.246, 301.343), stdev = 23.188
+  CI (99.9%): [234.189, 304.303] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.NbtArrayWriteBench.after_longBulk
+# Parameters: (size = 4096)
+
+# Run progress: 33.33% complete, ETA 00:02:16
+# Fork: 1 of 2
+# Warmup Iteration   1: 7198.300 ns/op
+# Warmup Iteration   2: 5698.510 ns/op
+# Warmup Iteration   3: 4347.426 ns/op
+Iteration   1: 4506.498 ns/op
+Iteration   2: 4691.178 ns/op
+Iteration   3: 4508.827 ns/op
+Iteration   4: 4415.768 ns/op
+Iteration   5: 4629.781 ns/op
+
+# Run progress: 37.50% complete, ETA 00:02:08
+# Fork: 2 of 2
+# Warmup Iteration   1: 7197.708 ns/op
+# Warmup Iteration   2: 5479.417 ns/op
+# Warmup Iteration   3: 4938.148 ns/op
+Iteration   1: 4659.042 ns/op
+Iteration   2: 4797.910 ns/op
+Iteration   3: 4656.794 ns/op
+Iteration   4: 4808.778 ns/op
+Iteration   5: 4992.498 ns/op
+
+
+Result "papo.bench.NbtArrayWriteBench.after_longBulk":
+  4666.707 ±(99.9%) 256.581 ns/op [Average]
+  (min, avg, max) = (4415.768, 4666.707, 4992.498), stdev = 169.713
+  CI (99.9%): [4410.126, 4923.289] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.NbtArrayWriteBench.after_longBulk
+# Parameters: (size = 65536)
+
+# Run progress: 41.67% complete, ETA 00:01:59
+# Fork: 1 of 2
+# Warmup Iteration   1: 96575.278 ns/op
+# Warmup Iteration   2: 70998.724 ns/op
+# Warmup Iteration   3: 74030.723 ns/op
+Iteration   1: 78806.662 ns/op
+Iteration   2: 72424.982 ns/op
+Iteration   3: 73965.835 ns/op
+Iteration   4: 81450.221 ns/op
+Iteration   5: 72018.113 ns/op
+
+# Run progress: 45.83% complete, ETA 00:01:51
+# Fork: 2 of 2
+# Warmup Iteration   1: 90699.803 ns/op
+# Warmup Iteration   2: 76925.768 ns/op
+# Warmup Iteration   3: 72287.791 ns/op
+Iteration   1: 70125.880 ns/op
+Iteration   2: 75491.025 ns/op
+Iteration   3: 71082.263 ns/op
+Iteration   4: 69642.088 ns/op
+Iteration   5: 70529.627 ns/op
+
+
+Result "papo.bench.NbtArrayWriteBench.after_longBulk":
+  73553.670 ±(99.9%) 5958.744 ns/op [Average]
+  (min, avg, max) = (69642.088, 73553.670, 81450.221), stdev = 3941.340
+  CI (99.9%): [67594.926, 79512.413] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.NbtArrayWriteBench.before_intPerElement
+# Parameters: (size = 256)
+
+# Run progress: 50.00% complete, ETA 00:01:42
+# Fork: 1 of 2
+# Warmup Iteration   1: 1694.924 ns/op
+# Warmup Iteration   2: 1884.736 ns/op
+# Warmup Iteration   3: 1317.345 ns/op
+Iteration   1: 1357.829 ns/op
+Iteration   2: 1429.740 ns/op
+Iteration   3: 1426.707 ns/op
+Iteration   4: 1370.849 ns/op
+Iteration   5: 1363.419 ns/op
+
+# Run progress: 54.17% complete, ETA 00:01:33
+# Fork: 2 of 2
+# Warmup Iteration   1: 1765.244 ns/op
+# Warmup Iteration   2: 1973.243 ns/op
+# Warmup Iteration   3: 1583.752 ns/op
+Iteration   1: 1572.012 ns/op
+Iteration   2: 2127.558 ns/op
+Iteration   3: 1639.701 ns/op
+Iteration   4: 1469.930 ns/op
+Iteration   5: 1406.571 ns/op
+
+
+Result "papo.bench.NbtArrayWriteBench.before_intPerElement":
+  1516.432 ±(99.9%) 353.241 ns/op [Average]
+  (min, avg, max) = (1357.829, 1516.432, 2127.558), stdev = 233.647
+  CI (99.9%): [1163.190, 1869.673] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.NbtArrayWriteBench.before_intPerElement
+# Parameters: (size = 4096)
+
+# Run progress: 58.33% complete, ETA 00:01:25
+# Fork: 1 of 2
+# Warmup Iteration   1: 25119.826 ns/op
+# Warmup Iteration   2: 23699.388 ns/op
+# Warmup Iteration   3: 26215.900 ns/op
+Iteration   1: 22781.146 ns/op
+Iteration   2: 22722.147 ns/op
+Iteration   3: 22886.292 ns/op
+Iteration   4: 22751.532 ns/op
+Iteration   5: 22769.912 ns/op
+
+# Run progress: 62.50% complete, ETA 00:01:16
+# Fork: 2 of 2
+# Warmup Iteration   1: 25427.852 ns/op
+# Warmup Iteration   2: 24194.244 ns/op
+# Warmup Iteration   3: 26015.831 ns/op
+Iteration   1: 22735.171 ns/op
+Iteration   2: 22729.273 ns/op
+Iteration   3: 22580.411 ns/op
+Iteration   4: 23221.022 ns/op
+Iteration   5: 22603.482 ns/op
+
+
+Result "papo.bench.NbtArrayWriteBench.before_intPerElement":
+  22778.039 ±(99.9%) 269.319 ns/op [Average]
+  (min, avg, max) = (22580.411, 22778.039, 23221.022), stdev = 178.138
+  CI (99.9%): [22508.720, 23047.358] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.NbtArrayWriteBench.before_intPerElement
+# Parameters: (size = 65536)
+
+# Run progress: 66.67% complete, ETA 00:01:07
+# Fork: 1 of 2
+# Warmup Iteration   1: 408065.781 ns/op
+# Warmup Iteration   2: 384177.961 ns/op
+# Warmup Iteration   3: 378124.429 ns/op
+Iteration   1: 376128.172 ns/op
+Iteration   2: 372356.794 ns/op
+Iteration   3: 377367.152 ns/op
+Iteration   4: 372627.585 ns/op
+Iteration   5: 374967.259 ns/op
+
+# Run progress: 70.83% complete, ETA 00:00:59
+# Fork: 2 of 2
+# Warmup Iteration   1: 385904.364 ns/op
+# Warmup Iteration   2: 359684.690 ns/op
+# Warmup Iteration   3: 364879.431 ns/op
+Iteration   1: 376009.618 ns/op
+Iteration   2: 380875.738 ns/op
+Iteration   3: 381557.623 ns/op
+Iteration   4: 377231.096 ns/op
+Iteration   5: 378480.381 ns/op
+
+
+Result "papo.bench.NbtArrayWriteBench.before_intPerElement":
+  376760.142 ±(99.9%) 4622.869 ns/op [Average]
+  (min, avg, max) = (372356.794, 376760.142, 381557.623), stdev = 3057.741
+  CI (99.9%): [372137.273, 381383.010] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.NbtArrayWriteBench.before_longPerElement
+# Parameters: (size = 256)
+
+# Run progress: 75.00% complete, ETA 00:00:50
+# Fork: 1 of 2
+# Warmup Iteration   1: 1922.098 ns/op
+# Warmup Iteration   2: 2104.853 ns/op
+# Warmup Iteration   3: 1430.114 ns/op
+Iteration   1: 1471.948 ns/op
+Iteration   2: 1471.351 ns/op
+Iteration   3: 1468.055 ns/op
+Iteration   4: 1470.700 ns/op
+Iteration   5: 1465.339 ns/op
+
+# Run progress: 79.17% complete, ETA 00:00:42
+# Fork: 2 of 2
+# Warmup Iteration   1: 1934.205 ns/op
+# Warmup Iteration   2: 2093.791 ns/op
+# Warmup Iteration   3: 1407.371 ns/op
+Iteration   1: 1461.973 ns/op
+Iteration   2: 1456.904 ns/op
+Iteration   3: 1459.193 ns/op
+Iteration   4: 1447.400 ns/op
+Iteration   5: 1447.741 ns/op
+
+
+Result "papo.bench.NbtArrayWriteBench.before_longPerElement":
+  1462.061 ±(99.9%) 13.895 ns/op [Average]
+  (min, avg, max) = (1447.400, 1462.061, 1471.948), stdev = 9.191
+  CI (99.9%): [1448.166, 1475.955] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.NbtArrayWriteBench.before_longPerElement
+# Parameters: (size = 4096)
+
+# Run progress: 83.33% complete, ETA 00:00:33
+# Fork: 1 of 2
+# Warmup Iteration   1: 28867.362 ns/op
+# Warmup Iteration   2: 26864.287 ns/op
+# Warmup Iteration   3: 26723.770 ns/op
+Iteration   1: 34664.404 ns/op
+Iteration   2: 27844.748 ns/op
+Iteration   3: 26132.672 ns/op
+Iteration   4: 25712.952 ns/op
+Iteration   5: 25600.273 ns/op
+
+# Run progress: 87.50% complete, ETA 00:00:25
+# Fork: 2 of 2
+# Warmup Iteration   1: 31372.722 ns/op
+# Warmup Iteration   2: 28252.249 ns/op
+# Warmup Iteration   3: 28482.648 ns/op
+Iteration   1: 38778.431 ns/op
+Iteration   2: 25966.274 ns/op
+Iteration   3: 26405.087 ns/op
+Iteration   4: 25783.595 ns/op
+Iteration   5: 25838.451 ns/op
+
+
+Result "papo.bench.NbtArrayWriteBench.before_longPerElement":
+  28272.689 ±(99.9%) 6957.649 ns/op [Average]
+  (min, avg, max) = (25600.273, 28272.689, 38778.431), stdev = 4602.054
+  CI (99.9%): [21315.040, 35230.338] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.NbtArrayWriteBench.before_longPerElement
+# Parameters: (size = 65536)
+
+# Run progress: 91.67% complete, ETA 00:00:16
+# Fork: 1 of 2
+# Warmup Iteration   1: 507255.449 ns/op
+# Warmup Iteration   2: 465820.167 ns/op
+# Warmup Iteration   3: 476990.901 ns/op
+Iteration   1: 466004.418 ns/op
+Iteration   2: 461799.678 ns/op
+Iteration   3: 470927.052 ns/op
+Iteration   4: 460462.089 ns/op
+Iteration   5: 463322.339 ns/op
+
+# Run progress: 95.83% complete, ETA 00:00:08
+# Fork: 2 of 2
+# Warmup Iteration   1: 473971.028 ns/op
+# Warmup Iteration   2: 444376.434 ns/op
+# Warmup Iteration   3: 446511.038 ns/op
+Iteration   1: 464448.140 ns/op
+Iteration   2: 457185.165 ns/op
+Iteration   3: 461366.971 ns/op
+Iteration   4: 463800.229 ns/op
+Iteration   5: 459795.266 ns/op
+
+
+Result "papo.bench.NbtArrayWriteBench.before_longPerElement":
+  462911.135 ±(99.9%) 5729.526 ns/op [Average]
+  (min, avg, max) = (457185.165, 462911.135, 470927.052), stdev = 3789.727
+  CI (99.9%): [457181.609, 468640.661] (assumes normal distribution)
+
+
+# Run complete. Total time: 00:03:23
+
+REMEMBER: The numbers below are just data. To gain reusable insights, you need to follow up on
+why the numbers are the way they are. Use profilers (see -prof, -lprof), design factorial
+experiments, perform baseline and negative tests that provide experimental control, make sure
+the benchmarking environment is safe on JVM/OS/HW level, ask for reviews from the domain experts.
+Do not assume the numbers tell you what you want them to tell.
+
+NOTE: Current JVM experimentally supports Compiler Blackholes, and they are in use. Please exercise
+extra caution when trusting the results, look into the generated code to check the benchmark still
+works, and factor in a small probability of new VM bugs. Additionally, while comparisons between
+different JVMs are already problematic, the performance difference caused by different Blackhole
+modes can be very significant. Please make sure you use the consistent Blackhole mode for comparisons.
+
+Benchmark                                 (size)  Mode  Cnt       Score      Error  Units
+NbtArrayWriteBench.after_intBulk             256  avgt   10     157.576 ±    8.897  ns/op
+NbtArrayWriteBench.after_intBulk            4096  avgt   10    2460.118 ±  209.624  ns/op
+NbtArrayWriteBench.after_intBulk           65536  avgt   10   40409.049 ± 5334.935  ns/op
+NbtArrayWriteBench.after_longBulk            256  avgt   10     269.246 ±   35.057  ns/op
+NbtArrayWriteBench.after_longBulk           4096  avgt   10    4666.707 ±  256.581  ns/op
+NbtArrayWriteBench.after_longBulk          65536  avgt   10   73553.670 ± 5958.744  ns/op
+NbtArrayWriteBench.before_intPerElement      256  avgt   10    1516.432 ±  353.241  ns/op
+NbtArrayWriteBench.before_intPerElement     4096  avgt   10   22778.039 ±  269.319  ns/op
+NbtArrayWriteBench.before_intPerElement    65536  avgt   10  376760.142 ± 4622.869  ns/op
+NbtArrayWriteBench.before_longPerElement     256  avgt   10    1462.061 ±   13.895  ns/op
+NbtArrayWriteBench.before_longPerElement    4096  avgt   10   28272.689 ± 6957.649  ns/op
+NbtArrayWriteBench.before_longPerElement   65536  avgt   10  462911.135 ± 5729.526  ns/op
+
+Benchmark result is saved to results/bench-20260730-173853.json

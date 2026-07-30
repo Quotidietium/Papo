@@ -1,0 +1,53 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 04:34:51 +0800
+Subject: [PATCH] Reuse removal set in Level.tickBlockEntities
+
+Hoist the per-tick ReferenceOpenHashSet to an instance field (clear() each
+tick instead of allocating) and skip the O(n) blockEntityTickers.removeAll
+scan entirely when nothing was removed. Behaviour identical to the Paper
+MC-117075 removeAll approach.
+
+diff --git a/net/minecraft/world/level/Level.java b/net/minecraft/world/level/Level.java
+index bc5ef428d07f723b63a47a41a9aa1a7a3bd74c89..92403aa03ce92803743a35e7e3c8fa2c618abd96 100644
+--- a/net/minecraft/world/level/Level.java
++++ b/net/minecraft/world/level/Level.java
+@@ -167,6 +167,7 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
+ 
+     public static @Nullable BlockPos lastPhysicsProblem; // Spigot
+     private int tileTickPosition;
++    private final it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet<TickingBlockEntity> tickBlockEntitiesToRemove = new it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet<>(); // Papo - reuse across ticks to avoid per-tick allocation and skip removeAll when nothing was removed
+     public final Map<ServerExplosion.CacheKey, Float> explosionDensityCache = new java.util.HashMap<>(); // Paper - Optimize explosions
+     public java.util.ArrayDeque<net.minecraft.world.level.block.RedstoneTorchBlock.Toggle> redstoneUpdateInfos; // Paper - Faster redstone torch rapid clock removal; Move from Map in BlockRedstoneTorch to here
+ 
+@@ -1401,13 +1402,15 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
+         boolean runsNormally = this.tickRateManager().runsNormally();
+ 
+         int tickedEntities = 0; // Paper - rewrite chunk system
+-        var toRemove = new it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet<TickingBlockEntity>(); // Paper - Fix MC-117075; use removeAll
+-        toRemove.add(null); // Paper - Fix MC-117075
++        // Papo start - reuse the removal set across ticks (avoids a per-tick allocation) and
++        // skip the O(n) removeAll scan entirely when nothing was removed this tick.
++        this.tickBlockEntitiesToRemove.clear();
++        this.tickBlockEntitiesToRemove.add(null); // Paper - Fix MC-117075 sentinel
+         for (this.tileTickPosition = 0; this.tileTickPosition < this.blockEntityTickers.size(); this.tileTickPosition++) { // Paper - Disable tick limiters
+             TickingBlockEntity tickingBlockEntity = this.blockEntityTickers.get(this.tileTickPosition);
+             // Spigot end
+             if (tickingBlockEntity.isRemoved()) {
+-                toRemove.add(tickingBlockEntity); // Paper - Fix MC-117075; use removeAll
++                this.tickBlockEntitiesToRemove.add(tickingBlockEntity); // Paper - Fix MC-117075; use removeAll
+             } else if (runsNormally && this.shouldTickBlocksAt(tickingBlockEntity.getPos())) {
+                 tickingBlockEntity.tick();
+                 // Paper start - rewrite chunk system
+@@ -1417,7 +1420,10 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
+                 // Paper end - rewrite chunk system
+             }
+         }
+-        this.blockEntityTickers.removeAll(toRemove); // Paper - Fix MC-117075
++        if (this.tickBlockEntitiesToRemove.size() > 1) { // >1 means a real ticker beyond the null sentinel was queued
++            this.blockEntityTickers.removeAll(this.tickBlockEntitiesToRemove); // Paper - Fix MC-117075
++        }
++        // Papo end - reuse the removal set across ticks
+ 
+         this.tickingBlockEntities = false;
+         this.spigotConfig.currentPrimedTnt = 0; // Spigot

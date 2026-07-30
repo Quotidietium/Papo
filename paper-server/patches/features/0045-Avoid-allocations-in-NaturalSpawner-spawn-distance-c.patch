@@ -1,0 +1,39 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 04:34:52 +0800
+Subject: [PATCH] Avoid allocations in NaturalSpawner spawn-distance check
+
+Replace closerToCenterThan(new Vec3(...)) with the squared-distance overload
+(no Vec3), and check the same-chunk case (cx/cz) before allocating a ChunkPos.
+Equivalent math (24.0^2 == 576.0) and equivalent ChunkPos.equals logic.
+
+diff --git a/net/minecraft/world/level/NaturalSpawner.java b/net/minecraft/world/level/NaturalSpawner.java
+index 4e5078495037078922ab6350a500acdabe177ca5..393646775863ee1baaf747b1a90f132d8a77deab 100644
+--- a/net/minecraft/world/level/NaturalSpawner.java
++++ b/net/minecraft/world/level/NaturalSpawner.java
+@@ -338,13 +338,22 @@ public final class NaturalSpawner {
+             return false;
+         } else {
+             LevelData.RespawnData respawnData = level.getRespawnData();
++            // Papo start - avoid allocations in the spawn loop: compare squared distance
++            // directly (24.0^2 == 576.0) instead of allocating a Vec3, and check the
++            // (almost always true) same-chunk case before constructing a ChunkPos.
+             if (respawnData.dimension() == level.dimension()
+-                && respawnData.pos().closerToCenterThan(new Vec3(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5), 24.0)) {
++                && respawnData.pos().distToCenterSqr(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5) < 576.0) {
+                 return false;
+             } else {
+-                ChunkPos chunkPos = new ChunkPos(pos);
+-                return Objects.equals(chunkPos, chunk.getPos()) || level.canSpawnEntitiesInChunk(chunkPos);
++                int cx = pos.getX() >> 4;
++                int cz = pos.getZ() >> 4;
++                if (cx == chunk.getPos().x && cz == chunk.getPos().z) {
++                    return true;
++                }
++                ChunkPos chunkPos = new ChunkPos(cx, cz);
++                return level.canSpawnEntitiesInChunk(chunkPos);
+             }
++            // Papo end - avoid allocations in the spawn loop
+         }
+     }
+ 

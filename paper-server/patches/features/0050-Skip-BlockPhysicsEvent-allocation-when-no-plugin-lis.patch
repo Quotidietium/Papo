@@ -1,0 +1,39 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 05:14:47 +0800
+Subject: [PATCH] Skip BlockPhysicsEvent allocation when no plugin listens
+
+NeighborUpdates.executeUpdate fires on every neighbour notification (redstone,
+pistons, block-break cascades, fluids). It unconditionally allocates a
+BlockPhysicsEvent + 2 CraftBlock + a CraftBlockData clone. The event's only
+consumer is the isCancelled() check, so guard the whole allocation+fire with
+getHandlerList().getRegisteredListeners().length > 0 (the pattern Paper uses
+elsewhere). Equivalent: with zero listeners the event can never be cancelled.
+
+diff --git a/net/minecraft/world/level/redstone/NeighborUpdater.java b/net/minecraft/world/level/redstone/NeighborUpdater.java
+index 87512434ccd8d46d8db718228c790465c64b2c20..57023f75613692b5e7a3d2d2ac6843c98ead8cf0 100644
+--- a/net/minecraft/world/level/redstone/NeighborUpdater.java
++++ b/net/minecraft/world/level/redstone/NeighborUpdater.java
+@@ -50,12 +50,18 @@ public interface NeighborUpdater {
+         // Paper end - Add source block to BlockPhysicsEvent
+         try {
+             // CraftBukkit start
+-            org.bukkit.event.block.BlockPhysicsEvent event = new org.bukkit.event.block.BlockPhysicsEvent(org.bukkit.craftbukkit.block.CraftBlock.at(level, pos), org.bukkit.craftbukkit.block.data.CraftBlockData.fromData(state), org.bukkit.craftbukkit.block.CraftBlock.at(level, sourcePos)); // Paper - Add source block to BlockPhysicsEvent
+-            level.getCraftServer().getPluginManager().callEvent(event);
++            // Papo start - skip BlockPhysicsEvent allocation+fire when no plugin listens.
++            // The event's only consumer below is the cancel check; with zero listeners it
++            // can never be cancelled, so falling through to handleNeighborChanged is identical.
++            if (org.bukkit.event.block.BlockPhysicsEvent.getHandlerList().getRegisteredListeners().length > 0) {
++                org.bukkit.event.block.BlockPhysicsEvent event = new org.bukkit.event.block.BlockPhysicsEvent(org.bukkit.craftbukkit.block.CraftBlock.at(level, pos), org.bukkit.craftbukkit.block.data.CraftBlockData.fromData(state), org.bukkit.craftbukkit.block.CraftBlock.at(level, sourcePos)); // Paper - Add source block to BlockPhysicsEvent
++                level.getCraftServer().getPluginManager().callEvent(event);
+ 
+-            if (event.isCancelled()) {
+-                return;
++                if (event.isCancelled()) {
++                    return;
++                }
+             }
++            // Papo end
+             // CraftBukkit end
+             state.handleNeighborChanged(level, pos, neighborBlock, orientation, movedByPiston);
+             // Spigot start

@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 15:15:44 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=20BeaconBlockEntity=EF=BC=9A?=
+ =?UTF-8?q?=E5=85=89=E6=9F=B1=E6=89=AB=E6=8F=8F=E5=A4=8D=E7=94=A8=20Mutabl?=
+ =?UTF-8?q?eBlockPos?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+光柱扫描每迭代用 blockPos.above() 分配新 BlockPos（每 tick 最多 10 次）。
+改为复用 MutableBlockPos 原位移动；pos 参数不被修改，行为等价。
+
+diff --git a/net/minecraft/world/level/block/entity/BeaconBlockEntity.java b/net/minecraft/world/level/block/entity/BeaconBlockEntity.java
+index 0db33d7e1227e914326e9eb3b50338b001872938..d14350889aa13a200b0ba6e51e5bde5adc176f37 100644
+--- a/net/minecraft/world/level/block/entity/BeaconBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/BeaconBlockEntity.java
+@@ -165,13 +165,13 @@ public class BeaconBlockEntity extends BlockEntity implements MenuProvider, Name
+         int x = pos.getX();
+         int y = pos.getY();
+         int z = pos.getZ();
+-        BlockPos blockPos;
++        BlockPos.MutableBlockPos blockPos = new BlockPos.MutableBlockPos(); // Papo - reuse a mutable pos for the beam scan (was new BlockPos + .above() per iteration)
+         if (blockEntity.lastCheckY < y) {
+-            blockPos = pos;
++            blockPos.set(pos);
+             blockEntity.checkingBeamSections = Lists.newArrayList();
+             blockEntity.lastCheckY = pos.getY() - 1;
+         } else {
+-            blockPos = new BlockPos(x, blockEntity.lastCheckY + 1, z);
++            blockPos.set(x, blockEntity.lastCheckY + 1, z);
+         }
+ 
+         BeaconBeamOwner.Section section = blockEntity.checkingBeamSections.isEmpty()
+@@ -204,7 +204,7 @@ public class BeaconBlockEntity extends BlockEntity implements MenuProvider, Name
+                 section.increaseHeight();
+             }
+ 
+-            blockPos = blockPos.above();
++            blockPos.setY(blockPos.getY() + 1); // Papo - mutate in place instead of blockPos.above()
+             blockEntity.lastCheckY++;
+         }
+ 

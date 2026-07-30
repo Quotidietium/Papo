@@ -1,0 +1,36 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Paul <paul@technove.co>
+Date: Tue, 28 Jul 2026 23:55:00 +0800
+Subject: [PATCH] Reduce entity allocations (AttributeMap part)
+
+Cache the AttributeInstance factory lambda as a field instead of
+allocating a new one on every AttributeMap.getInstance call.
+
+Papo: ported from Pufferfish (GPL-3.0); the cachedBlockPos half of
+the original patch is omitted (no use sites without DAB)
+
+diff --git a/net/minecraft/world/entity/ai/attributes/AttributeMap.java b/net/minecraft/world/entity/ai/attributes/AttributeMap.java
+index 92b7f4cbd276dad49cba78514db3552af8cdd80c..7b58dd839bef38332e75c030b4621ba29a2f074c 100644
+--- a/net/minecraft/world/entity/ai/attributes/AttributeMap.java
++++ b/net/minecraft/world/entity/ai/attributes/AttributeMap.java
+@@ -18,9 +18,11 @@ public class AttributeMap {
+     private final Set<AttributeInstance> attributesToSync = new ObjectOpenHashSet<>();
+     private final Set<AttributeInstance> attributesToUpdate = new ObjectOpenHashSet<>();
+     private final AttributeSupplier supplier;
++    private final java.util.function.Function<Holder<Attribute>, AttributeInstance> createInstance; // Papo - cache lambda (port of Pufferfish)
+ 
+     public AttributeMap(AttributeSupplier supplier) {
+         this.supplier = supplier;
++        this.createInstance = holder -> this.supplier.createInstance(this::onAttributeModified, holder); // Papo - cache lambda (port of Pufferfish)
+     }
+ 
+     private void onAttributeModified(AttributeInstance instance) {
+@@ -43,7 +45,7 @@ public class AttributeMap {
+     }
+ 
+     public @Nullable AttributeInstance getInstance(Holder<Attribute> attribute) {
+-        return this.attributes.computeIfAbsent(attribute, holder -> this.supplier.createInstance(this::onAttributeModified, (Holder<Attribute>)holder));
++        return this.attributes.computeIfAbsent(attribute, this.createInstance); // Papo - use cached lambda (port of Pufferfish)
+     }
+ 
+     public boolean hasAttribute(Holder<Attribute> attribute) {

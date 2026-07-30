@@ -1,0 +1,33 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 04:21:17 +0800
+Subject: [PATCH] Optimise CompoundTag.write to avoid per-entry double hash
+ lookup
+
+Iterate the backing map's entries directly (fastutil fastIterator) instead
+of keySet()+get(), removing a second hash probe per entry and the per-entry
+Map.Entry allocation on every NBT save. Output bytes are unchanged.
+
+diff --git a/net/minecraft/nbt/CompoundTag.java b/net/minecraft/nbt/CompoundTag.java
+index c9c050966924ddd315e7829e7f3aee2afacc106b..cd347ea056db099be7341514064594b649de5175 100644
+--- a/net/minecraft/nbt/CompoundTag.java
++++ b/net/minecraft/nbt/CompoundTag.java
+@@ -176,10 +176,15 @@ public final class CompoundTag implements Tag {
+ 
+     @Override
+     public void write(DataOutput output) throws IOException {
+-        for (String string : this.tags.keySet()) {
+-            Tag tag = this.tags.get(string);
+-            writeNamedTag(string, tag, output);
++        // Papo start - optimise NBT write: iterate entries directly to avoid a second
++        // hash lookup per entry (keySet() then get()) and to reuse the Map.Entry via
++        // fastutil's fastIterator. Output bytes are identical (same backing-array order).
++        java.util.Iterator<java.util.Map.Entry<String, Tag>> iterator = (this.tags instanceof it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap) ? ((it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap) this.tags).object2ObjectEntrySet().fastIterator() : this.tags.entrySet().iterator();
++        while (iterator.hasNext()) {
++            java.util.Map.Entry<String, Tag> entry = iterator.next();
++            writeNamedTag(entry.getKey(), entry.getValue(), output);
+         }
++        // Papo end - optimise NBT write
+ 
+         output.writeByte(0);
+     }

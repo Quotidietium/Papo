@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 14:39:13 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=20ServerLevel=20=E7=B2=92?=
+ =?UTF-8?q?=E5=AD=90/=E5=85=A8=E5=B1=80=E4=BA=8B=E4=BB=B6=E5=B9=BF?=
+ =?UTF-8?q?=E6=92=AD=EF=BC=8C=E5=85=8D=E6=AF=8F=E6=8E=A5=E6=94=B6=E8=80=85?=
+ =?UTF-8?q?=20Vec3=20=E5=88=86=E9=85=8D?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+sendParticles 每个接收玩家分配一个 Vec3 仅用于距离判定，改用
+distToCenterSqr(x,y,z) < range*range（与 closerToCenterThan(Vec3,r) 等价）。
+globalLevelEvent 将常量 Vec3.atCenterOf(pos) 提到每玩家循环之外。
+
+diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
+index 91746275218cb870db080006da8688a7fc695af2..431cea3b3a34b1956869fff356819a385fbe087b 100644
+--- a/net/minecraft/server/level/ServerLevel.java
++++ b/net/minecraft/server/level/ServerLevel.java
+@@ -1755,10 +1755,11 @@ public class ServerLevel extends Level implements ServerEntityGetter, WorldGenLe
+     @Override
+     public void globalLevelEvent(int id, BlockPos pos, int data) {
+         if (this.getGameRules().get(GameRules.GLOBAL_SOUND_EVENTS)) {
++            // Papo start - hoist the constant center Vec3 out of the per-player loop
++            final Vec3 vec3 = Vec3.atCenterOf(pos);
+             this.server.getPlayerList().getPlayers().forEach(player -> {
+                 Vec3 vec31;
+                 if (player.level() == this) {
+-                    Vec3 vec3 = Vec3.atCenterOf(pos);
+                     if (player.distanceToSqr(vec3) < Mth.square(32)) {
+                         vec31 = vec3;
+                     } else {
+@@ -2131,7 +2132,9 @@ public class ServerLevel extends Level implements ServerEntityGetter, WorldGenLe
+             return false;
+         } else {
+             BlockPos blockPos = player.blockPosition();
+-            if (blockPos.closerToCenterThan(new Vec3(x, y, z), overrideLimiter ? 512.0 : 32.0)) {
++            // Papo - avoid per-recipient Vec3 allocation; closerToCenterThan(Vec3, r) == distToCenterSqr(x,y,z) < r*r
++            double range = overrideLimiter ? 512.0 : 32.0;
++            if (blockPos.distToCenterSqr(x, y, z) < range * range) {
+                 player.connection.send(packet);
+                 return true;
+             } else {

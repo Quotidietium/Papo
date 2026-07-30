@@ -1,0 +1,126 @@
+[
+    {
+        "jmhVersion" : "1.37",
+        "benchmark" : "papo.bench.NeighborExpandBench.after_ordinalArray",
+        "mode" : "avgt",
+        "threads" : 1,
+        "forks" : 2,
+        "jvm" : "F:\\Java\\21\\bin\\java.exe",
+        "jvmArgs" : [
+        ],
+        "jdkVersion" : "21.0.10",
+        "vmName" : "Java HotSpot(TM) 64-Bit Server VM",
+        "vmVersion" : "21.0.10+8-LTS-217",
+        "warmupIterations" : 3,
+        "warmupTime" : "1 s",
+        "warmupBatchSize" : 1,
+        "measurementIterations" : 5,
+        "measurementTime" : "1 s",
+        "measurementBatchSize" : 1,
+        "params" : {
+            "expansions" : "512"
+        },
+        "primaryMetric" : {
+            "score" : 7897.000089282061,
+            "scoreError" : 705.5082786235781,
+            "scoreConfidence" : [
+                7191.491810658483,
+                8602.508367905639
+            ],
+            "scorePercentiles" : {
+                "0.0" : 7609.221637175808,
+                "50.0" : 7716.551965688734,
+                "90.0" : 9052.618803302359,
+                "95.0" : 9152.045497905898,
+                "99.0" : 9152.045497905898,
+                "99.9" : 9152.045497905898,
+                "99.99" : 9152.045497905898,
+                "99.999" : 9152.045497905898,
+                "99.9999" : 9152.045497905898,
+                "100.0" : 9152.045497905898
+            },
+            "scoreUnit" : "ns/op",
+            "rawData" : [
+                [
+                    7724.958522960776,
+                    8157.778551870514,
+                    7786.366058396979,
+                    7641.317773652105,
+                    9152.045497905898
+                ],
+                [
+                    7609.221637175808,
+                    7707.6939668453815,
+                    7708.145408416693,
+                    7798.945370663251,
+                    7683.5281049332
+                ]
+            ]
+        },
+        "secondaryMetrics" : {
+        }
+    },
+    {
+        "jmhVersion" : "1.37",
+        "benchmark" : "papo.bench.NeighborExpandBench.before_enumMapAndPlane",
+        "mode" : "avgt",
+        "threads" : 1,
+        "forks" : 2,
+        "jvm" : "F:\\Java\\21\\bin\\java.exe",
+        "jvmArgs" : [
+        ],
+        "jdkVersion" : "21.0.10",
+        "vmName" : "Java HotSpot(TM) 64-Bit Server VM",
+        "vmVersion" : "21.0.10+8-LTS-217",
+        "warmupIterations" : 3,
+        "warmupTime" : "1 s",
+        "warmupBatchSize" : 1,
+        "measurementIterations" : 5,
+        "measurementTime" : "1 s",
+        "measurementBatchSize" : 1,
+        "params" : {
+            "expansions" : "512"
+        },
+        "primaryMetric" : {
+            "score" : 11842.33736037679,
+            "scoreError" : 456.9181664369472,
+            "scoreConfidence" : [
+                11385.419193939842,
+                12299.255526813738
+            ],
+            "scorePercentiles" : {
+                "0.0" : 11599.228524972035,
+                "50.0" : 11778.139800532486,
+                "90.0" : 12555.339882268936,
+                "95.0" : 12614.124638692316,
+                "99.0" : 12614.124638692316,
+                "99.9" : 12614.124638692316,
+                "99.99" : 12614.124638692316,
+                "99.999" : 12614.124638692316,
+                "99.9999" : 12614.124638692316,
+                "100.0" : 12614.124638692316
+            },
+            "scoreUnit" : "ns/op",
+            "rawData" : [
+                [
+                    11798.781785234114,
+                    11653.413519141066,
+                    11659.819938820912,
+                    11599.228524972035,
+                    12614.124638692316
+                ],
+                [
+                    11615.827686350436,
+                    11804.7196223365,
+                    12026.27707445851,
+                    11757.497815830859,
+                    11893.682997931164
+                ]
+            ]
+        },
+        "secondaryMetrics" : {
+        }
+    }
+]
+
+

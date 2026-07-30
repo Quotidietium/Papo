@@ -1,0 +1,33 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 04:21:18 +0800
+Subject: [PATCH] Cache Slot.getItem() in
+ AbstractContainerMenu.canItemQuickReplace
+
+Look up slot.getItem() at most once and short-circuit the empty-slot branch.
+Equivalent to the original ternary; called repeatedly during quick-craft drags.
+
+diff --git a/net/minecraft/world/inventory/AbstractContainerMenu.java b/net/minecraft/world/inventory/AbstractContainerMenu.java
+index 818c7189a997fff9083237f64aeec7f9537f42be..28f44b0c4fd70ff9bdfb1f28b647be285a597ce4 100644
+--- a/net/minecraft/world/inventory/AbstractContainerMenu.java
++++ b/net/minecraft/world/inventory/AbstractContainerMenu.java
+@@ -863,9 +863,16 @@ public abstract class AbstractContainerMenu {
+ 
+     public static boolean canItemQuickReplace(@Nullable Slot slot, ItemStack stack, boolean stackSizeMatters) {
+         boolean flag = slot == null || !slot.hasItem();
+-        return !flag && ItemStack.isSameItemSameComponents(stack, slot.getItem())
+-            ? slot.getItem().getCount() + (stackSizeMatters ? 0 : stack.getCount()) <= stack.getMaxStackSize()
+-            : flag;
++        // Papo start - cache slot.getItem() and short-circuit the empty-slot branch so the
++        // lookup runs at most once. Equivalent to the original ternary.
++        if (flag) {
++            return true; // empty slot can always accept the item
++        }
++        ItemStack slotItem = slot.getItem();
++        return ItemStack.isSameItemSameComponents(stack, slotItem)
++            ? slotItem.getCount() + (stackSizeMatters ? 0 : stack.getCount()) <= stack.getMaxStackSize()
++            : false;
++        // Papo end - cache slot.getItem()
+     }
+ 
+     public static int getQuickCraftPlaceCount(Set<Slot> slots, int type, ItemStack stack) {

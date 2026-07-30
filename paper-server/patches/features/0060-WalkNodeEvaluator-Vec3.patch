@@ -1,0 +1,97 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 14:54:07 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=20WalkNodeEvaluator=EF=BC=9A?=
+ =?UTF-8?q?=E5=AF=BB=E8=B7=AF=E7=83=AD=E7=82=B9=E5=85=8D=20Vec3=E3=80=81?=
+ =?UTF-8?q?=E5=BE=AA=E7=8E=AF=E4=B8=8D=E5=8F=98=E9=87=8F=E5=A4=96=E6=8F=90?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+canReachWithoutCollision 原分配 new Vec3 并 scale，改用标量计算逐步长
+（inv 用原 1.0F/ceil 的 float 倒数转 double，数学完全一致）。
+getPathTypeWithinMobBB 把 mob.blockPosition()/canPassDoors/canOpenDoors
+等循环不变量提到三层循环之外。
+
+diff --git a/net/minecraft/world/level/pathfinder/WalkNodeEvaluator.java b/net/minecraft/world/level/pathfinder/WalkNodeEvaluator.java
+index ca5448b2531d2f7126132723c4fa8d49835a4850..696dc52a0d45ca12710387ac46c4d8a49e500ca1 100644
+--- a/net/minecraft/world/level/pathfinder/WalkNodeEvaluator.java
++++ b/net/minecraft/world/level/pathfinder/WalkNodeEvaluator.java
+@@ -183,20 +183,25 @@ public class WalkNodeEvaluator extends NodeEvaluator {
+ 
+     private boolean canReachWithoutCollision(Node node) {
+         AABB boundingBox = this.mob.getBoundingBox();
+-        Vec3 vec3 = new Vec3(
+-            node.x - this.mob.getX() + boundingBox.getXsize() / 2.0,
+-            node.y - this.mob.getY() + boundingBox.getYsize() / 2.0,
+-            node.z - this.mob.getZ() + boundingBox.getZsize() / 2.0
+-        );
+-        int ceil = Mth.ceil(vec3.length() / boundingBox.getSize());
+-        vec3 = vec3.scale(1.0F / ceil);
++        // Papo start - compute the per-step delta as scalars, avoiding the Vec3 allocation(s).
++        // inv uses the original float reciprocal (1.0F / ceil) promoted to double so the math is identical.
++        double dx = node.x - this.mob.getX() + boundingBox.getXsize() / 2.0;
++        double dy = node.y - this.mob.getY() + boundingBox.getYsize() / 2.0;
++        double dz = node.z - this.mob.getZ() + boundingBox.getZsize() / 2.0;
++        double len = Math.sqrt(dx * dx + dy * dy + dz * dz);
++        int ceil = Mth.ceil(len / boundingBox.getSize());
++        double inv = 1.0F / ceil;
++        double stepX = dx * inv;
++        double stepY = dy * inv;
++        double stepZ = dz * inv;
+ 
+         for (int i = 1; i <= ceil; i++) {
+-            boundingBox = boundingBox.move(vec3);
++            boundingBox = boundingBox.move(stepX, stepY, stepZ);
+             if (this.hasCollisions(boundingBox)) {
+                 return false;
+             }
+         }
++        // Papo end
+ 
+         return true;
+     }
+@@ -385,6 +390,13 @@ public class WalkNodeEvaluator extends NodeEvaluator {
+ 
+     public Set<PathType> getPathTypeWithinMobBB(PathfindingContext context, int x, int y, int z) {
+         EnumSet<PathType> set = EnumSet.noneOf(PathType.class);
++        // Papo start - hoist loop-invariant mob position/door flags out of the triple loop
++        BlockPos blockPos = this.mob.blockPosition();
++        int bx = blockPos.getX();
++        int by = blockPos.getY();
++        int bz = blockPos.getZ();
++        boolean canPassDoors = this.canPassDoors();
++        boolean canOpenDoors = this.canOpenDoors();
+ 
+         for (int i = 0; i < this.entityWidth; i++) {
+             for (int i1 = 0; i1 < this.entityHeight; i1++) {
+@@ -393,9 +405,7 @@ public class WalkNodeEvaluator extends NodeEvaluator {
+                     int i4 = i1 + y;
+                     int i5 = i2 + z;
+                     PathType pathType = this.getPathType(context, i3, i4, i5);
+-                    BlockPos blockPos = this.mob.blockPosition();
+-                    boolean canPassDoors = this.canPassDoors();
+-                    if (pathType == PathType.DOOR_WOOD_CLOSED && this.canOpenDoors() && canPassDoors) {
++                    if (pathType == PathType.DOOR_WOOD_CLOSED && canOpenDoors && canPassDoors) {
+                         pathType = PathType.WALKABLE_DOOR;
+                     }
+ 
+@@ -404,8 +414,8 @@ public class WalkNodeEvaluator extends NodeEvaluator {
+                     }
+ 
+                     if (pathType == PathType.RAIL
+-                        && this.getPathType(context, blockPos.getX(), blockPos.getY(), blockPos.getZ()) != PathType.RAIL
+-                        && this.getPathType(context, blockPos.getX(), blockPos.getY() - 1, blockPos.getZ()) != PathType.RAIL) {
++                        && this.getPathType(context, bx, by, bz) != PathType.RAIL
++                        && this.getPathType(context, bx, by - 1, bz) != PathType.RAIL) {
+                         pathType = PathType.UNPASSABLE_RAIL;
+                     }
+ 
+@@ -413,6 +423,7 @@ public class WalkNodeEvaluator extends NodeEvaluator {
+                 }
+             }
+         }
++        // Papo end
+ 
+         return set;
+     }

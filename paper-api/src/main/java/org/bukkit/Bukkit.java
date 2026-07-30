@@ -123,8 +123,12 @@ public final class Bukkit {
     @NotNull
     public static String getVersionMessage() {
         final io.papermc.paper.ServerBuildInfo version = io.papermc.paper.ServerBuildInfo.buildInfo();
-        return "This server is running " + getName() + " version " + version.asString(io.papermc.paper.ServerBuildInfo.StringRepresentation.VERSION_FULL) + " (Implementing API version " + getBukkitVersion() + ")";
-        // Paper end
+        // Papo start - show papo brand and version
+        final String papoVersion = version.papoVersion().orElse("unknown");
+        return "This server is running Papo version " + papoVersion + " (MC: " + version.minecraftVersionId()
+            + " at " + version.asString(io.papermc.paper.ServerBuildInfo.StringRepresentation.VERSION_SIMPLE)
+            + ", implementing API version " + getBukkitVersion() + ")";
+        // Papo end
     }
 
     /**

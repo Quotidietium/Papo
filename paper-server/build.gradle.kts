@@ -8,22 +8,40 @@ plugins {
     `maven-publish`
     idea
     id("io.papermc.paperweight.core")
-    id("io.papermc.fill.gradle") version "1.0.12"
+    id("io.papermc.fill.gradle") version "1.0.10"
 }
 
 val paperMavenPublicUrl = "https://repo.papermc.io/repository/maven-public/"
 
 dependencies {
-    mache("io.papermc:mache:26.2+build.1")
-    paperclip("io.papermc:paperclip:3.0.4")
+    mache("io.papermc:mache:1.21.11+build.1")
+    paperclip("io.papermc:paperclip:3.0.3")
 }
 
 paperweight {
     minecraftVersion = providers.gradleProperty("mcVersion")
     gitFilePatches = false
 
+    spigot {
+        enabled = true
+        buildDataRef = "17f77cee7117ab9d6175f088ae8962bfd04e61a9"
+        packageVersion = "v1_21_R7" // also needs to be updated in MappingEnvironment
+    }
+
+    reobfPackagesToFix.addAll(
+        "co.aikar.timings",
+        "com.destroystokyo.paper",
+        "com.mojang",
+        "io.papermc.paper",
+        "ca.spottedleaf",
+        "net.kyori.adventure.bossbar",
+        "net.minecraft",
+        "org.bukkit.craftbukkit",
+        "org.spigotmc",
+    )
+
     updatingMinecraft {
-        // oldPaperCommit = "d4fe85375af18bfa88f44d7c1e6a61904ae550cc"
+        // oldPaperCommit = "c82b438b5b4ea0b230439b8e690e34708cd11ab3"
     }
 }
 
@@ -110,7 +128,7 @@ abstract class MockitoAgentProvider : CommandLineArgumentProvider {
 
 dependencies {
     implementation(project(":paper-api"))
-    implementation("ca.spottedleaf:leafpile:1.0.0")
+    implementation("ca.spottedleaf:concurrentutil:0.0.8")
     implementation("org.jline:jline-terminal-ffm:3.27.1") // use ffm on java 22+
     implementation("org.jline:jline-terminal-jni:3.27.1") // fall back to jni on java 21
     implementation("net.minecrell:terminalconsoleappender:1.3.0")
@@ -122,16 +140,16 @@ dependencies {
       all its classes to check if they are plugins.
       Scanning takes about 1-2 seconds so adding this speeds up the server start.
      */
-    implementation("org.apache.logging.log4j:log4j-core:2.26.0")
-    log4jPlugins.annotationProcessorConfigurationName("org.apache.logging.log4j:log4j-core:2.26.0") // Needed to generate meta for our Log4j plugins
+    implementation("org.apache.logging.log4j:log4j-core:2.24.1")
+    log4jPlugins.annotationProcessorConfigurationName("org.apache.logging.log4j:log4j-core:2.24.1") // Needed to generate meta for our Log4j plugins
     runtimeOnly(log4jPlugins.output)
     alsoShade(log4jPlugins.output)
 
     implementation("com.velocitypowered:velocity-native:3.4.0-SNAPSHOT") {
         isTransitive = false
     }
-    implementation("io.netty:netty-codec-haproxy:4.2.15.Final") // Add support for proxy protocol
-    implementation("org.apache.logging.log4j:log4j-iostreams:2.26.0")
+    implementation("io.netty:netty-codec-haproxy:4.2.7.Final") // Add support for proxy protocol
+    implementation("org.apache.logging.log4j:log4j-iostreams:2.24.1")
     implementation("org.ow2.asm:asm-commons:9.9.1")
     implementation("org.spongepowered:configurate-yaml:4.2.0")
 
@@ -144,15 +162,24 @@ dependencies {
         isTransitive = false // includes junit
     }
 
-    testImplementation("io.github.classgraph:classgraph:4.8.184") // For mob goal test
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:6.0.3")
-    testImplementation("org.junit.jupiter:junit-jupiter:6.0.3")
-    testImplementation("org.junit.platform:junit-platform-suite-engine:6.0.3")
+    testImplementation("io.github.classgraph:classgraph:4.8.179") // For mob goal test
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.12.2")
+    testImplementation("org.junit.platform:junit-platform-suite-engine:1.12.2")
     testImplementation("org.hamcrest:hamcrest:2.2")
-    testImplementation("org.mockito:mockito-core:5.22.0")
-    mockitoAgent("org.mockito:mockito-core:5.22.0") { isTransitive = false } // Configure mockito agent that is needed in newer java versions
+    testImplementation("org.mockito:mockito-core:5.14.1")
+    mockitoAgent("org.mockito:mockito-core:5.14.1") { isTransitive = false } // Configure mockito agent that is needed in newer java versions
     testImplementation("org.ow2.asm:asm-tree:9.9.1")
-    testImplementation("org.junit-pioneer:junit-pioneer:2.3.0") // CartesianTest
+    testImplementation("org.junit-pioneer:junit-pioneer:2.2.0") // CartesianTest
+
+    implementation("net.neoforged:srgutils:1.0.9") // Mappings handling
+    implementation("net.neoforged:AutoRenamingTool:2.0.3") // Remap plugins
+
+    // Remap reflection
+    val reflectionRewriterVersion = "0.0.3"
+    implementation("io.papermc:reflection-rewriter:$reflectionRewriterVersion")
+    implementation("io.papermc:reflection-rewriter-runtime:$reflectionRewriterVersion")
+    implementation("io.papermc:reflection-rewriter-proxy-generator:$reflectionRewriterVersion")
 
     // Spark
     implementation("me.lucko:spark-api:0.1-20240720.200737-2")
@@ -163,6 +190,7 @@ tasks.jar {
     manifest {
         val git = Git(rootProject.layout.projectDirectory.path)
         val mcVersion = rootProject.providers.gradleProperty("mcVersion").get()
+        val papoVersion = rootProject.providers.gradleProperty("papoVersion").orElse("unknown").get() // Papo - papo version
         val build = System.getenv("BUILD_NUMBER") ?: null
         val buildTime = providers.environmentVariable("BUILD_STARTED_AT").map(Instant::parse).orElse(Instant.EPOCH).get()
         val gitHash = git.exec(providers, "rev-parse", "--short=7", "HEAD").get().trim()
@@ -171,14 +199,15 @@ tasks.jar {
         val gitBranch = git.exec(providers, "rev-parse", "--abbrev-ref", "HEAD").get().trim()
         attributes(
             "Main-Class" to "org.bukkit.craftbukkit.Main",
-            "Implementation-Title" to "Paper",
+            "Implementation-Title" to "Papo", // Papo - brand
             "Implementation-Version" to implementationVersion,
             "Implementation-Vendor" to date,
-            "Specification-Title" to "Paper",
+            "Specification-Title" to "Papo", // Papo - brand
             "Specification-Version" to project.version,
-            "Specification-Vendor" to "Paper Team",
-            "Brand-Id" to "papermc:paper",
-            "Brand-Name" to "Paper",
+            "Specification-Vendor" to "Papo", // Papo - brand
+            "Brand-Id" to "papermc:paper", // Papo - kept for plugin compatibility (isBrandCompatible)
+            "Brand-Name" to "Papo", // Papo - brand
+            "Papo-Version" to papoVersion, // Papo - papo version
             "Build-Number" to (build ?: ""),
             "Build-Time" to buildTime.toString(),
             "Git-Branch" to gitBranch,
@@ -193,15 +222,6 @@ tasks.jar {
 // Compile tests with -parameters for better junit parameterized test names
 tasks.compileTestJava {
     options.compilerArgs.add("-parameters")
-}
-
-tasks.named<JavaCompile>(log4jPlugins.compileJavaTaskName) {
-    options.compilerArgs.addAll(
-        listOf(
-            "-Alog4j.graalvm.groupId=${project.group}",
-            "-Alog4j.graalvm.artifactId=${project.name}"
-        )
-    )
 }
 
 // Bump compile tasks to 1GB memory to avoid OOMs
@@ -271,11 +291,10 @@ fun TaskContainer.registerRunTask(
         .dir(providers.gradleProperty("paper.runWorkDir").getOrElse("run"))
         .asFile
     javaLauncher.set(project.javaToolchains.launcherFor {
-        languageVersion.set(JavaLanguageVersion.of(25))
-        // TODO - JB runtime 25 has issues with spark rn
-        // vendor.set(JvmVendorSpec.JETBRAINS)
+        languageVersion.set(JavaLanguageVersion.of(21))
+        vendor.set(JvmVendorSpec.JETBRAINS)
     })
-    //jvmArgs("-XX:+AllowEnhancedClassRedefinition")
+    jvmArgs("-XX:+AllowEnhancedClassRedefinition")
 
     if (rootProject.childProjects["test-plugin"] != null) {
         val testPluginJar = rootProject.project(":test-plugin").tasks.jar.flatMap { it.archiveFile }
@@ -289,8 +308,6 @@ fun TaskContainer.registerRunTask(
         systemProperty("disable.watchdog", true)
     }
     systemProperty("io.papermc.paper.suppress.sout.nags", true)
-    systemProperty("paper.maxChatCommandInputSize", 32767)
-    systemProperty("paper.disableMigrationDelay", true)
     systemProperty("paper.updatingMinecraft", providers.gradleProperty("updatingMinecraft").getOrElse("false").toBoolean())
 
     val memoryGb = providers.gradleProperty("paper.runMemoryGb").getOrElse("2")
@@ -306,7 +323,13 @@ fun TaskContainer.registerRunTask(
 
 tasks.registerRunTask("runServer") {
     description = "Spin up a test server from the Mojang mapped server jar"
-    classpath(tasks.jar)
+    classpath(tasks.includeMappings.flatMap { it.outputJar })
+    classpath(configurations.runtimeClasspath)
+}
+
+tasks.registerRunTask("runReobfServer") {
+    description = "Spin up a test server from the reobfJar output jar"
+    classpath(tasks.reobfJar.flatMap { it.outputJar })
     classpath(configurations.runtimeClasspath)
 }
 
@@ -317,14 +340,36 @@ tasks.registerRunTask("runDevServer") {
 
 tasks.registerRunTask("runBundler") {
     description = "Spin up a test server from the Mojang mapped bundler jar"
-    classpath(tasks.createBundlerJar.flatMap { it.outputZip })
+    classpath(tasks.createMojmapBundlerJar.flatMap { it.outputZip })
+    mainClass.set(null as String?)
+}
+tasks.registerRunTask("runReobfBundler") {
+    description = "Spin up a test server from the reobf bundler jar"
+    classpath(tasks.createReobfBundlerJar.flatMap { it.outputZip })
     mainClass.set(null as String?)
 }
 tasks.registerRunTask("runPaperclip") {
     description = "Spin up a test server from the Mojang mapped Paperclip jar"
-    classpath(tasks.createPaperclipJar.flatMap { it.outputZip })
+    classpath(tasks.createMojmapPaperclipJar.flatMap { it.outputZip })
     mainClass.set(null as String?)
 }
+tasks.registerRunTask("runReobfPaperclip") {
+    description = "Spin up a test server from the reobf Paperclip jar"
+    classpath(tasks.createReobfPaperclipJar.flatMap { it.outputZip })
+    mainClass.set(null as String?)
+}
+
+// Papo start - produce a runnable jar named Papo-<mcVersion>-<papoVersion>.jar
+val createPapoJar = tasks.register<Copy>("createPapoJar") {
+    group = "build"
+    description = "Assembles the runnable Papo jar named Papo-<mcVersion>-<papoVersion>.jar"
+    val mcVersion = rootProject.providers.gradleProperty("mcVersion").get()
+    val papoVersion = rootProject.providers.gradleProperty("papoVersion").orElse("unknown").get()
+    from(tasks.createMojmapBundlerJar.flatMap { it.outputZip })
+    into(layout.buildDirectory.dir("libs"))
+    rename { _ -> "Papo-$mcVersion-$papoVersion.jar" }
+}
+// Papo end - produce a runnable jar named Papo-<mcVersion>-<papoVersion>.jar
 
 fill {
     project("paper")
@@ -332,11 +377,11 @@ fill {
     version(paperweight.minecraftVersion)
 
     build {
-        channel = providers.gradleProperty("channel").map { BuildChannel.valueOf(it.uppercase()) }
+        channel = BuildChannel.STABLE
 
         downloads {
             register("server:default") {
-                file = tasks.createPaperclipJar.flatMap { it.outputZip }
+                file = tasks.createMojmapPaperclipJar.flatMap { it.outputZip }
                 nameResolver.set { project, _, version, build -> "$project-$version-$build.jar" }
             }
         }

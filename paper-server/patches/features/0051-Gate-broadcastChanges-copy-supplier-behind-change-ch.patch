@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 05:14:47 +0800
+Subject: [PATCH] Gate broadcastChanges copy-supplier behind change checks
+
+broadcastChanges() runs every containerUpdate ticks for every player with an
+open inventory, building Suppliers.memoize(item::copy) per slot even when the
+slot is unchanged (the common case). Replicate the cheap match checks that
+triggerSlotListeners/synchronizeSlotToRemote already perform internally and
+only build the supplier (and call them) when at least one will consume it.
+
+diff --git a/net/minecraft/world/inventory/AbstractContainerMenu.java b/net/minecraft/world/inventory/AbstractContainerMenu.java
+index 28f44b0c4fd70ff9bdfb1f28b647be285a597ce4..e6a6a01f8acb0bbe2a5fb87ed697c9a1291dd1b2 100644
+--- a/net/minecraft/world/inventory/AbstractContainerMenu.java
++++ b/net/minecraft/world/inventory/AbstractContainerMenu.java
+@@ -258,9 +258,16 @@ public abstract class AbstractContainerMenu {
+     public void broadcastChanges() {
+         for (int i = 0; i < this.slots.size(); i++) {
+             ItemStack item = this.slots.get(i).getItem();
+-            Supplier<ItemStack> supplier = Suppliers.memoize(item::copy);
+-            this.triggerSlotListeners(i, item, supplier);
+-            this.synchronizeSlotToRemote(i, item, supplier);
++            // Papo start - only build the memoized copy-supplier when at least one consumer
++            // will actually use it; both callees are no-ops when the slot is unchanged.
++            boolean listenerNeeds = !ItemStack.matches(this.lastSlots.get(i), item);
++            boolean remoteNeeds = !this.suppressRemoteUpdates && !this.remoteSlots.get(i).matches(item);
++            if (listenerNeeds || remoteNeeds) {
++                Supplier<ItemStack> supplier = Suppliers.memoize(item::copy);
++                this.triggerSlotListeners(i, item, supplier);
++                this.synchronizeSlotToRemote(i, item, supplier);
++            }
++            // Papo end
+         }
+ 
+         this.synchronizeCarriedToRemote();

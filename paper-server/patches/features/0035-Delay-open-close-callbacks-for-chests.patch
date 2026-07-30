@@ -1,0 +1,99 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Mon, 20 Apr 2026 02:56:22 -0700
+Subject: [PATCH] Delay open/close callbacks for chests
+
+The logic for chests may invoke block updates, which may not
+be safe to perform. For example, inventory closing due to
+player logout (which restricts chunk loading due to being
+inside an entity status callback) or during shutdown (which has
+chunk loading restrictions due to the chunk system being halted).
+
+diff --git a/net/minecraft/world/level/block/entity/BarrelBlockEntity.java b/net/minecraft/world/level/block/entity/BarrelBlockEntity.java
+index 75c09a2..9ccd287 100644
+--- a/net/minecraft/world/level/block/entity/BarrelBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/BarrelBlockEntity.java
+@@ -61,6 +61,13 @@ public class BarrelBlockEntity extends RandomizableContainerBlockEntity {
+     private static final Component DEFAULT_NAME = Component.translatable("container.barrel");
+     private NonNullList<ItemStack> items = NonNullList.withSize(27, ItemStack.EMPTY);
+     public final ContainerOpenersCounter openersCounter = new ContainerOpenersCounter() {
++        // Paper start - delay open/close callbacks
++        @Override
++        public boolean delayCallbacks() {
++            return true;
++        }
++        // Paper end - delay open/close callbacks
++
+         @Override
+         protected void onOpen(Level level, BlockPos pos, BlockState state) {
+             BarrelBlockEntity.this.playSound(state, SoundEvents.BARREL_OPEN);
+diff --git a/net/minecraft/world/level/block/entity/ChestBlockEntity.java b/net/minecraft/world/level/block/entity/ChestBlockEntity.java
+index 6b1299c..4165a6b 100644
+--- a/net/minecraft/world/level/block/entity/ChestBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/ChestBlockEntity.java
+@@ -30,6 +30,13 @@ public class ChestBlockEntity extends RandomizableContainerBlockEntity implement
+     public static final Component DEFAULT_NAME = Component.translatable("container.chest");
+     private NonNullList<ItemStack> items = NonNullList.withSize(27, ItemStack.EMPTY);
+     public final ContainerOpenersCounter openersCounter = new ContainerOpenersCounter() {
++        // Paper start - delay open/close callbacks
++        @Override
++        public boolean delayCallbacks() {
++            return true;
++        }
++        // Paper end - delay open/close callbacks
++
+         @Override
+         protected void onOpen(Level level, BlockPos pos, BlockState state) {
+             if (state.getBlock() instanceof ChestBlock chestBlock) {
+diff --git a/net/minecraft/world/level/block/entity/ContainerOpenersCounter.java b/net/minecraft/world/level/block/entity/ContainerOpenersCounter.java
+index d867c96..1da0064 100644
+--- a/net/minecraft/world/level/block/entity/ContainerOpenersCounter.java
++++ b/net/minecraft/world/level/block/entity/ContainerOpenersCounter.java
+@@ -37,9 +37,21 @@ public abstract class ContainerOpenersCounter {
+ 
+     protected abstract void openerCountChanged(Level level, BlockPos pos, BlockState state, int count, int openCount);
+ 
++    // Paper start - delay open/close callbacks
++    public boolean delayCallbacks() {
++        return false;
++    }
++    // Paper end - delay open/close callbacks
++
+     public abstract boolean isOwnContainer(Player player);
+ 
+     public void incrementOpeners(LivingEntity entity, Level level, BlockPos pos, BlockState state, double interactionRange) {
++        // Paper start - delay open/close callbacks
++        if (this.delayCallbacks()) {
++            scheduleRecheck(level, pos, state, 1);
++            return;
++        }
++        // Paper end - delay open/close callbacks
+         int oldPower = Math.max(0, Math.min(15, this.openCount)); // CraftBukkit - Get power before new viewer is added
+         int i = this.openCount++;
+ 
+@@ -64,6 +76,12 @@ public abstract class ContainerOpenersCounter {
+     }
+ 
+     public void decrementOpeners(LivingEntity entity, Level level, BlockPos pos, BlockState state) {
++        // Paper start - delay open/close callbacks
++        if (this.delayCallbacks()) {
++            scheduleRecheck(level, pos, state, 1);
++            return;
++        }
++        // Paper end - delay open/close callbacks
+         int oldPower = Math.max(0, Math.min(15, this.openCount)); // CraftBukkit - Get power before new viewer is added
+         if (this.openCount == 0) return; // Paper - Prevent ContainerOpenersCounter openCount from going negative
+         int i = this.openCount--;
+@@ -147,6 +165,11 @@ public abstract class ContainerOpenersCounter {
+     }
+ 
+     private static void scheduleRecheck(Level level, BlockPos pos, BlockState state) {
+-        level.scheduleTick(pos, state.getBlock(), 5);
++        // Paper start - delay open/close callbacks
++        scheduleRecheck(level, pos, state, 5);
++    }
++    private static void scheduleRecheck(Level level, BlockPos pos, BlockState state, final int delay) {
++        level.scheduleTick(pos, state.getBlock(), delay);
++        // Paper end - delay open/close callbacks
+     }
+ }
