@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 23:47:49 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=20tickChildren=20=E6=97=B6?=
+ =?UTF-8?q?=E9=97=B4=E5=90=8C=E6=AD=A5=EF=BC=9ASetTimePacket=20=E6=83=B0?=
+ =?UTF-8?q?=E6=80=A7=E5=88=86=E9=85=8D?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+原实现每世界每 tick 无条件构造共享 worldPacket，但仅当存在通过
+(tickCount + id) % 20 守卫的玩家时才会用到：无玩家世界及 19/20 的 tick 白建。
+构造参数（worldTime/dayTime/doDaylight）为循环不变量且 record 构造无副作用，
+首次使用时构造产生完全相同的包。
+
+diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
+index fc40bf056f6e1f1738c57896b2020282dc24edfb..bc6f959e6536bece4c2756b861d6c3c4c5f3a3f8 100644
+--- a/net/minecraft/server/MinecraftServer.java
++++ b/net/minecraft/server/MinecraftServer.java
+@@ -1783,7 +1783,11 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+             final boolean doDaylight = level.getGameRules().get(GameRules.ADVANCE_TIME);
+             final long dayTime = level.getDayTime();
+             long worldTime = level.getGameTime();
+-            final ClientboundSetTimePacket worldPacket = new ClientboundSetTimePacket(worldTime, dayTime, doDaylight);
++            // Papo start - Perf: allocate the shared packet lazily; constructor args are loop-invariant
++            // and the record has no side effects, so first-use construction yields identical packets.
++            // Skips the allocation entirely for empty worlds and on the 19/20 ticks no player matches the guard.
++            ClientboundSetTimePacket worldPacket = null;
++            // Papo end
+             for (Player entityhuman : level.players()) {
+                 if (!(entityhuman instanceof ServerPlayer) || (tickCount + entityhuman.getId()) % 20 != 0) {
+                     continue;
+@@ -1791,6 +1795,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+                 ServerPlayer entityplayer = (ServerPlayer) entityhuman;
+                 long playerTime = entityplayer.getPlayerTime();
+                 boolean relativeTime = entityplayer.relativeTime;
++                if (worldPacket == null) worldPacket = new ClientboundSetTimePacket(worldTime, dayTime, doDaylight); // Papo - lazy allocation
+                 ClientboundSetTimePacket packet = ((relativeTime || !doDaylight) && playerTime == dayTime) ? worldPacket :
+                     new ClientboundSetTimePacket(worldTime, playerTime, relativeTime && doDaylight);
+                 entityplayer.connection.send(packet); // Add support for per player time
