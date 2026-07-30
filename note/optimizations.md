@@ -589,9 +589,9 @@
 - **PathNavigation 每 tick Vec3/BlockPos 拆分量**：`getGroundY(Vec3)` 是 protected 虚方法（3 个实现），NMS 插件 override 后会被改道绕过，不满足兼容红线；原版内可证等价但扩展点风险不可接受。
 - **declarative Behavior MemoryAccessor/Optional 复用**：需先全量审计是否存在跨 tick 持有 MemoryAccessor 的 trigger，工作量大，留待下批。
 - **getSpread EnumMap/SpreadContext 线程级复用**：需严格保序复刻（EnumMap ordinal 序 vs 插入序、i1<i clear 语义），改动面大且事件顺序可被插件观察，留待下批单独仔细核对。
-- **漏斗 AABB 缓存**：仅限 HopperBlockEntity 实例（HopperMinecart 会移动共享静态 helper），需 instanceof 分流，收益中等，暂缓。
+- ~~**漏斗 AABB 缓存**~~ **批次 33 已完成（0113，仅 getItemsAtAndAbove；getEntityContainer 需签名穿线暂缓）**。
 - ~~**PlayerPickupItemEvent/EntityPickupItemEvent 双事件门控**~~ **批次 32 已完成（0112）**。
-- ~~**CraftEventFactory.handleBlockFormEvent 门控**~~ **批次 32 已完成（0113）**：EntityBlockFormEvent 无独立 HandlerList，单检查覆盖。
+- ~~**CraftEventFactory.handleBlockFormEvent 门控**~~ **批次 32 已完成（0114）**：EntityBlockFormEvent 无独立 HandlerList，单检查覆盖。
 - **Biome.shouldFreeze / tickPrecipitation BlockPos 复用**：频率受 randomTickSpeed/48 与 biome 限制，价值低。
 - **NearestLivingEntitySensor lambda/comparator 缓存、LookAtTargetSink Vec3、WalkNodeEvaluator.getPathType MutableBlockPos**：收益不确定（EA 可能已消除）或依赖不变量，暂缓。
 
@@ -606,7 +606,7 @@
 - **等价性**：两事件默认取消规则相同（`!getCanPickupItems()`，同一 entity 的同一调用），取消分支逐行比对（setCount(count) 恢复 + return，无 take）；非取消路径与"事件未换 stack"分支逐语句一致；两事件无子类、构造仅字段赋值。
 - **风险**：低-中（复现默认规则，已逐分支比对）。
 
-### 0113 — CraftEventFactory.handleBlockFormEvent 零监听器门控
+### 0114 — CraftEventFactory.handleBlockFormEvent 零监听器门控（初稿误记 0113，补丁序列以补丁文件为准后正名）
 - **文件**：`paper-server/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java`（直接提交的源码，无补丁文件）
 - **热点**：结冰/积雪/冰霜行者/雪傀儡每次方块形成构造 BlockFormEvent（或 EntityBlockFormEvent + getBukkitEntity）；tickPrecipitation 每次最多 3 次。
 - **改法**：零监听器时跳过事件构造，直接 `snapshot.place(flags)` 返回 `!checkSetResult || result`。
@@ -615,9 +615,21 @@
 
 ---
 
+## 批次 33（2026-07-31）：漏斗吸取 AABB 实例缓存（0113）
+
+### 0113 — HopperBlockEntity 吸取 AABB 实例缓存
+- **文件**：`net/minecraft/world/level/block/entity/HopperBlockEntity.java`（getItemsAtAndAbove + 新字段）
+- **热点**：漏斗上方无方块容器时，每个搬运周期 `getSuckAabb().move(...)` 分配新 AABB；漏斗密集（物品分类机）服务器为稳定分配源。
+- **改法**：`hopper instanceof HopperBlockEntity` 时缓存到 BE 实例字段 `papoSuckAabb`（惰性初始化）；矿车漏斗（会移动）走原逐次计算。
+- **等价性**：`Hopper.SUCK_AABB` 是共享不可变常量（`getSuckAabb()` 无覆盖，全树 grep 实证）；BE 的 `worldPosition` final（vanilla 不可移动方块实体，setBlock 会重建 BE 得到新缓存）；AABB 不可变且 `getEntitiesOfClass` 只读；缓存值与逐次计算逐分量相同。
+- **风险**：低。
+- **暂缓**：`getEntityContainer` 的 `new AABB(...)`——静态方法链（suck/eject 共用、矿车共用）需穿线 BE 实例或按 pos 键控，复杂度高于收益，未做。
+
+---
+
 ## 候选后续批次（来自 survey，按 价值×置信/风险 排序）
 
-（旧清单中 Direction.Plane 迭代器、tickBlockEntities 移除集、NaturalSpawner 距离、pushableBy、LookControl Optional、distanceToSqr 批、CraftBukkit 枚举缓存均已完成，见对应批次。批次 28 完成：InventoryChangeTrigger 早退 0093、Utf8String 写侧 NBT ASCII 快速路径 0092、tickChildren SetTimePacket 惰性 0094、FriendlyByteBuf.writeNbt 适配器 0095。批次 29 完成：FriendlyByteBuf.readNbt 读侧适配器 0096、VarInt.read 快速路径 0097、枚举常量缓存 0098、registry codec 单例 0099、EntityJumpEvent/PlayerVelocityEvent 门控 0100、惰性 list 0101、TrackedEntity 惰性移除 0102、Inflater 池化 0103；map 编码 forEach→entrySet 经基准实测回退 0.77× 已撤销（见批次 29 撤销条）。批次 30 完成：流体检测路径 3 处分配消除 0104、computeSpeed Vec3 消除 0105。批次 31 完成：BlockFromToEvent 门控+流体 tick 去冗余查询 0106、物品拾取/合并门控 0107、经验球 4 事件门控 0108、PlayerJumpEvent 门控+Vec3 折叠 0109、broadcastSlotChange 门控 0110、寻路缓存两段式+GateBehavior stream 消除 0111。批次 32 完成：双拾取事件门控 0112、handleBlockFormEvent 门控 0113。）
+（旧清单中 Direction.Plane 迭代器、tickBlockEntities 移除集、NaturalSpawner 距离、pushableBy、LookControl Optional、distanceToSqr 批、CraftBukkit 枚举缓存均已完成，见对应批次。批次 28 完成：InventoryChangeTrigger 早退 0093、Utf8String 写侧 NBT ASCII 快速路径 0092、tickChildren SetTimePacket 惰性 0094、FriendlyByteBuf.writeNbt 适配器 0095。批次 29 完成：FriendlyByteBuf.readNbt 读侧适配器 0096、VarInt.read 快速路径 0097、枚举常量缓存 0098、registry codec 单例 0099、EntityJumpEvent/PlayerVelocityEvent 门控 0100、惰性 list 0101、TrackedEntity 惰性移除 0102、Inflater 池化 0103；map 编码 forEach→entrySet 经基准实测回退 0.77× 已撤销（见批次 29 撤销条）。批次 30 完成：流体检测路径 3 处分配消除 0104、computeSpeed Vec3 消除 0105。批次 31 完成：BlockFromToEvent 门控+流体 tick 去冗余查询 0106、物品拾取/合并门控 0107、经验球 4 事件门控 0108、PlayerJumpEvent 门控+Vec3 折叠 0109、broadcastSlotChange 门控 0110、寻路缓存两段式+GateBehavior stream 消除 0111。批次 32 完成：双拾取事件门控 0112、handleBlockFormEvent 门控 0114（初稿误记 0113，补丁序列以补丁文件为准后正名）。批次 33 完成：漏斗吸取 AABB 实例缓存 0113。）
 
 ### 批次 23-27 survey 新增候选（2026-07-30，尚未做）
 
