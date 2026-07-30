@@ -97,6 +97,24 @@ codechicken diffpatch 引擎非常严格：
 2. **hunk 头计数必须与行数一致**。`@@ -a,b +_,c @@` 中 b = (上下文行+删除行) 数，c = (上下文行+新增行) 数。把上下文行改成 -/+ 对**不改变**计数；只有纯增/删行才改变。校验脚本：`python note/check_patch_counts.py [files...]`。
 3. **`+` 侧起始行号用 `_`**（paperweight 约定，表示由引擎推算），`-` 侧必须写真实行号但引擎实际不校验它，只校验 b/c 计数。
 
+## 2026-07-30 补充：批次 23-27 踩坑记录
+
+### rebuildPatches 会自动暂存全部生成补丁
+
+`rebuildPatches` 对所有生成的补丁文件执行 `git add`。**第一次 `git commit` 会把已暂存的全部补丁一次吞掉**。要按组/按补丁细粒度提交，先 `git reset` 取消暂存，再逐组 `git add` 提交（optimizations.md 工作流要点中的"只 stage 本次目标的文件"同理）。
+
+### jspecify @Nullable 不能标注嵌套类型的作用域结构（Java 21 编译错误）
+
+`@Nullable private StreamTagVisitor.ValueResult acceptEntry(...)` 报 "无法使用 type-use 批注 @org.jspecify.annotations.Nullable 来批注确定作用域结构"。正确写法是移到嵌套类型内侧：`private StreamTagVisitor.@Nullable ValueResult acceptEntry(...)`。**注意 configuration cache 会掩盖此类编译错误**（命中缓存时跳过脚本重编译/增量编译，换任务才暴露），合并上游或改构建脚本后必须跑 `help` 或 `rebuildPatches` 做一次全量验证。
+
+### 网络/IO 类优化的基准实践（字节级自检）
+
+对"产出线上字节"的优化（如 0084 Utf8String、0085 long 数组批量写），基准类除 JMH 前后对比外，附带一个 `main` 方法对两种实现做**字节级输出比对**（多组输入：ascii/utf8/非 2 幂长度），`run.sh` 编译后即可直接 `java` 运行自检。netty-buffer/netty-common（4.2.7.Final，与服务器运行时同版本）已由 run.sh 自动下载。
+
+### main 分支污染事故（26.x 合并）与修复
+
+2026-07-30 合并 ver/1.21.11 到 main 时以 26.x 上游为基底解决冲突，导致 mcVersion/apiVersion 变 26.2、paperweight beta.21、Java 25 工具链及 patches/paper-api/paper-server 大量文件偏离 1.21.11（详见上方「注意事项」版本红线）。修复：内容恢复提交 `e7d7a0f99`（`git commit-tree <9e1ddc416^{tree}> -p HEAD` + `git reset --hard`），不改写已推送历史，可随时 revert。**教训：合并上游/分支后，先对照 1.21.11 红线检查 gradle.properties 与根 build.gradle.kts，再跑 rebuildPatches 验证。**
+
 ### 版本不匹配的补丁如何移植（26.x → 1.21.11）
 
 上游 main 已到 26.x，很多补丁直接拿过来 hunk 对不上（变量改名、行数不同）。可靠流程：
