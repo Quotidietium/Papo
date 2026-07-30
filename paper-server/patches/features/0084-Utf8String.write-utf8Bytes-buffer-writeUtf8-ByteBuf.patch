@@ -1,0 +1,55 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 20:56:21 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=20Utf8String.write=EF=BC=9Au?=
+ =?UTF-8?q?tf8Bytes=20=E9=9B=B6=E5=88=86=E9=85=8D=E7=AE=97=E5=87=BA?=
+ =?UTF-8?q?=E7=B2=BE=E7=A1=AE=E7=BC=96=E7=A0=81=E9=95=BF=E5=BA=A6=E5=90=8E?=
+ =?UTF-8?q?=E7=9B=B4=E6=8E=A5=E5=86=99=E5=85=A5=E7=9B=AE=E6=A0=87=20buffer?=
+ =?UTF-8?q?=EF=BC=88=E4=B8=8E=20writeUtf8=20=E5=90=8C=E5=AD=A4=E4=BB=A3?=
+ =?UTF-8?q?=E7=90=86=E9=A1=B9=E6=9B=BF=E6=8D=A2=E8=AF=AD=E4=B9=89=EF=BC=8C?=
+ =?UTF-8?q?=E5=AD=97=E8=8A=82=E5=AE=8C=E5=85=A8=E4=B8=80=E8=87=B4=EF=BC=89?=
+ =?UTF-8?q?=EF=BC=8C=E6=B6=88=E9=99=A4=E6=AF=8F=E5=AD=97=E7=AC=A6=E4=B8=B2?=
+ =?UTF-8?q?=E4=B8=B4=E6=97=B6=20ByteBuf=20=E5=88=86=E9=85=8D+=E6=8B=B7?=
+ =?UTF-8?q?=E8=B4=9D?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/network/Utf8String.java b/net/minecraft/network/Utf8String.java
+index 8970dc6ef844c7b01d8cd4463db9ca64c71d879c..ca9b859cc4f20982565284f8c38d1653e23b1213 100644
+--- a/net/minecraft/network/Utf8String.java
++++ b/net/minecraft/network/Utf8String.java
+@@ -34,21 +34,18 @@ public class Utf8String {
+         if (string.length() > maxLength) {
+             throw new EncoderException("String too big (was " + string.length() + " characters, max " + maxLength + ")");
+         } else {
+-            int i = ByteBufUtil.utf8MaxBytes(string);
+-            ByteBuf byteBuf = buffer.alloc().buffer(i);
+-
+-            try {
+-                int i1 = ByteBufUtil.writeUtf8(byteBuf, string);
+-                int i2 = ByteBufUtil.utf8MaxBytes(maxLength);
+-                if (i1 > i2) {
+-                    throw new EncoderException("String too big (was " + i1 + " bytes encoded, max " + i2 + ")");
+-                }
+-
+-                VarInt.write(buffer, i1);
+-                buffer.writeBytes(byteBuf);
+-            } finally {
+-                byteBuf.release();
++            // Papo start - compute the encoded length allocation-free via utf8Bytes (same lone-surrogate
++            // '?' replacement semantics as writeUtf8, so the byte count is identical) and encode directly
++            // into the target buffer, eliminating the temporary ByteBuf allocation + copy per string.
++            int i1 = ByteBufUtil.utf8Bytes(string);
++            int i2 = ByteBufUtil.utf8MaxBytes(maxLength);
++            if (i1 > i2) {
++                throw new EncoderException("String too big (was " + i1 + " bytes encoded, max " + i2 + ")");
+             }
++
++            VarInt.write(buffer, i1);
++            ByteBufUtil.writeUtf8(buffer, string);
++            // Papo end
+         }
+     }
+ }
