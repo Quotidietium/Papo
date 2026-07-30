@@ -1,0 +1,94 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 05:21:49 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=20computeSpeed=EF=BC=9A?=
+ =?UTF-8?q?=E6=AF=8F=E5=AE=9E=E4=BD=93=E6=AF=8F=20tick=20=E7=9A=84=20Vec3?=
+ =?UTF-8?q?=20=E5=88=86=E9=85=8D=E6=B6=88=E9=99=A4=EF=BC=8C=E5=88=86?=
+ =?UTF-8?q?=E9=87=8F=20double=20=E5=AD=98=E5=82=A8=20+=20getKnownSpeed=20?=
+ =?UTF-8?q?=E6=83=B0=E6=80=A7=E9=87=8D=E5=BB=BA=EF=BC=88=E5=94=AF=E4=B8=80?=
+ =?UTF-8?q?=E6=B6=88=E8=B4=B9=E6=96=B9=20KineticWeapon=20=E4=B8=BA?=
+ =?UTF-8?q?=E4=BD=8E=E9=A2=91=E6=94=BB=E5=87=BB=E4=BA=8B=E4=BB=B6=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
+index c8d98d4ef0e32629b86374f63dfab133ae0b79e5..069e119e9403a6644367117f9f4ccd7f94e9d896 100644
+--- a/net/minecraft/world/entity/Entity.java
++++ b/net/minecraft/world/entity/Entity.java
+@@ -331,8 +331,11 @@ public abstract class Entity implements SyncedDataHolder, DebugValueSource, Name
+     private float crystalSoundIntensity;
+     private int lastCrystalSoundPlayTick;
+     public boolean hasVisualFire;
+-    private Vec3 lastKnownSpeed = Vec3.ZERO;
+-    private @Nullable Vec3 lastKnownPosition;
++    // Papo start - computeSpeed without per-tick Vec3 allocation: store components, reconstruct lazily in getKnownSpeed() (rare API call, only KineticWeapon consumes)
++    private double papoLastKnownSpeedX, papoLastKnownSpeedY, papoLastKnownSpeedZ;
++    private double papoLastKnownPosX, papoLastKnownPosY, papoLastKnownPosZ;
++    private boolean papoLastKnownPosValid;
++    // Papo end
+     private BlockPos.MutableBlockPos papoFluidMutablePos; // Papo - reused scratch pos in updateFluidHeightAndDoFluidPushing (provably non-escaping; tick-thread only)
+     public net.kyori.adventure.util.TriState visualFire = net.kyori.adventure.util.TriState.NOT_SET; // Paper - improve visual fire API
+     private @Nullable BlockState inBlockState = null;
+@@ -811,7 +814,7 @@ public abstract class Entity implements SyncedDataHolder, DebugValueSource, Name
+     }
+ 
+     protected void reapplyPosition() {
+-        this.lastKnownPosition = null;
++        this.papoLastKnownPosValid = false; // Papo - computeSpeed without Vec3 allocation
+         this.setPos(this.position.x, this.position.y, this.position.z);
+     }
+ 
+@@ -913,12 +916,24 @@ public abstract class Entity implements SyncedDataHolder, DebugValueSource, Name
+     }
+ 
+     protected void computeSpeed() {
+-        if (this.lastKnownPosition == null) {
+-            this.lastKnownPosition = this.position();
+-        }
+-
+-        this.lastKnownSpeed = this.position().subtract(this.lastKnownPosition);
+-        this.lastKnownPosition = this.position();
++        // Papo start - computeSpeed without per-tick Vec3 allocation
++        // position() returns the stored immutable Vec3 field (no subclass overrides it); reading it once is equivalent.
++        // a - b is bit-identical to a + (-b) used by Vec3.subtract (IEEE 754 negation is exact).
++        final Vec3 papoPos = this.position();
++        if (!this.papoLastKnownPosValid) {
++            this.papoLastKnownPosX = papoPos.x;
++            this.papoLastKnownPosY = papoPos.y;
++            this.papoLastKnownPosZ = papoPos.z;
++            this.papoLastKnownPosValid = true;
++        }
++
++        this.papoLastKnownSpeedX = papoPos.x - this.papoLastKnownPosX;
++        this.papoLastKnownSpeedY = papoPos.y - this.papoLastKnownPosY;
++        this.papoLastKnownSpeedZ = papoPos.z - this.papoLastKnownPosZ;
++        this.papoLastKnownPosX = papoPos.x;
++        this.papoLastKnownPosY = papoPos.y;
++        this.papoLastKnownPosZ = papoPos.z;
++        // Papo end
+     }
+ 
+     public void setSharedFlagOnFire(boolean isOnFire) {
+@@ -1328,7 +1343,8 @@ public abstract class Entity implements SyncedDataHolder, DebugValueSource, Name
+     }
+ 
+     public boolean hasMovedHorizontallyRecently() {
+-        return Math.abs(this.lastKnownSpeed.horizontalDistance()) > 1.0E-5F;
++        // Papo - matches Vec3.horizontalDistance() exactly: Math.sqrt(x * x + z * z)
++        return Math.abs(Math.sqrt(this.papoLastKnownSpeedX * this.papoLastKnownSpeedX + this.papoLastKnownSpeedZ * this.papoLastKnownSpeedZ)) > 1.0E-5F;
+     }
+ 
+     public void applyEffectsFromBlocks(Vec3 oldPosition, Vec3 position) {
+@@ -5316,7 +5332,9 @@ public abstract class Entity implements SyncedDataHolder, DebugValueSource, Name
+     }
+ 
+     public Vec3 getKnownSpeed() {
+-        return this.getControllingPassenger() instanceof Player player && this.isAlive() ? player.getKnownSpeed() : this.lastKnownSpeed;
++        return this.getControllingPassenger() instanceof Player player && this.isAlive()
++            ? player.getKnownSpeed()
++            : new Vec3(this.papoLastKnownSpeedX, this.papoLastKnownSpeedY, this.papoLastKnownSpeedZ); // Papo - reconstruct lazily (rare call, only KineticWeapon consumes)
+     }
+ 
+     public @Nullable ItemStack getWeaponItem() {
