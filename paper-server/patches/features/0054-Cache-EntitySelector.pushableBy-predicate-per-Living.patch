@@ -1,0 +1,51 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 14:09:25 +0800
+Subject: [PATCH] Cache EntitySelector.pushableBy predicate per LivingEntity
+
+pushEntities() runs every tick for collidable LivingEntities and rebuilt a
+fresh NO_SPECTATORS.and(lambda) predicate each call. pushableBy only captures
+the source entity's team/collisionRule (canCollideWithBukkit and the
+candidate's team are evaluated live), so cache the predicate on the entity
+and rebuild only when team/collisionRule change.
+
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index 4e50b2b4c011152276e8ac69763625c6ea659ae7..e440ab039705ce66619191fb658bc4ccc4e3e6bc 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -3829,6 +3829,26 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+     protected void serverAiStep() {
+     }
+ 
++    // Papo start - cache the pushable-by predicate per LivingEntity. EntitySelector.pushableBy
++    // only captures the source entity's team/collisionRule (canCollideWithBukkit and the
++    // candidate's own team are evaluated live inside the lambda), so the predicate is reusable
++    // across ticks and only needs rebuilding when the source's team/collisionRule change.
++    private java.util.function.Predicate<Entity> papoPushablePredicate;
++    private net.minecraft.world.scores.Team papoPushableTeam;
++    private net.minecraft.world.scores.Team.CollisionRule papoPushableRule;
++
++    private java.util.function.Predicate<Entity> papoGetPushablePredicate() {
++        net.minecraft.world.scores.Team team = this.getTeam();
++        net.minecraft.world.scores.Team.CollisionRule rule = team == null ? net.minecraft.world.scores.Team.CollisionRule.ALWAYS : team.getCollisionRule();
++        if (this.papoPushablePredicate == null || team != this.papoPushableTeam || rule != this.papoPushableRule) {
++            this.papoPushablePredicate = net.minecraft.world.entity.EntitySelector.pushableBy(this);
++            this.papoPushableTeam = team;
++            this.papoPushableRule = rule;
++        }
++        return this.papoPushablePredicate;
++    }
++    // Papo end
++
+     protected void pushEntities() {
+         // Paper start - don't run getEntities if we're not going to use its result
+         if (!this.isPushable()) {
+@@ -3845,7 +3865,7 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+             return;
+         }
+         // Paper end - don't run getEntities if we're not going to use its result
+-        List<Entity> pushableEntities = this.level().getPushableEntities(this, this.getBoundingBox());
++        List<Entity> pushableEntities = this.level().getEntities(this, this.getBoundingBox(), this.papoGetPushablePredicate()); // Papo - reuse cached pushable predicate (avoids per-tick allocation)
+         if (!pushableEntities.isEmpty()) {
+             if (this.level() instanceof ServerLevel serverLevel) {
+                 // Paper - don't run getEntities if we're not going to use its result; moved up
