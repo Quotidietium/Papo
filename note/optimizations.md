@@ -279,6 +279,21 @@
 
 ---
 
+## 批次 22（2026-07-30）：寻路/流体/红石的 Plane.HORIZONTAL 迭代与 EnumMap 消除
+
+`Direction.Plane.HORIZONTAL` 的 for-each 每次分配 `Iterators.forArray` 迭代器；寻路邻居展开还每次调用 `Maps.newEnumMap(Direction.class)`。统一改为每类私有静态缓存数组 `{NORTH, EAST, SOUTH, WEST}`（与 Plane.HORIZONTAL faces 顺序逐元素一致，迭代行为等价）。
+
+### 0076 — 寻路评估器（2 文件）
+- `WalkNodeEvaluator.getNeighbors`：2 个 Plane 循环改缓存数组；`getFloorLevel(new BlockPos)` 改复用 `floorLevelPos`（MutableBlockPos，getFloorLevel 只读）。
+- `SwimNodeEvaluator.getNeighbors`：每调用 EnumMap 改 `Node[6]` ordinal 索引数组（get/put/覆盖/null 语义一致；Direction 固定 6 个 ordinal）；`findAcceptedNode` 内 `new BlockPos` 改复用 `fluidPos`。
+
+### 0077 — 流体与红石粉（3 文件 13 处循环）
+- `FlowingFluid`（6 处：扩散/坡度/源统计/更新形状——流体 tick 热路径）、`RedstoneWireEvaluator.getIncomingWireSignal`、`RedStoneWireBlock`（6 处：连接状态计算/更新）。
+- `FlowingFluid.getSpread` 的 EnumMap 保留（作为 protected 返回值逃逸，改结构会变签名，兼容风险）。
+- 基准：模拟邻居展开 512 次 11842ns → 7897ns（1.5×，另含每次 2 次分配消除）。
+
+---
+
 ## 基准测试（2026-07-30）
 
 新增 `benchmark/`：JMH 1.37 微基准，忠实复刻 0067/0068/0040/0047/0048/0069/0045/0058/0070 的前后实现对比。
