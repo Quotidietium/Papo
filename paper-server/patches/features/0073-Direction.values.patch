@@ -1,0 +1,102 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 17:06:22 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=20=E7=81=AB=E8=94=93?=
+ =?UTF-8?q?=E5=BB=B6=E4=B8=8E=E6=B4=BB=E5=A1=9E=20Direction.values()=20?=
+ =?UTF-8?q?=E6=AF=8F=E6=AC=A1=E5=85=8B=E9=9A=86=E6=94=B9=E7=A7=81=E6=9C=89?=
+ =?UTF-8?q?=E9=9D=99=E6=80=81=E7=BC=93=E5=AD=98=E6=95=B0=E7=BB=84?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/level/block/FireBlock.java b/net/minecraft/world/level/block/FireBlock.java
+index 14a4189166b862b66a8383046f2abfe02ccbccd8..d1e3dd74e38e186ef9fd61c4ab1f61d084746a9a 100644
+--- a/net/minecraft/world/level/block/FireBlock.java
++++ b/net/minecraft/world/level/block/FireBlock.java
+@@ -50,6 +50,7 @@ public class FireBlock extends BaseFireBlock {
+     private static final int BURN_EASY = 60;
+     private static final int BURN_MEDIUM = 20;
+     private static final int BURN_HARD = 5;
++    private static final Direction[] DIRECTIONS = Direction.values(); // Papo - cache enum array, values() clones per call
+     public final Object2IntMap<Block> igniteOdds = new Object2IntOpenHashMap<>();
+     private final Object2IntMap<Block> burnOdds = new Object2IntOpenHashMap<>();
+ 
+@@ -136,7 +137,7 @@ public class FireBlock extends BaseFireBlock {
+         if (!this.canBurn(blockState) && !blockState.isFaceSturdy(level, blockPos, Direction.UP)) {
+             BlockState blockState1 = this.defaultBlockState();
+ 
+-            for (Direction direction : Direction.values()) {
++            for (Direction direction : DIRECTIONS) { // Papo - cached array
+                 BooleanProperty booleanProperty = PROPERTY_BY_DIRECTION.get(direction);
+                 if (booleanProperty != null) {
+                     blockState1 = blockState1.setValue(booleanProperty, this.canBurn(level.getBlockState(pos.relative(direction))));
+@@ -306,7 +307,7 @@ public class FireBlock extends BaseFireBlock {
+     }
+ 
+     private boolean isValidFireLocation(BlockGetter level, BlockPos pos) {
+-        for (Direction direction : Direction.values()) {
++        for (Direction direction : DIRECTIONS) { // Papo - cached array
+             if (this.canBurn(level.getBlockState(pos.relative(direction)))) {
+                 return true;
+             }
+@@ -321,7 +322,7 @@ public class FireBlock extends BaseFireBlock {
+         } else {
+             int i = 0;
+ 
+-            for (Direction direction : Direction.values()) {
++            for (Direction direction : DIRECTIONS) { // Papo - cached array
+                 BlockState blockState = level.getBlockState(pos.relative(direction));
+                 i = Math.max(this.getIgniteOdds(blockState), i);
+             }
+diff --git a/net/minecraft/world/level/block/piston/PistonBaseBlock.java b/net/minecraft/world/level/block/piston/PistonBaseBlock.java
+index 3bbfa079a2a2da3de361352738b6101894acf82c..91c088d54dccde922681a4bd6b321dc916a436d7 100644
+--- a/net/minecraft/world/level/block/piston/PistonBaseBlock.java
++++ b/net/minecraft/world/level/block/piston/PistonBaseBlock.java
+@@ -54,6 +54,7 @@ public class PistonBaseBlock extends DirectionalBlock {
+     public static final int TRIGGER_DROP = 2;
+     public static final int PLATFORM_THICKNESS = 4;
+     private static final Map<Direction, VoxelShape> SHAPES = Shapes.rotateAll(Block.boxZ(16.0, 4.0, 16.0));
++    private static final Direction[] DIRECTIONS = Direction.values(); // Papo - cache enum array, values() clones per call
+     private final boolean isSticky;
+ 
+     @Override
+@@ -128,7 +129,7 @@ public class PistonBaseBlock extends DirectionalBlock {
+     }
+ 
+     private boolean getNeighborSignal(SignalGetter level, BlockPos pos, Direction direction) {
+-        for (Direction direction1 : Direction.values()) {
++        for (Direction direction1 : DIRECTIONS) { // Papo - cached array
+             if (direction1 != direction && level.hasSignal(pos.relative(direction1), direction1)) {
+                 return true;
+             }
+@@ -139,7 +140,7 @@ public class PistonBaseBlock extends DirectionalBlock {
+         } else {
+             BlockPos blockPos = pos.above();
+ 
+-            for (Direction direction2 : Direction.values()) {
++            for (Direction direction2 : DIRECTIONS) { // Papo - cached array
+                 if (direction2 != Direction.DOWN && level.hasSignal(blockPos.relative(direction2), direction2)) {
+                     return true;
+                 }
+diff --git a/net/minecraft/world/level/block/piston/PistonStructureResolver.java b/net/minecraft/world/level/block/piston/PistonStructureResolver.java
+index ad143a92569f5b420ccaa2089758b2fb3b4ab7c5..81406ed7369ea622c9b20206d3ac62497cad557e 100644
+--- a/net/minecraft/world/level/block/piston/PistonStructureResolver.java
++++ b/net/minecraft/world/level/block/piston/PistonStructureResolver.java
+@@ -11,6 +11,7 @@ import net.minecraft.world.level.material.PushReaction;
+ 
+ public class PistonStructureResolver {
+     public static final int MAX_PUSH_DEPTH = 12;
++    private static final Direction[] DIRECTIONS = Direction.values(); // Papo - cache enum array, values() clones per call
+     private final Level level;
+     private final BlockPos pistonPos;
+     private final boolean extending;
+@@ -168,7 +169,7 @@ public class PistonStructureResolver {
+     private boolean addBranchingBlocks(BlockPos fromPos) {
+         BlockState blockState = this.level.getBlockState(fromPos);
+ 
+-        for (Direction direction : Direction.values()) {
++        for (Direction direction : DIRECTIONS) { // Papo - cached array
+             if (direction.getAxis() != this.pushDirection.getAxis()) {
+                 BlockPos blockPos = fromPos.relative(direction);
+                 BlockState blockState1 = this.level.getBlockState(blockPos);
