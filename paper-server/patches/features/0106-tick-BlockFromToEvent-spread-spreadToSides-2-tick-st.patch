@@ -1,0 +1,72 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 05:58:06 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=E6=B5=81=E4=BD=93=20tick?=
+ =?UTF-8?q?=EF=BC=9ABlockFromToEvent=20=E6=97=A0=E7=9B=91=E5=90=AC?=
+ =?UTF-8?q?=E5=99=A8=E9=97=A8=E6=8E=A7=EF=BC=88spread/spreadToSides=202=20?=
+ =?UTF-8?q?=E5=A4=84=EF=BC=89+=20tick=20=E5=A4=8D=E7=94=A8=E4=BC=A0?=
+ =?UTF-8?q?=E5=85=A5=20state=20=E6=B6=88=E9=99=A4=E5=86=97=E4=BD=99=20getB?=
+ =?UTF-8?q?lockState?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/level/material/FlowingFluid.java b/net/minecraft/world/level/material/FlowingFluid.java
+index 329757d352f62775e936f3d137fae7b14942c3c6..090d9d4b3257b70a0c44e0d884e566e0a864f8f1 100644
+--- a/net/minecraft/world/level/material/FlowingFluid.java
++++ b/net/minecraft/world/level/material/FlowingFluid.java
+@@ -164,12 +164,17 @@ public abstract class FlowingFluid extends Fluid {
+                 Fluid type = newLiquid.getType();
+                 if (fluidState1.canBeReplacedWith(level, blockPos, type, Direction.DOWN) && canHoldSpecificFluid(level, blockPos, blockState, type)) {
+                     // CraftBukkit start
+-                    org.bukkit.block.Block source = org.bukkit.craftbukkit.block.CraftBlock.at(level, pos);
+-                    org.bukkit.event.block.BlockFromToEvent event = new org.bukkit.event.block.BlockFromToEvent(source, org.bukkit.block.BlockFace.DOWN);
+-                    level.getCraftServer().getPluginManager().callEvent(event);
+-
+-                    if (event.isCancelled()) {
+-                        return;
++                    // Papo - skip BlockFromToEvent allocation+fire when no plugin listens (event has no
++                    // subclasses, constructor is side-effect free; with zero listeners it can never be
++                    // cancelled, so falling through to spreadTo is identical).
++                    if (org.bukkit.event.block.BlockFromToEvent.getHandlerList().getRegisteredListeners().length > 0) {
++                        org.bukkit.block.Block source = org.bukkit.craftbukkit.block.CraftBlock.at(level, pos);
++                        org.bukkit.event.block.BlockFromToEvent event = new org.bukkit.event.block.BlockFromToEvent(source, org.bukkit.block.BlockFace.DOWN);
++                        level.getCraftServer().getPluginManager().callEvent(event);
++
++                        if (event.isCancelled()) {
++                            return;
++                        }
+                     }
+                     // CraftBukkit end
+                     this.spreadTo(level, blockPos, blockState, Direction.DOWN, newLiquid);
+@@ -203,12 +208,15 @@ public abstract class FlowingFluid extends Fluid {
+                 final BlockState blockStateIfLoaded = level.getBlockStateIfLoaded(blockPos); // Paper - Prevent chunk loading from fluid flowing
+                 if (blockStateIfLoaded == null) continue; // Paper - Prevent chunk loading from fluid flowing
+                 // CraftBukkit start
+-                org.bukkit.block.Block source = org.bukkit.craftbukkit.block.CraftBlock.at(level, pos);
+-                org.bukkit.event.block.BlockFromToEvent event = new org.bukkit.event.block.BlockFromToEvent(source, org.bukkit.craftbukkit.block.CraftBlock.notchToBlockFace(direction));
+-                level.getCraftServer().getPluginManager().callEvent(event);
++                // Papo - skip BlockFromToEvent allocation+fire when no plugin listens (see spread() above).
++                if (org.bukkit.event.block.BlockFromToEvent.getHandlerList().getRegisteredListeners().length > 0) {
++                    org.bukkit.block.Block source = org.bukkit.craftbukkit.block.CraftBlock.at(level, pos);
++                    org.bukkit.event.block.BlockFromToEvent event = new org.bukkit.event.block.BlockFromToEvent(source, org.bukkit.craftbukkit.block.CraftBlock.notchToBlockFace(direction));
++                    level.getCraftServer().getPluginManager().callEvent(event);
+ 
+-                if (event.isCancelled()) {
+-                    continue;
++                    if (event.isCancelled()) {
++                        continue;
++                    }
+                 }
+                 // CraftBukkit end
+                 this.spreadTo(level, blockPos, blockStateIfLoaded, direction, fluidState1); // Paper - Prevent chunk loading from fluid flowing
+@@ -480,7 +488,7 @@ public abstract class FlowingFluid extends Fluid {
+     @Override
+     public void tick(ServerLevel level, BlockPos pos, BlockState state, FluidState fluidState) {
+         if (!fluidState.isSource()) {
+-            FluidState newLiquid = this.getNewLiquid(level, pos, level.getBlockState(pos));
++            FluidState newLiquid = this.getNewLiquid(level, pos, state); // Papo - reuse the passed-in state: both callers (FluidState.tick via ServerLevel.tickFluid / LevelChunk.postProcessGeneration) read it immediately before with no intervening world mutation, so the re-fetch is provably identical
+             int spreadDelay = this.getSpreadDelay(level, pos, fluidState, newLiquid);
+             if (newLiquid.isEmpty()) {
+                 fluidState = newLiquid;
