@@ -398,21 +398,58 @@
 
 ---
 
+## 批次 28（2026-07-30）：NBT 写侧与网络 NBT 零分配化（0092-0095）
+
+### 0092 — NBT 字符串写出 ASCII 快速路径 papoWriteUtf（0067 写侧镜像）
+- **文件**：`net/minecraft/nbt/CompoundTag.java`（writeNamedTag 键名）+ `net/minecraft/nbt/StringTag.java`（write 值）
+- **热点**：NBT 序列化每个键名与每个字符串值——区块/实体/玩家存档（IOWorker）与网络 NBT（0095 入口）共用 `Tag.write(DataOutput)`。JDK `DataOutput.writeUTF` 每次调用分配 `byte[utflen+2]` scratch 并两遍遍历（算长+编码）。
+- **改法**：`CompoundTag.papoWriteUtf(DataOutput, String)`：单遍 ASCII 扫描（0x01-0x7f），命中时长度前缀与内容写入同一 ThreadLocal 8KB scratch、**单次 `output.write(scratch, 0, length+2)` 批量写出**（>8190 字符走 writeShort+分块）；含 NUL 或 ≥0x80 字符回退 `writeUTF`；长度 >65535 委托 `writeUTF` 抛出同一 `UTFDataFormatException`。
+- **迭代教训**：初版用 `writeShort`（两次单字节 write）+ 分块，短键名实测**回退 0.83×**（单字节调用 + ThreadLocal.get 盖过省下的分配）；改单次批量写后全场景回正（短键 1.10×、62 字符 1.30×、10KB 1.89×）。
+- **等价性**：modified-UTF-8 中 0x01-0x7f 逐字符编码为单字节等值字节；NUL 为 0xC0 0x80 双字节故必须回退。基准 main 字节级自检：空/短/10KB 分块/utf8 回退/NUL 回退/65535 边界全等，超长异常类型一致。
+- **风险**：低。
+
+### 0093 — InventoryChangeTrigger hasListeners 早退（0086 同款模式）
+- **文件**：`net/minecraft/advancements/criterion/InventoryChangeTrigger.java` `trigger(ServerPlayer,Inventory,ItemStack)`
+- **热点**：每次背包槽位同步（`ServerPlayer.containerListener.slotChanged`）调用，原实现无条件全槽位扫描统计 full/empty/occupied（每非空槽位含 `getMaxStackSize` 组件查找）。老玩家完成相关进度后监听器集合为空，基类 `SimpleCriterionTrigger.trigger` 对空集本就无操作，扫描纯白做。
+- **改法**：方法首行 `if (!this.hasListeners(player)) return;`（0086 引入的 protected final 助手，读 criterionData 判空）。
+- **等价性**：无监听器时基类 trigger 直接返回（已核实 `set != null && !set.isEmpty()` 守卫）；扫描为纯读（getItem/isEmpty/getCount/getMaxStackSize）无副作用，计数唯一消费者是 matches。
+- **风险**：低。
+
+### 0094 — tickChildren 时间同步 SetTimePacket 惰性分配
+- **文件**：`net/minecraft/server/MinecraftServer.java` `tickChildren`
+- **热点**：每世界每 tick 无条件构造共享 `worldPacket`，但仅当存在通过 `(tickCount + id) % 20` 守卫的玩家才使用：无玩家世界及 19/20 的 tick 白建（默认 3 世界 ≈ 60 次/秒）。
+- **改法**：`worldPacket` 改 null 初始化 + 循环内首次使用时构造。
+- **等价性**：构造参数（worldTime/dayTime/doDaylight）循环不变；`ClientboundSetTimePacket` 为 record，构造无副作用，首用构造产出完全相同。
+- **风险**：零。
+
+### 0095 — FriendlyByteBuf.writeNbt ThreadLocal 轻量 DataOutput 适配器
+- **文件**：`net/minecraft/network/FriendlyByteBuf.java` `writeNbt(ByteBuf,Tag)`
+- **热点**：区块包方块实体（`ClientboundLevelChunkPacketData.BlockEntityInfo.write` 每方块实体每区块发送）与带 NBT 组件物品（`ByteBufCodecs.COMPOUND_TAG` 等，物品栏同步）的编码入口。原实现每次 `new ByteBufOutputStream(buffer)`。0092 落地后这是 writeNbt 路径最后的 per-call 分配。
+- **改法**：`PapoByteBufDataOutput extends OutputStream implements DataOutput`（嵌套静态类），ThreadLocal 复用；buffer 字段 save/restore（finally）保证 `Tag.write` 内重入 writeNbt 的正确性。`writeUTF` 经惰性缓存的 `DataOutputStream` 包装（与 Netty `ByteBufOutputStream.utf8out` 字段同构——javap 实证 Netty 即此实现；`DataOutputStream.writeUTF(String,DataOutput)` 包私有不可直接调）。
+- **等价性**：与 Netty 4.2.7 `ByteBufOutputStream` 逐方法字节级比对（基准 main 对真实 jar 自检）：全部原语 BE 直写、writeBytes/writeChars 逐字符循环、writeUTF（ascii/utf8/NUL/空）、0/1/5/20 条目树形写出全等。读侧 ByteBufInputStream 不变。
+- **风险**：低（适配器纯转发；重入经 save/restore 保证；字节等价有实证）。
+
+### 暂缓（批次 28 评估后未做，附原因）
+- **EntitySelectorOptions "scores" Objective memoize**：记分板目标可运行时增删（`/scoreboard objectives remove` 后同名重建），按名缓存 Objective 无干净失效钩子，不满足可证等价红线。
+- **AbstractFurnaceBlockEntity canBurn 产物缓存**：两次 canBurn 之间隔 FurnaceBurnEvent（插件可改熔炉库存），且插件可原位改输入槽组件（对象身份不变），缓存键不可证等价。
+- **Entity.checkInsideBlocks AtomicInteger 消除**：该路径每调用还分配 movements list、Vec3、aabb、LongOpenHashSet、betweenCorners 迭代器等，AtomicInteger 仅为其中之一；精确等价需 BlockGetter 加返回 index 的重载（addCollisionsAlongTravel 内部 visit 也需穿线），复杂度高于收益。
+- **Entity.checkSupportingBlock Optional 复用**：涉 Paper 碰撞补丁区（findSupportingBlock），每调用仅 1 Optional + 1 AABB，收益低。
+- **FriendlyByteBuf.readNbt 读侧适配器**：DataInput 的 EOF 语义（Netty checkAvailable vs EOFException）需逐方法实证，本批未做，留作后续候选。
+
+---
+
 ## 候选后续批次（来自 survey，按 价值×置信/风险 排序）
 
-（旧清单中 Direction.Plane 迭代器、tickBlockEntities 移除集、NaturalSpawner 距离、pushableBy、LookControl Optional、distanceToSqr 批、CraftBukkit 枚举缓存均已完成，见对应批次。）
+（旧清单中 Direction.Plane 迭代器、tickBlockEntities 移除集、NaturalSpawner 距离、pushableBy、LookControl Optional、distanceToSqr 批、CraftBukkit 枚举缓存均已完成，见对应批次。批次 28 完成：InventoryChangeTrigger 早退 0093、Utf8String 写侧 NBT ASCII 快速路径 0092、tickChildren SetTimePacket 惰性 0094、FriendlyByteBuf.writeNbt 适配器 0095。）
 
 ### 批次 23-27 survey 新增候选（2026-07-30，尚未做）
 
-- **InventoryChangeTrigger 惰性计数**（低-中）：`slots == Slots.ANY` 时三个槽位计数不被使用，可惰性化。
-- **EntitySelectorOptions "scores" Objective 解析 memoize**（低-中）：循环命令方块每 tick 每实体 E×K 次 getObjective 哈希查找。
-- **AbstractFurnaceBlockEntity canBurn 产物缓存**（中）：每燃烧熔炉每 tick `assemble()`=result.copy()。
-- **Entity.checkSupportingBlock Optional 复用**（中，涉 Paper 碰撞补丁区）。
-- **Entity.checkInsideBlocks AtomicInteger 消除**（中，需 BlockGetter 加返回 index 的重载）。
+- **EntitySelectorOptions "scores" Objective 解析 memoize**（低-中）：循环命令方块每 tick 每实体 E×K 次 getObjective 哈希查找。**批次 28 评估：目标可运行时增删，无干净失效钩子，不满足可证等价，暂缓。**
+- **AbstractFurnaceBlockEntity canBurn 产物缓存**（中）：每燃烧熔炉每 tick `assemble()`=result.copy()。**批次 28 评估：事件间隔与插件原位改组件使缓存键不可证等价，暂缓。**
+- **Entity.checkSupportingBlock Optional 复用**（中，涉 Paper 碰撞补丁区）。**批次 28 评估：收益低（每调用 1 Optional + 1 AABB），暂缓。**
+- **Entity.checkInsideBlocks AtomicInteger 消除**（中，需 BlockGetter 加返回 index 的重载）。**批次 28 评估：周围分配中的噪声，改造复杂度高，暂缓。**
 - **DefaultRedstoneWireEvaluator.updatePowerStrength 去 HashSet**（中：更新顺序变化，不满足严格序等价，暂缓）。
-- **Utf8String 写侧 NBT ASCII 快速路径（papoWriteUtf）**（低-中，0067 的写侧镜像）。
-- **FriendlyByteBuf.writeNbt/readNbt 轻量 DataInput/DataOutput 适配器**（中，每次 3 个 stream 包装器分配）。
-- **MinecraftServer.tickChildren 无玩家维度免每 tick 建 SetTimePacket**（低）。
+- **FriendlyByteBuf.readNbt 读侧轻量 DataInput 适配器**（低-中）：0095 的读侧镜像；Netty ByteBufInputStream 的 EOF 语义（checkAvailable）需逐方法实证后实现。
 - **EntitySelector.getPredicate 特性谓词缓存**（中，收益小）。
 
 已确认**已优化、勿重复**：EntityTickList.forEach、LevelTicks、LevelChunk.getBlockState、getEntitiesOfClass、Entity.collide 数学、CompoundTag.copy、PatchedDataComponentMap、getNearestPlayer、PoiManager、Brigadier 子节点查找等。

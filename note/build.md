@@ -109,7 +109,22 @@ codechicken diffpatch 引擎非常严格：
 
 ### 网络/IO 类优化的基准实践（字节级自检）
 
-对"产出线上字节"的优化（如 0084 Utf8String、0085 long 数组批量写），基准类除 JMH 前后对比外，附带一个 `main` 方法对两种实现做**字节级输出比对**（多组输入：ascii/utf8/非 2 幂长度），`run.sh` 编译后即可直接 `java` 运行自检。netty-buffer/netty-common（4.2.7.Final，与服务器运行时同版本）已由 run.sh 自动下载。
+对"产出线上字节"的优化（如 0084 Utf8String、0085 long 数组批量写），基准类除 JMH 前后对比外，附带一个 `main` 方法对两种实现做**字节级输出比对**（多组输入：ascii/utf8/非 2 幂长度），`run.sh` 编译后即可直接 `java` 运行自检。netty-buffer/netty-common（4.2.7.Final，与服务器运行时同版本）已由 run.sh 自动下载。0095 进一步用 javap 反编译 netty jar 实证第三方类内部实现（`ByteBufOutputStream.writeUTF` 实为惰性 `utf8out` 字段 + `DataOutputStream` 包装），自检 main 对真实 jar 逐方法比对。
+
+### gradlew 管道会掩盖构建失败（重要）
+
+`./gradlew <task> 2>&1 | tail -N` 的**管道退出码是 tail 的**，gradlew 失败时整体仍返回 0——批次 28 曾因此误判 compileJava "通过"，实际 BUILD FAILED（`DataOutputStream.writeUTF(String,DataOutput)` 包私有，0095 初版直接调用编译错误），到 test 任务才暴露。后台任务的"exit code 0"同样来自管道末命令。**规则：gradlew 输出重定向到文件再 tail（`./gradlew <task> > /tmp/x.log 2>&1; echo "exit=$?"; tail /tmp/x.log`），或 `set -o pipefail`，并必须肉眼确认 "BUILD SUCCESSFUL" 字样；"exit=0" 与 "BUILD SUCCESSFUL" 缺一都不算通过。**
+
+另：JDK 的 `DataOutputStream.writeUTF(String, DataOutput)` 静态方法是**包私有**——要复用 JDK 的 modified-UTF-8 编码器只能经 `DataOutputStream` 实例方法（可包装任意 OutputStream，FilterOutputStream.write(byte[],int,int) 在 JDK 9+ 直接委托底层流，无逐字节循环）。
+
+### rebuildPatches 部分任务失败会静默跳过 feature 补丁再生（批次 28 踩坑）
+
+一次 `rebuildPatches` 中 `rebuildResourcePatches` 因 `git add -A` exit 128（Windows 文件锁竞争，重跑即过）失败，Gradle 并行调度下独立的 `rebuildSourcePatches` 照常跑完（"Rebuilt 915 patches"），但 **feature 补丁（patches/features/）未重新生成**。随后 applyPatches 用旧补丁重建内部仓库，把只存在于内部提交里的新改动**彻底顶掉**（孤儿提交）。教训：
+
+1. rebuildPatches 必须看到 **BUILD SUCCESSFUL** 才算数；部分任务成功不代表 feature 补丁已更新。
+2. 改源码后的顺序必须是 rebuildPatches（成功）→ 才能 applyPatches；applyPatches 会以磁盘补丁为准重建内部仓库，未进补丁的内部提交会丢失。
+3. 改动是否进了补丁，直接 `grep` 补丁文件里的特征字符串验证，不要只看任务输出。
+4. 内部仓库 amend 前确认 HEAD 是哪个提交——applyPatches 重建仓库后 HEAD 顺序会变，误 amend 会把改动折进别的补丁（本批次因此 reset 重排了一次历史）。
 
 ### main 分支污染事故（26.x 合并）与修复
 
