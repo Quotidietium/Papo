@@ -1,0 +1,75 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 15:36:58 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=20NBT=20=E5=AD=97=E7=AC=A6?=
+ =?UTF-8?q?=E4=B8=B2=E8=AF=BB=E5=8F=96=EF=BC=9AASCII=20=E5=BF=AB=E9=80=9F?=
+ =?UTF-8?q?=E8=B7=AF=E5=BE=84=20+=20JDK=20modified-UTF-8=20=E5=9B=9E?=
+ =?UTF-8?q?=E9=80=80?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+CompoundTag.readString 与 StringTag.readAccounted 是 NBT 读取热点（每区块/
+玩家加载）。新增 CompoundTag.papoReadUtf：读 2 字节长度+bytes，扫描若有
+字节>=0x80 则回退到 JDK readUTF（经长度前缀缓冲，用经测试的 modified-UTF-8
+解码器）；全 ASCII 时直接 new String(ISO_8859_1)。与 DataInput.readUTF() 输出
+完全一致（可证等价），省去 readUTF 每字符串的 char[]/StringBuffer 分配。
+
+diff --git a/net/minecraft/nbt/CompoundTag.java b/net/minecraft/nbt/CompoundTag.java
+index e2e155ec22628138cbe0a60b08642388f2c4713c..c57bf4a698a37e2d34e259eed03079f26251be1d 100644
+--- a/net/minecraft/nbt/CompoundTag.java
++++ b/net/minecraft/nbt/CompoundTag.java
+@@ -133,7 +133,7 @@ public final class CompoundTag implements Tag {
+         }
+ 
+         private static String readString(DataInput input, NbtAccounter accounter) throws IOException {
+-            String utf = input.readUTF();
++            String utf = CompoundTag.papoReadUtf(input); // Papo - fast ASCII-path UTF read
+             accounter.accountBytes(28L);
+             accounter.accountBytes(2L, utf.length());
+             return utf;
+@@ -174,6 +174,31 @@ public final class CompoundTag implements Tag {
+         this(new it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap<>(8, 0.8f)); // Paper - Reduce memory footprint of CompoundTag
+     }
+ 
++    // Papo start - fast NBT string read: ASCII fast path with a JDK modified-UTF-8 fallback.
++    // Provably equivalent to DataInput.readUTF(): bytes 0x00-0x7f decode 1:1 to chars in both,
++    // and any byte >= 0x80 (multi-byte modified-UTF-8) falls back to the JDK's tested decoder
++    // via a length-prefixed buffer. Avoids readUTF's per-string char[]/StringBuffer allocation
++    // for the ASCII majority of NBT keys/values.
++    static String papoReadUtf(java.io.DataInput input) throws java.io.IOException {
++        int length = input.readUnsignedShort();
++        if (length == 0) {
++            return "";
++        }
++        byte[] bytes = new byte[length];
++        input.readFully(bytes, 0, length);
++        for (int i = 0; i < length; i++) {
++            if (bytes[i] < 0) {
++                byte[] prefixed = new byte[2 + length];
++                prefixed[0] = (byte) (length >>> 8);
++                prefixed[1] = (byte) length;
++                System.arraycopy(bytes, 0, prefixed, 2, length);
++                return new java.io.DataInputStream(new java.io.ByteArrayInputStream(prefixed)).readUTF();
++            }
++        }
++        return new String(bytes, 0, length, java.nio.charset.StandardCharsets.ISO_8859_1);
++    }
++    // Papo end
++
+     @Override
+     public void write(DataOutput output) throws IOException {
+         // Papo start - optimise NBT write: iterate entries directly to avoid a second
+diff --git a/net/minecraft/nbt/StringTag.java b/net/minecraft/nbt/StringTag.java
+index 457c051615e86f0fac4913af61c301326d641b02..b26bbe768fcad1364af03733c79d47f69e5c38d9 100644
+--- a/net/minecraft/nbt/StringTag.java
++++ b/net/minecraft/nbt/StringTag.java
+@@ -20,7 +20,7 @@ public record StringTag(String value) implements PrimitiveTag {
+ 
+         private static String readAccounted(DataInput input, NbtAccounter nbtAccounter) throws IOException {
+             nbtAccounter.accountBytes(36L);
+-            String utf = input.readUTF();
++            String utf = CompoundTag.papoReadUtf(input); // Papo - fast ASCII-path UTF read
+             nbtAccounter.accountBytes(2L, utf.length());
+             return utf;
+         }
