@@ -1,0 +1,117 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 05:19:27 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=E6=B5=81=E4=BD=93=E6=A3=80?=
+ =?UTF-8?q?=E6=B5=8B=EF=BC=9AupdateFluidHeightAndDoFluidPushing=20?=
+ =?UTF-8?q?=E6=AF=8F=E8=B0=83=E7=94=A8=203=20=E5=A4=84=E5=88=86=E9=85=8D?=
+ =?UTF-8?q?=E6=B6=88=E9=99=A4=EF=BC=88AABB=20deflate=20=E8=BE=B9=E7=95=8C?=
+ =?UTF-8?q?=E5=86=85=E8=81=94=E3=80=81MutableBlockPos=20=E9=80=90=E5=AE=9E?=
+ =?UTF-8?q?=E4=BD=93=E5=A4=8D=E7=94=A8=E3=80=81=E5=8D=95=20chunk=20?=
+ =?UTF-8?q?=E5=85=8D=E5=8C=85=E8=A3=85=E6=95=B0=E7=BB=84=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
+index 24fc1a5a41aba8360defcab0b45b297b624b9ca1..c8d98d4ef0e32629b86374f63dfab133ae0b79e5 100644
+--- a/net/minecraft/world/entity/Entity.java
++++ b/net/minecraft/world/entity/Entity.java
+@@ -333,6 +333,7 @@ public abstract class Entity implements SyncedDataHolder, DebugValueSource, Name
+     public boolean hasVisualFire;
+     private Vec3 lastKnownSpeed = Vec3.ZERO;
+     private @Nullable Vec3 lastKnownPosition;
++    private BlockPos.MutableBlockPos papoFluidMutablePos; // Papo - reused scratch pos in updateFluidHeightAndDoFluidPushing (provably non-escaping; tick-thread only)
+     public net.kyori.adventure.util.TriState visualFire = net.kyori.adventure.util.TriState.NOT_SET; // Paper - improve visual fire API
+     private @Nullable BlockState inBlockState = null;
+     public static final int MAX_MOVEMENTS_HANDELED_PER_TICK = 100;
+@@ -4752,22 +4753,34 @@ public abstract class Entity implements SyncedDataHolder, DebugValueSource, Name
+             return false;
+         }
+ 
+-        final AABB boundingBox = this.getBoundingBox().deflate(1.0E-3);
++        // Papo start - avoid per-call AABB allocation: inline deflate(1.0E-3) bounds arithmetic
++        // AABB.deflate(v) == inflate(-v) == new AABB(minX - -v, minY - -v, minZ - -v, maxX + -v, maxY + -v, maxZ + -v);
++        // only the six bounds are read below, so compute them directly (bit-exact same operations, no AABB object).
++        final AABB papoBoundingBox = this.getBoundingBox();
++        final double boundingBoxMinX = papoBoundingBox.minX - -1.0E-3;
++        final double boundingBoxMinY = papoBoundingBox.minY - -1.0E-3;
++        final double boundingBoxMinZ = papoBoundingBox.minZ - -1.0E-3;
++        final double boundingBoxMaxX = papoBoundingBox.maxX + -1.0E-3;
++        final double boundingBoxMaxY = papoBoundingBox.maxY + -1.0E-3;
++        final double boundingBoxMaxZ = papoBoundingBox.maxZ + -1.0E-3;
++        // Papo end
+ 
+         final Level world = this.level;
+         final int minSection = ca.spottedleaf.moonrise.common.util.WorldUtil.getMinSection(world);
+ 
+-        final int minBlockX = Mth.floor(boundingBox.minX);
+-        final int minBlockY = Math.max((minSection << 4), Mth.floor(boundingBox.minY));
+-        final int minBlockZ = Mth.floor(boundingBox.minZ);
++        final int minBlockX = Mth.floor(boundingBoxMinX); // Papo - inlined deflate
++        final int minBlockY = Math.max((minSection << 4), Mth.floor(boundingBoxMinY)); // Papo - inlined deflate
++        final int minBlockZ = Mth.floor(boundingBoxMinZ); // Papo - inlined deflate
+ 
+         // note: bounds are exclusive in Vanilla, so we subtract 1 - our loop expects bounds to be inclusive
+-        final int maxBlockX = Mth.ceil(boundingBox.maxX) - 1;
+-        final int maxBlockY = Math.min((ca.spottedleaf.moonrise.common.util.WorldUtil.getMaxSection(world) << 4) | 15, Mth.ceil(boundingBox.maxY) - 1);
+-        final int maxBlockZ = Mth.ceil(boundingBox.maxZ) - 1;
++        final int maxBlockX = Mth.ceil(boundingBoxMaxX) - 1; // Papo - inlined deflate
++        final int maxBlockY = Math.min((ca.spottedleaf.moonrise.common.util.WorldUtil.getMaxSection(world) << 4) | 15, Mth.ceil(boundingBoxMaxY) - 1); // Papo - inlined deflate
++        final int maxBlockZ = Mth.ceil(boundingBoxMaxZ) - 1; // Papo - inlined deflate
+ 
+         final boolean isPushable = this.isPushedByFluid();
+-        final BlockPos.MutableBlockPos mutablePos = new BlockPos.MutableBlockPos();
++        // Papo - reuse a per-entity MutableBlockPos: the pos passed to FluidState.getHeight/getFlow provably does not escape
++        // (FlowingFluid/EmptyFluid are the only runtime implementations and only read its coordinates; lastLavaContact stores an immutable() copy).
++        final BlockPos.MutableBlockPos mutablePos = this.papoFluidMutablePos != null ? this.papoFluidMutablePos : (this.papoFluidMutablePos = new BlockPos.MutableBlockPos());
+ 
+         Vec3 pushVector = Vec3.ZERO;
+         double totalPushes = 0.0;
+@@ -4787,19 +4800,31 @@ public abstract class Entity implements SyncedDataHolder, DebugValueSource, Name
+         //             = x + (maxX-minX+1)*z - (minX + (maxX-minX+1)*minZ)
+         final int chunkOffset = -(minChunkX + chunkLenX*minChunkZ);
+         //             = x + (maxX-minX+1)*z + chunkOffset
+-        final net.minecraft.world.level.chunk.LevelChunkSection[][] sections = new net.minecraft.world.level.chunk.LevelChunkSection[chunkLenX * (maxChunkZ - minChunkZ + 1)][];
++        // Papo start - single-chunk fast path: skip the per-call wrapper array when the box spans exactly one chunk
++        // (the overwhelming common case; index expression evaluates to 0 for every position in that case).
++        final net.minecraft.world.level.chunk.LevelChunkSection[] singleChunkSections;
++        final net.minecraft.world.level.chunk.LevelChunkSection[][] sections;
++        if (minChunkX == maxChunkX && minChunkZ == maxChunkZ) {
++            singleChunkSections = chunkSource.getChunk(minChunkX, minChunkZ, net.minecraft.world.level.chunk.status.ChunkStatus.FULL, false).getSections();
++            sections = null;
++        } else {
++            singleChunkSections = null;
++            sections = new net.minecraft.world.level.chunk.LevelChunkSection[chunkLenX * (maxChunkZ - minChunkZ + 1)][];
+ 
+-        // init chunks
+-        for (int currChunkZ = minChunkZ; currChunkZ <= maxChunkZ; ++currChunkZ) {
+-            for (int currChunkX = minChunkX; currChunkX <= maxChunkX; ++currChunkX) {
+-                sections[currChunkX + chunkLenX*currChunkZ + chunkOffset] = chunkSource.getChunk(currChunkX, currChunkZ, net.minecraft.world.level.chunk.status.ChunkStatus.FULL, false).getSections();
++            // init chunks
++            for (int currChunkZ = minChunkZ; currChunkZ <= maxChunkZ; ++currChunkZ) {
++                for (int currChunkX = minChunkX; currChunkX <= maxChunkX; ++currChunkX) {
++                    sections[currChunkX + chunkLenX*currChunkZ + chunkOffset] = chunkSource.getChunk(currChunkX, currChunkZ, net.minecraft.world.level.chunk.status.ChunkStatus.FULL, false).getSections();
++                }
+             }
+         }
++        // Papo end
+ 
+         for (int currX = minBlockX; currX <= maxBlockX; ++currX) {
+             for (int currY = minBlockY; currY <= maxBlockY; ++currY) {
+                 for (int currZ = minBlockZ; currZ <= maxBlockZ; ++currZ) {
+-                    final FluidState fluidState = sections[(currX >> 4) + chunkLenX*(currZ >> 4) + chunkOffset][(currY >> 4) - minSection]
++                    final net.minecraft.world.level.chunk.LevelChunkSection[] papoChunkSections = sections != null ? sections[(currX >> 4) + chunkLenX*(currZ >> 4) + chunkOffset] : singleChunkSections; // Papo - single-chunk fast path (index is always 0 there)
++                    final FluidState fluidState = papoChunkSections[(currY >> 4) - minSection]
+                         .states.get((currX & 15) | ((currZ & 15) << 4) | ((currY & 15) << 8)).getFluidState();
+ 
+                     if (fluidState.isEmpty() || !fluidState.is(fluid)) {
+@@ -4815,7 +4840,7 @@ public abstract class Entity implements SyncedDataHolder, DebugValueSource, Name
+                     // CraftBukkit end
+ 
+                     final double height = (double)((float)currY + fluidState.getHeight(world, mutablePos));
+-                    final double diff = height - boundingBox.minY;
++                    final double diff = height - boundingBoxMinY; // Papo - inlined deflate
+ 
+                     if (diff < 0.0) {
+                         continue;
