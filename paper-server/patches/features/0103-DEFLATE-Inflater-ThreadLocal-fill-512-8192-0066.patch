@@ -1,0 +1,71 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 01:57:23 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=E5=8C=BA=E5=9D=97=E8=AF=BB?=
+ =?UTF-8?q?=E7=9B=98=EF=BC=9ADEFLATE=20=E8=AF=BB=E4=BE=A7=20Inflater=20Thr?=
+ =?UTF-8?q?eadLocal=20=E6=B1=A0=E5=8C=96=20+=20fill=20=E7=BC=93=E5=86=B2?=
+ =?UTF-8?q?=20512=E2=86=928192=EF=BC=880066=20=E5=86=99=E4=BE=A7=E9=95=9C?=
+ =?UTF-8?q?=E5=83=8F=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/level/chunk/storage/RegionFileVersion.java b/net/minecraft/world/level/chunk/storage/RegionFileVersion.java
+index 686ed2bee2f44fab44e6fa5d02efe562a97b017f..306ca3b49c005c0f0e9279f62f3dcd7acb4aa8cb 100644
+--- a/net/minecraft/world/level/chunk/storage/RegionFileVersion.java
++++ b/net/minecraft/world/level/chunk/storage/RegionFileVersion.java
+@@ -35,7 +35,7 @@ public class RegionFileVersion {
+         new RegionFileVersion(
+             2,
+             "deflate",
+-            inputWrapper -> new FastBufferedInputStream(new InflaterInputStream(inputWrapper)),
++            inputWrapper -> new FastBufferedInputStream(new PapoInflaterInputStream(inputWrapper)), // Papo - pooled Inflater + larger fill buffer (see below)
+             outputWrapper -> new BufferedOutputStream(papoCreateDeflaterOutputStream(outputWrapper))
+         )
+     );
+@@ -99,6 +99,44 @@ public class RegionFileVersion {
+         }
+     }
+     // Papo end
++    // Papo start - pooled Inflaters + larger fill buffer for the deflate read side
++    // (mirror of the write-side PapoDeflaterOutputStream above). JDK bytecode:
++    // InflaterInputStream(InputStream) creates a new Inflater (native zlib state + Cleaner
++    // registration) per stream and end()s it on close; the (InputStream, Inflater, int)
++    // constructor with an explicitly provided Inflater sets usesDefaultInflater=false, so
++    // close() does NOT end() it and the Inflater can be reset()+reused. Decompressed bytes
++    // depend only on the compressed input, not on fill chunking, so raising the fill buffer
++    // from the default 512 to 8192 changes only the number of fill() calls, not the output.
++    private static final int PAPO_INFLATER_BUFFER_SIZE = 8192;
++    private static final ThreadLocal<java.util.zip.Inflater> PAPO_INFLATER_POOL = new ThreadLocal<>();
++
++    private static java.util.zip.Inflater papoBorrowInflater() {
++        final java.util.zip.Inflater pooled = PAPO_INFLATER_POOL.get();
++        if (pooled != null) {
++            PAPO_INFLATER_POOL.set(null);
++            return pooled;
++        }
++        return new java.util.zip.Inflater();
++    }
++
++    private static final class PapoInflaterInputStream extends InflaterInputStream {
++        PapoInflaterInputStream(InputStream in) {
++            super(in, papoBorrowInflater(), PAPO_INFLATER_BUFFER_SIZE);
++        }
++
++        @Override
++        public void close() throws IOException {
++            try {
++                super.close(); // closes the underlying stream; does not end() the borrowed Inflater
++            } finally {
++                this.inf.reset();
++                // single slot per thread: if a second stream was open concurrently the displaced
++                // Inflater is simply dropped for the GC/Cleaner, same as the old per-stream one.
++                PAPO_INFLATER_POOL.set(this.inf);
++            }
++        }
++    }
++    // Papo end
+     private RegionFileVersion(
+         int id,
+         @Nullable String optionName,
