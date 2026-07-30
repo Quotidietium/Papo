@@ -301,14 +301,118 @@
 
 ---
 
+## 批次 23（2026-07-30）：Bukkit 事件无监听器门控（0078-0079）
+
+与 0050（BlockPhysicsEvent）同一模式：`Event.getHandlerList().getRegisteredListeners().length > 0` 时才构建+派发事件。
+
+### 0078 — GameEventDispatcher.post 的 GenericGameEvent 门控
+- **热点**：每次游戏事件派发（移动实体落脚 STEP、SWIM/SPLASH、方块放置/破坏、容器开关、活塞等），繁忙服每 tick 数百至数千次。原实现每次派发分配 `GenericGameEvent` + `CraftLocation.toBukkit` Location + registry 查询。
+- **等价性**：`GenericGameEvent` 有独立 `HandlerList` 且无任何子类（已全库核实）；零监听器时 `callEvent()` 恒返回 true 且 radius 不被修改，跳过与执行完全一致。
+- **风险**：低。
+
+### 0079 — FlowingFluid.tick 的 FluidLevelChangeEvent 门控（2 处分支）
+- **热点**：每次流体液位变化（枯竭/流平/下落），刷石机/海带机/排水工程中极频繁。原实现每次分配事件 + `CraftBlock.at` + `asBlockData()`。
+- **等价性**：`CraftEventFactory.callFluidLevelChangeEvent` 除构造+派发外无副作用（已核实）；零监听器时不可被取消，`getNewData()` 即传入 state（`asBlockData` 包装同一 BlockState，`getState()` 原样返回）。
+- **风险**：低。
+
+## 批次 24（2026-07-30）：游戏事件/红石/邻居更新分配消除（0080-0083）
+
+### 0080 — RedstoneWireEvaluator.getIncomingWireSignal
+- **热点**：每次红石线功率重算（高频红石下每 tick 数百至数万次），原实现每次调用固定分配 12 个 BlockPos（4×relative + 4×above 循环不变量 + 4×above/below）。
+- **改法**：`pos.above()` 及其 state/conductor 判定外提（纯读，循环不变量）；单个 MutableBlockPos 驱动 relative/above/below 三段查找。
+- **等价性**：`getBlockState`/`isRedstoneConductor`/`getWireSignal` 均只读位置不保留引用；坐标访问序列与求值顺序逐点不变。
+- **风险**：低。
+
+### 0081 — EuclideanGameEventListenerRegistry.getPostableListenerPosition
+- **热点**：每次游戏事件派发 × 每个 section 每个监听器（sculk 区域每 STEP 都触发）。原实现每次分配 Optional + 2 个 `BlockPos.containing`。
+- **改法**：返回 `@Nullable Vec3`；`BlockPos.containing(a).distSqr(BlockPos.containing(b))` 内联为 floor 后整数差平方和。
+- **等价性**：`BlockPos.containing` 即逐坐标 `Mth.floor`；两个 int 位置的 distSqr 定义为差平方和，long 域计算数值完全一致（该量级无精度差）。
+- **风险**：低。
+
+### 0082 — Level.updateNeighbourForOutputSignal
+- **热点**：带模拟量输出方块（容器/堆肥桶/命令方块等）setBlock UPDATE_NEIGHBORS 时调用。原实现 Plane.HORIZONTAL for-each 迭代器 + 4~8 个 relative BlockPos。
+- **改法**：类级缓存 `Direction[]`（NORTH→EAST→SOUTH→WEST 顺序一致）+ 复用 MutableBlockPos。
+- **等价性**：`ServerLevel.neighborChanged(state,...)` 路由到 `CollectingNeighborUpdater`，其明确 `pos.immutable()` 拷贝（已核实行号）；`hasChunkAt`/`getBlockState`/`isRedstoneConductor` 纯读。
+- **风险**：低。
+
+### 0083 — ContainerOpenersCounter.getEntitiesWithContainerOpen
+- **热点**：打开中的容器每 5 tick recheckOpeners。原实现在 `getEntities` 已返回新建列表后再 stream().map(强转).collect() 二次装箱。
+- **改法**：谓词 `hasContainerOpen` 仅在 `instanceof ContainerUser` 时返回 true，直接 `(List<ContainerUser>)(List<?>)` 强转返回。
+- **等价性**：谓词保证元素类型；`getEntities` 返回的是新建私有列表（0042 已核实），无别名风险；元素顺序内容不变。
+- **风险**：低。
+
+## 批次 25（2026-07-30）：网络编码热路径（0084-0085）
+
+### 0084 — Utf8String.write 免临时 ByteBuf
+- **热点**：每包每个字符串字段（聊天、Identifier、队伍名、BossBar 等），网络编码最高频辅助函数之一。原实现每次 `alloc().buffer(utf8MaxBytes)` 临时 buf + 编码 + 拷贝 + release。
+- **改法**：`ByteBufUtil.utf8Bytes(string)`（纯计算零分配，与 `writeUtf8` 同孤代理项 '?' 替换语义，字节数保证一致）先算精确长度，两个长度检查保持原顺序原异常消息，然后 `VarInt.write` + `ByteBufUtil.writeUtf8(buffer, string)` 直写目标。
+- **等价性**：线上字节 = varint(实际编码长度) + writeUtf8 内容，两种写法逐字节一致；基准类 main 方法字节级自检通过（ascii/utf8 两组）。
+- **风险**：低。
+
+### 0085 — FriendlyByteBuf.writeFixedSizeLongArray 批量写出
+- **热点**：每区块包每 section 的 states 位存储写出（256–512 个 long × 24 section ≈ 6-12k 次 `writeLong`，每次带 ensureWritable 检查）。目标 buffer 为 `Unpooled.wrappedBuffer(byte[])`（单组件大端）。
+- **改法**：`nioBufferCount()==1 && order()==BIG_ENDIAN` 时 `ensureWritable` 一次 + `internalNioBuffer(w, n).asLongBuffer().put(array)` + writerIndex 推进；否则回退原循环。
+- **等价性**：`LongBuffer.put` 产出的 BE 字节序列与逐次 `writeLong` 完全相同；基准 main 方法字节级自检通过（含非 2 幂长度）。
+- **风险**：低-中（快路径有条件门控，回退保真）。
+
+## 批次 26（2026-07-30）：advancements/背包/杂项（0086-0089）
+
+### 0086 — 击杀/命中/交互/拾取触发器 hasListeners 早退（5 文件）
+- **热点**：`KilledTrigger`（每次击杀，刷怪塔极热）、`PlayerHurtEntityTrigger`（每次近战命中）、`PlayerInteractTrigger`（每次右键实体）、`PickedUpItemTrigger`（每次拾取）在调用基类前急切执行 `EntityPredicate.createContext`（建 LootParams/LootContext Builder + 参数校验）。老玩家完成相关进度后监听器集合为空，基类本就无操作，上下文白建。
+- **改法**：`SimpleCriterionTrigger` 加 `protected final boolean hasListeners(ServerPlayer)`（读 criterionData 判空），4 个子类 trigger 首行早退。
+- **等价性**：无监听器时基类 trigger 对空集直接返回（已核实），提前返回不改变任何可见行为；上下文内容与创建时机无关（同 tick 同线程）。
+- **风险**：低。
+
+### 0087 — Slot.tryRemove @Nullable 内部路径 + carried SlotAccess 缓存
+- **热点**：`safeTake`/`doClick`（每次背包拾取点击）经 `Optional.ofNullable` + `ifPresent` lambda；`tryItemClickBehaviourOverride` 每次点击分配匿名 SlotAccess（默认实现对 Bundle 以外物品根本不用它）。
+- **改法**：`Slot` 新增包内 `@Nullable ItemStack tryRemoveInternal`（分支结构逐行同构，null==empty），public `tryRemove` 委托包装保持兼容；`safeTake` 与 `doClick` 2 处改走内部路径。SlotAccess 是无状态委托（仅捕获 `this`），缓存为每 menu 单例（惰性）。
+- **等价性**：纯包装层消除；单例化后所有调用点行为逐字节等价（menu 操作均在主线程）。
+- **风险**：低。
+
+### 0088 — Ingredient.testOptionalIngredient 三目化
+- **热点**：`ShapedRecipePattern.matches` 对每个候选有序配方的每个格子调用（3×3 × N），锻造台匹配同。原实现每次分配 Optional<Boolean> 装箱 + 捕获 lambda + 方法引用。
+- **改法**：`ingredient.isPresent() ? ingredient.get().test(stack) : stack.isEmpty()`。
+- **等价性**：`test` 返回原生 boolean，map 只是装箱再拆箱；orElseGet 仅 empty 时求值，与三目完全同构。
+- **风险**：低。
+
+### 0089 — SleepStatus 单遍 + ServerFunctionManager 空表早退
+- `areEnoughDeepSleeping`：夜晚有人睡觉期间每 tick 每世界两次 stream 遍历（filter().count() + anyMatch）改单遍循环（两谓词无副作用、读同一时刻状态，融合等价）。
+- `ServerFunctionManager.tick`：`#minecraft:tick` 标签为空（绝大多数服务器）时跳过 `executeTagFunctions`（其效果仅 profiler push/pop + 空遍历）。
+- **风险**：低。
+
+## 批次 27（2026-07-30）：区块加载/NBT 收尾（0090-0091）
+
+### 0090 — 区块加载路径 stream 消除与预尺寸（3 文件）
+- `SerializableChunkData.parse`：entities/block_entities 的 `Optional.stream().flatMap(compoundStream).toList()` 改预尺寸循环（getList 空 ⟺ getListOrEmpty 空表；compoundStream 只留 CompoundTag；消费方仅迭代）。
+- `SerializableChunkData.unpackStructureStart`：同一 key 的 `getCompoundOrEmpty` 双重哈希查找提升为局部变量（两次调用间无写入）。
+- `SavedTick.filterTickListForChunk`：stream filter/toList 改 isEmpty 早退 + 预尺寸循环（每区块加载 ×2）。
+- `ClientboundLevelChunkPacketData`：`blockEntitiesData` 按 `getBlockEntities().size()` 预尺寸（仅追加+迭代）。
+- **风险**：低。
+
+### 0091 — CompoundTag.accept(StreamTagVisitor) fastIterator
+- **热点**：`IOWorker.scanChunk` 命中 pendingWrites 时及 NBT visitor API。0040/0047 同款模式的遗漏点：fastutil map 上 entrySet 迭代每 entry 分配。
+- **改法**：`object2ObjectEntrySet().fastIterator()` 三元式；循环体提取为 `acceptEntry`（返回 null=继续下一 entry）共享 fastIterator 与 entrySet 两路径。
+- **等价性**：fastIterator 复用 entry 但不逃逸出迭代体；同一底层数组遍历顺序一致。
+- **备注**：`@Nullable` 须写为 `StreamTagVisitor.@Nullable ValueResult`（jspecify TYPE_USE 不能标注嵌套类型的作用域结构，Java 21 编译错误，已修）。
+- **风险**：低。
+
+---
+
 ## 候选后续批次（来自 survey，按 价值×置信/风险 排序）
 
-- **Direction.Plane 迭代器分配**（#2，高价值广覆盖）：`Direction.java` 加 `HORIZONTAL_FACES` 静态数组，把 FlowingFluid 等 6+ 处 enhanced-for 改索引循环。
-- **Level.tickBlockEntities 每_tick 分配+O(n) removeAll**（#3）：把 `toRemove` 提为实例字段并 `clear()` 复用，`size()>1` 才 removeAll。
-- **NaturalSpawner.isRightDistanceToPlayerAndSpawnPoint**（#7）：`new Vec3`→`distToCenterSqr`、`new ChunkPos`→短路。
-- **EntitySelector.pushableBy 每 LivingEntity 每 tick 组合 Predicate**（#8，高聚合价值）。
-- **LookControl 每 mob 每 tick 2 个 Optional<Float>**（#9）。
-- distanceTo→distanceToSqr 批（#12，多文件机械替换）。
-- CraftBukkit `Enum.values()[ordinal]` 反模式（#10，插件 API 热点）。
+（旧清单中 Direction.Plane 迭代器、tickBlockEntities 移除集、NaturalSpawner 距离、pushableBy、LookControl Optional、distanceToSqr 批、CraftBukkit 枚举缓存均已完成，见对应批次。）
+
+### 批次 23-27 survey 新增候选（2026-07-30，尚未做）
+
+- **InventoryChangeTrigger 惰性计数**（低-中）：`slots == Slots.ANY` 时三个槽位计数不被使用，可惰性化。
+- **EntitySelectorOptions "scores" Objective 解析 memoize**（低-中）：循环命令方块每 tick 每实体 E×K 次 getObjective 哈希查找。
+- **AbstractFurnaceBlockEntity canBurn 产物缓存**（中）：每燃烧熔炉每 tick `assemble()`=result.copy()。
+- **Entity.checkSupportingBlock Optional 复用**（中，涉 Paper 碰撞补丁区）。
+- **Entity.checkInsideBlocks AtomicInteger 消除**（中，需 BlockGetter 加返回 index 的重载）。
+- **DefaultRedstoneWireEvaluator.updatePowerStrength 去 HashSet**（中：更新顺序变化，不满足严格序等价，暂缓）。
+- **Utf8String 写侧 NBT ASCII 快速路径（papoWriteUtf）**（低-中，0067 的写侧镜像）。
+- **FriendlyByteBuf.writeNbt/readNbt 轻量 DataInput/DataOutput 适配器**（中，每次 3 个 stream 包装器分配）。
+- **MinecraftServer.tickChildren 无玩家维度免每 tick 建 SetTimePacket**（低）。
+- **EntitySelector.getPredicate 特性谓词缓存**（中，收益小）。
 
 已确认**已优化、勿重复**：EntityTickList.forEach、LevelTicks、LevelChunk.getBlockState、getEntitiesOfClass、Entity.collide 数学、CompoundTag.copy、PatchedDataComponentMap、getNearestPlayer、PoiManager、Brigadier 子节点查找等。
