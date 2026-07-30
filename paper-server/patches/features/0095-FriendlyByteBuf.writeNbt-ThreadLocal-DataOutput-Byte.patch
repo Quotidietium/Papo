@@ -1,0 +1,148 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 23:47:49 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=20FriendlyByteBuf.writeNbt?=
+ =?UTF-8?q?=EF=BC=9AThreadLocal=20=E8=BD=BB=E9=87=8F=20DataOutput=20?=
+ =?UTF-8?q?=E9=80=82=E9=85=8D=E5=99=A8=E6=9B=BF=E4=BB=A3=E6=AF=8F=E6=AC=A1?=
+ =?UTF-8?q?=E5=88=86=E9=85=8D=20ByteBufOutputStream?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+writeNbt 是区块包方块实体（ClientboundLevelChunkPacketData）与带 NBT 组件物品
+（ByteBufCodecs COMPOUND_TAG 等）的编码入口。适配器方法与 Netty ByteBufOutputStream
+逐方法字节等价（BE 原始类型直写、writeBytes/writeChars 逐字符循环、writeUTF 经惰性
+DataOutputStream 包装——javap 实证 Netty utf8out 字段同构），benchmark 字节级自检验证。
+buffer 字段保存/恢复保证 Tag.write 内重入 writeNbt 的正确性；读侧 ByteBufInputStream 不变。
+
+diff --git a/net/minecraft/network/FriendlyByteBuf.java b/net/minecraft/network/FriendlyByteBuf.java
+index 7c88d9c7a7531cffffe791a46ce30a68024eb56e..1b424b877ae786cf0c3909530cbfe462f049515f 100644
+--- a/net/minecraft/network/FriendlyByteBuf.java
++++ b/net/minecraft/network/FriendlyByteBuf.java
+@@ -12,7 +12,6 @@ import com.mojang.serialization.JsonOps;
+ import io.netty.buffer.ByteBuf;
+ import io.netty.buffer.ByteBufAllocator;
+ import io.netty.buffer.ByteBufInputStream;
+-import io.netty.buffer.ByteBufOutputStream;
+ import io.netty.handler.codec.DecoderException;
+ import io.netty.handler.codec.EncoderException;
+ import io.netty.util.ByteProcessor;
+@@ -575,12 +574,117 @@ public class FriendlyByteBuf extends ByteBuf {
+             tag = EndTag.INSTANCE;
+         }
+ 
++        // Papo start - reuse a thread-local DataOutput adapter instead of allocating a
++        // ByteBufOutputStream per call (hot: every block entity in chunk packets and every
++        // item stack with NBT components). Save/restore the buffer field so a reentrant
++        // writeNbt call from a Tag.write implementation stays correct.
++        final PapoByteBufDataOutput output = PAPO_NBT_DATA_OUTPUT.get();
++        final ByteBuf previous = output.buffer;
++        output.buffer = buffer;
+         try {
+-            NbtIo.writeAnyTag(tag, new ByteBufOutputStream(buffer));
++            NbtIo.writeAnyTag(tag, output);
+         } catch (Exception var3) { // CraftBukkit - IOException -> Exception
+             throw new EncoderException(var3);
++        } finally {
++            output.buffer = previous;
++        }
++        // Papo end
++    }
++
++    // Papo start - lightweight DataOutput over a ByteBuf, byte-equivalent to
++    // io.netty.buffer.ByteBufOutputStream (verified by benchmark byte-level self-check):
++    // same BE primitive writes, same per-char loops for writeBytes/writeChars, and writeUTF
++    // goes through a lazily cached DataOutputStream wrapper exactly like Netty's class
++    // (utf8out field; DataOutputStream.writeUTF(String, DataOutput) is package-private,
++    // so the wrapper is the only way to reach the JDK encoder).
++    private static final ThreadLocal<PapoByteBufDataOutput> PAPO_NBT_DATA_OUTPUT = ThreadLocal.withInitial(PapoByteBufDataOutput::new);
++
++    static final class PapoByteBufDataOutput extends java.io.OutputStream implements java.io.DataOutput {
++        ByteBuf buffer;
++        private java.io.DataOutputStream utf8out;
++
++        @Override
++        public void write(int b) {
++            this.buffer.writeByte(b);
++        }
++
++        @Override
++        public void write(byte[] b) {
++            this.buffer.writeBytes(b);
++        }
++
++        @Override
++        public void write(byte[] b, int off, int len) {
++            this.buffer.writeBytes(b, off, len);
++        }
++
++        @Override
++        public void writeBoolean(boolean v) {
++            this.buffer.writeByte(v ? 1 : 0);
++        }
++
++        @Override
++        public void writeByte(int v) {
++            this.buffer.writeByte(v);
++        }
++
++        @Override
++        public void writeShort(int v) {
++            this.buffer.writeShort(v);
++        }
++
++        @Override
++        public void writeChar(int v) {
++            this.buffer.writeChar(v);
++        }
++
++        @Override
++        public void writeInt(int v) {
++            this.buffer.writeInt(v);
++        }
++
++        @Override
++        public void writeLong(long v) {
++            this.buffer.writeLong(v);
++        }
++
++        @Override
++        public void writeFloat(float v) {
++            this.buffer.writeFloat(v);
++        }
++
++        @Override
++        public void writeDouble(double v) {
++            this.buffer.writeDouble(v);
++        }
++
++        @Override
++        public void writeBytes(String s) {
++            final int len = s.length();
++            for (int i = 0; i < len; i++) {
++                this.buffer.writeByte((byte) s.charAt(i));
++            }
++        }
++
++        @Override
++        public void writeChars(String s) {
++            final int len = s.length();
++            for (int i = 0; i < len; i++) {
++                this.buffer.writeChar(s.charAt(i));
++            }
++        }
++
++        @Override
++        public void writeUTF(String s) throws IOException {
++            // mirrors ByteBufOutputStream.writeUTF: lazily cache a DataOutputStream over this stream
++            java.io.DataOutputStream out = this.utf8out;
++            if (out == null) {
++                out = this.utf8out = new java.io.DataOutputStream(this);
++            }
++            out.writeUTF(s);
+         }
+     }
++    // Papo end
+ 
+     public @Nullable CompoundTag readNbt() {
+         return readNbt(this);
