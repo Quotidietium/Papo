@@ -33,6 +33,9 @@ cd benchmark
 | `IngredientOptionalBench` | 0088 | Optional map/orElseGet vs 三目 |
 | `SleepStatusBench` | 0089 | 双 stream 遍历 vs 单遍循环 |
 | `SavedTickFilterBench` | 0090 | stream filter/toList vs isEmpty 早退 + 预尺寸循环 |
+| `NbtStringWriteBench` | 0092 | `DataOutput.writeUTF` vs ASCII 快速路径（含字节级等价自检 main：空/短/长分块/utf8 回退/NUL 回退/65535 边界/超长异常） |
+| `NbtWriteAdapterBench` | 0095 | 每次分配 `ByteBufOutputStream` vs ThreadLocal 轻量 DataOutput 适配器（含字节级等价自检 main：对真实 Netty 4.2.7 逐方法比对 + 树形写出） |
+| `InventoryTriggerScanBench` | 0093 | 背包全槽位扫描（组件查找模型化）vs hasListeners 早退 |
 
 ## 依赖
 
