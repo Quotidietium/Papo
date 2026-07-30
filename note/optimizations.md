@@ -590,16 +590,34 @@
 - **declarative Behavior MemoryAccessor/Optional 复用**：需先全量审计是否存在跨 tick 持有 MemoryAccessor 的 trigger，工作量大，留待下批。
 - **getSpread EnumMap/SpreadContext 线程级复用**：需严格保序复刻（EnumMap ordinal 序 vs 插入序、i1<i clear 语义），改动面大且事件顺序可被插件观察，留待下批单独仔细核对。
 - **漏斗 AABB 缓存**：仅限 HopperBlockEntity 实例（HopperMinecart 会移动共享静态 helper），需 instanceof 分流，收益中等，暂缓。
-- **PlayerPickupItemEvent/EntityPickupItemEvent 双事件门控**：需复现两条默认取消规则（`!getCanPickupItems()`），比纯 callEvent 门控易错，暂缓。
-- **CraftEventFactory.handleBlockFormEvent 门控**：需确认 snapshot.place 不读事件状态，低-中风险，暂缓。
+- ~~**PlayerPickupItemEvent/EntityPickupItemEvent 双事件门控**~~ **批次 32 已完成（0112）**。
+- ~~**CraftEventFactory.handleBlockFormEvent 门控**~~ **批次 32 已完成（0113）**：EntityBlockFormEvent 无独立 HandlerList，单检查覆盖。
 - **Biome.shouldFreeze / tickPrecipitation BlockPos 复用**：频率受 randomTickSpeed/48 与 biome 限制，价值低。
 - **NearestLivingEntitySensor lambda/comparator 缓存、LookAtTargetSink Vec3、WalkNodeEvaluator.getPathType MutableBlockPos**：收益不确定（EA 可能已消除）或依赖不变量，暂缓。
 
 ---
 
+## 批次 32（2026-07-31）：批次 31 暂缓项回头攻克（0112-0113）
+
+### 0112 — ItemEntity.playerTouch 双事件门控（PlayerPickupItemEvent/EntityPickupItemEvent）
+- **文件**：`net/minecraft/world/entity/item/ItemEntity.java`
+- **热点**：物品成串拾取时每次成功拾取构造 2 个事件 + 2×getBukkitEntity + 2 次 callEvent 派发。
+- **改法**：两事件 HandlerList 均空时复现默认结果：`!getCanPickupItems()` → 恢复 count 返回（等同取消分支，flyAtPlayer 默认 false 不 take）；否则 `item.setCount(canHold + remaining)`、`pickupDelay = 0`（零监听器事件不可能换 stack，`item.equals(current)` 恒真）。
+- **等价性**：两事件默认取消规则相同（`!getCanPickupItems()`，同一 entity 的同一调用），取消分支逐行比对（setCount(count) 恢复 + return，无 take）；非取消路径与"事件未换 stack"分支逐语句一致；两事件无子类、构造仅字段赋值。
+- **风险**：低-中（复现默认规则，已逐分支比对）。
+
+### 0113 — CraftEventFactory.handleBlockFormEvent 零监听器门控
+- **文件**：`paper-server/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java`（直接提交的源码，无补丁文件）
+- **热点**：结冰/积雪/冰霜行者/雪傀儡每次方块形成构造 BlockFormEvent（或 EntityBlockFormEvent + getBukkitEntity）；tickPrecipitation 每次最多 3 次。
+- **改法**：零监听器时跳过事件构造，直接 `snapshot.place(flags)` 返回 `!checkSetResult || result`。
+- **等价性**：`EntityBlockFormEvent` **不声明自己的 HandlerList**（paper-api 源码实证：继承 BlockFormEvent 的静态 HANDLER_LIST 与 getHandlers），故单一 `BlockFormEvent.getHandlerList()` 检查覆盖两种事件形态；零监听器时 callEvent() 恒 true 且事件对象从不被读取（snapshot.place 不读事件）；snapshot 的构造与 setData 在两条路径中完全相同。
+- **风险**：低。
+
+---
+
 ## 候选后续批次（来自 survey，按 价值×置信/风险 排序）
 
-（旧清单中 Direction.Plane 迭代器、tickBlockEntities 移除集、NaturalSpawner 距离、pushableBy、LookControl Optional、distanceToSqr 批、CraftBukkit 枚举缓存均已完成，见对应批次。批次 28 完成：InventoryChangeTrigger 早退 0093、Utf8String 写侧 NBT ASCII 快速路径 0092、tickChildren SetTimePacket 惰性 0094、FriendlyByteBuf.writeNbt 适配器 0095。批次 29 完成：FriendlyByteBuf.readNbt 读侧适配器 0096、VarInt.read 快速路径 0097、枚举常量缓存 0098、registry codec 单例 0099、EntityJumpEvent/PlayerVelocityEvent 门控 0100、惰性 list 0101、TrackedEntity 惰性移除 0102、Inflater 池化 0103；map 编码 forEach→entrySet 经基准实测回退 0.77× 已撤销（见批次 29 撤销条）。批次 30 完成：流体检测路径 3 处分配消除 0104、computeSpeed Vec3 消除 0105。批次 31 完成：BlockFromToEvent 门控+流体 tick 去冗余查询 0106、物品拾取/合并门控 0107、经验球 4 事件门控 0108、PlayerJumpEvent 门控+Vec3 折叠 0109、broadcastSlotChange 门控 0110、寻路缓存两段式+GateBehavior stream 消除 0111。）
+（旧清单中 Direction.Plane 迭代器、tickBlockEntities 移除集、NaturalSpawner 距离、pushableBy、LookControl Optional、distanceToSqr 批、CraftBukkit 枚举缓存均已完成，见对应批次。批次 28 完成：InventoryChangeTrigger 早退 0093、Utf8String 写侧 NBT ASCII 快速路径 0092、tickChildren SetTimePacket 惰性 0094、FriendlyByteBuf.writeNbt 适配器 0095。批次 29 完成：FriendlyByteBuf.readNbt 读侧适配器 0096、VarInt.read 快速路径 0097、枚举常量缓存 0098、registry codec 单例 0099、EntityJumpEvent/PlayerVelocityEvent 门控 0100、惰性 list 0101、TrackedEntity 惰性移除 0102、Inflater 池化 0103；map 编码 forEach→entrySet 经基准实测回退 0.77× 已撤销（见批次 29 撤销条）。批次 30 完成：流体检测路径 3 处分配消除 0104、computeSpeed Vec3 消除 0105。批次 31 完成：BlockFromToEvent 门控+流体 tick 去冗余查询 0106、物品拾取/合并门控 0107、经验球 4 事件门控 0108、PlayerJumpEvent 门控+Vec3 折叠 0109、broadcastSlotChange 门控 0110、寻路缓存两段式+GateBehavior stream 消除 0111。批次 32 完成：双拾取事件门控 0112、handleBlockFormEvent 门控 0113。）
 
 ### 批次 23-27 survey 新增候选（2026-07-30，尚未做）
 

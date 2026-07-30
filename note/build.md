@@ -111,6 +111,10 @@ codechicken diffpatch 引擎非常严格：
 
 批次 29 用 `git rebase --onto 608af24^ 608af24` 摘除中间一个 feature 提交后，rebuildPatches 正常重生成补丁并自动重编号。前提：内部仓库历史从未推送（它本来就在 .gitignore 里）。注意摘除后所有引用旧补丁号的文档（optimizations.md、基准类注释、报告、release note）要同步重编号。
 
+### 直接提交的源码改动不占补丁编号（批次 32 踩坑）
+
+`paper-server/src/main/java`（CraftBukkit 侧，如 CraftEventFactory）是**直接提交进外层仓库的源码**，不走补丁机制——只有 `src/minecraft/java`（内部仓库）的改动才会被 rebuildPatches 编号。批次 32 先在文档里按"0112=BlockForm 门控（直接源码）、0113=双事件门控（补丁）"写号，结果补丁文件只生成了 0112（双事件门控）。**规则：先跑 rebuildPatches 看实际编号，再写文档编号；或直接源码改动的编号排在补丁之后。**
+
 ## 2026-07-30 补充：批次 23-27 踩坑记录
 
 ### rebuildPatches 会自动暂存全部生成补丁
