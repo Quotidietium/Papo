@@ -1,0 +1,44 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 20:55:41 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=20getEntitiesWithContainerOp?=
+ =?UTF-8?q?en=EF=BC=9A=E8=B0=93=E8=AF=8D=E5=B7=B2=E4=BF=9D=E8=AF=81=20Cont?=
+ =?UTF-8?q?ainerUser=20=E7=B1=BB=E5=9E=8B=EF=BC=8Cstream=20map/collect=20?=
+ =?UTF-8?q?=E4=BA=8C=E6=AC=A1=E8=A3=85=E7=AE=B1=E6=94=B9=E7=9B=B4=E6=8E=A5?=
+ =?UTF-8?q?=E5=BC=BA=E8=BD=AC=EF=BC=88getEntities=20=E8=BF=94=E5=9B=9E?=
+ =?UTF-8?q?=E6=96=B0=E5=BB=BA=E7=A7=81=E6=9C=89=E5=88=97=E8=A1=A8=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/level/block/entity/ContainerOpenersCounter.java b/net/minecraft/world/level/block/entity/ContainerOpenersCounter.java
+index 1da0064488565a9fa4464dc1fd474e7b9c323cb1..09cabe7a5b6a67d8cf7838e9a378a789383665ca 100644
+--- a/net/minecraft/world/level/block/entity/ContainerOpenersCounter.java
++++ b/net/minecraft/world/level/block/entity/ContainerOpenersCounter.java
+@@ -1,7 +1,6 @@
+ package net.minecraft.world.level.block.entity;
+ 
+ import java.util.List;
+-import java.util.stream.Collectors;
+ import net.minecraft.core.BlockPos;
+ import net.minecraft.world.entity.ContainerUser;
+ import net.minecraft.world.entity.Entity;
+@@ -105,13 +104,13 @@ public abstract class ContainerOpenersCounter {
+         this.openerCountChanged(level, pos, state, i, this.openCount);
+     }
+ 
++    @SuppressWarnings("unchecked") // Papo - predicate below only accepts ContainerUser instances, so the cast is safe
+     public List<ContainerUser> getEntitiesWithContainerOpen(Level level, BlockPos pos) {
+         double d = this.maxInteractionRange + 4.0;
+         AABB aabb = new AABB(pos).inflate(d);
+-        return level.getEntities((Entity)null, aabb, entity -> this.hasContainerOpen(entity, pos))
+-            .stream()
+-            .map(entity -> (ContainerUser)entity)
+-            .collect(Collectors.toList());
++        // Papo - getEntities already returns a fresh private list and hasContainerOpen only returns true
++        // for ContainerUser; the stream().map(cast).collect() round-trip is a pure cast.
++        return (List<ContainerUser>) (List<?>) level.getEntities((Entity)null, aabb, entity -> this.hasContainerOpen(entity, pos));
+     }
+ 
+     private boolean hasContainerOpen(Entity entity, BlockPos pos) {

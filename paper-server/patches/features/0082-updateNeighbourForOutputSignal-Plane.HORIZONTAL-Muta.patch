@@ -1,0 +1,60 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 20:55:40 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=20updateNeighbourForOutputSi?=
+ =?UTF-8?q?gnal=EF=BC=9APlane.HORIZONTAL=20=E8=BF=AD=E4=BB=A3=E5=99=A8?=
+ =?UTF-8?q?=E6=94=B9=E7=BC=93=E5=AD=98=E6=95=B0=E7=BB=84=20+=20=E5=A4=8D?=
+ =?UTF-8?q?=E7=94=A8=20MutableBlockPos=EF=BC=88neighborChanged=20=E8=B7=AF?=
+ =?UTF-8?q?=E5=BE=84=20pos.immutable()=20=E6=8B=B7=E8=B4=9D=EF=BC=8C?=
+ =?UTF-8?q?=E7=BA=AF=E8=AF=BB=E4=B8=8D=E4=BF=9D=E7=95=99=E5=BC=95=E7=94=A8?=
+ =?UTF-8?q?=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/level/Level.java b/net/minecraft/world/level/Level.java
+index 92403aa03ce92803743a35e7e3c8fa2c618abd96..b08a9975a538cc756513e71f27a2aaf116fa30f9 100644
+--- a/net/minecraft/world/level/Level.java
++++ b/net/minecraft/world/level/Level.java
+@@ -1950,22 +1950,31 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
+ 
+     public abstract Scoreboard getScoreboard();
+ 
++    // Papo - cached horizontal array in exact Plane.HORIZONTAL order (iterator alloc per for-each)
++    private static final Direction[] OUTPUT_SIGNAL_HORIZONTAL = {Direction.NORTH, Direction.EAST, Direction.SOUTH, Direction.WEST};
++
+     public void updateNeighbourForOutputSignal(BlockPos pos, Block block) {
+-        for (Direction direction : Direction.Plane.HORIZONTAL) {
+-            BlockPos blockPos = pos.relative(direction);
+-            if (this.hasChunkAt(blockPos)) {
+-                BlockState blockState = this.getBlockState(blockPos);
++        // Papo start - cached horizontal array (iterator alloc per for-each) + reusable MutableBlockPos
++        // (4-8 BlockPos allocs per call). ServerLevel.neighborChanged routes to CollectingNeighborUpdater
++        // which does pos.immutable(); hasChunkAt/getBlockState/isRedstoneConductor only read the pos.
++        BlockPos.MutableBlockPos mutable = pos.mutable();
++        for (Direction direction : OUTPUT_SIGNAL_HORIZONTAL) { // Papo - cached array
++            mutable.setWithOffset(pos, direction);
++            if (this.hasChunkAt(mutable)) {
++                BlockState blockState = this.getBlockState(mutable);
+                 if (blockState.is(Blocks.COMPARATOR)) {
+-                    this.neighborChanged(blockState, blockPos, block, null, false);
+-                } else if (blockState.isRedstoneConductor(this, blockPos)) {
+-                    blockPos = blockPos.relative(direction);
+-                    blockState = this.getBlockState(blockPos);
++                    this.neighborChanged(blockState, mutable, block, null, false);
++                } else if (blockState.isRedstoneConductor(this, mutable)) {
++                    mutable.move(direction);
++                    blockState = this.getBlockState(mutable);
+                     if (blockState.is(Blocks.COMPARATOR)) {
+-                        this.neighborChanged(blockState, blockPos, block, null, false);
++                        this.neighborChanged(blockState, mutable, block, null, false);
+                     }
++                    mutable.move(direction.getOpposite());
+                 }
+             }
+         }
++        // Papo end
+     }
+ 
+     @Override

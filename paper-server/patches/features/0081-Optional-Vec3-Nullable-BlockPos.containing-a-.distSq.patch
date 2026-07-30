@@ -1,0 +1,76 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 20:55:39 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=20=E6=B8=B8=E6=88=8F?=
+ =?UTF-8?q?=E4=BA=8B=E4=BB=B6=E7=9B=91=E5=90=AC=E5=99=A8=E4=BD=8D=E7=BD=AE?=
+ =?UTF-8?q?=E6=A3=80=E6=9F=A5=EF=BC=9AOptional<Vec3>=20=E6=94=B9=20@Nullab?=
+ =?UTF-8?q?le=EF=BC=8CBlockPos.containing(a).distSqr(containing(b))=20?=
+ =?UTF-8?q?=E5=86=85=E8=81=94=E4=B8=BA=20floor=20=E5=90=8E=E6=95=B4?=
+ =?UTF-8?q?=E6=95=B0=E5=B7=AE=E5=B9=B3=E6=96=B9=E5=92=8C=EF=BC=88=E6=95=B0?=
+ =?UTF-8?q?=E5=80=BC=E5=AE=8C=E5=85=A8=E4=B8=80=E8=87=B4=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/level/gameevent/EuclideanGameEventListenerRegistry.java b/net/minecraft/world/level/gameevent/EuclideanGameEventListenerRegistry.java
+index 2f0f330b1ea42965e8790f74f00f060c545cd50b..ac5dc728e22d228e24bbaaea5c7f6cdc583f492d 100644
+--- a/net/minecraft/world/level/gameevent/EuclideanGameEventListenerRegistry.java
++++ b/net/minecraft/world/level/gameevent/EuclideanGameEventListenerRegistry.java
+@@ -6,13 +6,13 @@ import java.util.Iterator;
+ import java.util.List;
+ import java.util.Optional;
+ import java.util.Set;
+-import net.minecraft.core.BlockPos;
+ import net.minecraft.core.Holder;
+ import net.minecraft.server.level.ServerLevel;
+ import net.minecraft.util.debug.DebugGameEventListenerInfo;
+ import net.minecraft.util.debug.DebugSubscriptions;
+ import net.minecraft.world.entity.Entity;
+ import net.minecraft.world.phys.Vec3;
++import org.jspecify.annotations.Nullable; // Papo
+ 
+ public class EuclideanGameEventListenerRegistry implements GameEventListenerRegistry {
+     private final List<GameEventListener> listeners = Lists.newArrayList();
+@@ -86,9 +86,10 @@ public class EuclideanGameEventListenerRegistry implements GameEventListenerRegi
+                 if (this.listenersToRemove.remove(gameEventListener)) {
+                     iterator.remove();
+                 } else {
+-                    Optional<Vec3> postableListenerPosition = getPostableListenerPosition(this.level, pos, gameEventListener);
+-                    if (postableListenerPosition.isPresent()) {
+-                        visitor.visit(gameEventListener, postableListenerPosition.get());
++                    // Papo - @Nullable Vec3 instead of Optional (alloc per listener per event)
++                    Vec3 postableListenerPosition = getPostableListenerPosition(this.level, pos, gameEventListener);
++                    if (postableListenerPosition != null) {
++                        visitor.visit(gameEventListener, postableListenerPosition);
+                         flag = true;
+                     }
+                 }
+@@ -110,14 +111,23 @@ public class EuclideanGameEventListenerRegistry implements GameEventListenerRegi
+         return flag;
+     }
+ 
+-    private static Optional<Vec3> getPostableListenerPosition(ServerLevel level, Vec3 pos, GameEventListener listener) {
++    @Nullable // Papo
++    private static Vec3 getPostableListenerPosition(ServerLevel level, Vec3 pos, GameEventListener listener) {
+         Optional<Vec3> position = listener.getListenerSource().getPosition(level);
+         if (position.isEmpty()) {
+-            return Optional.empty();
++            return null; // Papo
+         } else {
+-            double d = BlockPos.containing(position.get()).distSqr(BlockPos.containing(pos));
++            // Papo start - inline BlockPos.containing(a).distSqr(BlockPos.containing(b)) as floored
++            // integer deltas (BlockPos.containing floors each coordinate; distSqr of two int positions
++            // is the squared-delta sum — value identical), no Optional/BlockPos allocations.
++            Vec3 listenerPos = position.get();
++            long dx = (long) net.minecraft.util.Mth.floor(listenerPos.x) - net.minecraft.util.Mth.floor(pos.x);
++            long dy = (long) net.minecraft.util.Mth.floor(listenerPos.y) - net.minecraft.util.Mth.floor(pos.y);
++            long dz = (long) net.minecraft.util.Mth.floor(listenerPos.z) - net.minecraft.util.Mth.floor(pos.z);
++            double d = (double) (dx * dx + dy * dy + dz * dz);
++            // Papo end
+             int i = listener.getListenerRadius() * listener.getListenerRadius();
+-            return d > i ? Optional.empty() : position;
++            return d > i ? null : listenerPos; // Papo
+         }
+     }
+ 
