@@ -1,0 +1,64 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 17:43:30 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=20NBT=20int/long=20=E6=95=B0?=
+ =?UTF-8?q?=E7=BB=84=E5=86=99=E5=87=BA=EF=BC=9AByteBuffer=20=E5=A4=A7?=
+ =?UTF-8?q?=E7=AB=AF=E6=89=B9=E9=87=8F=E7=BC=96=E7=A0=81=20+=20=E5=8D=95?=
+ =?UTF-8?q?=E6=AC=A1=20write=EF=BC=8C=E5=85=8D=E9=80=90=E5=85=83=E7=B4=A0?=
+ =?UTF-8?q?=20writeInt/writeLong?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/nbt/IntArrayTag.java b/net/minecraft/nbt/IntArrayTag.java
+index cf33772961011bca0f1eca8ce335d4503cdebe85..0bdb1120312d2e75240162f12fd050dab5b40f75 100644
+--- a/net/minecraft/nbt/IntArrayTag.java
++++ b/net/minecraft/nbt/IntArrayTag.java
+@@ -62,9 +62,19 @@ public final class IntArrayTag implements CollectionTag {
+     public void write(DataOutput output) throws IOException {
+         output.writeInt(this.data.length);
+ 
+-        for (int i : this.data) {
+-            output.writeInt(i);
++        // Papo start - bulk encode via ByteBuffer instead of per-element writeInt
++        // (data.length << 2 cannot overflow: array length is at most Integer.MAX_VALUE - 8,
++        // and a backing array of > Integer.MAX_VALUE/4 ints cannot exist on heap anyway).
++        if (this.data.length > Integer.MAX_VALUE / 4) {
++            for (int i : this.data) {
++                output.writeInt(i);
++            }
++        } else {
++            byte[] buf = new byte[this.data.length << 2];
++            java.nio.ByteBuffer.wrap(buf).order(java.nio.ByteOrder.BIG_ENDIAN).asIntBuffer().put(this.data);
++            output.write(buf);
+         }
++        // Papo end
+     }
+ 
+     @Override
+diff --git a/net/minecraft/nbt/LongArrayTag.java b/net/minecraft/nbt/LongArrayTag.java
+index d2bca367383b37aadcd29d4b047c6c097c93c55f..9476d0aeba5ab7719d73a1388b9f1853be23bab9 100644
+--- a/net/minecraft/nbt/LongArrayTag.java
++++ b/net/minecraft/nbt/LongArrayTag.java
+@@ -67,9 +67,18 @@ public final class LongArrayTag implements CollectionTag {
+     public void write(DataOutput output) throws IOException {
+         output.writeInt(this.data.length);
+ 
+-        for (long l : this.data) {
+-            output.writeLong(l);
++        // Papo start - bulk encode via ByteBuffer instead of per-element writeLong
++        // (guard length<<3 overflow, symmetric with readAccounted).
++        if (this.data.length > Integer.MAX_VALUE / 8) {
++            for (long l : this.data) {
++                output.writeLong(l);
++            }
++        } else {
++            byte[] buf = new byte[this.data.length << 3];
++            java.nio.ByteBuffer.wrap(buf).order(java.nio.ByteOrder.BIG_ENDIAN).asLongBuffer().put(this.data);
++            output.write(buf);
+         }
++        // Papo end
+     }
+ 
+     @Override
