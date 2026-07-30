@@ -1,0 +1,42 @@
+# Papo 性能基准测试
+
+对 Papo 已交付优化的**优化前/优化后**实现做 JMH 微基准对比。
+基准代码忠实复刻补丁中的真实实现（同一算法、同一数据结构、同一热路径形态），
+在独立 JVM 中运行，无需启动 Minecraft 服务器。
+
+## 运行
+
+```bash
+cd benchmark
+./run.sh                # 全部基准
+./run.sh 'NbtArray.*'   # 按 JMH 正则过滤
+```
+
+- 参数：`-wi 3 -i 5 -f 2 -r 1s -w 1s`（3 轮预热 + 5 轮测量 × 2 fork）
+- 原始结果输出到 `results/`（txt + json）
+- 汇总报告在 `../note/report/perf/`
+
+## 覆盖的优化
+
+| 基准类 | 对应补丁 | 对比内容 |
+|---|---|---|
+| `NbtStringReadBench` | 0067 | `DataInputStream.readUTF` vs ASCII 快速路径（含非 ASCII 回退对照） |
+| `NbtArrayReadBench` | 0068 | 逐元素 readInt/readLong vs readFully + ByteBuffer 大端批量解码 |
+| `CompoundTagIterBench` | 0040/0047 | keySet()+get() vs fastutil fastIterator |
+| `OptionalProtocolBench` | 0048 | `Optional<Float>` 协议 vs boolean+字段协议 |
+| `StreamArgminBench` | 0069 | stream min() vs 手动 argmin 循环 |
+| `DistSqrAllocBench` | 0045/0058 | new Vec3 + distanceToSqr vs 纯标量 distToCenterSqr |
+| `EarlyExitBench` | 0070 | 构建完整列表判空 vs 命中即早退 |
+
+## 依赖
+
+`run.sh` 会自动下载缺失的 jar 到 `lib/`（不入库）：JMH 1.37
+（jmh-core / jmh-generator-annprocess / jopt-simple / commons-math3）
+与 fastutil 8.5.18（与服务器运行时同版本）。
+
+## 方法学说明
+
+- 微基准衡量的是**单点代码路径**的吞吐/时延差异，用于验证优化方向正确、量级可信；
+  服务器端到端 TPS 收益取决于该路径在真实负载中的占比（如 NBT 读取在区块加载期密集）。
+- before/after 输入数据完全一致；分配敏感的用例（Optional、Vec3）差距包含 GC 压力，
+  在真实服务器高分配场景下收益通常比微基准更大。
