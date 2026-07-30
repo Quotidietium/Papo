@@ -163,6 +163,44 @@
 
 ---
 
+## 批次 9-12（2026-07-30，深挖阶段：第三轮 survey 子 agent 提供）
+
+第三轮 survey 派出的子 agent 返回了大量干净等价候选，逐个代码复核后实现。补丁 0055-0063。
+
+### 0054 — LivingEntity 缓存 pushableBy 谓词（架构级重写，原 #8 解禁）
+- `pushEntities()` 每 tick 重建 `NO_SPECTATORS.and(lambda)`。pushableBy 仅捕获 source 的 team/collisionRule（canCollideWithBukkit 与候选 team 实时求值），故 per-entity 缓存、仅 team/rule 变化时重建。
+
+### 0055 — Brain 原位 tick 运行行为
+- `tickEachRunningBehavior` 内联三层循环，免每 tick ObjectArrayList（每个有 brain 的生物每 tick）。`getRunningBehaviors()` 调试 API 保留。
+
+### 0056 — Raid.getTotalRaidersAlive 流改计数循环
+- raid tick 及刷怪组循环内；`stream().mapToInt(Set::size).sum()` → 计数循环。
+
+### 0057 — NbtAccounter 无限制账户快速路径
+- 解析时每 tag 调用。`quota==MAX_VALUE`（区块/玩家加载主路径）短路，跳过永不触发的溢出检查与从不被读的 usage 累加。
+
+### 0058 — ServerLevel 粒子/全局事件广播免每接收者 Vec3
+- `sendParticles` 用 `distToCenterSqr(x,y,z)<range*range`（与 closerToCenterThan(Vec3) 等价）；`globalLevelEvent` 把常量 `Vec3.atCenterOf(pos)` 提到每玩家循环外。
+
+### 0059 — PalettedContainer.getAll 单值调色板快速路径
+- 区块特征生成期每 section 调用。单值调色板（常见）直接 `accept(valueFor(0))`，免 IntArraySet 分配（同 recalcBlockCounts 的 paletteSize==1 特例）。
+
+### 0060 — WalkNodeEvaluator 寻路热点优化
+- `canReachWithoutCollision` 免 new Vec3，标量逐步长（inv 用原 1.0F/ceil 的 float 倒数转 double，数学一致）；`getPathTypeWithinMobBB` 把 blockPosition/canPassDoors/canOpenDoors 循环不变量外提。
+
+### 0061 — StructureStart.placeInChunk stream+toList 改回命令式循环
+- CraftBukkit 把原循环改成了 stream；每个结构放置分配中间 list。改为命令式循环，首个相交 piece 时才惰性初始化 TransformerGeneratorAccess。
+
+### 0062 — RecipeManager.getRecipeFor 直接迭代取最后匹配
+- 原 `stream().toList().getLast()`，每次合成/熔炼缓存未命中分配 stream+list。改为迭代 byType 取最后匹配（SPIGOT-4638 last-wins 不变）。
+
+### 0063 — BrewingStand 复用药水位 scratch 数组
+- 每 tick 分配 boolean[3]；改为复用 scratch 原位填充，lastPotionCount 预分配独立数组、System.arraycopy 拷贝。
+
+**暂缓（跨层较繁/低价值/中风险，已记录）**：awardStat lambda 守卫（需跨 CraftScoreboardManager 层）、Commands.performCommand Supplier（低价值）、Raid.moveRaidCenter / Beacon / StructureManager（低价值稀有路径）、LevelChunkTicks probe（中风险红石）、Scoreboard MutableBoolean（中风险）、ChunkGenerator 缓存（需线程安全）、PlayerList.broadcast 空间索引（高风险，需配置门控）、RegionFileVersion 压缩级别 / StringTag 快速 UTF-8 / Furnace 配方缓存（配置门控，收益高但需谨慎）。
+
+---
+
 ## 候选后续批次（来自 survey，按 价值×置信/风险 排序）
 
 - **Direction.Plane 迭代器分配**（#2，高价值广覆盖）：`Direction.java` 加 `HORIZONTAL_FACES` 静态数组，把 FlowingFluid 等 6+ 处 enhanced-for 改索引循环。
