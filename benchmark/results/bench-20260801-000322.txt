@@ -1,0 +1,1529 @@
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.BroadcastLoopBench.after_indexedLoop
+
+# Run progress: 0.00% complete, ETA 00:09:36
+# Fork: 1 of 2
+# Warmup Iteration   1: 73.329 ns/op
+# Warmup Iteration   2: 61.358 ns/op
+# Warmup Iteration   3: 78.020 ns/op
+Iteration   1: 73.680 ns/op
+Iteration   2: 34.002 ns/op
+Iteration   3: 254.479 ns/op
+Iteration   4: 33.853 ns/op
+Iteration   5: 94.254 ns/op
+
+# Run progress: 1.39% complete, ETA 00:13:18
+# Fork: 2 of 2
+# Warmup Iteration   1: 60.197 ns/op
+# Warmup Iteration   2: 86.754 ns/op
+# Warmup Iteration   3: 96.550 ns/op
+Iteration   1: 96.442 ns/op
+Iteration   2: 40.899 ns/op
+Iteration   3: 230.350 ns/op
+Iteration   4: 44.244 ns/op
+Iteration   5: 44.342 ns/op
+
+
+Result "papo.bench.BroadcastLoopBench.after_indexedLoop":
+  94.655 ±(99.9%) 123.173 ns/op [Average]
+  (min, avg, max) = (33.853, 94.655, 254.479), stdev = 81.471
+  CI (99.9%): [≈ 0, 217.827] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.BroadcastLoopBench.before_forEachLambda
+
+# Run progress: 2.78% complete, ETA 00:13:31
+# Fork: 1 of 2
+# Warmup Iteration   1: 58.682 ns/op
+# Warmup Iteration   2: 52.547 ns/op
+# Warmup Iteration   3: 46.830 ns/op
+Iteration   1: 65.717 ns/op
+Iteration   2: 34.603 ns/op
+Iteration   3: 111.573 ns/op
+Iteration   4: 33.491 ns/op
+Iteration   5: 114.966 ns/op
+
+# Run progress: 4.17% complete, ETA 00:12:39
+# Fork: 2 of 2
+# Warmup Iteration   1: 74.089 ns/op
+# Warmup Iteration   2: 63.421 ns/op
+# Warmup Iteration   3: 51.258 ns/op
+Iteration   1: 53.420 ns/op
+Iteration   2: 34.191 ns/op
+Iteration   3: 81.829 ns/op
+Iteration   4: 32.454 ns/op
+Iteration   5: 87.330 ns/op
+
+
+Result "papo.bench.BroadcastLoopBench.before_forEachLambda":
+  64.957 ±(99.9%) 49.138 ns/op [Average]
+  (min, avg, max) = (32.454, 64.957, 114.966), stdev = 32.502
+  CI (99.9%): [15.819, 114.095] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.ChunkCollectBench.after_imperative
+
+# Run progress: 5.56% complete, ETA 00:11:56
+# Fork: 1 of 2
+# Warmup Iteration   1: 1094.859 ns/op
+# Warmup Iteration   2: 1004.479 ns/op
+# Warmup Iteration   3: 968.564 ns/op
+Iteration   1: 937.011 ns/op
+Iteration   2: 934.168 ns/op
+Iteration   3: 943.862 ns/op
+Iteration   4: 969.727 ns/op
+Iteration   5: 938.850 ns/op
+
+# Run progress: 6.94% complete, ETA 00:11:17
+# Fork: 2 of 2
+# Warmup Iteration   1: 1016.862 ns/op
+# Warmup Iteration   2: 932.543 ns/op
+# Warmup Iteration   3: 933.298 ns/op
+Iteration   1: 984.899 ns/op
+Iteration   2: 964.642 ns/op
+Iteration   3: 949.525 ns/op
+Iteration   4: 961.789 ns/op
+Iteration   5: 935.601 ns/op
+
+
+Result "papo.bench.ChunkCollectBench.after_imperative":
+  952.007 ±(99.9%) 26.230 ns/op [Average]
+  (min, avg, max) = (934.168, 952.007, 984.899), stdev = 17.350
+  CI (99.9%): [925.777, 978.238] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.ChunkCollectBench.after_leastLoopResolve
+
+# Run progress: 8.33% complete, ETA 00:10:47
+# Fork: 1 of 2
+# Warmup Iteration   1: 1393.761 ns/op
+# Warmup Iteration   2: 1238.229 ns/op
+# Warmup Iteration   3: 1233.276 ns/op
+Iteration   1: 1255.732 ns/op
+Iteration   2: 1278.692 ns/op
+Iteration   3: 1219.621 ns/op
+Iteration   4: 1235.642 ns/op
+Iteration   5: 1207.675 ns/op
+
+# Run progress: 9.72% complete, ETA 00:10:24
+# Fork: 2 of 2
+# Warmup Iteration   1: 1420.508 ns/op
+# Warmup Iteration   2: 1271.081 ns/op
+# Warmup Iteration   3: 1273.231 ns/op
+Iteration   1: 1290.886 ns/op
+Iteration   2: 1302.646 ns/op
+Iteration   3: 1300.095 ns/op
+Iteration   4: 1319.105 ns/op
+Iteration   5: 1284.023 ns/op
+
+
+Result "papo.bench.ChunkCollectBench.after_leastLoopResolve":
+  1269.412 ±(99.9%) 57.226 ns/op [Average]
+  (min, avg, max) = (1207.675, 1269.412, 1319.105), stdev = 37.851
+  CI (99.9%): [1212.186, 1326.637] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.ChunkCollectBench.before_leastStreamResolve
+
+# Run progress: 11.11% complete, ETA 00:10:05
+# Fork: 1 of 2
+# Warmup Iteration   1: 1500.111 ns/op
+# Warmup Iteration   2: 1274.164 ns/op
+# Warmup Iteration   3: 1253.757 ns/op
+Iteration   1: 1250.301 ns/op
+Iteration   2: 1299.263 ns/op
+Iteration   3: 1259.058 ns/op
+Iteration   4: 1270.425 ns/op
+Iteration   5: 1300.459 ns/op
+
+# Run progress: 12.50% complete, ETA 00:09:48
+# Fork: 2 of 2
+# Warmup Iteration   1: 1531.107 ns/op
+# Warmup Iteration   2: 1316.621 ns/op
+# Warmup Iteration   3: 1289.346 ns/op
+Iteration   1: 1352.012 ns/op
+Iteration   2: 1307.096 ns/op
+Iteration   3: 1283.742 ns/op
+Iteration   4: 1296.460 ns/op
+Iteration   5: 1329.716 ns/op
+
+
+Result "papo.bench.ChunkCollectBench.before_leastStreamResolve":
+  1294.853 ±(99.9%) 46.931 ns/op [Average]
+  (min, avg, max) = (1250.301, 1294.853, 1352.012), stdev = 31.042
+  CI (99.9%): [1247.922, 1341.784] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.ChunkCollectBench.before_streamPipeline
+
+# Run progress: 13.89% complete, ETA 00:09:33
+# Fork: 1 of 2
+# Warmup Iteration   1: 1839.358 ns/op
+# Warmup Iteration   2: 1426.028 ns/op
+# Warmup Iteration   3: 1401.410 ns/op
+Iteration   1: 1377.338 ns/op
+Iteration   2: 1370.767 ns/op
+Iteration   3: 1382.975 ns/op
+Iteration   4: 1384.365 ns/op
+Iteration   5: 1374.197 ns/op
+
+# Run progress: 15.28% complete, ETA 00:09:19
+# Fork: 2 of 2
+# Warmup Iteration   1: 1829.096 ns/op
+# Warmup Iteration   2: 1406.456 ns/op
+# Warmup Iteration   3: 1419.709 ns/op
+Iteration   1: 1587.127 ns/op
+Iteration   2: 1399.670 ns/op
+Iteration   3: 1384.387 ns/op
+Iteration   4: 1361.444 ns/op
+Iteration   5: 1381.844 ns/op
+
+
+Result "papo.bench.ChunkCollectBench.before_streamPipeline":
+  1400.411 ±(99.9%) 100.340 ns/op [Average]
+  (min, avg, max) = (1361.444, 1400.411, 1587.127), stdev = 66.369
+  CI (99.9%): [1300.071, 1500.751] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.DoorInteractBench.after_coordCompare
+
+# Run progress: 16.67% complete, ETA 00:09:06
+# Fork: 1 of 2
+# Warmup Iteration   1: 53.774 ns/op
+# Warmup Iteration   2: 51.177 ns/op
+# Warmup Iteration   3: 51.348 ns/op
+Iteration   1: 51.856 ns/op
+Iteration   2: 52.604 ns/op
+Iteration   3: 56.017 ns/op
+Iteration   4: 58.152 ns/op
+Iteration   5: 55.455 ns/op
+
+# Run progress: 18.06% complete, ETA 00:08:54
+# Fork: 2 of 2
+# Warmup Iteration   1: 54.608 ns/op
+# Warmup Iteration   2: 51.764 ns/op
+# Warmup Iteration   3: 53.211 ns/op
+Iteration   1: 50.479 ns/op
+Iteration   2: 50.814 ns/op
+Iteration   3: 51.695 ns/op
+Iteration   4: 51.059 ns/op
+Iteration   5: 51.973 ns/op
+
+
+Result "papo.bench.DoorInteractBench.after_coordCompare":
+  53.010 ±(99.9%) 3.929 ns/op [Average]
+  (min, avg, max) = (50.479, 53.010, 58.152), stdev = 2.599
+  CI (99.9%): [49.081, 56.940] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.DoorInteractBench.after_scratchPos
+
+# Run progress: 19.44% complete, ETA 00:08:42
+# Fork: 1 of 2
+# Warmup Iteration   1: 210.131 ns/op
+# Warmup Iteration   2: 161.985 ns/op
+# Warmup Iteration   3: 149.267 ns/op
+Iteration   1: 148.298 ns/op
+Iteration   2: 148.449 ns/op
+Iteration   3: 151.621 ns/op
+Iteration   4: 152.746 ns/op
+Iteration   5: 151.238 ns/op
+
+# Run progress: 20.83% complete, ETA 00:08:31
+# Fork: 2 of 2
+# Warmup Iteration   1: 203.404 ns/op
+# Warmup Iteration   2: 163.489 ns/op
+# Warmup Iteration   3: 150.896 ns/op
+Iteration   1: 153.312 ns/op
+Iteration   2: 156.040 ns/op
+Iteration   3: 154.884 ns/op
+Iteration   4: 154.400 ns/op
+Iteration   5: 153.754 ns/op
+
+
+Result "papo.bench.DoorInteractBench.after_scratchPos":
+  152.474 ±(99.9%) 3.921 ns/op [Average]
+  (min, avg, max) = (148.298, 152.474, 156.040), stdev = 2.593
+  CI (99.9%): [148.553, 156.395] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.DoorInteractBench.before_allocEquals
+
+# Run progress: 22.22% complete, ETA 00:08:20
+# Fork: 1 of 2
+# Warmup Iteration   1: 52.006 ns/op
+# Warmup Iteration   2: 50.840 ns/op
+# Warmup Iteration   3: 49.748 ns/op
+Iteration   1: 50.669 ns/op
+Iteration   2: 49.261 ns/op
+Iteration   3: 49.340 ns/op
+Iteration   4: 49.637 ns/op
+Iteration   5: 49.530 ns/op
+
+# Run progress: 23.61% complete, ETA 00:08:09
+# Fork: 2 of 2
+# Warmup Iteration   1: 52.414 ns/op
+# Warmup Iteration   2: 50.618 ns/op
+# Warmup Iteration   3: 51.068 ns/op
+Iteration   1: 52.859 ns/op
+Iteration   2: 54.058 ns/op
+Iteration   3: 52.075 ns/op
+Iteration   4: 55.594 ns/op
+Iteration   5: 55.445 ns/op
+
+
+Result "papo.bench.DoorInteractBench.before_allocEquals":
+  51.847 ±(99.9%) 3.824 ns/op [Average]
+  (min, avg, max) = (49.261, 51.847, 55.594), stdev = 2.529
+  CI (99.9%): [48.023, 55.670] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.DoorInteractBench.before_asBlockPosPerTick
+
+# Run progress: 25.00% complete, ETA 00:07:58
+# Fork: 1 of 2
+# Warmup Iteration   1: 561.517 ns/op
+# Warmup Iteration   2: 466.325 ns/op
+# Warmup Iteration   3: 284.671 ns/op
+Iteration   1: 259.994 ns/op
+Iteration   2: 280.150 ns/op
+Iteration   3: 270.517 ns/op
+Iteration   4: 263.479 ns/op
+Iteration   5: 255.407 ns/op
+
+# Run progress: 26.39% complete, ETA 00:07:49
+# Fork: 2 of 2
+# Warmup Iteration   1: 496.428 ns/op
+# Warmup Iteration   2: 405.166 ns/op
+# Warmup Iteration   3: 257.094 ns/op
+Iteration   1: 267.336 ns/op
+Iteration   2: 262.677 ns/op
+Iteration   3: 260.568 ns/op
+Iteration   4: 264.859 ns/op
+Iteration   5: 261.858 ns/op
+
+
+Result "papo.bench.DoorInteractBench.before_asBlockPosPerTick":
+  264.685 ±(99.9%) 10.313 ns/op [Average]
+  (min, avg, max) = (255.407, 264.685, 280.150), stdev = 6.821
+  CI (99.9%): [254.372, 274.997] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.EffectiveRangeBench.after_hoisted
+
+# Run progress: 27.78% complete, ETA 00:07:39
+# Fork: 1 of 2
+# Warmup Iteration   1: 6.925 ns/op
+# Warmup Iteration   2: 7.294 ns/op
+# Warmup Iteration   3: 6.696 ns/op
+Iteration   1: 7.184 ns/op
+Iteration   2: 6.758 ns/op
+Iteration   3: 6.702 ns/op
+Iteration   4: 6.547 ns/op
+Iteration   5: 6.498 ns/op
+
+# Run progress: 29.17% complete, ETA 00:07:29
+# Fork: 2 of 2
+# Warmup Iteration   1: 6.543 ns/op
+# Warmup Iteration   2: 6.928 ns/op
+# Warmup Iteration   3: 6.694 ns/op
+Iteration   1: 6.448 ns/op
+Iteration   2: 6.565 ns/op
+Iteration   3: 6.804 ns/op
+Iteration   4: 6.502 ns/op
+Iteration   5: 6.672 ns/op
+
+
+Result "papo.bench.EffectiveRangeBench.after_hoisted":
+  6.668 ±(99.9%) 0.328 ns/op [Average]
+  (min, avg, max) = (6.448, 6.668, 7.184), stdev = 0.217
+  CI (99.9%): [6.340, 6.996] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.EffectiveRangeBench.before_recomputePerPlayer
+
+# Run progress: 30.56% complete, ETA 00:07:19
+# Fork: 1 of 2
+# Warmup Iteration   1: 7.283 ns/op
+# Warmup Iteration   2: 7.763 ns/op
+# Warmup Iteration   3: 7.224 ns/op
+Iteration   1: 7.047 ns/op
+Iteration   2: 7.184 ns/op
+Iteration   3: 7.062 ns/op
+Iteration   4: 7.209 ns/op
+Iteration   5: 7.028 ns/op
+
+# Run progress: 31.94% complete, ETA 00:07:09
+# Fork: 2 of 2
+# Warmup Iteration   1: 7.129 ns/op
+# Warmup Iteration   2: 7.292 ns/op
+# Warmup Iteration   3: 7.206 ns/op
+Iteration   1: 7.111 ns/op
+Iteration   2: 7.060 ns/op
+Iteration   3: 6.929 ns/op
+Iteration   4: 6.673 ns/op
+Iteration   5: 7.373 ns/op
+
+
+Result "papo.bench.EffectiveRangeBench.before_recomputePerPlayer":
+  7.067 ±(99.9%) 0.279 ns/op [Average]
+  (min, avg, max) = (6.673, 7.067, 7.373), stdev = 0.184
+  CI (99.9%): [6.789, 7.346] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.EquipmentTickBench.after_valuesLoop
+
+# Run progress: 33.33% complete, ETA 00:07:00
+# Fork: 1 of 2
+# Warmup Iteration   1: 7.687 ns/op
+# Warmup Iteration   2: 7.879 ns/op
+# Warmup Iteration   3: 11.815 ns/op
+Iteration   1: 11.898 ns/op
+Iteration   2: 12.056 ns/op
+Iteration   3: 11.681 ns/op
+Iteration   4: 11.695 ns/op
+Iteration   5: 11.559 ns/op
+
+# Run progress: 34.72% complete, ETA 00:06:50
+# Fork: 2 of 2
+# Warmup Iteration   1: 7.534 ns/op
+# Warmup Iteration   2: 7.782 ns/op
+# Warmup Iteration   3: 11.320 ns/op
+Iteration   1: 12.370 ns/op
+Iteration   2: 13.635 ns/op
+Iteration   3: 13.389 ns/op
+Iteration   4: 12.425 ns/op
+Iteration   5: 12.443 ns/op
+
+
+Result "papo.bench.EquipmentTickBench.after_valuesLoop":
+  12.315 ±(99.9%) 1.072 ns/op [Average]
+  (min, avg, max) = (11.559, 12.315, 13.635), stdev = 0.709
+  CI (99.9%): [11.243, 13.387] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.EquipmentTickBench.before_entrySetIteration
+
+# Run progress: 36.11% complete, ETA 00:06:41
+# Fork: 1 of 2
+# Warmup Iteration   1: 39.327 ns/op
+# Warmup Iteration   2: 33.444 ns/op
+# Warmup Iteration   3: 27.351 ns/op
+Iteration   1: 27.109 ns/op
+Iteration   2: 27.502 ns/op
+Iteration   3: 26.997 ns/op
+Iteration   4: 27.639 ns/op
+Iteration   5: 27.338 ns/op
+
+# Run progress: 37.50% complete, ETA 00:06:32
+# Fork: 2 of 2
+# Warmup Iteration   1: 39.709 ns/op
+# Warmup Iteration   2: 34.445 ns/op
+# Warmup Iteration   3: 27.217 ns/op
+Iteration   1: 26.555 ns/op
+Iteration   2: 26.483 ns/op
+Iteration   3: 26.606 ns/op
+Iteration   4: 26.820 ns/op
+Iteration   5: 27.854 ns/op
+
+
+Result "papo.bench.EquipmentTickBench.before_entrySetIteration":
+  27.090 ±(99.9%) 0.728 ns/op [Average]
+  (min, avg, max) = (26.483, 27.090, 27.854), stdev = 0.481
+  CI (99.9%): [26.362, 27.818] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.FluidOnEyesBench.after_scratchReuse
+
+# Run progress: 38.89% complete, ETA 00:06:23
+# Fork: 1 of 2
+# Warmup Iteration   1: 86.400 ns/op
+# Warmup Iteration   2: 86.348 ns/op
+# Warmup Iteration   3: 96.054 ns/op
+Iteration   1: 94.050 ns/op
+Iteration   2: 90.680 ns/op
+Iteration   3: 89.803 ns/op
+Iteration   4: 90.268 ns/op
+Iteration   5: 89.902 ns/op
+
+# Run progress: 40.28% complete, ETA 00:06:13
+# Fork: 2 of 2
+# Warmup Iteration   1: 86.907 ns/op
+# Warmup Iteration   2: 87.591 ns/op
+# Warmup Iteration   3: 91.781 ns/op
+Iteration   1: 94.923 ns/op
+Iteration   2: 92.174 ns/op
+Iteration   3: 88.745 ns/op
+Iteration   4: 89.436 ns/op
+Iteration   5: 91.320 ns/op
+
+
+Result "papo.bench.FluidOnEyesBench.after_scratchReuse":
+  91.130 ±(99.9%) 3.058 ns/op [Average]
+  (min, avg, max) = (88.745, 91.130, 94.923), stdev = 2.023
+  CI (99.9%): [88.072, 94.188] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.FluidOnEyesBench.before_newPosPerCall
+
+# Run progress: 41.67% complete, ETA 00:06:04
+# Fork: 1 of 2
+# Warmup Iteration   1: 179.178 ns/op
+# Warmup Iteration   2: 143.294 ns/op
+# Warmup Iteration   3: 118.691 ns/op
+Iteration   1: 118.852 ns/op
+Iteration   2: 120.580 ns/op
+Iteration   3: 117.276 ns/op
+Iteration   4: 114.738 ns/op
+Iteration   5: 114.968 ns/op
+
+# Run progress: 43.06% complete, ETA 00:05:55
+# Fork: 2 of 2
+# Warmup Iteration   1: 176.318 ns/op
+# Warmup Iteration   2: 146.977 ns/op
+# Warmup Iteration   3: 122.464 ns/op
+Iteration   1: 120.197 ns/op
+Iteration   2: 117.318 ns/op
+Iteration   3: 117.271 ns/op
+Iteration   4: 119.013 ns/op
+Iteration   5: 119.294 ns/op
+
+
+Result "papo.bench.FluidOnEyesBench.before_newPosPerCall":
+  117.950 ±(99.9%) 3.034 ns/op [Average]
+  (min, avg, max) = (114.738, 117.950, 120.580), stdev = 2.007
+  CI (99.9%): [114.917, 120.984] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.FurnaceInputBench.after_cachedByReference
+
+# Run progress: 44.44% complete, ETA 00:05:46
+# Fork: 1 of 2
+# Warmup Iteration   1: 68.268 ns/op
+# Warmup Iteration   2: 64.401 ns/op
+# Warmup Iteration   3: 64.683 ns/op
+Iteration   1: 70.259 ns/op
+Iteration   2: 80.269 ns/op
+Iteration   3: 69.956 ns/op
+Iteration   4: 72.378 ns/op
+Iteration   5: 84.796 ns/op
+
+# Run progress: 45.83% complete, ETA 00:05:37
+# Fork: 2 of 2
+# Warmup Iteration   1: 72.785 ns/op
+# Warmup Iteration   2: 70.411 ns/op
+# Warmup Iteration   3: 72.913 ns/op
+Iteration   1: 93.452 ns/op
+Iteration   2: 84.212 ns/op
+Iteration   3: 83.285 ns/op
+Iteration   4: 89.348 ns/op
+Iteration   5: 75.749 ns/op
+
+
+Result "papo.bench.FurnaceInputBench.after_cachedByReference":
+  80.370 ±(99.9%) 12.246 ns/op [Average]
+  (min, avg, max) = (69.956, 80.370, 93.452), stdev = 8.100
+  CI (99.9%): [68.124, 92.616] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.FurnaceInputBench.before_newInputPerTick
+
+# Run progress: 47.22% complete, ETA 00:05:28
+# Fork: 1 of 2
+# Warmup Iteration   1: 151.049 ns/op
+# Warmup Iteration   2: 121.912 ns/op
+# Warmup Iteration   3: 128.344 ns/op
+Iteration   1: 161.003 ns/op
+Iteration   2: 134.892 ns/op
+Iteration   3: 125.320 ns/op
+Iteration   4: 127.398 ns/op
+Iteration   5: 126.247 ns/op
+
+# Run progress: 48.61% complete, ETA 00:05:19
+# Fork: 2 of 2
+# Warmup Iteration   1: 138.963 ns/op
+# Warmup Iteration   2: 117.707 ns/op
+# Warmup Iteration   3: 112.868 ns/op
+Iteration   1: 112.208 ns/op
+Iteration   2: 120.264 ns/op
+Iteration   3: 112.195 ns/op
+Iteration   4: 117.581 ns/op
+Iteration   5: 113.420 ns/op
+
+
+Result "papo.bench.FurnaceInputBench.before_newInputPerTick":
+  125.053 ±(99.9%) 22.200 ns/op [Average]
+  (min, avg, max) = (112.195, 125.053, 161.003), stdev = 14.684
+  CI (99.9%): [102.852, 147.253] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.InteractEventGateBench.after_craftGated
+
+# Run progress: 50.00% complete, ETA 00:05:10
+# Fork: 1 of 2
+# Warmup Iteration   1: 0.565 ns/op
+# Warmup Iteration   2: 0.548 ns/op
+# Warmup Iteration   3: 0.554 ns/op
+Iteration   1: 0.565 ns/op
+Iteration   2: 0.561 ns/op
+Iteration   3: 0.548 ns/op
+Iteration   4: 0.536 ns/op
+Iteration   5: 0.552 ns/op
+
+# Run progress: 51.39% complete, ETA 00:05:02
+# Fork: 2 of 2
+# Warmup Iteration   1: 0.559 ns/op
+# Warmup Iteration   2: 0.526 ns/op
+# Warmup Iteration   3: 0.544 ns/op
+Iteration   1: 0.532 ns/op
+Iteration   2: 0.547 ns/op
+Iteration   3: 0.581 ns/op
+Iteration   4: 0.552 ns/op
+Iteration   5: 0.554 ns/op
+
+
+Result "papo.bench.InteractEventGateBench.after_craftGated":
+  0.553 ±(99.9%) 0.021 ns/op [Average]
+  (min, avg, max) = (0.532, 0.553, 0.581), stdev = 0.014
+  CI (99.9%): [0.531, 0.574] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.InteractEventGateBench.after_gated
+
+# Run progress: 52.78% complete, ETA 00:04:53
+# Fork: 1 of 2
+# Warmup Iteration   1: 0.339 ns/op
+# Warmup Iteration   2: 0.326 ns/op
+# Warmup Iteration   3: 0.350 ns/op
+Iteration   1: 0.377 ns/op
+Iteration   2: 0.352 ns/op
+Iteration   3: 0.330 ns/op
+Iteration   4: 0.332 ns/op
+Iteration   5: 0.345 ns/op
+
+# Run progress: 54.17% complete, ETA 00:04:44
+# Fork: 2 of 2
+# Warmup Iteration   1: 0.334 ns/op
+# Warmup Iteration   2: 0.330 ns/op
+# Warmup Iteration   3: 0.358 ns/op
+Iteration   1: 0.329 ns/op
+Iteration   2: 0.330 ns/op
+Iteration   3: 0.341 ns/op
+Iteration   4: 0.329 ns/op
+Iteration   5: 0.326 ns/op
+
+
+Result "papo.bench.InteractEventGateBench.after_gated":
+  0.339 ±(99.9%) 0.024 ns/op [Average]
+  (min, avg, max) = (0.326, 0.339, 0.377), stdev = 0.016
+  CI (99.9%): [0.315, 0.363] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.InteractEventGateBench.after_gatedTrigger
+
+# Run progress: 55.56% complete, ETA 00:04:35
+# Fork: 1 of 2
+# Warmup Iteration   1: 0.465 ns/op
+# Warmup Iteration   2: 0.471 ns/op
+# Warmup Iteration   3: 0.476 ns/op
+Iteration   1: 0.499 ns/op
+Iteration   2: 0.488 ns/op
+Iteration   3: 0.472 ns/op
+Iteration   4: 0.480 ns/op
+Iteration   5: 0.472 ns/op
+
+# Run progress: 56.94% complete, ETA 00:04:26
+# Fork: 2 of 2
+# Warmup Iteration   1: 0.481 ns/op
+# Warmup Iteration   2: 0.473 ns/op
+# Warmup Iteration   3: 0.471 ns/op
+Iteration   1: 0.508 ns/op
+Iteration   2: 0.480 ns/op
+Iteration   3: 0.468 ns/op
+Iteration   4: 0.471 ns/op
+Iteration   5: 0.474 ns/op
+
+
+Result "papo.bench.InteractEventGateBench.after_gatedTrigger":
+  0.481 ±(99.9%) 0.020 ns/op [Average]
+  (min, avg, max) = (0.468, 0.481, 0.508), stdev = 0.013
+  CI (99.9%): [0.461, 0.501] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.InteractEventGateBench.after_preCraftFastPath
+
+# Run progress: 58.33% complete, ETA 00:04:18
+# Fork: 1 of 2
+# Warmup Iteration   1: 0.462 ns/op
+# Warmup Iteration   2: 0.472 ns/op
+# Warmup Iteration   3: 0.501 ns/op
+Iteration   1: 0.492 ns/op
+Iteration   2: 0.497 ns/op
+Iteration   3: 0.482 ns/op
+Iteration   4: 0.492 ns/op
+Iteration   5: 0.458 ns/op
+
+# Run progress: 59.72% complete, ETA 00:04:09
+# Fork: 2 of 2
+# Warmup Iteration   1: 0.466 ns/op
+# Warmup Iteration   2: 0.468 ns/op
+# Warmup Iteration   3: 0.471 ns/op
+Iteration   1: 0.483 ns/op
+Iteration   2: 0.479 ns/op
+Iteration   3: 0.490 ns/op
+Iteration   4: 0.474 ns/op
+Iteration   5: 0.479 ns/op
+
+
+Result "papo.bench.InteractEventGateBench.after_preCraftFastPath":
+  0.483 ±(99.9%) 0.017 ns/op [Average]
+  (min, avg, max) = (0.458, 0.483, 0.497), stdev = 0.011
+  CI (99.9%): [0.466, 0.500] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.InteractEventGateBench.before_bukkitCopyAndCall
+
+# Run progress: 61.11% complete, ETA 00:04:00
+# Fork: 1 of 2
+# Warmup Iteration   1: 1.558 ns/op
+# Warmup Iteration   2: 1.087 ns/op
+# Warmup Iteration   3: 1.237 ns/op
+Iteration   1: 1.285 ns/op
+Iteration   2: 1.277 ns/op
+Iteration   3: 1.279 ns/op
+Iteration   4: 1.269 ns/op
+Iteration   5: 1.266 ns/op
+
+# Run progress: 62.50% complete, ETA 00:03:51
+# Fork: 2 of 2
+# Warmup Iteration   1: 1.451 ns/op
+# Warmup Iteration   2: 1.075 ns/op
+# Warmup Iteration   3: 1.262 ns/op
+Iteration   1: 1.266 ns/op
+Iteration   2: 1.264 ns/op
+Iteration   3: 1.283 ns/op
+Iteration   4: 1.253 ns/op
+Iteration   5: 1.251 ns/op
+
+
+Result "papo.bench.InteractEventGateBench.before_bukkitCopyAndCall":
+  1.269 ±(99.9%) 0.018 ns/op [Average]
+  (min, avg, max) = (1.251, 1.269, 1.285), stdev = 0.012
+  CI (99.9%): [1.252, 1.287] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.InteractEventGateBench.before_constructAndCall
+
+# Run progress: 63.89% complete, ETA 00:03:43
+# Fork: 1 of 2
+# Warmup Iteration   1: 2.592 ns/op
+# Warmup Iteration   2: 1.823 ns/op
+# Warmup Iteration   3: 2.262 ns/op
+Iteration   1: 2.235 ns/op
+Iteration   2: 2.230 ns/op
+Iteration   3: 2.150 ns/op
+Iteration   4: 2.245 ns/op
+Iteration   5: 2.293 ns/op
+
+# Run progress: 65.28% complete, ETA 00:03:34
+# Fork: 2 of 2
+# Warmup Iteration   1: 2.871 ns/op
+# Warmup Iteration   2: 1.811 ns/op
+# Warmup Iteration   3: 2.273 ns/op
+Iteration   1: 2.329 ns/op
+Iteration   2: 2.297 ns/op
+Iteration   3: 2.303 ns/op
+Iteration   4: 2.267 ns/op
+Iteration   5: 2.272 ns/op
+
+
+Result "papo.bench.InteractEventGateBench.before_constructAndCall":
+  2.262 ±(99.9%) 0.076 ns/op [Average]
+  (min, avg, max) = (2.150, 2.262, 2.329), stdev = 0.051
+  CI (99.9%): [2.186, 2.338] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.InteractEventGateBench.before_copyAndTrigger
+
+# Run progress: 66.67% complete, ETA 00:03:25
+# Fork: 1 of 2
+# Warmup Iteration   1: 2.530 ns/op
+# Warmup Iteration   2: 1.766 ns/op
+# Warmup Iteration   3: 1.918 ns/op
+Iteration   1: 1.945 ns/op
+Iteration   2: 1.931 ns/op
+Iteration   3: 1.923 ns/op
+Iteration   4: 2.054 ns/op
+Iteration   5: 1.975 ns/op
+
+# Run progress: 68.06% complete, ETA 00:03:17
+# Fork: 2 of 2
+# Warmup Iteration   1: 2.472 ns/op
+# Warmup Iteration   2: 1.709 ns/op
+# Warmup Iteration   3: 1.871 ns/op
+Iteration   1: 1.869 ns/op
+Iteration   2: 1.879 ns/op
+Iteration   3: 1.920 ns/op
+Iteration   4: 1.867 ns/op
+Iteration   5: 1.849 ns/op
+
+
+Result "papo.bench.InteractEventGateBench.before_copyAndTrigger":
+  1.921 ±(99.9%) 0.093 ns/op [Average]
+  (min, avg, max) = (1.849, 1.921, 2.054), stdev = 0.061
+  CI (99.9%): [1.829, 2.014] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.InteractEventGateBench.before_preCraftEvent
+
+# Run progress: 69.44% complete, ETA 00:03:08
+# Fork: 1 of 2
+# Warmup Iteration   1: 0.470 ns/op
+# Warmup Iteration   2: 0.458 ns/op
+# Warmup Iteration   3: 0.456 ns/op
+Iteration   1: 0.458 ns/op
+Iteration   2: 0.476 ns/op
+Iteration   3: 0.459 ns/op
+Iteration   4: 0.459 ns/op
+Iteration   5: 0.475 ns/op
+
+# Run progress: 70.83% complete, ETA 00:02:59
+# Fork: 2 of 2
+# Warmup Iteration   1: 0.453 ns/op
+# Warmup Iteration   2: 0.449 ns/op
+# Warmup Iteration   3: 0.456 ns/op
+Iteration   1: 0.453 ns/op
+Iteration   2: 0.461 ns/op
+Iteration   3: 0.451 ns/op
+Iteration   4: 0.446 ns/op
+Iteration   5: 0.453 ns/op
+
+
+Result "papo.bench.InteractEventGateBench.before_preCraftEvent":
+  0.459 ±(99.9%) 0.015 ns/op [Average]
+  (min, avg, max) = (0.446, 0.459, 0.476), stdev = 0.010
+  CI (99.9%): [0.444, 0.474] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.LightUpdatePresizeBench.after_presized
+
+# Run progress: 72.22% complete, ETA 00:02:51
+# Fork: 1 of 2
+# Warmup Iteration   1: 48.934 ns/op
+# Warmup Iteration   2: 44.800 ns/op
+# Warmup Iteration   3: 43.163 ns/op
+Iteration   1: 42.956 ns/op
+Iteration   2: 42.303 ns/op
+Iteration   3: 41.918 ns/op
+Iteration   4: 42.030 ns/op
+Iteration   5: 43.430 ns/op
+
+# Run progress: 73.61% complete, ETA 00:02:42
+# Fork: 2 of 2
+# Warmup Iteration   1: 48.383 ns/op
+# Warmup Iteration   2: 43.378 ns/op
+# Warmup Iteration   3: 42.869 ns/op
+Iteration   1: 42.027 ns/op
+Iteration   2: 43.211 ns/op
+Iteration   3: 42.980 ns/op
+Iteration   4: 43.364 ns/op
+Iteration   5: 42.374 ns/op
+
+
+Result "papo.bench.LightUpdatePresizeBench.after_presized":
+  42.660 ±(99.9%) 0.893 ns/op [Average]
+  (min, avg, max) = (41.918, 42.660, 43.430), stdev = 0.590
+  CI (99.9%): [41.767, 43.552] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.LightUpdatePresizeBench.before_defaultCapacity
+
+# Run progress: 75.00% complete, ETA 00:02:34
+# Fork: 1 of 2
+# Warmup Iteration   1: 152.064 ns/op
+# Warmup Iteration   2: 133.064 ns/op
+# Warmup Iteration   3: 91.516 ns/op
+Iteration   1: 90.023 ns/op
+Iteration   2: 88.543 ns/op
+Iteration   3: 87.320 ns/op
+Iteration   4: 92.134 ns/op
+Iteration   5: 94.218 ns/op
+
+# Run progress: 76.39% complete, ETA 00:02:25
+# Fork: 2 of 2
+# Warmup Iteration   1: 149.650 ns/op
+# Warmup Iteration   2: 134.200 ns/op
+# Warmup Iteration   3: 87.861 ns/op
+Iteration   1: 86.822 ns/op
+Iteration   2: 88.563 ns/op
+Iteration   3: 89.768 ns/op
+Iteration   4: 93.342 ns/op
+Iteration   5: 89.774 ns/op
+
+
+Result "papo.bench.LightUpdatePresizeBench.before_defaultCapacity":
+  90.051 ±(99.9%) 3.739 ns/op [Average]
+  (min, avg, max) = (86.822, 90.051, 94.218), stdev = 2.473
+  CI (99.9%): [86.311, 93.790] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.PoiLookupBench.after_nullableRef
+
+# Run progress: 77.78% complete, ETA 00:02:16
+# Fork: 1 of 2
+# Warmup Iteration   1: 306.523 ns/op
+# Warmup Iteration   2: 271.274 ns/op
+# Warmup Iteration   3: 289.207 ns/op
+Iteration   1: 284.958 ns/op
+Iteration   2: 278.908 ns/op
+Iteration   3: 292.528 ns/op
+Iteration   4: 284.396 ns/op
+Iteration   5: 286.609 ns/op
+
+# Run progress: 79.17% complete, ETA 00:02:08
+# Fork: 2 of 2
+# Warmup Iteration   1: 291.829 ns/op
+# Warmup Iteration   2: 243.554 ns/op
+# Warmup Iteration   3: 270.188 ns/op
+Iteration   1: 282.375 ns/op
+Iteration   2: 275.948 ns/op
+Iteration   3: 266.573 ns/op
+Iteration   4: 261.824 ns/op
+Iteration   5: 266.155 ns/op
+
+
+Result "papo.bench.PoiLookupBench.after_nullableRef":
+  278.027 ±(99.9%) 15.378 ns/op [Average]
+  (min, avg, max) = (261.824, 278.027, 292.528), stdev = 10.172
+  CI (99.9%): [262.649, 293.406] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.PoiLookupBench.before_optionalWrap
+
+# Run progress: 80.56% complete, ETA 00:01:59
+# Fork: 1 of 2
+# Warmup Iteration   1: 328.032 ns/op
+# Warmup Iteration   2: 289.014 ns/op
+# Warmup Iteration   3: 416.317 ns/op
+Iteration   1: 412.387 ns/op
+Iteration   2: 408.960 ns/op
+Iteration   3: 406.935 ns/op
+Iteration   4: 414.767 ns/op
+Iteration   5: 411.301 ns/op
+
+# Run progress: 81.94% complete, ETA 00:01:51
+# Fork: 2 of 2
+# Warmup Iteration   1: 332.689 ns/op
+# Warmup Iteration   2: 281.476 ns/op
+# Warmup Iteration   3: 398.721 ns/op
+Iteration   1: 429.966 ns/op
+Iteration   2: 432.290 ns/op
+Iteration   3: 414.850 ns/op
+Iteration   4: 422.783 ns/op
+Iteration   5: 417.102 ns/op
+
+
+Result "papo.bench.PoiLookupBench.before_optionalWrap":
+  417.134 ±(99.9%) 12.991 ns/op [Average]
+  (min, avg, max) = (406.935, 417.134, 432.290), stdev = 8.592
+  CI (99.9%): [404.144, 430.125] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.SunBurnBench.after_lazyPos
+
+# Run progress: 83.33% complete, ETA 00:01:42
+# Fork: 1 of 2
+# Warmup Iteration   1: 143.720 ns/op
+# Warmup Iteration   2: 146.889 ns/op
+# Warmup Iteration   3: 175.541 ns/op
+Iteration   1: 174.939 ns/op
+Iteration   2: 172.103 ns/op
+Iteration   3: 166.950 ns/op
+Iteration   4: 168.791 ns/op
+Iteration   5: 168.111 ns/op
+
+# Run progress: 84.72% complete, ETA 00:01:34
+# Fork: 2 of 2
+# Warmup Iteration   1: 148.249 ns/op
+# Warmup Iteration   2: 151.769 ns/op
+# Warmup Iteration   3: 182.467 ns/op
+Iteration   1: 178.111 ns/op
+Iteration   2: 180.192 ns/op
+Iteration   3: 179.547 ns/op
+Iteration   4: 171.028 ns/op
+Iteration   5: 162.120 ns/op
+
+
+Result "papo.bench.SunBurnBench.after_lazyPos":
+  172.189 ±(99.9%) 9.003 ns/op [Average]
+  (min, avg, max) = (162.120, 172.189, 180.192), stdev = 5.955
+  CI (99.9%): [163.186, 181.193] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.SunBurnBench.before_eagerPos
+
+# Run progress: 86.11% complete, ETA 00:01:25
+# Fork: 1 of 2
+# Warmup Iteration   1: 339.683 ns/op
+# Warmup Iteration   2: 298.732 ns/op
+# Warmup Iteration   3: 245.149 ns/op
+Iteration   1: 251.117 ns/op
+Iteration   2: 251.808 ns/op
+Iteration   3: 238.252 ns/op
+Iteration   4: 237.362 ns/op
+Iteration   5: 229.229 ns/op
+
+# Run progress: 87.50% complete, ETA 00:01:16
+# Fork: 2 of 2
+# Warmup Iteration   1: 321.117 ns/op
+# Warmup Iteration   2: 287.553 ns/op
+# Warmup Iteration   3: 232.242 ns/op
+Iteration   1: 225.084 ns/op
+Iteration   2: 226.174 ns/op
+Iteration   3: 219.632 ns/op
+Iteration   4: 219.894 ns/op
+Iteration   5: 223.716 ns/op
+
+
+Result "papo.bench.SunBurnBench.before_eagerPos":
+  232.227 ±(99.9%) 18.049 ns/op [Average]
+  (min, avg, max) = (219.632, 232.227, 251.808), stdev = 11.938
+  CI (99.9%): [214.178, 250.276] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.TickEffectsBench.after_inlinedLoops
+
+# Run progress: 88.89% complete, ETA 00:01:08
+# Fork: 1 of 2
+# Warmup Iteration   1: 46.801 ns/op
+# Warmup Iteration   2: 41.372 ns/op
+# Warmup Iteration   3: 39.545 ns/op
+Iteration   1: 40.436 ns/op
+Iteration   2: 40.661 ns/op
+Iteration   3: 39.853 ns/op
+Iteration   4: 39.060 ns/op
+Iteration   5: 38.458 ns/op
+
+# Run progress: 90.28% complete, ETA 00:00:59
+# Fork: 2 of 2
+# Warmup Iteration   1: 45.855 ns/op
+# Warmup Iteration   2: 40.033 ns/op
+# Warmup Iteration   3: 40.260 ns/op
+Iteration   1: 42.859 ns/op
+Iteration   2: 40.179 ns/op
+Iteration   3: 40.044 ns/op
+Iteration   4: 40.313 ns/op
+Iteration   5: 38.792 ns/op
+
+
+Result "papo.bench.TickEffectsBench.after_inlinedLoops":
+  40.066 ±(99.9%) 1.861 ns/op [Average]
+  (min, avg, max) = (38.458, 40.066, 42.859), stdev = 1.231
+  CI (99.9%): [38.205, 41.926] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.TickEffectsBench.before_visitorLambda
+
+# Run progress: 91.67% complete, ETA 00:00:51
+# Fork: 1 of 2
+# Warmup Iteration   1: 46.873 ns/op
+# Warmup Iteration   2: 40.159 ns/op
+# Warmup Iteration   3: 39.368 ns/op
+Iteration   1: 43.044 ns/op
+Iteration   2: 39.721 ns/op
+Iteration   3: 38.955 ns/op
+Iteration   4: 39.661 ns/op
+Iteration   5: 37.885 ns/op
+
+# Run progress: 93.06% complete, ETA 00:00:42
+# Fork: 2 of 2
+# Warmup Iteration   1: 47.845 ns/op
+# Warmup Iteration   2: 39.007 ns/op
+# Warmup Iteration   3: 38.693 ns/op
+Iteration   1: 38.842 ns/op
+Iteration   2: 39.369 ns/op
+Iteration   3: 41.724 ns/op
+Iteration   4: 39.364 ns/op
+Iteration   5: 39.311 ns/op
+
+
+Result "papo.bench.TickEffectsBench.before_visitorLambda":
+  39.788 ±(99.9%) 2.263 ns/op [Average]
+  (min, avg, max) = (37.885, 39.788, 43.044), stdev = 1.497
+  CI (99.9%): [37.525, 42.051] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.UseItemOnRangeBench.after_scalarMath
+
+# Run progress: 94.44% complete, ETA 00:00:34
+# Fork: 1 of 2
+# Warmup Iteration   1: 138.883 ns/op
+# Warmup Iteration   2: 137.073 ns/op
+# Warmup Iteration   3: 134.789 ns/op
+Iteration   1: 140.588 ns/op
+Iteration   2: 138.638 ns/op
+Iteration   3: 137.272 ns/op
+Iteration   4: 142.963 ns/op
+Iteration   5: 139.200 ns/op
+
+# Run progress: 95.83% complete, ETA 00:00:25
+# Fork: 2 of 2
+# Warmup Iteration   1: 141.277 ns/op
+# Warmup Iteration   2: 133.393 ns/op
+# Warmup Iteration   3: 137.670 ns/op
+Iteration   1: 141.290 ns/op
+Iteration   2: 136.741 ns/op
+Iteration   3: 140.564 ns/op
+Iteration   4: 139.524 ns/op
+Iteration   5: 142.841 ns/op
+
+
+Result "papo.bench.UseItemOnRangeBench.after_scalarMath":
+  139.962 ±(99.9%) 3.185 ns/op [Average]
+  (min, avg, max) = (136.741, 139.962, 142.963), stdev = 2.107
+  CI (99.9%): [136.777, 143.147] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.UseItemOnRangeBench.before_vec3Allocs
+
+# Run progress: 97.22% complete, ETA 00:00:17
+# Fork: 1 of 2
+# Warmup Iteration   1: 108.935 ns/op
+# Warmup Iteration   2: 106.334 ns/op
+# Warmup Iteration   3: 113.772 ns/op
+Iteration   1: 111.646 ns/op
+Iteration   2: 108.774 ns/op
+Iteration   3: 109.484 ns/op
+Iteration   4: 107.180 ns/op
+Iteration   5: 104.913 ns/op
+
+# Run progress: 98.61% complete, ETA 00:00:08
+# Fork: 2 of 2
+# Warmup Iteration   1: 106.461 ns/op
+# Warmup Iteration   2: 106.229 ns/op
+# Warmup Iteration   3: 111.764 ns/op
+Iteration   1: 114.970 ns/op
+Iteration   2: 109.063 ns/op
+Iteration   3: 107.569 ns/op
+Iteration   4: 109.907 ns/op
+Iteration   5: 109.101 ns/op
+
+
+Result "papo.bench.UseItemOnRangeBench.before_vec3Allocs":
+  109.261 ±(99.9%) 4.068 ns/op [Average]
+  (min, avg, max) = (104.913, 109.261, 114.970), stdev = 2.690
+  CI (99.9%): [105.193, 113.328] (assumes normal distribution)
+
+
+# Run complete. Total time: 00:10:13
+
+REMEMBER: The numbers below are just data. To gain reusable insights, you need to follow up on
+why the numbers are the way they are. Use profilers (see -prof, -lprof), design factorial
+experiments, perform baseline and negative tests that provide experimental control, make sure
+the benchmarking environment is safe on JVM/OS/HW level, ask for reviews from the domain experts.
+Do not assume the numbers tell you what you want them to tell.
+
+NOTE: Current JVM experimentally supports Compiler Blackholes, and they are in use. Please exercise
+extra caution when trusting the results, look into the generated code to check the benchmark still
+works, and factor in a small probability of new VM bugs. Additionally, while comparisons between
+different JVMs are already problematic, the performance difference caused by different Blackhole
+modes can be very significant. Please make sure you use the consistent Blackhole mode for comparisons.
+
+Benchmark                                        Mode  Cnt     Score     Error  Units
+BroadcastLoopBench.after_indexedLoop             avgt   10    94.655 ± 123.173  ns/op
+BroadcastLoopBench.before_forEachLambda          avgt   10    64.957 ±  49.138  ns/op
+ChunkCollectBench.after_imperative               avgt   10   952.007 ±  26.230  ns/op
+ChunkCollectBench.after_leastLoopResolve         avgt   10  1269.412 ±  57.226  ns/op
+ChunkCollectBench.before_leastStreamResolve      avgt   10  1294.853 ±  46.931  ns/op
+ChunkCollectBench.before_streamPipeline          avgt   10  1400.411 ± 100.340  ns/op
+DoorInteractBench.after_coordCompare             avgt   10    53.010 ±   3.929  ns/op
+DoorInteractBench.after_scratchPos               avgt   10   152.474 ±   3.921  ns/op
+DoorInteractBench.before_allocEquals             avgt   10    51.847 ±   3.824  ns/op
+DoorInteractBench.before_asBlockPosPerTick       avgt   10   264.685 ±  10.313  ns/op
+EffectiveRangeBench.after_hoisted                avgt   10     6.668 ±   0.328  ns/op
+EffectiveRangeBench.before_recomputePerPlayer    avgt   10     7.067 ±   0.279  ns/op
+EquipmentTickBench.after_valuesLoop              avgt   10    12.315 ±   1.072  ns/op
+EquipmentTickBench.before_entrySetIteration      avgt   10    27.090 ±   0.728  ns/op
+FluidOnEyesBench.after_scratchReuse              avgt   10    91.130 ±   3.058  ns/op
+FluidOnEyesBench.before_newPosPerCall            avgt   10   117.950 ±   3.034  ns/op
+FurnaceInputBench.after_cachedByReference        avgt   10    80.370 ±  12.246  ns/op
+FurnaceInputBench.before_newInputPerTick         avgt   10   125.053 ±  22.200  ns/op
+InteractEventGateBench.after_craftGated          avgt   10     0.553 ±   0.021  ns/op
+InteractEventGateBench.after_gated               avgt   10     0.339 ±   0.024  ns/op
+InteractEventGateBench.after_gatedTrigger        avgt   10     0.481 ±   0.020  ns/op
+InteractEventGateBench.after_preCraftFastPath    avgt   10     0.483 ±   0.017  ns/op
+InteractEventGateBench.before_bukkitCopyAndCall  avgt   10     1.269 ±   0.018  ns/op
+InteractEventGateBench.before_constructAndCall   avgt   10     2.262 ±   0.076  ns/op
+InteractEventGateBench.before_copyAndTrigger     avgt   10     1.921 ±   0.093  ns/op
+InteractEventGateBench.before_preCraftEvent      avgt   10     0.459 ±   0.015  ns/op
+LightUpdatePresizeBench.after_presized           avgt   10    42.660 ±   0.893  ns/op
+LightUpdatePresizeBench.before_defaultCapacity   avgt   10    90.051 ±   3.739  ns/op
+PoiLookupBench.after_nullableRef                 avgt   10   278.027 ±  15.378  ns/op
+PoiLookupBench.before_optionalWrap               avgt   10   417.134 ±  12.991  ns/op
+SunBurnBench.after_lazyPos                       avgt   10   172.189 ±   9.003  ns/op
+SunBurnBench.before_eagerPos                     avgt   10   232.227 ±  18.049  ns/op
+TickEffectsBench.after_inlinedLoops              avgt   10    40.066 ±   1.861  ns/op
+TickEffectsBench.before_visitorLambda            avgt   10    39.788 ±   2.263  ns/op
+UseItemOnRangeBench.after_scalarMath             avgt   10   139.962 ±   3.185  ns/op
+UseItemOnRangeBench.before_vec3Allocs            avgt   10   109.261 ±   4.068  ns/op
+
+Benchmark result is saved to results/bench-20260801-000322.json

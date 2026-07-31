@@ -150,34 +150,68 @@ public class InteractEventGateBench {
 
     // (d) callPreCraftEvent
 
-    /** PreCraft 事件语义复刻：事件对象 + 矩阵引用。 */
+    /**
+     * 真实路径语义复刻（CraftEventFactory.callPreCraftEvent）：
+     * before = new CraftInventoryCrafting(matrix, resultInv)（2 包装对象）+ asCraftMirror(result)
+     *          + new PrepareItemCraftEvent + callEvent（0 监听器遍历）+ asNMSCopy(= result.copy())；
+     * after  = 零监听器快路 return result.copy()。
+     */
+    static class CraftInventory {
+        final Object handle;
+        CraftInventory(Object handle) { this.handle = handle; }
+    }
+
+    static final class CraftInventoryCrafting extends CraftInventory {
+        final CraftInventory resultInventory;
+        CraftItemStack result;
+        CraftInventoryCrafting(Object matrix, Object resultInv) {
+            super(matrix);
+            this.resultInventory = new CraftInventory(resultInv);
+        }
+        void setResult(CraftItemStack stack) { this.result = stack; }
+        CraftItemStack getResult() { return this.result; }
+    }
+
+    static final class CraftItemStack {
+        final ItemStack handle;
+        CraftItemStack(ItemStack handle) { this.handle = handle; }
+        static CraftItemStack asCraftMirror(ItemStack stack) { return new CraftItemStack(stack); }
+        static ItemStack asNMSCopy(CraftItemStack mirror) { return mirror.handle.copy(); }
+    }
+
     static final class PreCraftEvent {
-        final Object matrix;
-        final ItemStack result;
-        PreCraftEvent(Object matrix, ItemStack result) { this.matrix = matrix; this.result = result; }
+        final CraftInventoryCrafting inventory;
+        PreCraftEvent(CraftInventoryCrafting inventory) { this.inventory = inventory; }
     }
 
     private final Object craftMatrix = new Object();
+    private final Object resultInventory = new Object();
 
     @Benchmark
-    public Object before_preCraftEvent() {
-        PreCraftEvent event = new PreCraftEvent(this.craftMatrix, this.craftResult);
+    public Object before_preCraftEvent(Blackhole bh) {
+        CraftInventoryCrafting inventory = new CraftInventoryCrafting(this.craftMatrix, this.resultInventory);
+        inventory.setResult(CraftItemStack.asCraftMirror(this.craftResult));
+        PreCraftEvent event = new PreCraftEvent(inventory);
+        bh.consume(event); // callEvent 将事件发布给插件管理器：强制逃逸（真实路径无逃逸分析红利）
         for (Object listener : this.handlerList.getRegisteredListeners()) {
             Blackhole.consumeCPU(listener.hashCode());
         }
-        return event.result;
+        return CraftItemStack.asNMSCopy(event.inventory.getResult());
     }
 
     @Benchmark
-    public Object after_preCraftFastPath() {
+    public Object after_preCraftFastPath(Blackhole bh) {
         if (this.handlerList.getRegisteredListeners().length == 0) {
-            return this.craftResult;
+            return this.craftResult.copy();
         }
-        PreCraftEvent event = new PreCraftEvent(this.craftMatrix, this.craftResult);
+        CraftInventoryCrafting inventory = new CraftInventoryCrafting(this.craftMatrix, this.resultInventory);
+        inventory.setResult(CraftItemStack.asCraftMirror(this.craftResult));
+        PreCraftEvent event = new PreCraftEvent(inventory);
+        bh.consume(event);
         for (Object listener : this.handlerList.getRegisteredListeners()) {
             Blackhole.consumeCPU(listener.hashCode());
         }
-        return event.result;
+        return CraftItemStack.asNMSCopy(event.inventory.getResult());
     }
 
     /** 等价性自检：零监听器时两条路径可观察结果一致。 */
@@ -208,8 +242,12 @@ public class InteractEventGateBench {
         if (((BukkitCopy) bench.before_bukkitCopyAndCall()).handle != bench.craftResult || bench.after_craftGated() != null) {
             System.out.println("MISMATCH craft gate"); System.exit(1);
         }
-        // (d)
-        if (bench.before_preCraftEvent() != bench.craftResult || bench.after_preCraftFastPath() != bench.craftResult) {
+        // (d) 两路径均返回 result 的 copy（新实例、同字段、非原引用）
+        ItemStack d1 = (ItemStack) bench.before_preCraftEvent(bh);
+        ItemStack d2 = (ItemStack) bench.after_preCraftFastPath(bh);
+        if (d1 == bench.craftResult || d2 == bench.craftResult
+            || d1.id != bench.craftResult.id || d1.count != bench.craftResult.count
+            || d2.id != bench.craftResult.id || d2.count != bench.craftResult.count) {
             System.out.println("MISMATCH precraft fast path"); System.exit(1);
         }
         System.out.println("ALL OK");

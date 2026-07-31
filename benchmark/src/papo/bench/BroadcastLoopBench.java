@@ -23,10 +23,11 @@ import org.openjdk.jmh.infra.Blackhole;
 @State(Scope.Benchmark)
 public class BroadcastLoopBench {
 
-    /** ServerPlayer.connection 语义复刻。 */
+    /** ServerPlayer.connection 语义复刻（send 不堆积：覆盖式存储 + 计数，避免基准自身列表无限增长）。 */
     static final class Connection {
-        final List<Object> sent = new ArrayList<>();
-        void send(Object packet) { this.sent.add(packet); }
+        Object last;
+        int sends;
+        void send(Object packet) { this.last = packet; this.sends++; }
     }
 
     static final class Player {
@@ -47,8 +48,10 @@ public class BroadcastLoopBench {
         Object packet = this.packet;
         this.players.forEach(player -> player.connection.send(packet));
         int total = 0;
-        for (Player p : this.players) total += p.connection.sent.size();
-        bh.consume(total);
+        for (Player p : this.players) {
+            total += p.connection.sends;
+            bh.consume(p.connection.last);
+        }
         return total;
     }
 
@@ -60,22 +63,24 @@ public class BroadcastLoopBench {
             players.get(i).connection.send(packet);
         }
         int total = 0;
-        for (Player p : players) total += p.connection.sent.size();
-        bh.consume(total);
+        for (Player p : players) {
+            total += p.connection.sends;
+            bh.consume(p.connection.last);
+        }
         return total;
     }
 
-    /** 等价性自检：发送序列一致。 */
+    /** 等价性自检：发送计数与最后包一致。 */
     public static void main(String[] args) {
         BroadcastLoopBench benchA = new BroadcastLoopBench();
         BroadcastLoopBench benchB = new BroadcastLoopBench();
         Blackhole bh = new Blackhole("Today's password is swordfish. I understand instantiating Blackholes directly is dangerous.");
-        benchA.before_forEachLambda(bh);
-        benchB.after_indexedLoop(bh);
+        int totalA = benchA.before_forEachLambda(bh);
+        int totalB = benchB.after_indexedLoop(bh);
+        if (totalA != 5 || totalB != 5) { System.out.println("MISMATCH count"); System.exit(1); }
         for (int i = 0; i < 5; i++) {
-            List<Object> a = benchA.players.get(i).connection.sent;
-            List<Object> b = benchB.players.get(i).connection.sent;
-            if (a.size() != 1 || b.size() != 1 || a.get(0) != benchA.packet || b.get(0) != benchB.packet) {
+            if (benchA.players.get(i).connection.last != benchA.packet
+                || benchB.players.get(i).connection.last != benchB.packet) {
                 System.out.println("MISMATCH send @" + i); System.exit(1);
             }
         }
