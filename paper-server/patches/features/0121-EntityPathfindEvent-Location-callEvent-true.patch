@@ -1,0 +1,39 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 20:44:29 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=E5=AF=BB=E8=B7=AF=E4=BA=8B?=
+ =?UTF-8?q?=E4=BB=B6=EF=BC=9AEntityPathfindEvent=20=E9=9B=B6=E7=9B=91?=
+ =?UTF-8?q?=E5=90=AC=E5=99=A8=E9=97=A8=E6=8E=A7=EF=BC=88=E6=AF=8F=E6=AC=A1?=
+ =?UTF-8?q?=E5=AF=BB=E8=B7=AF=E6=AF=8F=E7=9B=AE=E6=A0=87=E7=9C=81=20Locati?=
+ =?UTF-8?q?on+=E4=BA=8B=E4=BB=B6=E6=9E=84=E9=80=A0=EF=BC=9B=E4=BA=8B?=
+ =?UTF-8?q?=E4=BB=B6=E6=97=A0=E5=AD=90=E7=B1=BB=E3=80=81=E6=9E=84=E9=80=A0?=
+ =?UTF-8?q?=E4=BB=85=E5=AD=97=E6=AE=B5=E8=B5=8B=E5=80=BC=EF=BC=9B=E9=9B=B6?=
+ =?UTF-8?q?=E7=9B=91=E5=90=AC=E5=99=A8=E6=97=B6=20callEvent=20=E6=81=92=20?=
+ =?UTF-8?q?true=20=E6=9D=A1=E4=BB=B6=E9=80=80=E5=8C=96=E4=B8=BA=E4=BB=85?=
+ =?UTF-8?q?=E4=B8=96=E7=95=8C=E8=BE=B9=E7=95=8C=E6=A3=80=E6=9F=A5=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/entity/ai/navigation/PathNavigation.java b/net/minecraft/world/entity/ai/navigation/PathNavigation.java
+index 3d66e26d557e27abe1cbe3667f091133967dc0a7..b38fcabedc5b6f3c25e6623a530bee7f1e585b04 100644
+--- a/net/minecraft/world/entity/ai/navigation/PathNavigation.java
++++ b/net/minecraft/world/entity/ai/navigation/PathNavigation.java
+@@ -166,9 +166,14 @@ public abstract class PathNavigation {
+         } else {
+             // Paper start - EntityPathfindEvent
+             boolean copiedSet = false;
++            // Papo - zero listeners => callEvent() always returns true (never cancelled), so the event
++            // condition is vacuous; skip Location+event construction per target. EntityPathfindEvent has
++            // its own HandlerList and no subclasses. (Same tradeoff as 0100: async pathfinding with zero
++            // listeners no longer trips the sync-event thread check — unreachable in compliant usage.)
++            final boolean papoHasPathfindListeners = com.destroystokyo.paper.event.entity.EntityPathfindEvent.getHandlerList().getRegisteredListeners().length > 0;
+             for (BlockPos possibleTarget : targets) {
+-                if (!this.mob.level().getWorldBorder().isWithinBounds(possibleTarget) || !new com.destroystokyo.paper.event.entity.EntityPathfindEvent(this.mob.getBukkitEntity(), // Paper - don't path out of world border
+-                    org.bukkit.craftbukkit.util.CraftLocation.toBukkit(possibleTarget, this.mob.level()), target == null ? null : target.getBukkitEntity()).callEvent()) {
++                if (!this.mob.level().getWorldBorder().isWithinBounds(possibleTarget) || (papoHasPathfindListeners && !new com.destroystokyo.paper.event.entity.EntityPathfindEvent(this.mob.getBukkitEntity(), // Paper - don't path out of world border
++                    org.bukkit.craftbukkit.util.CraftLocation.toBukkit(possibleTarget, this.mob.level()), target == null ? null : target.getBukkitEntity()).callEvent())) {
+                     if (!copiedSet) {
+                         copiedSet = true;
+                         targets = new java.util.HashSet<>(targets);
