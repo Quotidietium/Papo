@@ -1,0 +1,33 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 03:29:55 +0800
+Subject: [PATCH] =?UTF-8?q?=E5=88=B7=E6=80=AA=E7=AC=BC=20PreSpawnerSpawnEv?=
+ =?UTF-8?q?ent=20=E9=9B=B6=E7=9B=91=E5=90=AC=E5=99=A8=E5=BF=AB=E8=B7=AF?=
+ =?UTF-8?q?=EF=BC=880165=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/level/BaseSpawner.java b/net/minecraft/world/level/BaseSpawner.java
+index ff9dd4aedc91d151f1955e2e9bed1c597341964c..67c12418864920b7c6bfcbe4465ff4de8bc3179d 100644
+--- a/net/minecraft/world/level/BaseSpawner.java
++++ b/net/minecraft/world/level/BaseSpawner.java
+@@ -134,6 +134,9 @@ public abstract class BaseSpawner {
+                             }
+ 
+                             // Paper start - PreCreatureSpawnEvent
++                            // Papo - zero-listener fast path: PreSpawnerSpawnEvent shares PreCreatureSpawnEvent's static HandlerList;
++                            // with no listeners callEvent() is side-effect free and always returns true, so event construction is a no-op
++                            if (com.destroystokyo.paper.event.entity.PreCreatureSpawnEvent.getHandlerList().getRegisteredListeners().length != 0) {
+                             com.destroystokyo.paper.event.entity.PreSpawnerSpawnEvent event = new com.destroystokyo.paper.event.entity.PreSpawnerSpawnEvent(
+                                 org.bukkit.craftbukkit.util.CraftLocation.toBukkit(vec3, level),
+                                 org.bukkit.craftbukkit.entity.CraftEntityType.minecraftToBukkit(optional.get()),
+@@ -146,6 +149,7 @@ public abstract class BaseSpawner {
+                                 }
+                                 continue;
+                             }
++                            }
+                             // Paper end - PreCreatureSpawnEvent
+ 
+                             Entity entity = EntityType.loadEntityRecursive(valueInput, level, EntitySpawnReason.SPAWNER, entity1 -> {
