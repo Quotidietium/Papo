@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 21:16:32 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=E5=88=B7=E6=80=AA=EF=BC=9APl?=
+ =?UTF-8?q?ayerNaturallySpawnCreaturesEvent=20=E9=9B=B6=E7=9B=91=E5=90=AC?=
+ =?UTF-8?q?=E5=99=A8=E9=97=A8=E6=8E=A7+=E5=AE=9E=E4=BE=8B=E5=A4=8D?=
+ =?UTF-8?q?=E7=94=A8=EF=BC=88=E8=AF=BB=E7=82=B9=E4=BB=85=20isCancelled/get?=
+ =?UTF-8?q?SpawnRadius=20=E5=AE=9E=E8=AF=81=EF=BC=9B=E6=9B=BE=E8=A2=AB?=
+ =?UTF-8?q?=E5=8F=96=E6=B6=88=E6=88=96=E5=8D=8A=E5=BE=84=E8=A2=AB=E6=94=B9?=
+ =?UTF-8?q?=E7=9A=84=E4=BA=8B=E4=BB=B6=E6=A3=80=E5=87=BA=E5=8D=B3=E9=87=8D?=
+ =?UTF-8?q?=E5=BB=BA=EF=BC=8C=E7=9B=91=E5=90=AC=E5=99=A8=E6=B3=A8=E5=86=8C?=
+ =?UTF-8?q?/=E6=B3=A8=E9=94=80=E8=BF=81=E7=A7=BB=E5=AE=89=E5=85=A8?=
+ =?UTF-8?q?=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/server/level/ServerChunkCache.java b/net/minecraft/server/level/ServerChunkCache.java
+index af67b07722bb0125acd081dab767d7e7b360623b..b60e45756eb29c0f6e6bb413c5b6f72cb01fcfc7 100644
+--- a/net/minecraft/server/level/ServerChunkCache.java
++++ b/net/minecraft/server/level/ServerChunkCache.java
+@@ -561,6 +561,18 @@ public class ServerChunkCache extends ChunkSource implements ca.spottedleaf.moon
+             for (ServerPlayer entityPlayer : this.level.players()) {
+                 int chunkRange = Math.min(level.spigotConfig.mobSpawnRange, entityPlayer.getBukkitEntity().getViewDistance());
+                 chunkRange = Math.min(chunkRange, 8);
++                // Papo start - zero listeners: the event can never be cancelled and its radius always
++                // equals chunkRange, so reuse the existing instance when it is in exactly that state.
++                // A previously cancelled or radius-modified event (listener registered then unregistered)
++                // fails the check and is rebuilt; readers (ChunkMap) only read isCancelled/getSpawnRadius.
++                if (com.destroystokyo.paper.event.entity.PlayerNaturallySpawnCreaturesEvent.getHandlerList().getRegisteredListeners().length == 0) {
++                    com.destroystokyo.paper.event.entity.PlayerNaturallySpawnCreaturesEvent event = entityPlayer.playerNaturallySpawnedEvent;
++                    if (event == null || event.isCancelled() || event.getSpawnRadius() != (byte) chunkRange) {
++                        entityPlayer.playerNaturallySpawnedEvent = new com.destroystokyo.paper.event.entity.PlayerNaturallySpawnCreaturesEvent(entityPlayer.getBukkitEntity(), (byte) chunkRange);
++                    }
++                    continue;
++                }
++                // Papo end
+                 entityPlayer.playerNaturallySpawnedEvent = new com.destroystokyo.paper.event.entity.PlayerNaturallySpawnCreaturesEvent(entityPlayer.getBukkitEntity(), (byte) chunkRange);
+                 entityPlayer.playerNaturallySpawnedEvent.callEvent();
+             }
