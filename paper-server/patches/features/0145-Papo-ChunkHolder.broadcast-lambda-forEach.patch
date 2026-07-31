@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 23:39:24 +0800
+Subject: [PATCH] =?UTF-8?q?Papo:=20ChunkHolder.broadcast=20=E6=8D=95?=
+ =?UTF-8?q?=E8=8E=B7=20lambda=20forEach=20=E6=94=B9=E7=B4=A2=E5=BC=95?=
+ =?UTF-8?q?=E5=BE=AA=E7=8E=AF?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/server/level/ChunkHolder.java b/net/minecraft/server/level/ChunkHolder.java
+index 22123d8b0fd8741c6df4efaec56f3c694e0529a3..ca0f36cd52b44c52ec216a7b0eadca72252b39d9 100644
+--- a/net/minecraft/server/level/ChunkHolder.java
++++ b/net/minecraft/server/level/ChunkHolder.java
+@@ -339,7 +339,13 @@ public class ChunkHolder extends GenerationChunkHolder implements ca.spottedleaf
+     }
+ 
+     private void broadcast(List<ServerPlayer> players, Packet<?> packet) {
+-        players.forEach(player -> player.connection.send(packet));
++        // Papo - indexed loop instead of forEach(lambda): the lambda captures `packet` (one
++        // allocation per broadcast call). `players` is a fresh local ArrayList built by
++        // moonrise$getPlayers for this call chain, so iteration order and fail-fast
++        // semantics are indistinguishable.
++        for (int papoI = 0, papoSize = players.size(); papoI < papoSize; papoI++) {
++            players.get(papoI).connection.send(packet);
++        }
+     }
+ 
+     @Override
