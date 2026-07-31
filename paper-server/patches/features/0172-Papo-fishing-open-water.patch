@@ -1,0 +1,70 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 04:53:41 +0800
+Subject: [PATCH] =?UTF-8?q?=E9=92=93=E9=B1=BC=E6=B5=AE=E6=A0=87=E5=BC=80?=
+ =?UTF-8?q?=E9=98=94=E6=B0=B4=E5=9F=9F=E5=88=A4=E5=AE=9A=E5=91=BD=E4=BB=A4?=
+ =?UTF-8?q?=E5=BC=8F=E9=87=8D=E5=86=99=EF=BC=8C=E6=AF=8F=E6=AC=A1=E5=88=A4?=
+ =?UTF-8?q?=E5=AE=9A=E7=9C=81=E7=BA=A6=20500=20=E6=AC=A1=E5=88=86=E9=85=8D?=
+ =?UTF-8?q?=EF=BC=880172=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/entity/projectile/FishingHook.java b/net/minecraft/world/entity/projectile/FishingHook.java
+index 61b19dc84b68dbf567ae9ffa9e882ce979f61e74..5543ee44864b485b73a41a70a32c3cb971d92ecb 100644
+--- a/net/minecraft/world/entity/projectile/FishingHook.java
++++ b/net/minecraft/world/entity/projectile/FishingHook.java
+@@ -443,9 +443,10 @@ public class FishingHook extends Projectile {
+ 
+     public boolean calculateOpenWater(BlockPos pos) {
+         FishingHook.OpenWaterType openWaterType = FishingHook.OpenWaterType.INVALID;
++        BlockPos.MutableBlockPos papoScratch = new BlockPos.MutableBlockPos(); // Papo - shared scratch for the area scans
+ 
+         for (int i = -1; i <= 2; i++) {
+-            FishingHook.OpenWaterType openWaterTypeForArea = this.getOpenWaterTypeForArea(pos.offset(-2, i, -2), pos.offset(2, i, 2));
++            FishingHook.OpenWaterType openWaterTypeForArea = this.getOpenWaterTypeForArea(pos, i, papoScratch); // Papo
+             switch (openWaterTypeForArea) {
+                 case ABOVE_WATER:
+                     if (openWaterType == FishingHook.OpenWaterType.INVALID) {
+@@ -467,12 +468,35 @@ public class FishingHook extends Projectile {
+         return true;
+     }
+ 
+-    private FishingHook.OpenWaterType getOpenWaterTypeForArea(BlockPos pos1, BlockPos pos2) {
+-        return BlockPos.betweenClosedStream(pos1, pos2)
+-            .map(this::getOpenWaterTypeForBlock)
+-            .reduce((type1, type2) -> type1 == type2 ? type1 : FishingHook.OpenWaterType.INVALID)
+-            .orElse(FishingHook.OpenWaterType.INVALID);
++    // Papo start - imperative equivalent of the original stream fold: betweenClosedStream yields the same 125
++    // coordinates this triple loop visits; the reduce combiner (type1 == type2 ? type1 : INVALID) computes
++    // "all equal ? that value : INVALID" which is order-independent with INVALID absorbing, so the early exit
++    // on INVALID preserves the final value; getOpenWaterTypeForBlock is side-effect free (getBlockState /
++    // getCollisionShape are pure coordinate reads - vanilla passes a mutable BlockPos into getCollisionShape
++    // the same way in BlockCollisions). One scratch replaces 125 immutable BlockPos + stream/spliterator/
++    // method-ref allocations per area, and the 8 outer pos.offset calls fold into the loop bounds.
++    private FishingHook.OpenWaterType getOpenWaterTypeForArea(BlockPos pos, int i, BlockPos.MutableBlockPos scratch) {
++        FishingHook.OpenWaterType openWaterType = null;
++        int minX = pos.getX() - 2;
++        int minY = pos.getY() + i;
++        int minZ = pos.getZ() - 2;
++
++        for (int x = minX; x <= minX + 4; x++) {
++            for (int y = minY; y <= minY + 4; y++) {
++                for (int z = minZ; z <= minZ + 4; z++) {
++                    FishingHook.OpenWaterType type = this.getOpenWaterTypeForBlock(scratch.set(x, y, z));
++                    if (openWaterType == null) {
++                        openWaterType = type;
++                    } else if (openWaterType != type) {
++                        return FishingHook.OpenWaterType.INVALID;
++                    }
++                }
++            }
++        }
++
++        return openWaterType == null ? FishingHook.OpenWaterType.INVALID : openWaterType;
+     }
++    // Papo end
+ 
+     private FishingHook.OpenWaterType getOpenWaterTypeForBlock(BlockPos pos) {
+         BlockState blockState = this.level().getBlockState(pos);
