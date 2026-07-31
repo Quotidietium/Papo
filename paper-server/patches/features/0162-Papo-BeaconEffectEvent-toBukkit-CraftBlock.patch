@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 02:55:32 +0800
+Subject: [PATCH] =?UTF-8?q?Papo:=20BeaconEffectEvent=20=E9=9B=B6=E7=9B=91?=
+ =?UTF-8?q?=E5=90=AC=E5=99=A8=E5=BF=AB=E8=B7=AF=EF=BC=88=E7=9C=81=20toBukk?=
+ =?UTF-8?q?it/CraftBlock/=E4=BA=8B=E4=BB=B6=E5=88=86=E9=85=8D=EF=BC=8C?=
+ =?UTF-8?q?=E6=AF=8F=E7=8E=A9=E5=AE=B6=E6=94=B9=E5=8F=91=E5=AD=97=E6=AE=B5?=
+ =?UTF-8?q?=E7=9B=B8=E7=AD=89=E5=89=AF=E6=9C=AC=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/level/block/entity/BeaconBlockEntity.java b/net/minecraft/world/level/block/entity/BeaconBlockEntity.java
+index 8fcc1691c387cc951a3b6c9fd51eb1ef3ecabeb0..f5c653ad258873e720a517df1c1b60438e7f1969 100644
+--- a/net/minecraft/world/level/block/entity/BeaconBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/BeaconBlockEntity.java
+@@ -376,6 +376,22 @@ public class BeaconBlockEntity extends BlockEntity implements MenuProvider, Name
+ 
+     // Paper start - BeaconEffectEvent
+     private static void applyEffectsAndCallEvent(final Level level, final BlockPos position, final List<Player> players, final MobEffectInstance mobEffectInstance, final boolean isPrimary) {
++        // Papo start - zero-listener fast path (0162): with no BeaconEffectEvent listeners the
++        // event is never cancelled and getEffect() returns the constructor effect unchanged, so
++        // each player would receive fromBukkit(toBukkit(mobEffectInstance)) — field-equal to a
++        // plain copy: the effect holder round-trips through the registry bidirectional mapping,
++        // hiddenEffect is null on beacon instances (and dropped by fromBukkit anyway), and the
++        // beacon amplifier (0/1) passes the fromBukkit clamp unchanged. Skip the shared
++        // toBukkit/CraftBlock and per-player event allocations; apply a per-player copy instead
++        // (duration mutates in place during effect ticking, so the shared instance itself must
++        // not be handed out).
++        if (com.destroystokyo.paper.event.block.BeaconEffectEvent.getHandlerList().getRegisteredListeners().length == 0) {
++            for (final Player player : players) {
++                player.addEffect(new MobEffectInstance(mobEffectInstance), org.bukkit.event.entity.EntityPotionEffectEvent.Cause.BEACON);
++            }
++            return;
++        }
++        // Papo end
+         final org.bukkit.potion.PotionEffect apiEffect = org.bukkit.craftbukkit.potion.CraftPotionUtil.toBukkit(mobEffectInstance);
+         final org.bukkit.craftbukkit.block.CraftBlock apiBlock = org.bukkit.craftbukkit.block.CraftBlock.at(level, position);
+         for (final Player player : players) {
