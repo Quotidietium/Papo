@@ -1,0 +1,57 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 01:20:00 +0800
+Subject: [PATCH] =?UTF-8?q?Papo:=20ItemStack=20=E8=A7=A3=E7=A0=81=E6=B7=B1?=
+ =?UTF-8?q?=E5=BA=A6=E6=A0=A1=E9=AA=8C=20CountingOps=20RegistryOps=20?=
+ =?UTF-8?q?=E6=8C=89=E6=B3=A8=E5=86=8C=E8=A1=A8=E8=AE=BF=E9=97=AE=E7=BC=93?=
+ =?UTF-8?q?=E5=AD=98?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/core/RegistryAccess.java b/net/minecraft/core/RegistryAccess.java
+index 9a3bf5de4eeed933d3c5ddbd19f1306a51a28d83..43e092fad3b280930e2ca7cbb560131b5c6c89ea 100644
+--- a/net/minecraft/core/RegistryAccess.java
++++ b/net/minecraft/core/RegistryAccess.java
+@@ -82,6 +82,22 @@ public interface RegistryAccess extends HolderLookup.Provider {
+         }
+         // Papo end
+ 
++        // Papo start - cached RegistryOps for Paper's CountingOps codec-depth context
++        // (ItemStack.validatedStreamCodec decodes every inbound non-empty stack through it).
++        // Same safety argument as above: CountingOps.INSTANCE is an immutable stateless
++        // singleton (final maxDepth, per-operation builders), HolderLookupAdapter cache is a CHM.
++        private volatile net.minecraft.resources.RegistryOps<io.papermc.paper.util.CountingOps.Value> papoCountingOps;
++
++        public net.minecraft.resources.RegistryOps<io.papermc.paper.util.CountingOps.Value> papoCountingSerializationContext() {
++            net.minecraft.resources.RegistryOps<io.papermc.paper.util.CountingOps.Value> ops = this.papoCountingOps;
++            if (ops == null) {
++                ops = this.createSerializationContext(io.papermc.paper.util.CountingOps.INSTANCE);
++                this.papoCountingOps = ops;
++            }
++            return ops;
++        }
++        // Papo end
++
+         public ImmutableRegistryAccess(List<? extends Registry<?>> registries) {
+             this.registries = registries.stream().collect(Collectors.toUnmodifiableMap(Registry::key, registry -> registry));
+         }
+diff --git a/net/minecraft/world/item/ItemStack.java b/net/minecraft/world/item/ItemStack.java
+index f29629388dc898829fa8e5646f470f836a999e8d..aa5dc697d4d3454e58745299029a352c958a3b29 100644
+--- a/net/minecraft/world/item/ItemStack.java
++++ b/net/minecraft/world/item/ItemStack.java
+@@ -227,7 +227,12 @@ public final class ItemStack implements DataComponentHolder {
+             public ItemStack decode(RegistryFriendlyByteBuf buffer) {
+                 ItemStack itemStack = codec.decode(buffer);
+                 if (!itemStack.isEmpty()) {
+-                    RegistryOps<io.papermc.paper.util.CountingOps.Value> registryOps = buffer.registryAccess().createSerializationContext(io.papermc.paper.util.CountingOps.INSTANCE); // Paper - Track codec depth
++                    // Papo - cached per-registry-access CountingOps context (ImmutableRegistryAccess
++                    // fast path; falls back to per-call creation for other access types) - 0133 pattern
++                    net.minecraft.core.RegistryAccess papoAccess = buffer.registryAccess();
++                    RegistryOps<io.papermc.paper.util.CountingOps.Value> registryOps = papoAccess instanceof net.minecraft.core.RegistryAccess.ImmutableRegistryAccess papoImmutable
++                        ? papoImmutable.papoCountingSerializationContext()
++                        : papoAccess.createSerializationContext(io.papermc.paper.util.CountingOps.INSTANCE); // Paper - Track codec depth
+                     ItemStack.CODEC.encodeStart(registryOps, itemStack).getOrThrow(DecoderException::new);
+                 }
+ 
