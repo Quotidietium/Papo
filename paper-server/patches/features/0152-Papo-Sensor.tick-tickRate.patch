@@ -1,0 +1,45 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 01:20:00 +0800
+Subject: [PATCH] =?UTF-8?q?Papo:=20Sensor.tick=20tickRate=20=E6=9F=A5?=
+ =?UTF-8?q?=E6=89=BE=E5=90=8C=E6=B3=95=E7=BC=93=E5=AD=98?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/entity/ai/sensing/Sensor.java b/net/minecraft/world/entity/ai/sensing/Sensor.java
+index 1441f24413b10538e6bdc0f894234d96916c57dc..86fc7a672d0af81b5e395b87948851db88c87f95 100644
+--- a/net/minecraft/world/entity/ai/sensing/Sensor.java
++++ b/net/minecraft/world/entity/ai/sensing/Sensor.java
+@@ -30,6 +30,12 @@ public abstract class Sensor<E extends LivingEntity> {
+     private final int scanRate;
+     private long timeToTick;
+     private final String configKey; // Paper - configurable sensor tick rate and timings
++    // Papo start - sensor tickRate lookup cache (same scheme as Behavior): keyed by
++    // (config epoch, level WorldConfiguration reference); see Behavior.java field comment.
++    private long papoTickRateEpoch = -1L;
++    private Object papoTickRateConfig = null;
++    private int papoCachedTickRate = -1;
++    // Papo end
+ 
+     public Sensor(int scanRate) {
+         // Paper start - configurable sensor tick rate and timings
+@@ -50,7 +56,16 @@ public abstract class Sensor<E extends LivingEntity> {
+ 
+     public final void tick(ServerLevel level, E entity) {
+         if (--this.timeToTick <= 0L) {
+-            this.timeToTick = java.util.Objects.requireNonNullElse(level.paperConfig().tickRates.sensor.get(entity.getType(), this.configKey), this.scanRate); // Paper - configurable sensor tick rate and timings
++            // Papo start - cached lookup instead of per-fire Table.get (see field comment)
++            long papoEpoch = io.papermc.paper.configuration.PaperConfigurations.PAPO_CONFIG_EPOCH;
++            io.papermc.paper.configuration.WorldConfiguration papoConfig = level.paperConfig();
++            if (papoEpoch != this.papoTickRateEpoch || papoConfig != this.papoTickRateConfig) {
++                this.papoTickRateEpoch = papoEpoch;
++                this.papoTickRateConfig = papoConfig;
++                this.papoCachedTickRate = java.util.Objects.requireNonNullElse(papoConfig.tickRates.sensor.get(entity.getType(), this.configKey), this.scanRate);
++            }
++            this.timeToTick = this.papoCachedTickRate;
++            // Papo end
+             this.updateTargetingConditionRanges(entity);
+             this.doTick(level, entity);
+         }
