@@ -1,0 +1,95 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 22:13:47 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=E5=8C=85=E7=BC=96=E8=A7=A3?=
+ =?UTF-8?q?=E7=A0=81=EF=BC=9AImmutableRegistryAccess=20=E7=BC=93=E5=AD=98?=
+ =?UTF-8?q?=20NBT=20RegistryOps=EF=BC=88volatile=20=E6=83=B0=E6=80=A7?=
+ =?UTF-8?q?=EF=BC=9BfromCodecWithRegistries=20=E6=AF=8F=E7=BB=84=E4=BB=B6?=
+ =?UTF-8?q?=E7=BC=96=E8=A7=A3=E7=A0=81=E7=9C=81=20RegistryOps+HolderLookup?=
+ =?UTF-8?q?Adapter+CHM=20=E5=88=86=E9=85=8D=E3=80=82=E5=AE=89=E5=85=A8?=
+ =?UTF-8?q?=E6=80=A7=E5=AE=9E=E8=AF=81=EF=BC=9AHolderLookupAdapter.lookups?=
+ =?UTF-8?q?=20=E4=B8=BA=20ConcurrentHashMap=E3=80=81NbtOps=20=E6=97=A0?=
+ =?UTF-8?q?=E7=8A=B6=E6=80=81=E3=80=81RegistryOps=20=E4=BB=85=E6=8D=95?=
+ =?UTF-8?q?=E8=8E=B7=E4=B8=8D=E5=8F=AF=E5=8F=98=E6=B3=A8=E5=86=8C=E8=A1=A8?=
+ =?UTF-8?q?=E8=AE=BF=E9=97=AE=EF=BC=9B=E9=9D=9E=20ImmutableRegistryAccess?=
+ =?UTF-8?q?=20=E8=B5=B0=E5=8E=9F=E8=B7=AF=E5=BE=84=EF=BC=9B=E6=9C=8D?=
+ =?UTF-8?q?=E5=8A=A1=E7=AB=AF=20registryAccess()=3DLayeredRegistryAccess.c?=
+ =?UTF-8?q?omposite=20=E7=A1=AE=E4=B8=BA=20ImmutableRegistryAccess=20?=
+ =?UTF-8?q?=E5=AD=90=E7=B1=BB=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/core/RegistryAccess.java b/net/minecraft/core/RegistryAccess.java
+index 8341ac329c71352015cce2e53d0138be30287cff..9a3bf5de4eeed933d3c5ddbd19f1306a51a28d83 100644
+--- a/net/minecraft/core/RegistryAccess.java
++++ b/net/minecraft/core/RegistryAccess.java
+@@ -65,6 +65,22 @@ public interface RegistryAccess extends HolderLookup.Provider {
+ 
+     public static class ImmutableRegistryAccess implements RegistryAccess {
+         private final Map<? extends ResourceKey<? extends Registry<?>>, ? extends Registry<?>> registries;
++        // Papo start - cached RegistryOps for the NBT serialization context (ByteBufCodecs hot path):
++        // the registries of an ImmutableRegistryAccess never change and a RegistryOps only captures
++        // this access, so it can be created once and shared. Thread-safe: RegistryOps.HolderLookupAdapter's
++        // lookup cache is a ConcurrentHashMap, NbtOps is stateless, and a benign race at first use just
++        // builds the same (equals-equal) ops twice.
++        private volatile net.minecraft.resources.RegistryOps<net.minecraft.nbt.Tag> papoNbtOps;
++
++        public net.minecraft.resources.RegistryOps<net.minecraft.nbt.Tag> papoNbtSerializationContext() {
++            net.minecraft.resources.RegistryOps<net.minecraft.nbt.Tag> ops = this.papoNbtOps;
++            if (ops == null) {
++                ops = this.createSerializationContext(net.minecraft.nbt.NbtOps.INSTANCE);
++                this.papoNbtOps = ops;
++            }
++            return ops;
++        }
++        // Papo end
+ 
+         public ImmutableRegistryAccess(List<? extends Registry<?>> registries) {
+             this.registries = registries.stream().collect(Collectors.toUnmodifiableMap(Registry::key, registry -> registry));
+diff --git a/net/minecraft/network/codec/ByteBufCodecs.java b/net/minecraft/network/codec/ByteBufCodecs.java
+index 2f38f7b369ef3d72be03eca602373f34eb6c6a4a..def2d4cb6e3059a17ca0d9dd02759c35f0463607 100644
+--- a/net/minecraft/network/codec/ByteBufCodecs.java
++++ b/net/minecraft/network/codec/ByteBufCodecs.java
+@@ -30,6 +30,7 @@ import net.minecraft.core.Holder;
+ import net.minecraft.core.HolderSet;
+ import net.minecraft.core.IdMap;
+ import net.minecraft.core.Registry;
++import net.minecraft.core.RegistryAccess;
+ import net.minecraft.core.UUIDUtil;
+ import net.minecraft.nbt.CompoundTag;
+ import net.minecraft.nbt.EndTag;
+@@ -411,19 +412,30 @@ public interface ByteBufCodecs {
+             @Override
+             public T decode(RegistryFriendlyByteBuf buffer) {
+                 Tag tag = streamCodec.decode(buffer);
+-                RegistryOps<Tag> registryOps = buffer.registryAccess().createSerializationContext(NbtOps.INSTANCE);
++                RegistryOps<Tag> registryOps = ByteBufCodecs.papoNbtSerializationContext(buffer.registryAccess()); // Papo - cached ops (see below)
+                 return codec.parse(registryOps, tag).getOrThrow(string -> new DecoderException("Failed to decode: " + string + " " + tag));
+             }
+ 
+             @Override
+             public void encode(RegistryFriendlyByteBuf buffer, T value) {
+-                RegistryOps<Tag> registryOps = buffer.registryAccess().createSerializationContext(NbtOps.INSTANCE);
++                RegistryOps<Tag> registryOps = ByteBufCodecs.papoNbtSerializationContext(buffer.registryAccess()); // Papo - cached ops (see below)
+                 Tag tag = codec.encodeStart(registryOps, value).getOrThrow(string -> new EncoderException("Failed to encode: " + string + " " + value));
+                 streamCodec.encode(buffer, tag);
+             }
+         };
+     }
+ 
++    // Papo start - use the cached per-access NBT RegistryOps when the access is immutable (the common
++    // case: the server's frozen composite access). A RegistryOps only captures the access, and its
++    // HolderLookupAdapter lookup cache is a ConcurrentHashMap, so sharing one instance across calls
++    // and threads is safe and behavior-identical to creating one per call.
++    private static RegistryOps<Tag> papoNbtSerializationContext(RegistryAccess registryAccess) {
++        return registryAccess instanceof RegistryAccess.ImmutableRegistryAccess immutable
++            ? immutable.papoNbtSerializationContext()
++            : registryAccess.createSerializationContext(NbtOps.INSTANCE);
++    }
++    // Papo end
++
+     // Paper start - Track codec depth
+     static <B extends FriendlyByteBuf, V> StreamCodec<B, V> trackDepth(final StreamCodec<B, V> codec) {
+         return new StreamCodec<>() {
