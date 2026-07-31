@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 03:29:21 +0800
+Subject: [PATCH] =?UTF-8?q?=E6=BD=AE=E6=B6=8C=E6=A0=B8=E5=BF=83=20AABB=20?=
+ =?UTF-8?q?=E4=B8=89=E6=AC=A1=E5=88=86=E9=85=8D=E6=8A=98=E5=8F=A0=E4=B8=BA?=
+ =?UTF-8?q?=E4=B8=80=E6=AC=A1=EF=BC=880164=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/level/block/entity/ConduitBlockEntity.java b/net/minecraft/world/level/block/entity/ConduitBlockEntity.java
+index a6fdd9be704b9590bf3f14ea7c6a3cf6ab807158..516f10b6ddd354d302247a0646fb036498cb58a1 100644
+--- a/net/minecraft/world/level/block/entity/ConduitBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/ConduitBlockEntity.java
+@@ -180,7 +180,8 @@ public class ConduitBlockEntity extends BlockEntity {
+         int x = pos.getX();
+         int y = pos.getY();
+         int z = pos.getZ();
+-        AABB aabb = new AABB(x, y, z, x + 1, y + 1, z + 1).inflate(i).expandTowards(0.0, level.getHeight(), 0.0);
++        // Papo - collapse inflate/expandTowards into one AABB (bit-identical: all terms are exact ints widened once; i >= 0, height > 0)
++        AABB aabb = new AABB(x - i, y - i, z - i, x + 1 + i, y + 1 + i + level.getHeight(), z + 1 + i);
+         List<Player> entitiesOfClass = level.getEntitiesOfClass(Player.class, aabb);
+         if (!entitiesOfClass.isEmpty()) {
+             for (Player player : entitiesOfClass) {
+@@ -233,7 +234,8 @@ public class ConduitBlockEntity extends BlockEntity {
+     }
+ 
+     public static AABB getDestroyRangeAABB(BlockPos pos) {
+-        return new AABB(pos).inflate(8.0);
++        // Papo - collapse AABB(pos).inflate(8) into one AABB (bit-identical: exact int terms widened once)
++        return new AABB(pos.getX() - 8, pos.getY() - 8, pos.getZ() - 8, pos.getX() + 1 + 8, pos.getY() + 1 + 8, pos.getZ() + 1 + 8);
+     }
+ 
+     private static void animationTick(Level level, BlockPos pos, List<BlockPos> positions, @Nullable Entity entity, int tickCount) {
