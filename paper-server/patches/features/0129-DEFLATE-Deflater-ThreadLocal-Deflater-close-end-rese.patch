@@ -1,0 +1,118 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 22:13:45 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=E5=8C=BA=E5=9F=9F=E6=96=87?=
+ =?UTF-8?q?=E4=BB=B6=E5=86=99=E5=8E=8B=E7=BC=A9=EF=BC=9ADEFLATE=20?=
+ =?UTF-8?q?=E5=86=99=E4=BE=A7=20Deflater=20ThreadLocal=20=E5=8D=95?=
+ =?UTF-8?q?=E6=A7=BD=E6=B1=A0=E5=8C=96=EF=BC=88=E6=98=BE=E5=BC=8F=20Deflat?=
+ =?UTF-8?q?er=20=E6=9E=84=E9=80=A0=20close=20=E4=B8=8D=20end=EF=BC=8Creset?=
+ =?UTF-8?q?=20=E5=90=8E=E5=A4=8D=E7=94=A8=EF=BC=8C=E9=95=9C=E5=83=8F=20010?=
+ =?UTF-8?q?3=20=E8=AF=BB=E4=BE=A7=20Inflater=20=E6=B1=A0=EF=BC=9B=E6=B1=A0?=
+ =?UTF-8?q?=E6=8C=89=E5=8E=8B=E7=BC=A9=E7=BA=A7=E5=88=AB=E9=94=AE=E6=8E=A7?=
+ =?UTF-8?q?=EF=BC=8C=E9=85=8D=E7=BD=AE=E9=87=8D=E8=BD=BD=E7=BA=A7=E5=88=AB?=
+ =?UTF-8?q?=E5=8F=98=E6=9B=B4=E6=97=B6=20end=20=E6=97=A7=E5=AE=9E=E4=BE=8B?=
+ =?UTF-8?q?=E8=A1=8C=E4=B8=BA=E5=90=8C=E5=89=8D=EF=BC=89+=20deflate=20?=
+ =?UTF-8?q?=E5=86=85=E9=83=A8=E7=BC=93=E5=86=B2=20512=E2=86=928192=20+=20?=
+ =?UTF-8?q?=E5=A4=96=E5=B1=82=20BufferedOutputStream=208192=E2=86=9232768?=
+ =?UTF-8?q?=EF=BC=88=E5=8E=8B=E7=BC=A9=E5=AD=97=E8=8A=82=E6=B5=81=E4=BB=85?=
+ =?UTF-8?q?=E5=8F=96=E5=86=B3=E4=BA=8E=E8=BE=93=E5=85=A5=E4=B8=8E=20flush?=
+ =?UTF-8?q?=20=E6=A8=A1=E5=BC=8F=EF=BC=8C=E7=BC=93=E5=86=B2=E5=88=86?=
+ =?UTF-8?q?=E5=9D=97=E4=B8=8D=E6=94=B9=E5=8F=98=E5=86=99=E5=85=A5=E5=AD=97?=
+ =?UTF-8?q?=E8=8A=82=EF=BC=9B=E5=B8=B8=E9=87=8F=E9=99=90=E5=AE=9A=E5=90=8D?=
+ =?UTF-8?q?=E5=BC=95=E7=94=A8=E8=A7=84=E9=81=BF=E5=AD=97=E6=AE=B5=E5=88=9D?=
+ =?UTF-8?q?=E5=A7=8B=E5=8C=96=E5=99=A8=E5=89=8D=E5=90=91=E5=BC=95=E7=94=A8?=
+ =?UTF-8?q?=E9=99=90=E5=88=B6=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/level/chunk/storage/RegionFileVersion.java b/net/minecraft/world/level/chunk/storage/RegionFileVersion.java
+index 306ca3b49c005c0f0e9279f62f3dcd7acb4aa8cb..b8a192dc0fc243b8f76e806d1e9253103fd11aec 100644
+--- a/net/minecraft/world/level/chunk/storage/RegionFileVersion.java
++++ b/net/minecraft/world/level/chunk/storage/RegionFileVersion.java
+@@ -36,7 +36,7 @@ public class RegionFileVersion {
+             2,
+             "deflate",
+             inputWrapper -> new FastBufferedInputStream(new PapoInflaterInputStream(inputWrapper)), // Papo - pooled Inflater + larger fill buffer (see below)
+-            outputWrapper -> new BufferedOutputStream(papoCreateDeflaterOutputStream(outputWrapper))
++            outputWrapper -> new BufferedOutputStream(papoCreateDeflaterOutputStream(outputWrapper), RegionFileVersion.PAPO_REGION_WRITE_BUFFER_SIZE)
+         )
+     );
+     public static final RegionFileVersion VERSION_NONE = register(new RegionFileVersion(3, "none", FastBufferedInputStream::new, BufferedOutputStream::new));
+@@ -70,31 +70,65 @@ public class RegionFileVersion {
+         };
+     }
+     // Paper end - Configurable region compression format
+-    // Papo start - configurable deflate compression level for region files.
+-    // DeflaterOutputStream(out, deflater) does NOT end() the provided Deflater on close, so wrap it
+-    // in a small subclass that owns and ends the Deflater (avoids leaking native zlib state per save).
++    // Papo start - configurable deflate compression level for region files + pooled Deflaters.
++    // JDK bytecode: DeflaterOutputStream(out, def, size) with an explicitly provided Deflater sets
++    // usesDefaultDeflater=false, so close() finish()es the stream but does NOT end() the Deflater —
++    // it can be reset()+reused, avoiding a fresh native zlib allocation + Cleaner registration per
++    // chunk save (mirror of the read-side Inflater pool below). reset() restores the exact state of
++    // a new Deflater(level), and the compressed byte stream is a pure function of input bytes +
++    // flush modes, so raising the internal deflate buffer 512->8192 and the outer BufferedOutputStream
++    // to 32768 changes only call chunking, never the written bytes.
++    private static final int PAPO_DEFLATER_BUFFER_SIZE = 8192;
++    private static final int PAPO_REGION_WRITE_BUFFER_SIZE = 32768;
++    private static final ThreadLocal<RegionFileVersion.PapoPooledDeflater> PAPO_DEFLATER_POOL = new ThreadLocal<>();
++
+     private static OutputStream papoCreateDeflaterOutputStream(OutputStream out) {
+         int level = io.papermc.paper.configuration.GlobalConfiguration.get().unsupportedSettings.compressionLevel;
+         if (level < 1 || level > 9) {
+             level = 6;
+         }
+-        return new PapoDeflaterOutputStream(out, new java.util.zip.Deflater(level));
++        return new PapoDeflaterOutputStream(out, papoBorrowDeflater(level));
++    }
++
++    private static RegionFileVersion.PapoPooledDeflater papoBorrowDeflater(int level) {
++        final RegionFileVersion.PapoPooledDeflater pooled = PAPO_DEFLATER_POOL.get();
++        if (pooled != null) {
++            PAPO_DEFLATER_POOL.set(null);
++            if (pooled.level == level) {
++                return pooled;
++            }
++            pooled.deflater.end(); // compression level changed (config reload): retire it, mirroring the old end()-on-close
++        }
++        return new RegionFileVersion.PapoPooledDeflater(new java.util.zip.Deflater(level), level);
++    }
++
++    private static final class PapoPooledDeflater {
++        final java.util.zip.Deflater deflater;
++        final int level;
++
++        PapoPooledDeflater(java.util.zip.Deflater deflater, int level) {
++            this.deflater = deflater;
++            this.level = level;
++        }
+     }
+ 
+     private static final class PapoDeflaterOutputStream extends java.util.zip.DeflaterOutputStream {
+-        private final java.util.zip.Deflater ownedDeflater;
++        private final RegionFileVersion.PapoPooledDeflater pooled;
+ 
+-        PapoDeflaterOutputStream(OutputStream out, java.util.zip.Deflater deflater) {
+-            super(out, deflater);
+-            this.ownedDeflater = deflater;
++        PapoDeflaterOutputStream(OutputStream out, RegionFileVersion.PapoPooledDeflater pooled) {
++            super(out, pooled.deflater, PAPO_DEFLATER_BUFFER_SIZE);
++            this.pooled = pooled;
+         }
+ 
+         @Override
+         public void close() throws IOException {
+             try {
+-                super.close();
++                super.close(); // closes the underlying stream; does not end() the borrowed Deflater
+             } finally {
+-                this.ownedDeflater.end();
++                this.pooled.deflater.reset();
++                // single slot per thread: if a second stream was open concurrently the displaced
++                // Deflater is simply dropped for the GC/Cleaner, same as the old per-stream one.
++                PAPO_DEFLATER_POOL.set(this.pooled);
+             }
+         }
+     }
