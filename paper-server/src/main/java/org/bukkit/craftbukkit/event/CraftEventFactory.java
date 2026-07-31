@@ -1464,6 +1464,13 @@ public class CraftEventFactory {
     }
 
     public static ItemStack callPreCraftEvent(CraftingContainer matrix, Container resultInventory, ItemStack result, InventoryView lastCraftView, boolean isRepair) {
+        // Papo start - zero-listener fast path: with no listeners the event is never observed, so
+        // event.getInventory().getResult() is exactly the asCraftMirror(result) set below and
+        // asNMSCopy(mirror) == result.copy(); skip the CraftInventoryCrafting + mirror + event + dispatch.
+        if (PrepareItemCraftEvent.getHandlerList().getRegisteredListeners().length == 0) {
+            return result.copy();
+        }
+        // Papo end
         CraftInventoryCrafting inventory = new CraftInventoryCrafting(matrix, resultInventory);
         inventory.setResult(CraftItemStack.asCraftMirror(result));
 
