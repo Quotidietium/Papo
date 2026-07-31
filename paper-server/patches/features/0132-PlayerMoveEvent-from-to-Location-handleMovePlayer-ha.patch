@@ -1,0 +1,102 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 22:13:46 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=E7=A7=BB=E5=8A=A8=E4=BA=8B?=
+ =?UTF-8?q?=E4=BB=B6=EF=BC=9APlayerMoveEvent=20from/to=20Location=20?=
+ =?UTF-8?q?=E9=98=88=E5=80=BC=E5=90=8E=E5=BB=B6=E8=BF=9F=E6=9E=84=E9=80=A0?=
+ =?UTF-8?q?=EF=BC=88handleMovePlayer/handleMoveVehicle=20=E4=B8=A4?=
+ =?UTF-8?q?=E5=A4=84=E3=80=82=E9=9D=9E=E5=8C=85=E5=80=BC=E5=88=86=E9=87=8F?=
+ =?UTF-8?q?=E9=80=90=E4=BD=8D=E5=A4=8D=E5=88=BB=20absSnapTo=20=E5=AD=98?=
+ =?UTF-8?q?=E5=82=A8=E8=AF=AD=E4=B9=89=EF=BC=9Ax/z=20clamp=20=C2=B13e7?=
+ =?UTF-8?q?=E3=80=81yaw=20%360=E3=80=81pitch=20clamp=C2=B190=20=E5=90=8E?=
+ =?UTF-8?q?=20%360=EF=BC=9BgetWorld=20=E4=B8=8E=20getLocation=20=E5=90=8C?=
+ =?UTF-8?q?=E4=B8=80=E5=BC=95=E7=94=A8=EF=BC=9Bfrom/to=20=E4=BB=85?=
+ =?UTF-8?q?=E5=9C=A8=E9=98=88=E5=80=BC=E9=80=9A=E8=BF=87=E5=88=86=E6=94=AF?=
+ =?UTF-8?q?=E5=86=85=E4=BD=BF=E7=94=A8=E5=AE=9E=E8=AF=81=EF=BC=9B=E5=A4=9A?=
+ =?UTF-8?q?=E6=95=B0=E7=A7=BB=E5=8A=A8=E5=8C=85=E8=A2=AB=201/256=20?=
+ =?UTF-8?q?=E9=98=88=E5=80=BC=E8=BF=87=E6=BB=A4=EF=BC=8C=E6=AF=8F=E5=8C=85?=
+ =?UTF-8?q?=E7=9C=81=203=20=E4=B8=AA=20Location=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+index 65ca8537d9f7f30bebf8457a69cf37b1315b04b7..32ac21f0b4a5b550100c187eeb56dcaf6600fc54 100644
+--- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+@@ -676,14 +676,20 @@ public class ServerGamePacketListenerImpl
+                     this.lastPitch = prevPitch;
+                     this.hasMoved = true;
+                 }
+-                Location from = new Location(player.getWorld(), this.lastPosX, this.lastPosY, this.lastPosZ, this.lastYaw, this.lastPitch); // Get the Players previous Event location.
+-                Location to = CraftLocation.toBukkit(packet.position(), player.getWorld(), packet.yRot(), packet.xRot());
++                // Papo start - compute the scalar to-values first and only allocate the two Locations
++                // when the movement threshold below is actually passed (most vehicle move packets are
++                // filtered by it); the event Location contents are exactly the raw packet values
++                // (CraftLocation.toBukkit performs no normalization).
++                Vec3 papoPacketPos = packet.position();
+ 
+                 // Prevent 40 event-calls for less than a single pixel of movement >.>
+-                double delta = Mth.square(this.lastPosX - to.getX()) + Mth.square(this.lastPosY - to.getY()) + Mth.square(this.lastPosZ - to.getZ());
+-                float deltaAngle = Math.abs(this.lastYaw - to.getYaw()) + Math.abs(this.lastPitch - to.getPitch());
++                double delta = Mth.square(this.lastPosX - papoPacketPos.x()) + Mth.square(this.lastPosY - papoPacketPos.y()) + Mth.square(this.lastPosZ - papoPacketPos.z());
++                float deltaAngle = Math.abs(this.lastYaw - packet.yRot()) + Math.abs(this.lastPitch - packet.xRot());
+ 
+                 if ((delta > 1f / 256 || deltaAngle > 10f) && !this.player.isImmobile()) {
++                    Location from = new Location(player.getWorld(), this.lastPosX, this.lastPosY, this.lastPosZ, this.lastYaw, this.lastPitch); // Get the Players previous Event location.
++                    Location to = CraftLocation.toBukkit(papoPacketPos, player.getWorld(), packet.yRot(), packet.xRot());
++                    // Papo end
+                     this.lastPosX = to.getX();
+                     this.lastPosY = to.getY();
+                     this.lastPosZ = to.getZ();
+@@ -1657,27 +1663,32 @@ public class ServerGamePacketListenerImpl
+                                         this.lastPitch = prevPitch;
+                                         this.hasMoved = true;
+                                     }
+-                                    Location from = new Location(player.getWorld(), this.lastPosX, this.lastPosY, this.lastPosZ, this.lastYaw, this.lastPitch); // Get the Players previous Event location.
+-                                    Location to = player.getLocation().clone(); // Start off the To location as the Players current location.
+-
+-                                    // If the packet contains movement information then we update the To location with the correct XYZ.
+-                                    if (packet.hasPos) {
+-                                        to.setX(packet.x);
+-                                        to.setY(packet.y);
+-                                        to.setZ(packet.z);
+-                                    }
+-
+-                                    // If the packet contains look information then we update the To location with the correct Yaw & Pitch.
+-                                    if (packet.hasRot) {
+-                                        to.setYaw(packet.yRot);
+-                                        to.setPitch(packet.xRot);
+-                                    }
++                                    // Papo start - compute the scalar to-values first and only allocate the two
++                                    // Locations when the movement threshold below is actually passed (most move
++                                    // packets are filtered by it). The non-packet components replicate exactly what
++                                    // the absSnapTo(...) above stores and getLocation() would read back: x/z clamped
++                                    // to +-3.0E7 (y unclamped), yaw % 360, pitch clamped to +-90 then % 360
++                                    // (Entity.absSnapTo/absSnapRotationTo; yRot is always finite via guarded
++                                    // setters). getWorld() is the same reference getLocation() uses
++                                    // (CraftEntity.getWorld), and nothing between the snap and this point mutates
++                                    // the player position, so the lazily built Locations below are identical to
++                                    // the old getLocation().clone() + setX/setY/... sequence.
++                                    double papoToX = packet.hasPos ? packet.x : Mth.clamp(prevX, -3.0E7, 3.0E7);
++                                    double papoToY = packet.hasPos ? packet.y : prevY;
++                                    double papoToZ = packet.hasPos ? packet.z : Mth.clamp(prevZ, -3.0E7, 3.0E7);
++                                    float papoToYaw = packet.hasRot ? packet.yRot : prevYaw % 360.0F;
++                                    float papoToPitch = packet.hasRot ? packet.xRot : Mth.clamp(prevPitch, -90.0F, 90.0F) % 360.0F;
++                                    // Papo end
+ 
+                                     // Prevent 40 event-calls for less than a single pixel of movement >.>
+-                                    double delta = Mth.square(this.lastPosX - to.getX()) + Mth.square(this.lastPosY - to.getY()) + Mth.square(this.lastPosZ - to.getZ());
+-                                    float deltaAngle = Math.abs(this.lastYaw - to.getYaw()) + Math.abs(this.lastPitch - to.getPitch());
++                                    double delta = Mth.square(this.lastPosX - papoToX) + Mth.square(this.lastPosY - papoToY) + Mth.square(this.lastPosZ - papoToZ); // Papo - scalars (see above)
++                                    float deltaAngle = Math.abs(this.lastYaw - papoToYaw) + Math.abs(this.lastPitch - papoToPitch); // Papo - scalars (see above)
+ 
+                                     if ((delta > 1f / 256 || deltaAngle > 10f) && !this.player.isImmobile()) {
++                                        // Papo start - allocate the Locations only now (see above)
++                                        Location from = new Location(player.getWorld(), this.lastPosX, this.lastPosY, this.lastPosZ, this.lastYaw, this.lastPitch); // Get the Players previous Event location.
++                                        Location to = new Location(player.getWorld(), papoToX, papoToY, papoToZ, papoToYaw, papoToPitch); // Start off the To location as the Players current location.
++                                        // Papo end
+                                         this.lastPosX = to.getX();
+                                         this.lastPosY = to.getY();
+                                         this.lastPosZ = to.getZ();
