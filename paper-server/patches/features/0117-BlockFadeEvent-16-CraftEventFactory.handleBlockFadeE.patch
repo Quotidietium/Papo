@@ -1,0 +1,224 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 20:37:41 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=E6=96=B9=E5=9D=97=E6=B6=88?=
+ =?UTF-8?q?=E9=80=80=E4=BA=8B=E4=BB=B6=EF=BC=9ABlockFadeEvent=2016=20?=
+ =?UTF-8?q?=E4=B8=AA=E8=B0=83=E7=94=A8=E7=82=B9=E6=94=B9=E8=B5=B0=20CraftE?=
+ =?UTF-8?q?ventFactory.handleBlockFadeEvent=20=E9=9B=B6=E7=9B=91=E5=90=AC?=
+ =?UTF-8?q?=E5=99=A8=E5=BF=AB=E8=B7=AF=EF=BC=88=E8=B0=83=E7=94=A8=E6=96=B9?=
+ =?UTF-8?q?=E4=BB=85=E8=AF=BB=20isCancelled=EF=BC=9B=E4=BA=8B=E4=BB=B6?=
+ =?UTF-8?q?=E6=97=A0=E5=AD=90=E7=B1=BB=E3=80=81=E6=9E=84=E9=80=A0=E6=97=A0?=
+ =?UTF-8?q?=E5=89=AF=E4=BD=9C=E7=94=A8=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/level/block/BaseFireBlock.java b/net/minecraft/world/level/block/BaseFireBlock.java
+index 1ff7387320928af6630b9e0cbc30199b4770737d..8c9d9dc9d160528714f298d4804195903c7a44c0 100644
+--- a/net/minecraft/world/level/block/BaseFireBlock.java
++++ b/net/minecraft/world/level/block/BaseFireBlock.java
+@@ -227,7 +227,7 @@ public abstract class BaseFireBlock extends Block {
+ 
+     // CraftBukkit start
+     protected void fireExtinguished(net.minecraft.world.level.LevelAccessor world, BlockPos position) {
+-        if (!org.bukkit.craftbukkit.event.CraftEventFactory.callBlockFadeEvent(world, position, Blocks.AIR.defaultBlockState()).isCancelled()) {
++        if (!org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockFadeEvent(world, position, Blocks.AIR.defaultBlockState())) {
+             world.removeBlock(position, false);
+         }
+     }
+diff --git a/net/minecraft/world/level/block/CoralBlock.java b/net/minecraft/world/level/block/CoralBlock.java
+index 1c86b4fce7392851b2e33914fb588775f90f766b..e64695e0abf5830cde97c1344a1804c4bb0402d6 100644
+--- a/net/minecraft/world/level/block/CoralBlock.java
++++ b/net/minecraft/world/level/block/CoralBlock.java
+@@ -38,7 +38,7 @@ public class CoralBlock extends Block {
+     protected void tick(BlockState state, ServerLevel level, BlockPos pos, RandomSource random) {
+         if (!this.scanForWater(level, pos)) {
+             // CraftBukkit start
+-            if (org.bukkit.craftbukkit.event.CraftEventFactory.callBlockFadeEvent(level, pos, this.deadBlock.defaultBlockState()).isCancelled()) {
++            if (org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockFadeEvent(level, pos, this.deadBlock.defaultBlockState())) {
+                 return;
+             }
+             // CraftBukkit end
+diff --git a/net/minecraft/world/level/block/CoralFanBlock.java b/net/minecraft/world/level/block/CoralFanBlock.java
+index 2a48b215fde808fdc6b36a5d8fe88c7ae56c9567..1d6d7c1afbe00af5674c96cedb3c888400068366 100644
+--- a/net/minecraft/world/level/block/CoralFanBlock.java
++++ b/net/minecraft/world/level/block/CoralFanBlock.java
+@@ -39,7 +39,7 @@ public class CoralFanBlock extends BaseCoralFanBlock {
+     protected void tick(BlockState state, ServerLevel level, BlockPos pos, RandomSource random) {
+         if (!scanForWater(state, level, pos)) {
+             // CraftBukkit start
+-            if (org.bukkit.craftbukkit.event.CraftEventFactory.callBlockFadeEvent(level, pos, this.deadBlock.defaultBlockState().setValue(CoralFanBlock.WATERLOGGED, false)).isCancelled()) {
++            if (org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockFadeEvent(level, pos, this.deadBlock.defaultBlockState().setValue(CoralFanBlock.WATERLOGGED, false))) {
+                 return;
+             }
+             // CraftBukkit end
+diff --git a/net/minecraft/world/level/block/CoralPlantBlock.java b/net/minecraft/world/level/block/CoralPlantBlock.java
+index b66a3e6e109cab913ff2593accaea04110d66094..0882544541c69c2602e3a9bbd20304a315b98813 100644
+--- a/net/minecraft/world/level/block/CoralPlantBlock.java
++++ b/net/minecraft/world/level/block/CoralPlantBlock.java
+@@ -43,7 +43,7 @@ public class CoralPlantBlock extends BaseCoralPlantTypeBlock {
+     protected void tick(BlockState state, ServerLevel level, BlockPos pos, RandomSource random) {
+         if (!scanForWater(state, level, pos)) {
+             // CraftBukkit start
+-            if (org.bukkit.craftbukkit.event.CraftEventFactory.callBlockFadeEvent(level, pos, this.deadBlock.defaultBlockState().setValue(CoralPlantBlock.WATERLOGGED, false)).isCancelled()) {
++            if (org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockFadeEvent(level, pos, this.deadBlock.defaultBlockState().setValue(CoralPlantBlock.WATERLOGGED, false))) {
+                 return;
+             }
+             // CraftBukkit end
+diff --git a/net/minecraft/world/level/block/CoralWallFanBlock.java b/net/minecraft/world/level/block/CoralWallFanBlock.java
+index 2d34d3e7a39a27b1756573d16ec0f8878ab8f620..e3915eb9969d324b7224777e184cce020df7b84f 100644
+--- a/net/minecraft/world/level/block/CoralWallFanBlock.java
++++ b/net/minecraft/world/level/block/CoralWallFanBlock.java
+@@ -39,7 +39,7 @@ public class CoralWallFanBlock extends BaseCoralWallFanBlock {
+     protected void tick(BlockState state, ServerLevel level, BlockPos pos, RandomSource random) {
+         if (!scanForWater(state, level, pos)) {
+             // CraftBukkit start
+-            if (org.bukkit.craftbukkit.event.CraftEventFactory.callBlockFadeEvent(level, pos, this.deadBlock.defaultBlockState().setValue(CoralWallFanBlock.WATERLOGGED, false).setValue(CoralWallFanBlock.FACING, state.getValue(CoralWallFanBlock.FACING))).isCancelled()) {
++            if (org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockFadeEvent(level, pos, this.deadBlock.defaultBlockState().setValue(CoralWallFanBlock.WATERLOGGED, false).setValue(CoralWallFanBlock.FACING, state.getValue(CoralWallFanBlock.FACING)))) {
+                 return;
+             }
+             // CraftBukkit end
+diff --git a/net/minecraft/world/level/block/DriedGhastBlock.java b/net/minecraft/world/level/block/DriedGhastBlock.java
+index e7dbc14cce1d0ec3f410ae7ebbb4dc47301b5176..2f104be709ddd3ea35d68d302d9c5f2f9636b622 100644
+--- a/net/minecraft/world/level/block/DriedGhastBlock.java
++++ b/net/minecraft/world/level/block/DriedGhastBlock.java
+@@ -114,7 +114,7 @@ public class DriedGhastBlock extends HorizontalDirectionalBlock implements Simpl
+             level.gameEvent(GameEvent.BLOCK_CHANGE, pos, GameEvent.Context.of(state));
+         } else {
+             // Paper start - Call BlockFadeEvent
+-            if (org.bukkit.craftbukkit.event.CraftEventFactory.callBlockFadeEvent(level, pos, state.getFluidState().createLegacyBlock()).isCancelled()) {
++            if (org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockFadeEvent(level, pos, state.getFluidState().createLegacyBlock())) {
+                 return;
+             }
+             // Paper end - Call BlockFadeEvent
+diff --git a/net/minecraft/world/level/block/FarmBlock.java b/net/minecraft/world/level/block/FarmBlock.java
+index da822a89e134e98696308315799d872944e7712f..6a2e70a7800a041413d14b73343fb129d00bc7a5 100644
+--- a/net/minecraft/world/level/block/FarmBlock.java
++++ b/net/minecraft/world/level/block/FarmBlock.java
+@@ -143,7 +143,7 @@ public class FarmBlock extends Block {
+         // CraftBukkit start
+         if (entity == null) {
+             if (org.bukkit.craftbukkit.event.CraftEventFactory
+-                .callBlockFadeEvent(level, pos, Blocks.DIRT.defaultBlockState()).isCancelled()) {
++                .handleBlockFadeEvent(level, pos, Blocks.DIRT.defaultBlockState())) {
+                 return;
+             }
+         }
+diff --git a/net/minecraft/world/level/block/FrogspawnBlock.java b/net/minecraft/world/level/block/FrogspawnBlock.java
+index a3915b97bfe5863b377d9de7ac1814409575b9e0..213daff62b78dbe02436928223f97961b33bbf24 100644
+--- a/net/minecraft/world/level/block/FrogspawnBlock.java
++++ b/net/minecraft/world/level/block/FrogspawnBlock.java
+@@ -104,7 +104,7 @@ public class FrogspawnBlock extends Block {
+ 
+     private void hatchFrogspawn(ServerLevel level, BlockPos pos, RandomSource random) {
+         // Paper start - Call BlockFadeEvent
+-        if (org.bukkit.craftbukkit.event.CraftEventFactory.callBlockFadeEvent(level, pos, Blocks.AIR.defaultBlockState()).isCancelled()) {
++        if (org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockFadeEvent(level, pos, Blocks.AIR.defaultBlockState())) {
+             return;
+         }
+         // Paper end - Call BlockFadeEven
+diff --git a/net/minecraft/world/level/block/IceBlock.java b/net/minecraft/world/level/block/IceBlock.java
+index f29af8c07b80192bf8518ea6b356a52cda94b0f1..623b223e14d4d03718bbba1bde8e7006a06c246c 100644
+--- a/net/minecraft/world/level/block/IceBlock.java
++++ b/net/minecraft/world/level/block/IceBlock.java
+@@ -63,7 +63,7 @@ public class IceBlock extends HalfTransparentBlock {
+     protected void melt(BlockState state, Level level, BlockPos pos) {
+         // Paper start - call BlockFadeEvent
+         final boolean waterEvaporates = level.environmentAttributes().getValue(EnvironmentAttributes.WATER_EVAPORATES, pos);
+-        if (org.bukkit.craftbukkit.event.CraftEventFactory.callBlockFadeEvent(level, pos, waterEvaporates ? Blocks.AIR.defaultBlockState() : Blocks.WATER.defaultBlockState()).isCancelled()) {
++        if (org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockFadeEvent(level, pos, waterEvaporates ? Blocks.AIR.defaultBlockState() : Blocks.WATER.defaultBlockState())) {
+             return;
+         }
+         if (waterEvaporates) {
+diff --git a/net/minecraft/world/level/block/NyliumBlock.java b/net/minecraft/world/level/block/NyliumBlock.java
+index 7357bf27bb0890cefd8f8188a7a326a631cd0ff6..294de1390a0f211dfdcd8744bc75f8ecb89a229a 100644
+--- a/net/minecraft/world/level/block/NyliumBlock.java
++++ b/net/minecraft/world/level/block/NyliumBlock.java
+@@ -40,7 +40,7 @@ public class NyliumBlock extends Block implements BonemealableBlock {
+     protected void randomTick(BlockState state, ServerLevel level, BlockPos pos, RandomSource random) {
+         if (!canBeNylium(state, level, pos)) {
+             // CraftBukkit start
+-            if (org.bukkit.craftbukkit.event.CraftEventFactory.callBlockFadeEvent(level, pos, Blocks.NETHERRACK.defaultBlockState()).isCancelled()) {
++            if (org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockFadeEvent(level, pos, Blocks.NETHERRACK.defaultBlockState())) {
+                 return;
+             }
+             // CraftBukkit end
+diff --git a/net/minecraft/world/level/block/RedStoneOreBlock.java b/net/minecraft/world/level/block/RedStoneOreBlock.java
+index 8ef666854fa5342261626ad0bb12d72d1cb0cee2..0edc637cdb409c9f583ab2a4c36c5d1d67f2a0e0 100644
+--- a/net/minecraft/world/level/block/RedStoneOreBlock.java
++++ b/net/minecraft/world/level/block/RedStoneOreBlock.java
+@@ -99,7 +99,7 @@ public class RedStoneOreBlock extends Block {
+     protected void randomTick(BlockState state, ServerLevel level, BlockPos pos, RandomSource random) {
+         if (state.getValue(LIT)) {
+             // CraftBukkit start
+-            if (org.bukkit.craftbukkit.event.CraftEventFactory.callBlockFadeEvent(level, pos, state.setValue(RedStoneOreBlock.LIT, false)).isCancelled()) {
++            if (org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockFadeEvent(level, pos, state.setValue(RedStoneOreBlock.LIT, false))) {
+                 return;
+             }
+             // CraftBukkit end
+diff --git a/net/minecraft/world/level/block/ScaffoldingBlock.java b/net/minecraft/world/level/block/ScaffoldingBlock.java
+index 82ddf7633a99dfc5c28e90df9f01c885131efb0f..1f49cc8d2bbcf3c3f3bfb204c7d4f592c52426a3 100644
+--- a/net/minecraft/world/level/block/ScaffoldingBlock.java
++++ b/net/minecraft/world/level/block/ScaffoldingBlock.java
+@@ -117,7 +117,7 @@ public class ScaffoldingBlock extends Block implements SimpleWaterloggedBlock {
+     protected void tick(BlockState state, ServerLevel level, BlockPos pos, RandomSource random) {
+         int distance = getDistance(level, pos);
+         BlockState blockState = state.setValue(DISTANCE, distance).setValue(BOTTOM, this.isBottom(level, pos, distance));
+-        if (blockState.getValue(DISTANCE) == 7 && !org.bukkit.craftbukkit.event.CraftEventFactory.callBlockFadeEvent(level, pos, blockState.getFluidState().createLegacyBlock()).isCancelled()) { // CraftBukkit - BlockFadeEvent // Paper - fix wrong block state
++        if (blockState.getValue(DISTANCE) == 7 && !org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockFadeEvent(level, pos, blockState.getFluidState().createLegacyBlock())) { // CraftBukkit - BlockFadeEvent // Paper - fix wrong block state
+             if (state.getValue(DISTANCE) == 7) {
+                 FallingBlockEntity.fall(level, pos, blockState);
+             } else {
+diff --git a/net/minecraft/world/level/block/SnifferEggBlock.java b/net/minecraft/world/level/block/SnifferEggBlock.java
+index 13a90f46bcab75bbb2ad1e7b7be10f484a562952..9bdc44a6b635e9ec631c735221230e83d265e919 100644
+--- a/net/minecraft/world/level/block/SnifferEggBlock.java
++++ b/net/minecraft/world/level/block/SnifferEggBlock.java
+@@ -81,7 +81,7 @@ public class SnifferEggBlock extends Block {
+             level.playSound(null, pos, SoundEvents.SNIFFER_EGG_CRACK, SoundSource.BLOCKS, 0.7F, 0.9F + random.nextFloat() * 0.2F);
+         } else {
+             // Paper start - Call BlockFadeEvent
+-            if (org.bukkit.craftbukkit.event.CraftEventFactory.callBlockFadeEvent(level, pos, state.getFluidState().createLegacyBlock()).isCancelled()) {
++            if (org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockFadeEvent(level, pos, state.getFluidState().createLegacyBlock())) {
+                 this.rescheduleTick(level, pos);
+                 return;
+             }
+diff --git a/net/minecraft/world/level/block/SnowLayerBlock.java b/net/minecraft/world/level/block/SnowLayerBlock.java
+index de7e600ca1348b61990aaf4ffdd91c6c3ec13cf6..19ef182c6d0e387992c637c66d1e350002955d65 100644
+--- a/net/minecraft/world/level/block/SnowLayerBlock.java
++++ b/net/minecraft/world/level/block/SnowLayerBlock.java
+@@ -104,7 +104,7 @@ public class SnowLayerBlock extends Block {
+     protected void randomTick(BlockState state, ServerLevel level, BlockPos pos, RandomSource random) {
+         if (level.getBrightness(LightLayer.BLOCK, pos) > 11) {
+             // CraftBukkit start
+-            if (org.bukkit.craftbukkit.event.CraftEventFactory.callBlockFadeEvent(level, pos, Blocks.AIR.defaultBlockState()).isCancelled()) {
++            if (org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockFadeEvent(level, pos, Blocks.AIR.defaultBlockState())) {
+                 return;
+             }
+             // CraftBukkit end
+diff --git a/net/minecraft/world/level/block/SpreadingSnowyDirtBlock.java b/net/minecraft/world/level/block/SpreadingSnowyDirtBlock.java
+index b11c6d76cb9df1f92a4581646929d0dc79ec3e4a..146bed902a145aabb71972bfdcd08ea6dabf3477 100644
+--- a/net/minecraft/world/level/block/SpreadingSnowyDirtBlock.java
++++ b/net/minecraft/world/level/block/SpreadingSnowyDirtBlock.java
+@@ -60,7 +60,7 @@ public abstract class SpreadingSnowyDirtBlock extends SnowyDirtBlock {
+         if (!canBeGrass(cachedBlockChunk, state, level, pos)) {
+             // Paper end - Perf: optimize dirt and snow spreading
+             // CraftBukkit start
+-            if (org.bukkit.craftbukkit.event.CraftEventFactory.callBlockFadeEvent(level, pos, Blocks.DIRT.defaultBlockState()).isCancelled()) {
++            if (org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockFadeEvent(level, pos, Blocks.DIRT.defaultBlockState())) {
+                 return;
+             }
+             // CraftBukkit end
+diff --git a/net/minecraft/world/level/block/TurtleEggBlock.java b/net/minecraft/world/level/block/TurtleEggBlock.java
+index 732f244b0265477434b26a47ddedab10f49b06a3..134c02d186c91909b9b4276a3737dfa6a28f4aec 100644
+--- a/net/minecraft/world/level/block/TurtleEggBlock.java
++++ b/net/minecraft/world/level/block/TurtleEggBlock.java
+@@ -118,7 +118,7 @@ public class TurtleEggBlock extends Block {
+                 level.gameEvent(GameEvent.BLOCK_CHANGE, pos, GameEvent.Context.of(state));
+             } else {
+                 // CraftBukkit start - Call BlockFadeEvent
+-                if (org.bukkit.craftbukkit.event.CraftEventFactory.callBlockFadeEvent(level, pos, Blocks.AIR.defaultBlockState()).isCancelled()) {
++                if (org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockFadeEvent(level, pos, Blocks.AIR.defaultBlockState())) {
+                     return;
+                 }
+                 // CraftBukkit end
