@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 20:45:43 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=E7=9F=BF=E8=BD=A6=20tick?=
+ =?UTF-8?q?=EF=BC=9AVehicleUpdateEvent/VehicleMoveEvent=20=E6=95=B4?=
+ =?UTF-8?q?=E5=9D=97=E9=9B=B6=E7=9B=91=E5=90=AC=E5=99=A8=E9=97=A8=E6=8E=A7?=
+ =?UTF-8?q?=EF=BC=88=E6=AF=8F=E7=9F=BF=E8=BD=A6=E6=AF=8F=20tick=20?=
+ =?UTF-8?q?=E7=9C=81=202=20Location+1~2=20=E4=BA=8B=E4=BB=B6+=E6=B4=BE?=
+ =?UTF-8?q?=E5=8F=91=EF=BC=9B=E4=B8=A4=E4=BA=8B=E4=BB=B6=E5=9D=87=E9=9D=9E?=
+ =?UTF-8?q?=20Cancellable=E3=80=81=E6=97=A0=E5=AD=90=E7=B1=BB=E3=80=81?=
+ =?UTF-8?q?=E6=9E=84=E9=80=A0=E4=BB=85=E5=AD=97=E6=AE=B5=E8=B5=8B=E5=80=BC?=
+ =?UTF-8?q?=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/entity/vehicle/minecart/AbstractMinecart.java b/net/minecraft/world/entity/vehicle/minecart/AbstractMinecart.java
+index 1123ec0038552e0b40774f4a433ff325695ea071..6472e439bc90ebf706c200880faf3fd76ac4f2da 100644
+--- a/net/minecraft/world/entity/vehicle/minecart/AbstractMinecart.java
++++ b/net/minecraft/world/entity/vehicle/minecart/AbstractMinecart.java
+@@ -299,6 +299,11 @@ public abstract class AbstractMinecart extends VehicleEntity {
+         // this.handlePortal(); // CraftBukkit - handled in postTick
+         this.behavior.tick();
+         // CraftBukkit start
++        // Papo - gate the whole vehicle-event block: with no listeners on either event, both callEvent()
++        // are empty dispatches and from/to/vehicle/bworld only serve event construction (both events
++        // have their own HandlerList, no subclasses, constructors only store fields, non-cancellable).
++        if (org.bukkit.event.vehicle.VehicleUpdateEvent.getHandlerList().getRegisteredListeners().length > 0
++            || org.bukkit.event.vehicle.VehicleMoveEvent.getHandlerList().getRegisteredListeners().length > 0) {
+         org.bukkit.World bworld = this.level().getWorld();
+         org.bukkit.Location from = new org.bukkit.Location(bworld, prevX, prevY, prevZ, prevYaw, prevPitch);
+         org.bukkit.Location to = org.bukkit.craftbukkit.util.CraftLocation.toBukkit(this.position(), this.level(), this.getYRot(), this.getXRot());
+@@ -309,6 +314,7 @@ public abstract class AbstractMinecart extends VehicleEntity {
+         if (!from.equals(to)) {
+             new org.bukkit.event.vehicle.VehicleMoveEvent(vehicle, from, to).callEvent();
+         }
++        }
+         // CraftBukkit end
+         this.updateInWaterStateAndDoFluidPushing();
+         if (this.isInLava()) {
