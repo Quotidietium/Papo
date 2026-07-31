@@ -1,0 +1,115 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 02:00:40 +0800
+Subject: [PATCH] =?UTF-8?q?Papo:=20Varint21FrameDecoder=20=E5=86=85?=
+ =?UTF-8?q?=E8=81=94=20varint=20=E8=A7=A3=E6=9E=90=EF=BC=88=E6=B6=88?=
+ =?UTF-8?q?=E9=99=A4=20helperBuf=20=E9=80=90=E5=AD=97=E8=8A=82=E6=8A=84?=
+ =?UTF-8?q?=E5=86=99=E4=B8=8E=E4=BA=8C=E6=AC=A1=E8=A7=A3=E6=9E=90=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/network/Varint21FrameDecoder.java b/net/minecraft/network/Varint21FrameDecoder.java
+index 2a5a744c8dfdea5d9a83f648e4cb10bfbbcee0df..f88f245edceeac12d7220ce4e27b568acec096ec 100644
+--- a/net/minecraft/network/Varint21FrameDecoder.java
++++ b/net/minecraft/network/Varint21FrameDecoder.java
+@@ -1,7 +1,6 @@
+ package net.minecraft.network;
+ 
+ import io.netty.buffer.ByteBuf;
+-import io.netty.buffer.Unpooled;
+ import io.netty.channel.ChannelHandlerContext;
+ import io.netty.handler.codec.ByteToMessageDecoder;
+ import io.netty.handler.codec.CorruptedFrameException;
+@@ -9,35 +8,13 @@ import java.util.List;
+ import org.jspecify.annotations.Nullable;
+ 
+ public class Varint21FrameDecoder extends ByteToMessageDecoder {
+-    private static final int MAX_VARINT21_BYTES = 3;
+-    private final ByteBuf helperBuf = Unpooled.directBuffer(3);
++    // Papo start - helper buffer removed: the varint is parsed inline while reading (0155)
+     private final @Nullable BandwidthDebugMonitor monitor;
+ 
+     public Varint21FrameDecoder(@Nullable BandwidthDebugMonitor monitor) {
+         this.monitor = monitor;
+     }
+ 
+-    @Override
+-    protected void handlerRemoved0(ChannelHandlerContext ctx) {
+-        this.helperBuf.release();
+-    }
+-
+-    private static boolean copyVarint(ByteBuf in, ByteBuf out) {
+-        for (int i = 0; i < 3; i++) {
+-            if (!in.isReadable()) {
+-                return false;
+-            }
+-
+-            byte _byte = in.readByte();
+-            out.writeByte(_byte);
+-            if (!VarInt.hasContinuationBit(_byte)) {
+-                return true;
+-            }
+-        }
+-
+-        throw new CorruptedFrameException("length wider than 21-bit");
+-    }
+-
+     @Override
+     protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) {
+         // Paper start - Perf: Optimize exception handling; if channel is not active just discard the packet
+@@ -47,22 +24,40 @@ public class Varint21FrameDecoder extends ByteToMessageDecoder {
+         }
+         // Paper end - Perf: Optimize exception handling
+         in.markReaderIndex();
+-        this.helperBuf.clear();
+-        if (!copyVarint(in, this.helperBuf)) {
+-            in.resetReaderIndex();
+-        } else {
+-            int i = VarInt.read(this.helperBuf);
+-            if (i == 0) {
+-                throw new CorruptedFrameException("Frame length cannot be zero");
+-            } else if (in.readableBytes() < i) {
++        // Papo start - parse the length varint directly from `in` instead of copying up to 3
++        // bytes into helperBuf and re-parsing them with VarInt.read (0155). The accumulation
++        // below is bit-identical to VarInt.read on the copied bytes for the 1-3 byte case:
++        // first >= 0 -> value == first == first & 127; otherwise per-byte `i |= (b & 127) << n * 7`
++        // in the same order. Reader-index outcomes are also unchanged: incomplete varint ->
++        // resetReaderIndex; "wider than 21-bit" / zero length -> throw after consuming the
++        // prefix bytes (no reset), exactly as before.
++        int i = 0;
++        for (int b = 0; b < 3; b++) {
++            if (!in.isReadable()) {
+                 in.resetReaderIndex();
+-            } else {
+-                if (this.monitor != null) {
+-                    this.monitor.onReceive(i + VarInt.getByteSize(i));
+-                }
++                return;
++            }
+ 
+-                out.add(in.readBytes(i));
++            byte _byte = in.readByte();
++            i |= (_byte & 127) << b * 7;
++            if (!VarInt.hasContinuationBit(_byte)) {
++                if (i == 0) {
++                    throw new CorruptedFrameException("Frame length cannot be zero");
++                } else if (in.readableBytes() < i) {
++                    in.resetReaderIndex();
++                    return;
++                } else {
++                    if (this.monitor != null) {
++                        this.monitor.onReceive(i + VarInt.getByteSize(i));
++                    }
++
++                    out.add(in.readBytes(i));
++                    return;
++                }
+             }
+         }
++
++        throw new CorruptedFrameException("length wider than 21-bit");
++        // Papo end
+     }
+ }
