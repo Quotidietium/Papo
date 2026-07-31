@@ -1,0 +1,127 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 20:15:14 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=E6=BC=8F=E6=96=97=EF=BC=9Age?=
+ =?UTF-8?q?tEntityContainer=20=E5=AE=9E=E4=BD=93=E5=AE=B9=E5=99=A8?=
+ =?UTF-8?q?=E6=90=9C=E7=B4=A2=20AABB=20=E7=BC=93=E5=AD=98=EF=BC=88suck=20?=
+ =?UTF-8?q?=E4=BE=A7=E6=8C=82=20BE=20=E6=83=B0=E6=80=A7=E5=AD=97=E6=AE=B5?=
+ =?UTF-8?q?=E2=80=94=E2=80=94worldPosition=20final=20=E6=95=85=E5=B8=B8?=
+ =?UTF-8?q?=E9=87=8F=EF=BC=9Beject=20=E4=BE=A7=E6=8C=89=20searchPosition?=
+ =?UTF-8?q?=20=E9=94=AE=E6=8E=A7=E2=80=94=E2=80=94facing=20=E5=8F=98?=
+ =?UTF-8?q?=E6=9B=B4=E8=87=AA=E5=8A=A8=E9=87=8D=E7=AE=97=EF=BC=9B=E7=9F=BF?=
+ =?UTF-8?q?=E8=BD=A6=E6=BC=8F=E6=96=97=20instanceof=20=E9=97=A8=E6=8E=A7?=
+ =?UTF-8?q?=E8=B5=B0=E5=8E=9F=E8=B7=AF=E5=BE=84=EF=BC=9BAABB=20=E4=B8=8D?=
+ =?UTF-8?q?=E5=8F=AF=E5=8F=98=E4=B8=94=20getEntitiesOfClass=20=E5=8F=AA?=
+ =?UTF-8?q?=E8=AF=BB=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/level/block/entity/HopperBlockEntity.java b/net/minecraft/world/level/block/entity/HopperBlockEntity.java
+index e64b7598b80065de8f9510cbed91613646860ac4..c5253ad8420de576c4d8c32bbc0c52decde19b2c 100644
+--- a/net/minecraft/world/level/block/entity/HopperBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/HopperBlockEntity.java
+@@ -39,6 +39,14 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+     private long tickedGameTime;
+     private Direction facing;
+     private net.minecraft.world.phys.AABB papoSuckAabb; // Papo - cached moved suck AABB (constant per block entity; see getItemsAtAndAbove)
++    // Papo start - cached entity-search AABBs for getEntityContainer (both are constant per block entity:
++    // suck side derives from worldPosition (final) via getLevelX/Y/Z; eject side is keyed on the search
++    // position so a facing change via same-block setBlock (which keeps the BE) recomputes. AABB is
++    // immutable and getEntitiesOfClass only reads it. Minecart hoppers never touch these (instanceof gate).
++    private net.minecraft.world.phys.AABB papoEntitySuckAabb;
++    private BlockPos papoEntityEjectSearchPos;
++    private net.minecraft.world.phys.AABB papoEntityEjectAabb;
++    // Papo end
+ 
+     // CraftBukkit start - add fields and methods
+     public List<org.bukkit.entity.HumanEntity> transaction = new java.util.ArrayList<>();
+@@ -735,7 +743,20 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+     private static @Nullable Container getAttachedContainer(Level level, BlockPos pos, HopperBlockEntity blockEntity) {
+         // Paper start
+         BlockPos searchPosition = pos.relative(blockEntity.facing);
+-        Container inventory = getContainerAt(level, searchPosition);
++        // Papo start - reuse cached entity-search AABB keyed on the search position (see field comment);
++        // the 3-arg getContainerAt computes x/y/z = pos + 0.5 then AABB(x-0.5, y-0.5, z-0.5, x+0.5, y+0.5, z+0.5),
++        // rebuilt here with the identical expression so cached and per-call values are bit-exact equal.
++        net.minecraft.world.phys.AABB entitySearchAabb;
++        if (searchPosition.equals(blockEntity.papoEntityEjectSearchPos)) {
++            entitySearchAabb = blockEntity.papoEntityEjectAabb;
++        } else {
++            double x = searchPosition.getX() + 0.5, y = searchPosition.getY() + 0.5, z = searchPosition.getZ() + 0.5;
++            entitySearchAabb = new net.minecraft.world.phys.AABB(x - 0.5, y - 0.5, z - 0.5, x + 0.5, y + 0.5, z + 0.5);
++            blockEntity.papoEntityEjectSearchPos = searchPosition;
++            blockEntity.papoEntityEjectAabb = entitySearchAabb;
++        }
++        Container inventory = getContainerAt(level, searchPosition, level.getBlockState(searchPosition), searchPosition.getX() + 0.5, searchPosition.getY() + 0.5, searchPosition.getZ() + 0.5, true, entitySearchAabb);
++        // Papo end
+         if (org.bukkit.event.inventory.HopperInventorySearchEvent.getHandlerList().getRegisteredListeners().length == 0) return inventory;
+ 
+         org.bukkit.craftbukkit.block.CraftBlock hopper = org.bukkit.craftbukkit.block.CraftBlock.at(level, pos);
+@@ -751,7 +772,10 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+ 
+     private static @Nullable Container getSourceContainer(Level level, Hopper hopper, BlockPos pos, BlockState state) {
+         // Paper start
+-        final Container inventory = HopperBlockEntity.getContainerAt(level, pos, state, hopper.getLevelX(), hopper.getLevelY() + 1.0D, hopper.getLevelZ());
++        // Papo - pass the BE-cached entity-search AABB for block-entity hoppers (worldPosition final);
++        // minecart hoppers (moving) fall back to the per-call allocation path via null.
++        final Container inventory = HopperBlockEntity.getContainerAt(level, pos, state, hopper.getLevelX(), hopper.getLevelY() + 1.0D, hopper.getLevelZ(), false,
++            hopper instanceof HopperBlockEntity hopperBlockEntity ? hopperBlockEntity.papoEntitySuckAabb() : null);
+         if (org.bukkit.event.inventory.HopperInventorySearchEvent.getHandlerList().getRegisteredListeners().length == 0) return inventory;
+ 
+         final BlockPos hopperPos = BlockPos.containing(hopper.getLevelX(), hopper.getLevelY(), hopper.getLevelZ());
+@@ -788,20 +812,35 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+         return getContainerAt(level, pos, level.getBlockState(pos), pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, true); // Paper - Optimize hoppers
+     }
+ 
+-    private static @Nullable Container getContainerAt(Level level, BlockPos pos, BlockState state, double x, double y, double z) {
+-        // Paper start - Perf: Optimize Hoppers
+-        return HopperBlockEntity.getContainerAt(level, pos, state, x, y, z, false);
+-    }
++    // Paper start - Perf: Optimize Hoppers
+     private static @Nullable Container getContainerAt(Level level, BlockPos pos, BlockState state, double x, double y, double z, final boolean optimizeEntities) {
+-        // Paper end - Perf: Optimize Hoppers
++        return HopperBlockEntity.getContainerAt(level, pos, state, x, y, z, optimizeEntities, null); // Papo
++    }
++    // Paper end - Perf: Optimize Hoppers
++
++    // Papo start - extra overload carrying an optional cached entity-search AABB (null = construct per call,
++    // bit-exact same expression as before); keeps the 7-arg overload above behavior-identical.
++    private static @Nullable Container getContainerAt(Level level, BlockPos pos, BlockState state, double x, double y, double z, final boolean optimizeEntities, final net.minecraft.world.phys.@Nullable AABB entitySearchAabb) {
+         Container blockContainer = getBlockContainer(level, pos, state);
+         if (blockContainer == null && (!optimizeEntities || !level.paperConfig().hopper.ignoreOccludingBlocks || !state.getBukkitMaterial().isOccluding())) { // Paper - Perf: Optimize Hoppers
+-            blockContainer = getEntityContainer(level, x, y, z);
++            blockContainer = getEntityContainer(level, entitySearchAabb != null ? entitySearchAabb : new net.minecraft.world.phys.AABB(x - 0.5, y - 0.5, z - 0.5, x + 0.5, y + 0.5, z + 0.5));
+         }
+ 
+         return blockContainer;
+     }
+ 
++    // Lazy suck-side entity-search AABB; same expression as the original per-call construction
++    // (x = getLevelX(), y = getLevelY() + 1.0, z = getLevelZ()), constant per block entity.
++    private net.minecraft.world.phys.AABB papoEntitySuckAabb() {
++        net.minecraft.world.phys.AABB aabb = this.papoEntitySuckAabb;
++        if (aabb == null) {
++            double x = this.getLevelX(), y = this.getLevelY() + 1.0D, z = this.getLevelZ();
++            aabb = this.papoEntitySuckAabb = new net.minecraft.world.phys.AABB(x - 0.5, y - 0.5, z - 0.5, x + 0.5, y + 0.5, z + 0.5);
++        }
++        return aabb;
++    }
++    // Papo end
++
+     private static @Nullable Container getBlockContainer(Level level, BlockPos pos, BlockState state) {
+         if (!level.spigotConfig.hopperCanLoadChunks && !level.hasChunkAt(pos)) return null; // Spigot
+         Block block = state.getBlock();
+@@ -818,9 +857,9 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+         }
+     }
+ 
+-    private static @Nullable Container getEntityContainer(Level level, double x, double y, double z) {
++    private static @Nullable Container getEntityContainer(Level level, net.minecraft.world.phys.AABB aabb) { // Papo - AABB parameter (was constructed per call from x/y/z)
+         List<Entity> entities = level.getEntitiesOfClass(
+-            (Class) Container.class, new AABB(x - 0.5, y - 0.5, z - 0.5, x + 0.5, y + 0.5, z + 0.5), EntitySelector.CONTAINER_ENTITY_SELECTOR // Paper - Perf: Optimize hoppers
++            (Class) Container.class, aabb, EntitySelector.CONTAINER_ENTITY_SELECTOR // Paper - Perf: Optimize hoppers
+         );
+         return !entities.isEmpty() ? (Container)entities.get(level.random.nextInt(entities.size())) : null;
+     }
