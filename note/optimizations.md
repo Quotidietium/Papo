@@ -1024,9 +1024,36 @@ survey 1 "仔细复核"7 件中 4 件可证等价落地；Brain.getMemory 框架
 
 ---
 
+## 批次 38（2026-08-01）：网络帧长内联解析 + 命令谓词缓存 + 地图装饰稳态分配消除（0155-0158）
+
+### 0155 Varint21FrameDecoder 内联 varint 解析
+- **改动**：删除每解码器 helperBuf（direct 3 字节）与 copyVarint 抄写 + VarInt.read 二次解析，读取同时内联累积 `i |= (b & 127) << n*7`；handlerRemoved0 覆写随 helperBuf 移除（Netty final handlerRemoved 自释 cumulation）。
+- **等价论证**：1-3 字节序列累积逐位一致（0097 剥离分支等价性注释推导）；读者索引结局逐路径相同（前缀不全/负载不足 → reset；超宽/零长 → 消耗前缀后抛异常不 reset）；`monitor.onReceive(i + VarInt.getByteSize(i))` 逐字保留；基准 7+1 输入矩阵比对解析值/消耗字节/异常类型消息/读者索引。
+- **收益**：JMH 1.05×（1 字节前缀）/1.04×（3 字节前缀），CI 重叠小幅正向——复刻以堆数组模拟 helper，未计入真实 direct ByteBuf 带界写读与 clear 开销；survey 定级"低价值"与实测一致。
+
+### 0156 EntitySelector.getPredicate 上下文无关路径组合谓词缓存
+- **改动**：i==0（无 features/box/range）分支惰性缓存 `Util.allOf(contextFreePredicates)` 结果，不再每次调用分配捕获 lambda（size≥2 时）。
+- **等价论证**：contextFreePredicates 为解析器 `List.copyOf` 不可变快照；allOf 纯函数；谓词无状态可重入；仅 i==0 分支缓存，其余分支逐字保留。
+- **收益**：JMH 1.15×（CI 不重叠）；循环命令方块 `@e[type=...]` 每次执行省 1 分配。
+
+### 0157 MapItemSavedData.addDecoration 稳态比较优先
+- **改动**：目标字段（type/x/y/rot）先算入局部量，与现存装饰逐字段相等即返回（稳态 0 分配）；仅变化时构造 MapDecoration 并 put+标脏+计数。位置记录/Pair 辅助方法与 MapDecorationLocation record 随之移除。
+- **等价论证**：字段计算逐公式复用原辅助方法（clamp/inside/rotation/offMap 原样）；比较镜像 record equals（新值为接收者；Holder 未覆写 equals）；跳过相等 put 不改变 LinkedHashMap 迭代序，消费方全按值读取；计数与标脏条件逐分支对齐（含 Paper 仅真实移除才标脏）。
+- **收益**：JMH 复刻内持平（EA 将 before 三分配标量替换，gc.alloc.norm≈0，复刻无法测分配差）；真实深调用栈稳态每携带者每 tick 省 3 分配，机制性收益，按 0140 先例保留。
+
+### 0158 tickCarriedBy 地图匹配谓词内联
+- **改动**：mapMatcher lambda 工厂改为静态助手 papoInventoryHasMap 内联逐项测试直接扫描；两调用点共用。
+- **等价论证**：逐项测试逐字内联（引用相等短路→is→MAP_ID equals 顺序一致）；同一 Inventory 迭代器同序；MAP_ID null 语义不变。
+- **收益**：JMH 1.69×（CI 不重叠）。
+
+### 暂缓（批次 38 记录）
+- **ServerEntity 增量合并（net#2）**：重勘察完成并结案——主路径已经 Paper 多轮优化；配对路径分配为协议负载必需；getNonDefaultValues 惰性化会改变配对包快照时点（协议可观察），不满足可证等价。不再重勘。
+
+---
+
 ## 候选后续批次（来自 survey，按 价值×置信/风险 排序）
 
-（旧清单中 Direction.Plane 迭代器、tickBlockEntities 移除集、NaturalSpawner 距离、pushableBy、LookControl Optional、distanceToSqr 批、CraftBukkit 枚举缓存均已完成，见对应批次。批次 28 完成：InventoryChangeTrigger 早退 0093、Utf8String 写侧 NBT ASCII 快速路径 0092、tickChildren SetTimePacket 惰性 0094、FriendlyByteBuf.writeNbt 适配器 0095。批次 29 完成：FriendlyByteBuf.readNbt 读侧适配器 0096、VarInt.read 快速路径 0097、枚举常量缓存 0098、registry codec 单例 0099、EntityJumpEvent/PlayerVelocityEvent 门控 0100、惰性 list 0101、TrackedEntity 惰性移除 0102、Inflater 池化 0103；map 编码 forEach→entrySet 经基准实测回退 0.77× 已撤销（见批次 29 撤销条）。批次 30 完成：流体检测路径 3 处分配消除 0104、computeSpeed Vec3 消除 0105。批次 31 完成：BlockFromToEvent 门控+流体 tick 去冗余查询 0106、物品拾取/合并门控 0107、经验球 4 事件门控 0108、PlayerJumpEvent 门控+Vec3 折叠 0109、broadcastSlotChange 门控 0110、寻路缓存两段式+GateBehavior stream 消除 0111。批次 32 完成：双拾取事件门控 0112、handleBlockFormEvent 门控 0114（初稿误记 0113，补丁序列以补丁文件为准后正名）。批次 33 完成：漏斗吸取 AABB 实例缓存 0113。批次 34 完成：touchingUnloadedChunk 内联 0114、寻路 getPathType BlockPos 0115、漏斗 getEntityContainer AABB 缓存 0116、BlockFadeEvent 门控 0117、玩家状态事件×4 门控 0118、LeavesDecay/BlockIgnite 门控 0119、PathNavigation Node 直读 0120、EntityPathfindEvent 门控 0121、矿车事件门控 0122、push Vector 消除 0123、EntityTarget/Enderman 门控 0124、CraftEventFactory 四事件门控（直接提交，编号 0125）。批次 35 完成：红石事件快路调用点 0125、刷怪事件门控+复用 0126、sections Optional 消除 0127、装饰 rangeClosed 双循环 0128、DEFLATE Deflater 池化 0129、TemptingSensor 条件复用 0130、PlayerSensor 属性外提 0131、PlayerMoveEvent Location 延迟 0132、RegistryOps 缓存 0133、handleBlockGrowEvent 门控+handleRedstoneChange 快路（直接提交，编号 0134）；holderSet 流改 for-each 实测 0.82× 否决。批次 36 完成：ComponentSerialization 缓存接入 0134、updateFluidOnEyes scratch 0135、POI Optional 消除 0136、交互三触发器门控 0137、PlayerInteractEvent 门控×7 0138、ItemCraftedEvent 门控×2 0139、handleUseItemOn Vec3 展开 0140、PlayerChunkSender 命令式 0141、InteractWithDoor scratch+坐标直读 0142、EntityEquipment VALUES 0143、熔炉 SingleRecipeInput 缓存 0144、ChunkHolder.broadcast 循环 0145、光照包预分配 0146、getEffectiveRange 外提 0147、isSunBurnTick 延迟构造 0148、tickEffects 展开 0149、callPreCraftEvent 快路（直接提交，初记 0142 正名 0150——补丁序列以补丁文件为准）。批次 37 完成：ValidateNearbyPoi 手写 OneShot+Brain 原生读 0150、Behavior tickRate 缓存 0151、Sensor tickRate 缓存 0152、CountingOps RegistryOps 缓存 0153、InventoryClickEvent 零监听器快路 0154、PAPO_CONFIG_EPOCH 配置纪元失效钩子（直接提交，编号 0155）。注意 0114 与 0150 编号均被两批使用：批次 32 的 0114、批次 36 的 0150 是直接提交（无补丁文件），批次 34 的 0114、批次 37 的 0150 起为补丁文件编号——以补丁文件序列为准。）
+（旧清单中 Direction.Plane 迭代器、tickBlockEntities 移除集、NaturalSpawner 距离、pushableBy、LookControl Optional、distanceToSqr 批、CraftBukkit 枚举缓存均已完成，见对应批次。批次 28 完成：InventoryChangeTrigger 早退 0093、Utf8String 写侧 NBT ASCII 快速路径 0092、tickChildren SetTimePacket 惰性 0094、FriendlyByteBuf.writeNbt 适配器 0095。批次 29 完成：FriendlyByteBuf.readNbt 读侧适配器 0096、VarInt.read 快速路径 0097、枚举常量缓存 0098、registry codec 单例 0099、EntityJumpEvent/PlayerVelocityEvent 门控 0100、惰性 list 0101、TrackedEntity 惰性移除 0102、Inflater 池化 0103；map 编码 forEach→entrySet 经基准实测回退 0.77× 已撤销（见批次 29 撤销条）。批次 30 完成：流体检测路径 3 处分配消除 0104、computeSpeed Vec3 消除 0105。批次 31 完成：BlockFromToEvent 门控+流体 tick 去冗余查询 0106、物品拾取/合并门控 0107、经验球 4 事件门控 0108、PlayerJumpEvent 门控+Vec3 折叠 0109、broadcastSlotChange 门控 0110、寻路缓存两段式+GateBehavior stream 消除 0111。批次 32 完成：双拾取事件门控 0112、handleBlockFormEvent 门控 0114（初稿误记 0113，补丁序列以补丁文件为准后正名）。批次 33 完成：漏斗吸取 AABB 实例缓存 0113。批次 34 完成：touchingUnloadedChunk 内联 0114、寻路 getPathType BlockPos 0115、漏斗 getEntityContainer AABB 缓存 0116、BlockFadeEvent 门控 0117、玩家状态事件×4 门控 0118、LeavesDecay/BlockIgnite 门控 0119、PathNavigation Node 直读 0120、EntityPathfindEvent 门控 0121、矿车事件门控 0122、push Vector 消除 0123、EntityTarget/Enderman 门控 0124、CraftEventFactory 四事件门控（直接提交，编号 0125）。批次 35 完成：红石事件快路调用点 0125、刷怪事件门控+复用 0126、sections Optional 消除 0127、装饰 rangeClosed 双循环 0128、DEFLATE Deflater 池化 0129、TemptingSensor 条件复用 0130、PlayerSensor 属性外提 0131、PlayerMoveEvent Location 延迟 0132、RegistryOps 缓存 0133、handleBlockGrowEvent 门控+handleRedstoneChange 快路（直接提交，编号 0134）；holderSet 流改 for-each 实测 0.82× 否决。批次 36 完成：ComponentSerialization 缓存接入 0134、updateFluidOnEyes scratch 0135、POI Optional 消除 0136、交互三触发器门控 0137、PlayerInteractEvent 门控×7 0138、ItemCraftedEvent 门控×2 0139、handleUseItemOn Vec3 展开 0140、PlayerChunkSender 命令式 0141、InteractWithDoor scratch+坐标直读 0142、EntityEquipment VALUES 0143、熔炉 SingleRecipeInput 缓存 0144、ChunkHolder.broadcast 循环 0145、光照包预分配 0146、getEffectiveRange 外提 0147、isSunBurnTick 延迟构造 0148、tickEffects 展开 0149、callPreCraftEvent 快路（直接提交，初记 0142 正名 0150——补丁序列以补丁文件为准）。批次 37 完成：ValidateNearbyPoi 手写 OneShot+Brain 原生读 0150、Behavior tickRate 缓存 0151、Sensor tickRate 缓存 0152、CountingOps RegistryOps 缓存 0153、InventoryClickEvent 零监听器快路 0154、PAPO_CONFIG_EPOCH 配置纪元失效钩子（直接提交，编号 0155）。批次 38 完成：Varint21FrameDecoder 内联解析 0155、EntitySelector 谓词缓存 0156、addDecoration 比较优先 0157、tickCarriedBy 谓词内联 0158；ServerEntity 增量合并重勘察结案（无可证等价候选）。注意 0114/0150/0155 编号均被两批使用：批次 32 的 0114、批次 36 的 0150、批次 37 的 0155 是直接提交（无补丁文件），批次 34 的 0114、批次 37 的 0150、批次 38 的 0155 起为补丁文件编号——以补丁文件序列为准。）
 
 ### 批次 23-27 survey 新增候选（2026-07-30，尚未做）
 
@@ -1036,7 +1063,7 @@ survey 1 "仔细复核"7 件中 4 件可证等价落地；Brain.getMemory 框架
 - **Entity.checkInsideBlocks AtomicInteger 消除**（中，需 BlockGetter 加返回 index 的重载）。**批次 28 评估：周围分配中的噪声，改造复杂度高，暂缓。**
 - **DefaultRedstoneWireEvaluator.updatePowerStrength 去 HashSet**（中：更新顺序变化，不满足严格序等价，暂缓）。
 - ~~**FriendlyByteBuf.readNbt 读侧轻量 DataInput 适配器**~~ **批次 29 已完成（0096）**。
-- **EntitySelector.getPredicate 特性谓词缓存**（中，收益小）。
+- ~~**EntitySelector.getPredicate 特性谓词缓存**~~ **批次 38 已完成（0156）**：i==0 分支惰性缓存 allOf 组合，JMH 1.15×。
 
 ### 批次 29 survey 新增候选（2026-07-31，尚未做）
 
@@ -1044,7 +1071,7 @@ survey 1 "仔细复核"7 件中 4 件可证等价落地；Brain.getMemory 框架
 - ~~**Entity.computeSpeed Vec3 拆 double**~~ **批次 30 已完成（0105）**：消费方仅 KineticWeapon（低频），分量存储 + getKnownSpeed 惰性重建。
 - **ClientboundLightUpdatePacketData BitSet.toLongArray 缓存**（中价值）：getter public 可变，**不满足可证等价，暂缓**。
 - **PlayerNaturallySpawnCreaturesEvent 复用**（每玩家每 tick）：残留状态管理复杂，**暂缓**。
-- **Varint21FrameDecoder helperBuf 消除**（低价值）：每入站帧 ≤3 字节抄写。
+- ~~**Varint21FrameDecoder helperBuf 消除**~~ **批次 38 已完成（0155）**：内联解析，JMH 1.04-1.05×（CI 重叠小幅正向，与"低价值"定级一致）。
 - ~~**Entity.touchingUnloadedChunk inflate(1.0) AABB 内联**~~ **批次 34 已完成（0114）**：方法体内联即可，无需签名穿线。
 - ~~**批次 35 预定**~~ **批次 35 已完成（0125-0133 + 直接提交 0134，holderSet 一项 0.82× 否决）**：handleBlockGrowEvent 门控、PlayerNaturallySpawnCreaturesEvent 门控+复用、SerializableChunkData sections Optional、ChunkGenerator rangeClosed、callRedstoneChange 快路+11 调用点、DEFLATE 写侧 Deflater 池化、PlayerMoveEvent Location 延迟、RegistryOps(NbtOps) 缓存、PlayerSensor/TemptingSensor 小项。
 - ~~**批次 36 预定**~~ **批次 36 已完成（0134-0149 + 直接提交 0150）**：ComponentSerialization 缓存接入、updateFluidOnEyes scratch、POI Optional 消除、交互三触发器门控、PlayerInteractEvent 门控×7、ItemCraftedEvent 门控×2、handleUseItemOn Vec3 展开、PlayerChunkSender 命令式、InteractWithDoor scratch+坐标直读、EntityEquipment VALUES、熔炉 SingleRecipeInput 缓存、ChunkHolder.broadcast 循环、光照包预分配、getEffectiveRange 外提、isSunBurnTick 延迟构造、tickEffects 展开、callPreCraftEvent 快路（直接提交，初记 0142，正名 0150）。
