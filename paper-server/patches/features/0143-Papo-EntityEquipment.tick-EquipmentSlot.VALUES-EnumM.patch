@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 23:35:26 +0800
+Subject: [PATCH] =?UTF-8?q?Papo:=20EntityEquipment.tick=20=E9=81=8D?=
+ =?UTF-8?q?=E5=8E=86=20EquipmentSlot.VALUES=20=E6=9B=BF=E4=BB=A3=20EnumMap?=
+ =?UTF-8?q?=20entrySet?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/entity/EntityEquipment.java b/net/minecraft/world/entity/EntityEquipment.java
+index 1e00a7bd89d885cabb4b9ca3c86fbd8cd93cebf5..a0581e9bdbc88b71b7ac7f6cec4668c413097901 100644
+--- a/net/minecraft/world/entity/EntityEquipment.java
++++ b/net/minecraft/world/entity/EntityEquipment.java
+@@ -4,7 +4,6 @@ import com.mojang.serialization.Codec;
+ import java.util.EnumMap;
+ import java.util.Map;
+ import java.util.Objects;
+-import java.util.Map.Entry;
+ import net.minecraft.world.item.ItemStack;
+ 
+ public class EntityEquipment {
+@@ -46,10 +45,15 @@ public class EntityEquipment {
+     }
+ 
+     public void tick(Entity entity) {
+-        for (Entry<EquipmentSlot, ItemStack> entry : this.items.entrySet()) {
+-            ItemStack itemStack = entry.getValue();
+-            if (!itemStack.isEmpty()) {
+-                itemStack.inventoryTick(entity.level(), entity, entry.getKey());
++        // Papo - iterate EquipmentSlot.VALUES instead of EnumMap.entrySet(): entrySet allocates a
++        // MapEntry per present slot every tick; VALUES iterates in the same enum-ordinal order as
++        // EnumMap, and EnumMap.get is an O(1) array read (null for never-set slots).
++        java.util.List<EquipmentSlot> papoSlots = EquipmentSlot.VALUES;
++        for (int papoI = 0, papoSize = papoSlots.size(); papoI < papoSize; papoI++) {
++            EquipmentSlot equipmentSlot = papoSlots.get(papoI);
++            ItemStack itemStack = this.items.get(equipmentSlot);
++            if (itemStack != null && !itemStack.isEmpty()) {
++                itemStack.inventoryTick(entity.level(), entity, equipmentSlot);
+             }
+         }
+     }
