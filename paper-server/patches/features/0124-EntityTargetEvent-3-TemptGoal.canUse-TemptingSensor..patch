@@ -1,0 +1,116 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 20:50:30 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=E7=9B=AE=E6=A0=87=E4=BA=8B?=
+ =?UTF-8?q?=E4=BB=B6=EF=BC=9AEntityTargetEvent=20=E7=B3=BB=E9=97=A8?=
+ =?UTF-8?q?=E6=8E=A7=C3=973=EF=BC=88TemptGoal.canUse/TemptingSensor.doTick?=
+ =?UTF-8?q?/Mob.setTarget=E2=80=94=E2=80=94EntityTargetLivingEntityEvent?=
+ =?UTF-8?q?=20=E6=97=A0=E7=8B=AC=E7=AB=8B=20HandlerList=EF=BC=8C=E6=8C=89?=
+ =?UTF-8?q?=20EntityTargetEvent=20=E5=88=97=E8=A1=A8=E9=97=A8=E6=8E=A7?=
+ =?UTF-8?q?=E7=B2=BE=E7=A1=AE=E5=85=85=E5=88=86=EF=BC=89+=20EndermanAttack?=
+ =?UTF-8?q?PlayerEvent=20=E9=97=A8=E6=8E=A7=EF=BC=88=E9=9B=B6=E7=9B=91?=
+ =?UTF-8?q?=E5=90=AC=E5=99=A8=E7=9B=B4=E6=8E=A5=E8=BF=94=E5=9B=9E=20should?=
+ =?UTF-8?q?Attack=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/entity/Mob.java b/net/minecraft/world/entity/Mob.java
+index fc29ec18a33eb8f25af1878cf74e73344f389a09..1c77714d38369013939e8fd77e1c8766c1b2b77a 100644
+--- a/net/minecraft/world/entity/Mob.java
++++ b/net/minecraft/world/entity/Mob.java
+@@ -278,6 +278,11 @@ public abstract class Mob extends LivingEntity implements EquipmentUser, Leashab
+             if (reason == EntityTargetEvent.TargetReason.UNKNOWN) {
+                 this.level().getCraftServer().getLogger().log(java.util.logging.Level.WARNING, "Unknown target reason, please report on the issue tracker", new Exception());
+             }
++            // Papo start - zero EntityTargetEvent listeners (EntityTargetLivingEntityEvent declares no
++            // own HandlerList; its listeners register into EntityTargetEvent's) => never cancelled and
++            // getTarget() returns ctarget, whose getHandle() is the same NMS target: the whole block
++            // provably leaves `target` unchanged.
++            if (org.bukkit.event.entity.EntityTargetEvent.getHandlerList().getRegisteredListeners().length > 0) {
+             org.bukkit.craftbukkit.entity.CraftLivingEntity ctarget = null;
+             if (target != null) {
+                 ctarget = (org.bukkit.craftbukkit.entity.CraftLivingEntity) target.getBukkitEntity();
+@@ -292,6 +297,8 @@ public abstract class Mob extends LivingEntity implements EquipmentUser, Leashab
+             } else {
+                 target = null;
+             }
++            }
++            // Papo end
+         }
+         this.target = target;
+         return true;
+diff --git a/net/minecraft/world/entity/ai/goal/TemptGoal.java b/net/minecraft/world/entity/ai/goal/TemptGoal.java
+index 18030dc04eb7d7971e457637b5320b1e41665658..df822f546f1f15add9a2609310f23745e42a24d3 100644
+--- a/net/minecraft/world/entity/ai/goal/TemptGoal.java
++++ b/net/minecraft/world/entity/ai/goal/TemptGoal.java
+@@ -57,7 +57,10 @@ public class TemptGoal extends Goal {
+             this.player = getServerLevel(this.mob)
+                 .getNearestPlayer(this.targetingConditions.range(this.mob.getAttributeValue(Attributes.TEMPT_RANGE)), this.mob);
+             // CraftBukkit start
+-            if (this.player != null) {
++            // Papo - zero EntityTargetEvent listeners (EntityTargetLivingEntityEvent declares no own
++            // HandlerList; its listeners register into EntityTargetEvent's) => never cancelled and
++            // getTarget() returns the same player, so the block provably leaves this.player unchanged
++            if (this.player != null && org.bukkit.event.entity.EntityTargetEvent.getHandlerList().getRegisteredListeners().length > 0) {
+                 org.bukkit.event.entity.EntityTargetLivingEntityEvent event = org.bukkit.craftbukkit.event.CraftEventFactory.callEntityTargetLivingEvent(this.mob, this.player, org.bukkit.event.entity.EntityTargetEvent.TargetReason.TEMPT);
+                 if (event.isCancelled()) {
+                     return false;
+diff --git a/net/minecraft/world/entity/ai/sensing/TemptingSensor.java b/net/minecraft/world/entity/ai/sensing/TemptingSensor.java
+index 77cd672c846cb05b19f387348f1531c8b9c972ee..4160f7f58d3a8f1191cdda04bb217017ffe8cf4e 100644
+--- a/net/minecraft/world/entity/ai/sensing/TemptingSensor.java
++++ b/net/minecraft/world/entity/ai/sensing/TemptingSensor.java
+@@ -49,17 +49,25 @@ public class TemptingSensor extends Sensor<PathfinderMob> {
+         if (!list.isEmpty()) {
+             Player player = list.get(0);
+             // CraftBukkit start
+-            org.bukkit.event.entity.EntityTargetLivingEntityEvent event = org.bukkit.craftbukkit.event.CraftEventFactory.callEntityTargetLivingEvent(
+-                entity, player, org.bukkit.event.entity.EntityTargetEvent.TargetReason.TEMPT
+-            );
+-            if (event.isCancelled()) {
+-                return;
+-            }
+-            if (event.getTarget() instanceof org.bukkit.craftbukkit.entity.CraftHumanEntity target) {
+-                brain.setMemory(MemoryModuleType.TEMPTING_PLAYER, target.getHandle());
++            // Papo start - zero EntityTargetEvent listeners (see TemptGoal) => never cancelled and
++            // getTarget() is the same player's bukkit wrapper, so the effect is exactly
++            // setMemory(TEMPTING_PLAYER, player)
++            if (org.bukkit.event.entity.EntityTargetEvent.getHandlerList().getRegisteredListeners().length > 0) {
++                org.bukkit.event.entity.EntityTargetLivingEntityEvent event = org.bukkit.craftbukkit.event.CraftEventFactory.callEntityTargetLivingEvent(
++                    entity, player, org.bukkit.event.entity.EntityTargetEvent.TargetReason.TEMPT
++                );
++                if (event.isCancelled()) {
++                    return;
++                }
++                if (event.getTarget() instanceof org.bukkit.craftbukkit.entity.CraftHumanEntity target) {
++                    brain.setMemory(MemoryModuleType.TEMPTING_PLAYER, target.getHandle());
++                } else {
++                    brain.eraseMemory(MemoryModuleType.TEMPTING_PLAYER);
++                }
+             } else {
+-                brain.eraseMemory(MemoryModuleType.TEMPTING_PLAYER);
++                brain.setMemory(MemoryModuleType.TEMPTING_PLAYER, player);
+             }
++            // Papo end
+             // CraftBukkit end
+         } else {
+             brain.eraseMemory(MemoryModuleType.TEMPTING_PLAYER);
+diff --git a/net/minecraft/world/entity/monster/EnderMan.java b/net/minecraft/world/entity/monster/EnderMan.java
+index 9e42b62f35b45303ab0abf7892035dac32a8758c..fe325f7c4a46d4b84683ab77278c6bb1f38cbe44 100644
+--- a/net/minecraft/world/entity/monster/EnderMan.java
++++ b/net/minecraft/world/entity/monster/EnderMan.java
+@@ -221,6 +221,13 @@ public class EnderMan extends Monster implements NeutralMob {
+     boolean isBeingStaredBy(Player player) {
+         // Paper start - EndermanAttackPlayerEvent
+         final boolean shouldAttack = this.isBeingStaredBy0(player);
++        // Papo start - zero listeners: cancelled stays !shouldAttack and callEvent() returns
++        // !cancelled == shouldAttack (event has its own HandlerList, no subclasses, constructor
++        // only stores fields)
++        if (com.destroystokyo.paper.event.entity.EndermanAttackPlayerEvent.getHandlerList().getRegisteredListeners().length == 0) {
++            return shouldAttack;
++        }
++        // Papo end
+         final com.destroystokyo.paper.event.entity.EndermanAttackPlayerEvent event = new com.destroystokyo.paper.event.entity.EndermanAttackPlayerEvent((org.bukkit.entity.Enderman) getBukkitEntity(), (org.bukkit.entity.Player) player.getBukkitEntity());
+         event.setCancelled(!shouldAttack);
+         return event.callEvent();
