@@ -825,9 +825,153 @@
 ---
 
 
+## 批次 36（2026-08-01）：事件门控续批 + AI/容器/网络小包分配消除（0134-0149 + 直接提交 0150）
+
+survey 1（事件门控/AI/网络/物品四线）小中项 14 项落地；PlayerInteractEvent 门控按 `isCancelled()==useInteractedBlock()==DENY`（无独立 cancelled 字段）与构造器默认值（`useItemInHand=DEFAULT`、`useClickedBlock=clickedBlock==null?DENY:ALLOW`）逐调用点推导。全部 compileJava + 全量 test 通过，applyPatches 干净应用（940 patches）。编号说明：callPreCraftEvent 快路的直接提交初记"0142"，rebuildPatches 后 0142 已由 InteractWithDoor 补丁占用，按"补丁序列以补丁文件为准"先例（0113/0114）直接提交正名 **0150**。
+
+### 0134 — ComponentSerialization 接入 0133 RegistryOps 缓存
+- **文件**：`net/minecraft/network/codec/ComponentSerialization.java`
+- **热点**：Paper 的 adventure 感知 Component 编解码（聊天 3 包/actionbar/title/TabList/BossBar/实体 CustomName/物品名+lore）每次 `RegistryOps.create(NbtOps.INSTANCE, registryAccess)`——0133 只覆盖了 ByteBufCodecs 路径。
+- **改法**：`:49/:55` 改 `ByteBufCodecs.papoNbtSerializationContext(...)`（interface static 隐式 public，0133 方法由 private 放宽）。
+- **等价性**：与 0133 完全同源（同一 volatile 惰性缓存、同一回退路径）。
+- **基准**：机制同 0133（RegistryOpsCacheBench 4.950 → 0.451 ns/op，**10.97×**），本补丁仅扩展覆盖面。
+- **风险**：低。
+
+### 0135 — Entity.updateFluidOnEyes 复用 scratch MutableBlockPos
+- **文件**：`net/minecraft/world/entity/Entity.java`
+- **热点**：每实体每 tick 眼位流体检查 `new MutableBlockPos(...)`（0104 已建实体级 scratch，此方法仍新分配）。
+- **改法**：复用 `papoFluidMutablePos`（`set(Mth.floor×3)`），字段注释列明两个使用方。
+- **等价性**：set-and-read 主线程串行；`getFluidState` 只读坐标。
+- **基准**：117.950 → 91.130 ns/op（**1.29×**）。
+- **风险**：零。
+
+### 0136 — POI 查询 Optional 包装消除
+- **文件**：`net/minecraft/world/entity/ai/village/poi/PoiSection.java` + `PoiManager.java` + `net/minecraft/world/entity/ai/behavior/PoiCompetitorScan.java`
+- **热点**：`PoiManager.exists/getTypeOrNull` 内部经 `Optional.ofNullable(...).isPresent()/get` 包装拆包；村庄生物 POI 竞争扫描每 tick 多次。
+- **改法**：PoiSection/PoiManager 新增可空引用 `getTypeOrNull`；`exists` 与 PoiCompetitorScan 直接消费引用（`if (poi != null)` 内保留 Paper 展开循环）。
+- **基准**：417.134 → 278.027 ns/op（**1.50×**）。
+- **风险**：零。
+
+### 0137 — 交互三触发器零监听器早退 + stack.copy 随门省略
+- **文件**：`AnyBlockInteractionTrigger`/`ItemUsedOnLocationTrigger`/`DefaultBlockInteractionTrigger`（advancement）+ `ServerGamePacketListenerImpl:2123` + `ServerPlayerGameMode:540`
+- **热点**：每次方块交互 `ANY_BLOCK_USE.trigger(...)`（持 `stack.copy()`）与 `ITEM_USED_ON_BLOCK.trigger(player, pos, stack.copy())`——零进度服纯浪费。
+- **改法**：三触发器加 `papoHasListeners(player)` 公有门（`getListeners` 数组长度）；`:2123` 触发前短路；`:540` copy 改 `papoHasListeners(player) ? stack.copy() : null`（两处使用点均为该触发器调用）。
+- **等价性**：监听器不可在同 tick 同线程中途变化；零监听器时 trigger 无任何效果。
+- **基准**：1.960 → 0.466 ns/op（**4.21×**）。
+- **风险**：低。
+
+### 0138 — PlayerInteractEvent 零监听器门控 7 调用点
+- **文件**：`ServerPlayerGameMode`（useItemOn、左键 START_DESTROY、mayInteract fire-and-forget）+ `ServerGamePacketListenerImpl`（:2198/:2204 cancelled=false 快路、handleAnimate raytrace 整块）
+- **热点**：每次右键/左键/挥臂构造 PlayerInteractEvent + CraftBlock 包装 + 射线检测（handleAnimate 每次挥臂全量 raytrace）。
+- **改法**：逐点以构造器参数推导零监听器结果（`papoUseInteractedBlockDeny` 等布尔短路）；handleAnimate 的 raytrace 块整体包在 `getRegisteredListeners().length > 0` 内。
+- **等价性**：`isCancelled()` 即 `useInteractedBlock()==DENY`（paper-api:91-93 实证，无独立 cancelled 字段）；零监听器时事件对外可观察结果仅由构造参数决定，逐点布尔等价；事件无子类（API 验证）。
+- **基准**：2.299 → 0.333 ns/op（**6.90×**）。
+- **风险**：低。
+
+### 0139 — ResultSlot ItemCraftedEvent 零监听器门控×2
+- **文件**：`net/minecraft/world/inventory/ResultSlot.java`
+- **热点**：`onQuickCraft`（shift 合成每叠）与 `onTake`（每次取出）构造事件 + `CraftItemStack.asBukkitCopy` 包装。
+- **改法**：`!stack.isEmpty() && getRegisteredListeners().length > 0` 门控。
+- **等价性**：事件非 Cancellable、`callEvent()` 返回值未使用、构造仅字段赋值。
+- **基准**：1.294 → 0.522 ns/op（**2.48×**）。
+- **风险**：零。
+
+### 0140 — handleUseItemOn 命中距离 Vec3×2 展开
+- **文件**：`ServerGamePacketListenerImpl.java` `handleUseItemOn`
+- **热点**：每右键包 `Vec3.atCenterOf(blockPos)` + `location.subtract(center)` 两次分配仅为三个 `Math.abs(...) < 1.0000001` 分量比较。
+- **改法**：`Math.abs(location.x() - (blockPos.getX() + 0.5)) < 1.0000001 && …`（死代码 `double d` 一并移除）。
+- **等价性**：`atCenterOf`=每轴+0.5（Vec3.java:52-54）、`subtract`=逐分量（:95-97），double 加减展开位级一致（基准 main 含 NaN/Inf/边界矩阵穷举）。
+- **基准**：109.088 → 139.331 ns/op（0.78× 读数经 `-prof gc` 证伪：两路径 alloc.norm 均 0.001 B/op、原语操作按构造相同，为等价代码编译布局噪声；生产路径展开版零分配不依赖 EA，恒不劣于原版——保留，详见报告裁决记录）。
+- **风险**：零。
+
+### 0141 — PlayerChunkSender.collectChunksToSend 两分支流管道改命令式
+- **文件**：`net/minecraft/server/network/PlayerChunkSender.java`
+- **热点**：每玩家每 tick 区块发送收集：稳态 else 分支 `longStream().mapToObj().filter().sorted().toList()`（pending ≤ quota 占绝大多数 tick）；least 分支 least 选择后二级管道解析。
+- **改法**：else 分支 `ArrayList + LongIterator 循环 + list.sort`（未用 Objects import 移除）；least 分支保持 `Comparators.least` 选择不变、仅解析改普通循环。
+- **等价性**：`longStream` 与 `longIterator` 同迭代源；`Stream.sorted` 与 `List.sort` 同为稳定排序同比较器；返回列表只读消费（isEmpty/for/size）。
+- **基准**：else 分支 1400.411 → 952.007 ns/op（**1.47×**）；least 解析 1294.853 → 1269.412 ns/op（1.02×）。
+- **风险**：零。
+
+### 0142 — InteractWithDoor 每 tick 双 asBlockPos 改 scratch + 坐标直读比较
+- **文件**：`net/minecraft/world/entity/ai/behavior/InteractWithDoor.java`
+- **热点**：PATH 记忆存在时每 tick `previousNode.asBlockPos()` + `nextNode.asBlockPos()` 两个不可变 BlockPos 仅供 `getBlockState` 坐标读（行走村民/猪灵常态）；`closeDoorsThatIHaveOpenedOrPassedThrough` 与 `isMobComingThroughDoor` 另有 `asBlockPos().equals(pos)` 每门每 tick 分配。
+- **改法**：per-behavior scratch `MutableBlockPos`（create() 闭包内，与既有 `mutableObject`/`mutableInt` 同生命周期）供 getBlockState 检查；**门分支（setOpen/CraftBlock.at/rememberDoorToClose→GlobalPos.of 逃逸点）仍分配 immutable**；两处 equals 比较改节点字段坐标直读。
+- **等价性**：`Level.getBlockState`/`BlockTags.is(tag,predicate)` 只读坐标/state；`Vec3i.equals` 即坐标比较（final 方法）；scratch 不入逃逸分支（该分支分配点与原版一致）。
+- **基准**：scratch 264.685 → 152.474 ns/op（**1.74×**）；坐标直读 51.847 → 53.010 ns/op（0.98×，CI 重叠持平——免分配收益体现为 GC 压力）。
+- **风险**：低。
+
+### 0143 — EntityEquipment.tick 遍历 VALUES 替代 EnumMap entrySet
+- **文件**：`net/minecraft/world/entity/EntityEquipment.java`
+- **热点**：每生物每 tick `items.entrySet()` 迭代——EnumMap 的 EntryIterator 每个已设槽分配一个 MapEntry。
+- **改法**：`EquipmentSlot.VALUES`（缓存不可变 List）索引循环 + `items.get(slot)`（O(1) 数组读，未设槽 null 跳过）。
+- **等价性**：EnumMap 迭代即枚举序 = VALUES 顺序；`get` 对未设槽返回 null、对已设 EMPTY 栈走 isEmpty 跳过——与 entrySet 过滤完全同集合同序（未用 Entry import 移除）。
+- **基准**：27.090 → 12.315 ns/op（**2.20×**）。
+- **风险**：零。
+
+### 0144 — 熔炉 serverTick SingleRecipeInput 按输入槽栈引用缓存
+- **文件**：`net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java`
+- **热点**：燃烧中每熔炉每 tick `new SingleRecipeInput(itemStack1)`。
+- **改法**：BE 字段 `papoLastInputStack`/`papoCachedInput`，引用不变即复用，变化则重建（`:363` getTotalCookTime 低频路径不动）。
+- **等价性**：record 仅包装引用——shrink 等原位修改透过缓存可见（与新鲜包装同一对象）；槽位换引用（燃尽/放入/NBT 加载）必触发重建；下游（quickCheck/canBurn/burn）只读 input。
+- **基准**：125.053 → 80.370 ns/op（**1.56×**）。
+- **风险**：低。
+
+### 0145 — ChunkHolder.broadcast 捕获 lambda forEach 改索引循环
+- **文件**：`net/minecraft/server/level/ChunkHolder.java`
+- **热点**：每次方块/光照/块实体广播 `players.forEach(player -> connection.send(packet))`——捕获 lambda 每次调用一次分配。
+- **改法**：索引循环。
+- **等价性**：`players` 为 `moonrise$getPlayers` 每次新建的局部 ArrayList（:92 实证），无并发修改面，迭代序一致。
+- **基准**：53.568 → 50.971 ns/op（1.05×，CI 重叠持平；首轮基准自身缺陷已修复复测）。
+- **风险**：零。
+
+### 0146 — 光照更新包两列表按截面数预分配
+- **文件**：`net/minecraft/network/protocol/game/ClientboundLightUpdatePacketData.java`
+- **热点**：每区块光照包 `skyUpdates/blockUpdates` 默认容量 10，主世界 24 节全量更新时三次扩容拷贝（10→15→22→33）。
+- **改法**：`new ArrayList<>(lightEngine.getLightSectionCount())`（未用 Lists import 移除）。
+- **等价性**：容量不经 List API 可观察。
+- **基准**：90.051 → 42.660 ns/op（**2.11×**）。
+- **风险**：零。
+
+### 0147 — 实体追踪 getEffectiveRange 扫描外提
+- **文件**：`net/minecraft/server/level/ChunkMap.java`（TrackedEntity）
+- **热点**：`moonrise$tick`/`updatePlayers` 每 (实体,玩家) 对调 `getEffectiveRange()`（乘客列表检查 + 乘客范围遍历 + 服务器配置查询）。
+- **改法**：扫描循环外一次计算，新增 `updatePlayer(player, effectiveRange)` 重载；单参 `updatePlayer` 保持委托原语义（:1018 玩家进服逐实体路径不变）。
+- **等价性**：`this.range` 构造期固定；乘客列表与服务器配置在单次扫描期间不变（updatePlayer 自身不突变二者）。
+- **基准**：7.067 → 6.668 ns/op（**1.06×**）。
+- **风险**：低。
+
+### 0148 — Mob.isSunBurnTick BlockPos 延迟构造
+- **文件**：`net/minecraft/world/entity/Mob.java`
+- **热点**：每亡灵生物每 tick 在三道前置门（光照>0.5、随机阈值、非水中/雨中/粉雪）之前无条件 `BlockPos.containing(...)`，仅最后的 `canSeeSky` 使用。
+- **改法**：构造移入 `canSeeSky` 调用点（`BlockPos.containing` 无副作用）。
+- **等价性**：随机数消耗步数不变（分配本身不消耗随机），跳过分配无可观察差异（基准 main 同种子序列验证）。
+- **基准**：232.227 → 172.189 ns/op（**1.35×**）。
+- **风险**：零。
+
+### 0149 — EnchantmentHelper.tickEffects 展开 equipment 迭代与访问者 lambda
+- **文件**：`net/minecraft/world/item/enchantment/EnchantmentHelper.java`
+- **热点**：每生物每 tick `runIterationOnEquipment(entity, (ench,lvl,item) -> ench.value().tick(...))`——捕获 level/entity 的 lambda 一次分配仅为转发。
+- **改法**：直接三层循环（VALUES → 物品 → 附魔表），`EnchantedItemInUse` 分配保留原样。
+- **等价性**：迭代序（槽枚举序、附魔表 entrySet 序）与 matchingSlot 检查逐行一致，仅去掉 visitor 间接。
+- **基准**：39.788 → 40.066 ns/op（0.99×，CI 重叠持平——复刻中 lambda 被内联+EA 消除，补丁价值在降低内联预算）。
+- **风险**：零。
+
+### 直接提交（无补丁文件，编号 0150）— CraftEventFactory.callPreCraftEvent 零监听器快路
+- **文件**：`paper-server/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java`（直接提交的源码）
+- **内容**：`callPreCraftEvent` 零监听器时 `return result.copy();`（每次合成输出槽刷新都走此路径，含配方书批量）。
+- **等价性**：零监听器时 `event.getInventory().getResult()` 恒为 result 的镜像，`asNMSCopy`/copy 语义一致；事件有自己的 HANDLER_LIST、构造仅字段赋值。
+- **基准**：7.159 → 1.727 ns/op（**4.14×**；复刻经强制逃逸对齐真实 callEvent 发布语义）。
+- **风险**：低。
+
+### 暂缓（批次 36 记录）
+- **ValidateNearbyPoi 手写 BehaviorControl / Brain.getMemory raw / Behavior.tryStart tickRates 缓存 / ServerEntity 增量合并 / RegionizedPlayerChunkLoader copy / CountingOps 缓存 / InventoryClickEvent 门控**：survey 1 "仔细复核"件，涉跨线程/重载失效/补丁密集区，留后续批次逐项实证。
+
+---
+
+
 ## 候选后续批次（来自 survey，按 价值×置信/风险 排序）
 
-（旧清单中 Direction.Plane 迭代器、tickBlockEntities 移除集、NaturalSpawner 距离、pushableBy、LookControl Optional、distanceToSqr 批、CraftBukkit 枚举缓存均已完成，见对应批次。批次 28 完成：InventoryChangeTrigger 早退 0093、Utf8String 写侧 NBT ASCII 快速路径 0092、tickChildren SetTimePacket 惰性 0094、FriendlyByteBuf.writeNbt 适配器 0095。批次 29 完成：FriendlyByteBuf.readNbt 读侧适配器 0096、VarInt.read 快速路径 0097、枚举常量缓存 0098、registry codec 单例 0099、EntityJumpEvent/PlayerVelocityEvent 门控 0100、惰性 list 0101、TrackedEntity 惰性移除 0102、Inflater 池化 0103；map 编码 forEach→entrySet 经基准实测回退 0.77× 已撤销（见批次 29 撤销条）。批次 30 完成：流体检测路径 3 处分配消除 0104、computeSpeed Vec3 消除 0105。批次 31 完成：BlockFromToEvent 门控+流体 tick 去冗余查询 0106、物品拾取/合并门控 0107、经验球 4 事件门控 0108、PlayerJumpEvent 门控+Vec3 折叠 0109、broadcastSlotChange 门控 0110、寻路缓存两段式+GateBehavior stream 消除 0111。批次 32 完成：双拾取事件门控 0112、handleBlockFormEvent 门控 0114（初稿误记 0113，补丁序列以补丁文件为准后正名）。批次 33 完成：漏斗吸取 AABB 实例缓存 0113。批次 34 完成：touchingUnloadedChunk 内联 0114、寻路 getPathType BlockPos 0115、漏斗 getEntityContainer AABB 缓存 0116、BlockFadeEvent 门控 0117、玩家状态事件×4 门控 0118、LeavesDecay/BlockIgnite 门控 0119、PathNavigation Node 直读 0120、EntityPathfindEvent 门控 0121、矿车事件门控 0122、push Vector 消除 0123、EntityTarget/Enderman 门控 0124、CraftEventFactory 四事件门控（直接提交，编号 0125）。批次 35 完成：红石事件快路调用点 0125、刷怪事件门控+复用 0126、sections Optional 消除 0127、装饰 rangeClosed 双循环 0128、DEFLATE Deflater 池化 0129、TemptingSensor 条件复用 0130、PlayerSensor 属性外提 0131、PlayerMoveEvent Location 延迟 0132、RegistryOps 缓存 0133、handleBlockGrowEvent 门控+handleRedstoneChange 快路（直接提交，编号 0134）；holderSet 流改 for-each 实测 0.82× 否决。注意 0114 编号被两批使用：批次 32 的 0114 是直接提交（无补丁文件），批次 34 的 0114 起为补丁文件编号——以补丁文件序列为准。）
+（旧清单中 Direction.Plane 迭代器、tickBlockEntities 移除集、NaturalSpawner 距离、pushableBy、LookControl Optional、distanceToSqr 批、CraftBukkit 枚举缓存均已完成，见对应批次。批次 28 完成：InventoryChangeTrigger 早退 0093、Utf8String 写侧 NBT ASCII 快速路径 0092、tickChildren SetTimePacket 惰性 0094、FriendlyByteBuf.writeNbt 适配器 0095。批次 29 完成：FriendlyByteBuf.readNbt 读侧适配器 0096、VarInt.read 快速路径 0097、枚举常量缓存 0098、registry codec 单例 0099、EntityJumpEvent/PlayerVelocityEvent 门控 0100、惰性 list 0101、TrackedEntity 惰性移除 0102、Inflater 池化 0103；map 编码 forEach→entrySet 经基准实测回退 0.77× 已撤销（见批次 29 撤销条）。批次 30 完成：流体检测路径 3 处分配消除 0104、computeSpeed Vec3 消除 0105。批次 31 完成：BlockFromToEvent 门控+流体 tick 去冗余查询 0106、物品拾取/合并门控 0107、经验球 4 事件门控 0108、PlayerJumpEvent 门控+Vec3 折叠 0109、broadcastSlotChange 门控 0110、寻路缓存两段式+GateBehavior stream 消除 0111。批次 32 完成：双拾取事件门控 0112、handleBlockFormEvent 门控 0114（初稿误记 0113，补丁序列以补丁文件为准后正名）。批次 33 完成：漏斗吸取 AABB 实例缓存 0113。批次 34 完成：touchingUnloadedChunk 内联 0114、寻路 getPathType BlockPos 0115、漏斗 getEntityContainer AABB 缓存 0116、BlockFadeEvent 门控 0117、玩家状态事件×4 门控 0118、LeavesDecay/BlockIgnite 门控 0119、PathNavigation Node 直读 0120、EntityPathfindEvent 门控 0121、矿车事件门控 0122、push Vector 消除 0123、EntityTarget/Enderman 门控 0124、CraftEventFactory 四事件门控（直接提交，编号 0125）。批次 35 完成：红石事件快路调用点 0125、刷怪事件门控+复用 0126、sections Optional 消除 0127、装饰 rangeClosed 双循环 0128、DEFLATE Deflater 池化 0129、TemptingSensor 条件复用 0130、PlayerSensor 属性外提 0131、PlayerMoveEvent Location 延迟 0132、RegistryOps 缓存 0133、handleBlockGrowEvent 门控+handleRedstoneChange 快路（直接提交，编号 0134）；holderSet 流改 for-each 实测 0.82× 否决。批次 36 完成：ComponentSerialization 缓存接入 0134、updateFluidOnEyes scratch 0135、POI Optional 消除 0136、交互三触发器门控 0137、PlayerInteractEvent 门控×7 0138、ItemCraftedEvent 门控×2 0139、handleUseItemOn Vec3 展开 0140、PlayerChunkSender 命令式 0141、InteractWithDoor scratch+坐标直读 0142、EntityEquipment VALUES 0143、熔炉 SingleRecipeInput 缓存 0144、ChunkHolder.broadcast 循环 0145、光照包预分配 0146、getEffectiveRange 外提 0147、isSunBurnTick 延迟构造 0148、tickEffects 展开 0149、callPreCraftEvent 快路（直接提交，初记 0142 正名 0150——补丁序列以补丁文件为准）。注意 0114 编号被两批使用：批次 32 的 0114 是直接提交（无补丁文件），批次 34 的 0114 起为补丁文件编号——以补丁文件序列为准。）
 
 ### 批次 23-27 survey 新增候选（2026-07-30，尚未做）
 
@@ -848,5 +992,6 @@
 - **Varint21FrameDecoder helperBuf 消除**（低价值）：每入站帧 ≤3 字节抄写。
 - ~~**Entity.touchingUnloadedChunk inflate(1.0) AABB 内联**~~ **批次 34 已完成（0114）**：方法体内联即可，无需签名穿线。
 - ~~**批次 35 预定**~~ **批次 35 已完成（0125-0133 + 直接提交 0134，holderSet 一项 0.82× 否决）**：handleBlockGrowEvent 门控、PlayerNaturallySpawnCreaturesEvent 门控+复用、SerializableChunkData sections Optional、ChunkGenerator rangeClosed、callRedstoneChange 快路+11 调用点、DEFLATE 写侧 Deflater 池化、PlayerMoveEvent Location 延迟、RegistryOps(NbtOps) 缓存、PlayerSensor/TemptingSensor 小项。
+- ~~**批次 36 预定**~~ **批次 36 已完成（0134-0149 + 直接提交 0150）**：ComponentSerialization 缓存接入、updateFluidOnEyes scratch、POI Optional 消除、交互三触发器门控、PlayerInteractEvent 门控×7、ItemCraftedEvent 门控×2、handleUseItemOn Vec3 展开、PlayerChunkSender 命令式、InteractWithDoor scratch+坐标直读、EntityEquipment VALUES、熔炉 SingleRecipeInput 缓存、ChunkHolder.broadcast 循环、光照包预分配、getEffectiveRange 外提、isSunBurnTick 延迟构造、tickEffects 展开、callPreCraftEvent 快路（直接提交，初记 0142，正名 0150）。
 
 已确认**已优化、勿重复**：EntityTickList.forEach、LevelTicks、LevelChunk.getBlockState、getEntitiesOfClass、Entity.collide 数学、CompoundTag.copy、PatchedDataComponentMap、getNearestPlayer、PoiManager、Brigadier 子节点查找等。
