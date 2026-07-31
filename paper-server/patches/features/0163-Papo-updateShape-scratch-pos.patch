@@ -1,0 +1,45 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 03:28:45 +0800
+Subject: [PATCH] =?UTF-8?q?=E6=BD=AE=E6=B6=8C=E6=A0=B8=E5=BF=83=E6=A1=86?=
+ =?UTF-8?q?=E6=9E=B6=E6=89=AB=E6=8F=8F=E5=A4=8D=E7=94=A8=20scratch=20pos?=
+ =?UTF-8?q?=EF=BC=880163=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/level/block/entity/ConduitBlockEntity.java b/net/minecraft/world/level/block/entity/ConduitBlockEntity.java
+index be4b46d56ca67cb5c0fac5e0bbc9456fb5552d78..a6fdd9be704b9590bf3f14ea7c6a3cf6ab807158 100644
+--- a/net/minecraft/world/level/block/entity/ConduitBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/ConduitBlockEntity.java
+@@ -127,12 +127,12 @@ public class ConduitBlockEntity extends BlockEntity {
+ 
+     private static boolean updateShape(Level level, BlockPos pos, List<BlockPos> positions) {
+         positions.clear();
++        BlockPos.MutableBlockPos papoScratch = new BlockPos.MutableBlockPos(); // Papo - scratch pos for shape scan (never escapes: coord reads only)
+ 
+         for (int i = -1; i <= 1; i++) {
+             for (int i1 = -1; i1 <= 1; i1++) {
+                 for (int i2 = -1; i2 <= 1; i2++) {
+-                    BlockPos blockPos = pos.offset(i, i1, i2);
+-                    if (!level.isWaterAt(blockPos)) {
++                    if (!level.isWaterAt(papoScratch.set(pos.getX() + i, pos.getY() + i1, pos.getZ() + i2))) { // Papo - scratch pos (same coords as pos.offset)
+                         return false;
+                     }
+                 }
+@@ -147,12 +147,11 @@ public class ConduitBlockEntity extends BlockEntity {
+                     int abs2 = Math.abs(i2x);
+                     if ((abs > 1 || abs1 > 1 || abs2 > 1)
+                         && (i == 0 && (abs1 == 2 || abs2 == 2) || i1 == 0 && (abs == 2 || abs2 == 2) || i2x == 0 && (abs == 2 || abs1 == 2))) {
+-                        BlockPos blockPos1 = pos.offset(i, i1, i2x);
+-                        BlockState blockState = level.getBlockState(blockPos1);
++                        BlockState blockState = level.getBlockState(papoScratch.set(pos.getX() + i, pos.getY() + i1, pos.getZ() + i2x)); // Papo - scratch pos (same coords as pos.offset)
+ 
+                         for (Block block : VALID_BLOCKS) {
+                             if (blockState.is(block)) {
+-                                positions.add(blockPos1);
++                                positions.add(new BlockPos(papoScratch)); // Papo - allocate only when actually added (fresh instance, same coords)
+                             }
+                         }
+                     }
