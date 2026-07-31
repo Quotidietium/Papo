@@ -16,10 +16,12 @@ import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.infra.Blackhole;
 
 /**
- * 批次35: ChunkGenerator.addVanillaDecorations 流消除×2。
+ * 批次35: ChunkGenerator.addVanillaDecorations 流消除。
  * (a) ChunkPos.rangeClosed(center,1).forEach：1 Stream + 9 ChunkPos + 闭包 → 3×3 双循环直取坐标；
- *     集合内容序无关（下游排序输出），双循环覆盖同一闭区域 9 点。
- * (b) holderSet.stream().map(Holder::value).forEach → for-each（iterator 与 stream 同委托 contents()）。
+ *     集合内容序无关（下游排序输出），双循环覆盖同一闭区域 9 点。【已应用】
+ * (b) holderSet.stream().map(Holder::value).forEach → for-each：JMH 实测 0.82× 回退
+ *     （ArrayList spliterator 索引循环 + 管道内联优于 Iterator 对象 + 逐元素虚调用），
+ *     遵循延迟否决规则【不予应用】，测量保留于此以存档。
  * main 自检：(a) 两路径访问坐标集合一致；(b) 两路径产出的 IntSet 内容一致。
  */
 @BenchmarkMode(Mode.AverageTime)
