@@ -931,10 +931,27 @@ public class CraftEventFactory {
         return event;
     }
 
+    // Papo start - zero-listener fast path for callBlockFadeEvent: with no listeners the event can
+    // never be cancelled (BlockFadeEvent has no subclasses, constructor only stores fields), and all
+    // NMS call sites only read isCancelled(), so skip snapshot+event construction entirely and
+    // return false. Old method retained unchanged for any external caller.
+    public static boolean handleBlockFadeEvent(LevelAccessor world, BlockPos pos, net.minecraft.world.level.block.state.BlockState state) {
+        return BlockFadeEvent.getHandlerList().getRegisteredListeners().length > 0
+            && CraftEventFactory.callBlockFadeEvent(world, pos, state).isCancelled();
+    }
+    // Papo end
+
     public static boolean handleMoistureChangeEvent(Level world, BlockPos pos, net.minecraft.world.level.block.state.BlockState state, @net.minecraft.world.level.block.Block.UpdateFlags int flags) {
         CraftBlockState snapshot = CraftBlockStates.getBlockState(world, pos);
         snapshot.setData(state);
 
+        // Papo start - zero listeners => callEvent() always true (never cancelled) and the event
+        // object is never read; skip event construction, keep snapshot+place semantics identical.
+        if (MoistureChangeEvent.getHandlerList().getRegisteredListeners().length == 0) {
+            snapshot.place(flags);
+            return true;
+        }
+        // Papo end
         MoistureChangeEvent event = new MoistureChangeEvent(snapshot.getBlock(), snapshot);
         if (event.callEvent()) {
             snapshot.place(flags);
@@ -959,6 +976,15 @@ public class CraftEventFactory {
         CraftBlockState snapshot = CraftBlockStates.getBlockState(world, target);
         snapshot.setData(state);
 
+        // Papo start - zero listeners => callEvent() always true (never cancelled) and the event
+        // object (incl. the source CraftBlock wrapper) is never read; skip event construction,
+        // keep snapshot+place semantics identical. BlockSpreadEvent has its own HandlerList and
+        // no subclasses.
+        if (BlockSpreadEvent.getHandlerList().getRegisteredListeners().length == 0) {
+            boolean result = snapshot.place(flags);
+            return !checkSetResult || result;
+        }
+        // Papo end
         BlockSpreadEvent event = new BlockSpreadEvent(snapshot.getBlock(), CraftBlock.at(world, CraftEventFactory.sourceBlockOverride != null ? CraftEventFactory.sourceBlockOverride : source), snapshot);
         if (event.callEvent()) {
             boolean result = snapshot.place(flags);
@@ -1351,6 +1377,14 @@ public class CraftEventFactory {
     }
 
     public static boolean callEntityChangeBlockEvent(Entity entity, BlockPos pos, net.minecraft.world.level.block.state.BlockState newState, boolean cancelled) {
+        // Papo start - zero listeners => the event keeps its initial cancelled value and nobody can
+        // observe it; skip CraftBlock/getBukkitEntity/CraftBlockData construction and dispatch.
+        // Gating on EntityChangeBlockEvent's own HandlerList is exact: the only subclass
+        // (EntityBreakDoorEvent) declares no HandlerList, so its listeners register into this one.
+        if (EntityChangeBlockEvent.getHandlerList().getRegisteredListeners().length == 0) {
+            return !cancelled;
+        }
+        // Papo end
         Block block = CraftBlock.at(entity.level(), pos);
 
         EntityChangeBlockEvent event = new EntityChangeBlockEvent(entity.getBukkitEntity(), block, CraftBlockData.fromData(newState));
