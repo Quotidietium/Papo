@@ -1,0 +1,189 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 23:21:14 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=E7=8E=A9=E5=AE=B6=E4=BA=A4?=
+ =?UTF-8?q?=E4=BA=92=E4=BA=8B=E4=BB=B6=EF=BC=9APlayerInteractEvent=20?=
+ =?UTF-8?q?=E9=9B=B6=E7=9B=91=E5=90=AC=E5=99=A8=E9=97=A8=E6=8E=A7=207=20?=
+ =?UTF-8?q?=E8=B0=83=E7=94=A8=E7=82=B9=EF=BC=88useItemOn/=E5=B7=A6?=
+ =?UTF-8?q?=E9=94=AE=E5=BC=80=E5=A7=8B=E6=8C=96=E6=8E=98/mayInteract=20?=
+ =?UTF-8?q?=E6=8B=92=E7=BB=9D/=E5=8F=B3=E9=94=AE=E7=A9=BA=E6=B0=94/?=
+ =?UTF-8?q?=E5=8F=B3=E9=94=AE=E6=96=B9=E5=9D=97=20raytrace=20=E5=A4=8D?=
+ =?UTF-8?q?=E7=94=A8/=E6=8C=A5=E8=87=82=20raytrace=20=E6=95=B4=E5=9D=97?=
+ =?UTF-8?q?=E3=80=82=E7=BB=93=E6=9E=9C=E9=9D=99=E6=80=81=E5=A4=8D=E5=88=BB?=
+ =?UTF-8?q?=EF=BC=9AisCancelled()=3DuseInteractedBlock()=3D=3DDENY?=
+ =?UTF-8?q?=EF=BC=88=E6=97=A0=E7=8B=AC=E7=AB=8B=20cancelled=20=E5=AD=97?=
+ =?UTF-8?q?=E6=AE=B5=E5=AE=9E=E8=AF=81=EF=BC=89=EF=BC=9BuseClickedBlock=20?=
+ =?UTF-8?q?=E6=9E=84=E9=80=A0=E9=BB=98=E8=AE=A4=20clickedBlock=3D=3Dnull?=
+ =?UTF-8?q?=3FDENY:ALLOW=EF=BC=9BuseItemInHand=20=E9=BB=98=E8=AE=A4=20DEFA?=
+ =?UTF-8?q?ULT=EF=BC=8C=E4=BB=85=20cancelledBlock/cancelledItem=20?=
+ =?UTF-8?q?=E5=85=A5=E5=8F=82=E5=8F=AF=E7=BD=AE=20DENY=E2=80=94=E2=80=94?=
+ =?UTF-8?q?=E9=80=90=E8=B0=83=E7=94=A8=E7=82=B9=E6=8C=89=E5=85=B6=E5=AE=9E?=
+ =?UTF-8?q?=E5=8F=82=E6=8E=A8=E5=AF=BC=EF=BC=9B=E6=8C=A5=E8=87=82=E5=9D=97?=
+ =?UTF-8?q?=20rayTrace=20=E7=BA=AF=E6=9F=A5=E8=AF=A2=E4=B8=94=E7=BB=93?=
+ =?UTF-8?q?=E6=9E=9C=E4=BB=85=E6=9C=8D=E5=8A=A1=E4=BA=8B=E4=BB=B6=E5=88=86?=
+ =?UTF-8?q?=E6=94=AF=E9=80=89=E6=8B=A9=EF=BC=8C=E6=95=B4=E5=9D=97=E8=B7=B3?=
+ =?UTF-8?q?=E8=BF=87=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/server/level/ServerPlayerGameMode.java b/net/minecraft/server/level/ServerPlayerGameMode.java
+index 3466634e4f2b51dc646ec47f546132b6827baac0..12845b9fdb9d5431d2c182290cb61a290b40e206 100644
+--- a/net/minecraft/server/level/ServerPlayerGameMode.java
++++ b/net/minecraft/server/level/ServerPlayerGameMode.java
+@@ -186,7 +186,10 @@ public class ServerPlayerGameMode {
+             if (action == ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK) {
+                 if (!this.level.mayInteract(this.player, pos)) {
+                     // CraftBukkit start - fire PlayerInteractEvent
+-                    org.bukkit.craftbukkit.event.CraftEventFactory.callPlayerInteractEvent(this.player, org.bukkit.event.block.Action.LEFT_CLICK_BLOCK, pos, face, this.player.getInventory().getSelectedItem(), InteractionHand.MAIN_HAND);
++                    // Papo - zero-listener: fire-and-forget call, skip entirely
++                    if (org.bukkit.event.player.PlayerInteractEvent.getHandlerList().getRegisteredListeners().length > 0) {
++                        org.bukkit.craftbukkit.event.CraftEventFactory.callPlayerInteractEvent(this.player, org.bukkit.event.block.Action.LEFT_CLICK_BLOCK, pos, face, this.player.getInventory().getSelectedItem(), InteractionHand.MAIN_HAND);
++                    }
+                     this.player.connection.send(new ClientboundBlockUpdatePacket(pos, this.level.getBlockState(pos)));
+                     this.debugLogging(pos, false, sequence, "may not interact");
+                     this.capturedBlockEntity = true; // Paper - Send block entities after destroy prediction
+@@ -195,11 +198,27 @@ public class ServerPlayerGameMode {
+                 }
+ 
+                 // CraftBukkit start
+-                org.bukkit.event.player.PlayerInteractEvent event = org.bukkit.craftbukkit.event.CraftEventFactory.callPlayerInteractEvent(this.player, org.bukkit.event.block.Action.LEFT_CLICK_BLOCK, pos, face, this.player.getInventory().getSelectedItem(), InteractionHand.MAIN_HAND);
+-                if (event.isCancelled()) {
++                // Papo start - zero-listener fast path: statically replicate the event outcomes
++                // (6-arg call: cancelledBlock=false, pos non-null => useInteractedBlock=ALLOW =>
++                // isCancelled() false; cancelledItem=false => useItemInHand=DEFAULT)
++                final boolean papoInteractCancelled;
++                final boolean papoUseInteractedBlockDeny;
++                final boolean papoUseItemInHandDeny;
++                if (org.bukkit.event.player.PlayerInteractEvent.getHandlerList().getRegisteredListeners().length > 0) {
++                    org.bukkit.event.player.PlayerInteractEvent event = org.bukkit.craftbukkit.event.CraftEventFactory.callPlayerInteractEvent(this.player, org.bukkit.event.block.Action.LEFT_CLICK_BLOCK, pos, face, this.player.getInventory().getSelectedItem(), InteractionHand.MAIN_HAND);
++                    papoInteractCancelled = event.isCancelled();
++                    papoUseInteractedBlockDeny = event.useInteractedBlock() == org.bukkit.event.Event.Result.DENY;
++                    papoUseItemInHandDeny = event.useItemInHand() == org.bukkit.event.Event.Result.DENY;
++                } else {
++                    papoInteractCancelled = false;
++                    papoUseInteractedBlockDeny = false;
++                    papoUseItemInHandDeny = false;
++                }
++                if (papoInteractCancelled) { // Papo (was: event.isCancelled())
+                     this.capturedBlockEntity = true; // Paper - Send block entities after destroy prediction
+                     return;
+                 }
++                // Papo end
+                 // CraftBukkit end
+ 
+                 if (this.player.getAbilities().instabuild) {
+@@ -223,7 +242,7 @@ public class ServerPlayerGameMode {
+                 this.destroyProgressStart = this.gameTicks;
+                 float f = 1.0F;
+                 BlockState blockState = this.level.getBlockState(pos);
+-                if (event.useInteractedBlock() != org.bukkit.event.Event.Result.DENY && !blockState.isAir()) { // Paper
++                if (!papoUseInteractedBlockDeny && !blockState.isAir()) { // Papo (was: event.useInteractedBlock() != DENY) // Paper
+                     EnchantmentHelper.onHitBlock(
+                         this.level,
+                         this.player.getMainHandItem(),
+@@ -240,7 +259,7 @@ public class ServerPlayerGameMode {
+ 
+                 // CraftBukkit start
+                 // Note that we don't need to resync blocks, block acks will handle it properly for everything but block entities already
+-                if (event.useItemInHand() == org.bukkit.event.Event.Result.DENY) {
++                if (papoUseItemInHandDeny) { // Papo (was: event.useItemInHand() == DENY)
+                     return;
+                 }
+ 
+@@ -504,14 +523,30 @@ public class ServerPlayerGameMode {
+         if (player.getCooldowns().isOnCooldown(stack)) {
+             cancelledItem = true; // Paper - correctly handle items on cooldown
+         }
+-        org.bukkit.event.player.PlayerInteractEvent event = org.bukkit.craftbukkit.event.CraftEventFactory.callPlayerInteractEvent(player, org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK, blockPos, hitResult.getDirection(), stack, cancelledBlock, cancelledItem, hand, hitResult.getLocation()); // Paper - correctly handle items on cooldown
++        // Papo start - zero-listener fast path: statically replicate the event outcomes
++        // (pos non-null => useInteractedBlock = cancelledBlock ? DENY : ALLOW;
++        // useItemInHand = cancelledItem ? DENY : DEFAULT; constructor defaults verified in paper-api)
++        final boolean papoUseInteractedBlockDeny;
++        final boolean papoUseItemInHandDeny;
++        final boolean papoUseItemInHandAllow;
++        if (org.bukkit.event.player.PlayerInteractEvent.getHandlerList().getRegisteredListeners().length > 0) {
++            org.bukkit.event.player.PlayerInteractEvent event = org.bukkit.craftbukkit.event.CraftEventFactory.callPlayerInteractEvent(player, org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK, blockPos, hitResult.getDirection(), stack, cancelledBlock, cancelledItem, hand, hitResult.getLocation()); // Paper - correctly handle items on cooldown
++            papoUseInteractedBlockDeny = event.useInteractedBlock() == org.bukkit.event.Event.Result.DENY;
++            papoUseItemInHandDeny = event.useItemInHand() == org.bukkit.event.Event.Result.DENY;
++            papoUseItemInHandAllow = event.useItemInHand() == org.bukkit.event.Event.Result.ALLOW;
++        } else {
++            papoUseInteractedBlockDeny = cancelledBlock;
++            papoUseItemInHandDeny = cancelledItem;
++            papoUseItemInHandAllow = false;
++        }
++        // Papo end
+         this.firedInteract = true;
+-        this.interactResult = event.useItemInHand() == org.bukkit.event.Event.Result.DENY;
++        this.interactResult = papoUseItemInHandDeny; // Papo (was: event.useItemInHand() == DENY)
+         this.interactPosition = blockPos.immutable();
+         this.interactHand = hand;
+         this.interactItemStack = stack.copy();
+ 
+-        if (event.useInteractedBlock() == org.bukkit.event.Event.Result.DENY) {
++        if (papoUseInteractedBlockDeny) { // Papo (was: event.useInteractedBlock() == DENY)
+             // Block acks will take care of most of it, just handle some special cases here
+             if (blockState.getBlock() instanceof net.minecraft.world.level.block.CakeBlock) {
+                 player.getBukkitEntity().sendHealthUpdate(); // SPIGOT-1341 - reset health for cake
+@@ -526,7 +561,7 @@ public class ServerPlayerGameMode {
+             }
+             // Paper end - Fix inventory desync
+             this.player.resyncUsingItem(this.player); // Paper - Properly cancel usable items
+-            return (event.useItemInHand() != org.bukkit.event.Event.Result.ALLOW) ? InteractionResult.SUCCESS : InteractionResult.PASS;
++            return (!papoUseItemInHandAllow) ? InteractionResult.SUCCESS : InteractionResult.PASS; // Papo (was: event.useItemInHand() != ALLOW)
+         } else if (this.gameModeForPlayer == GameType.SPECTATOR) {
+             MenuProvider menuProvider = blockState.getMenuProvider(level, blockPos);
+             if (menuProvider != null && player.openMenu(menuProvider).isPresent()) { // Paper - Fix InventoryOpenEvent cancellation
+diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+index 14cbca7d6a52a58fd96be59f48bd2e56a31e5183..5a0eb641a27952509a917cdcd35cc4c7ca897907 100644
+--- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+@@ -2195,14 +2195,24 @@ public class ServerGamePacketListenerImpl
+ 
+                 boolean cancelled;
+                 if (hitResult == null || hitResult.getType() != HitResult.Type.BLOCK) {
+-                    org.bukkit.event.player.PlayerInteractEvent event = CraftEventFactory.callPlayerInteractEvent(this.player, Action.RIGHT_CLICK_AIR, itemInHand, hand);
+-                    cancelled = event.useItemInHand() == Event.Result.DENY;
++                    // Papo - zero-listener: useItemInHand defaults to DEFAULT (never DENY) => cancelled = false
++                    if (org.bukkit.event.player.PlayerInteractEvent.getHandlerList().getRegisteredListeners().length > 0) {
++                        org.bukkit.event.player.PlayerInteractEvent event = CraftEventFactory.callPlayerInteractEvent(this.player, Action.RIGHT_CLICK_AIR, itemInHand, hand);
++                        cancelled = event.useItemInHand() == Event.Result.DENY;
++                    } else {
++                        cancelled = false;
++                    }
+                 } else {
+                     if (this.player.gameMode.firedInteract && this.player.gameMode.interactPosition.equals(hitResult.getBlockPos()) && this.player.gameMode.interactHand == hand && ItemStack.isSameItemSameComponents(this.player.gameMode.interactItemStack, itemInHand)) {
+                         cancelled = this.player.gameMode.interactResult;
+                     } else {
+-                        org.bukkit.event.player.PlayerInteractEvent event = CraftEventFactory.callPlayerInteractEvent(this.player, Action.RIGHT_CLICK_BLOCK, hitResult.getBlockPos(), hitResult.getDirection(), itemInHand, true, hand, hitResult.getLocation());
+-                        cancelled = event.useItemInHand() == Event.Result.DENY;
++                        // Papo - zero-listener: useItemInHand defaults to DEFAULT (cancelledBlock only sets useInteractedBlock) => cancelled = false
++                        if (org.bukkit.event.player.PlayerInteractEvent.getHandlerList().getRegisteredListeners().length > 0) {
++                            org.bukkit.event.player.PlayerInteractEvent event = CraftEventFactory.callPlayerInteractEvent(this.player, Action.RIGHT_CLICK_BLOCK, hitResult.getBlockPos(), hitResult.getDirection(), itemInHand, true, hand, hitResult.getLocation());
++                            cancelled = event.useItemInHand() == Event.Result.DENY;
++                        } else {
++                            cancelled = false;
++                        }
+                     }
+                     this.player.gameMode.firedInteract = false;
+                 }
+@@ -2665,6 +2675,9 @@ public class ServerGamePacketListenerImpl
+         if (this.player.isImmobile()) return; // CraftBukkit
+         this.player.resetLastActionTime();
+         // CraftBukkit start - Raytrace to look for 'rogue armswings'
++        // Papo start - zero listeners: the origin Location, the rayTrace (a pure query) and the three
++        // fire-and-forget PlayerInteractEvent calls exist solely for this event => skip the whole block
++        if (org.bukkit.event.player.PlayerInteractEvent.getHandlerList().getRegisteredListeners().length > 0) {
+         float f1 = this.player.getXRot();
+         float f2 = this.player.getYRot();
+         double d0 = this.player.getX();
+@@ -2689,6 +2702,8 @@ public class ServerGamePacketListenerImpl
+                 CraftEventFactory.callPlayerInteractEvent(this.player, Action.LEFT_CLICK_AIR, this.player.getInventory().getSelectedItem(), InteractionHand.MAIN_HAND);
+             }
+         } // Paper end - Call interact event
++        }
++        // Papo end
+ 
+         // Arm swing animation
+         io.papermc.paper.event.player.PlayerArmSwingEvent event = new io.papermc.paper.event.player.PlayerArmSwingEvent(this.getCraftPlayer(), org.bukkit.craftbukkit.CraftEquipmentSlot.getHand(packet.getHand())); // Paper - Add PlayerArmSwingEvent
