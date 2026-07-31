@@ -1,0 +1,84 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 21:26:33 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=E5=8C=BA=E5=9D=97=E5=8F=8D?=
+ =?UTF-8?q?=E5=BA=8F=E5=88=97=E5=8C=96=EF=BC=9ASerializableChunkData=20sec?=
+ =?UTF-8?q?tions=20=E5=BE=AA=E7=8E=AF=20Optional=20=E6=B6=88=E9=99=A4?=
+ =?UTF-8?q?=EF=BC=88listOrEmpty1.get(i2)=20=E7=95=8C=E5=86=85=E7=AD=89?=
+ =?UTF-8?q?=E4=BB=B7=E7=A7=81=E6=9C=89=20getNullable=EF=BC=9Bblock=5Fstate?=
+ =?UTF-8?q?s/biomes/BlockLight/SkyLight=20=E5=9B=9B=E5=A4=84=E6=94=B9=20in?=
+ =?UTF-8?q?stanceof=20=E4=B8=89=E5=85=83=EF=BC=8C=E6=AF=8F=E5=8C=BA?=
+ =?UTF-8?q?=E5=9D=97=E7=9C=81=E7=BA=A6=20216=20=E4=B8=AA=20Optional=20?=
+ =?UTF-8?q?=E5=88=86=E9=85=8D=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/level/chunk/storage/SerializableChunkData.java b/net/minecraft/world/level/chunk/storage/SerializableChunkData.java
+index c7cc66faf668a06527557a75e432a6e3e498903f..71e2b8c1f67617d7f38725566c58c669c69d94f5 100644
+--- a/net/minecraft/world/level/chunk/storage/SerializableChunkData.java
++++ b/net/minecraft/world/level/chunk/storage/SerializableChunkData.java
+@@ -24,6 +24,7 @@ import net.minecraft.core.RegistryAccess;
+ import net.minecraft.core.SectionPos;
+ import net.minecraft.core.registries.BuiltInRegistries;
+ import net.minecraft.core.registries.Registries;
++import net.minecraft.nbt.ByteArrayTag;
+ import net.minecraft.nbt.CompoundTag;
+ import net.minecraft.nbt.ListTag;
+ import net.minecraft.nbt.LongArrayTag;
+@@ -208,35 +209,35 @@ public record SerializableChunkData(
+             Codec<PalettedContainer<BlockState>> codec1 = containerFactory.blockStatesContainerCodec();
+ 
+             for (int i2 = 0; i2 < listOrEmpty1.size(); i2++) {
+-                Optional<CompoundTag> compound = listOrEmpty1.getCompound(i2);
+-                if (!compound.isEmpty()) {
+-                    CompoundTag compoundTag = compound.get(); final CompoundTag sectionData = compoundTag; // Paper - OBFHELPER
++                // Papo start - avoid per-section Optional allocations (~9 per section, ~216 per chunk):
++                // ListTag.getCompound(int)/CompoundTag.getCompound(String)/getByteArray(String) are plain
++                // instanceof checks wrapped in Optional; test the tag directly. The loop index is always
++                // in bounds, so List.get(i2) == the private getNullable(i2) used by the original.
++                if (listOrEmpty1.get(i2) instanceof CompoundTag compoundTag) {
++                    final CompoundTag sectionData = compoundTag; // Paper - OBFHELPER
+                     int byteOr = compoundTag.getByteOr("Y", (byte)0);
+                     LevelChunkSection levelChunkSection;
+                     if (byteOr >= level.getMinSectionY() && byteOr <= level.getMaxSectionY()) {
+                         final BlockState[] presetBlockStates = serverLevel.chunkPacketBlockController.getPresetBlockStates(serverLevel, chunkPos, byteOr); // Paper - Anti-Xray - Add preset block states
+                         final Codec<PalettedContainer<BlockState>> blockStateCodec = presetBlockStates == null ? codec1 : PalettedContainer.codecRW(BlockState.CODEC, containerFactory.blockStatesStrategy(), net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), presetBlockStates); // Paper - Anti-Xray
+-                        PalettedContainer<BlockState> palettedContainer = compoundTag.getCompound("block_states")
+-                            .map(
+-                                compoundTag1 -> blockStateCodec.parse(NbtOps.INSTANCE, compoundTag1) // Paper - Anti-Xray
+-                                    .promotePartial(string -> logErrors(chunkPos, byteOr, string))
+-                                    .getOrThrow(SerializableChunkData.ChunkReadException::new)
+-                            )
+-                            .orElseGet(containerFactory::createForBlockStates);
+-                        PalettedContainer<Holder<Biome>> palettedContainerRo = compoundTag.getCompound("biomes") // CraftBukkit - read/write
+-                            .map(
+-                                compoundTag1 -> codec.parse(NbtOps.INSTANCE, compoundTag1)
+-                                    .promotePartial(string -> logErrors(chunkPos, byteOr, string))
+-                                    .getOrThrow(SerializableChunkData.ChunkReadException::new)
+-                            )
+-                            .orElseGet(containerFactory::createForBiomes);
++                        PalettedContainer<BlockState> palettedContainer = compoundTag.get("block_states") instanceof CompoundTag blockStatesTag
++                            ? blockStateCodec.parse(NbtOps.INSTANCE, blockStatesTag) // Paper - Anti-Xray
++                                .promotePartial(string -> logErrors(chunkPos, byteOr, string))
++                                .getOrThrow(SerializableChunkData.ChunkReadException::new)
++                            : containerFactory.createForBlockStates();
++                        PalettedContainer<Holder<Biome>> palettedContainerRo = compoundTag.get("biomes") instanceof CompoundTag biomesTag // CraftBukkit - read/write
++                            ? codec.parse(NbtOps.INSTANCE, biomesTag)
++                                .promotePartial(string -> logErrors(chunkPos, byteOr, string))
++                                .getOrThrow(SerializableChunkData.ChunkReadException::new)
++                            : containerFactory.createForBiomes();
+                         levelChunkSection = new LevelChunkSection(palettedContainer, palettedContainerRo);
+                     } else {
+                         levelChunkSection = null;
+                     }
+ 
+-                    DataLayer dataLayer = compoundTag.getByteArray("BlockLight").map(DataLayer::new).orElse(null);
+-                    DataLayer dataLayer1 = compoundTag.getByteArray("SkyLight").map(DataLayer::new).orElse(null);
++                    DataLayer dataLayer = compoundTag.get("BlockLight") instanceof ByteArrayTag blockLightTag ? new DataLayer(blockLightTag.getAsByteArray()) : null;
++                    DataLayer dataLayer1 = compoundTag.get("SkyLight") instanceof ByteArrayTag skyLightTag ? new DataLayer(skyLightTag.getAsByteArray()) : null;
++                    // Papo end
+                     // Paper start - starlight
+                     SerializableChunkData.SectionData serializableChunkData = new SerializableChunkData.SectionData(byteOr, levelChunkSection, dataLayer, dataLayer1);
+                     if (sectionData.contains(ca.spottedleaf.moonrise.patches.starlight.util.SaveUtil.BLOCKLIGHT_STATE_TAG)) {
