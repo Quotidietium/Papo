@@ -1,0 +1,353 @@
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.AabbCollapseBench.after_singleAlloc
+
+# Run progress: 0.00% complete, ETA 00:02:08
+# Fork: 1 of 2
+# Warmup Iteration   1: 7.459 ns/op
+# Warmup Iteration   2: 4.771 ns/op
+# Warmup Iteration   3: 5.096 ns/op
+Iteration   1: 5.657 ns/op
+Iteration   2: 5.531 ns/op
+Iteration   3: 5.570 ns/op
+Iteration   4: 5.491 ns/op
+Iteration   5: 5.587 ns/op
+
+# Run progress: 6.25% complete, ETA 00:02:08
+# Fork: 2 of 2
+# Warmup Iteration   1: 6.287 ns/op
+# Warmup Iteration   2: 4.701 ns/op
+# Warmup Iteration   3: 4.845 ns/op
+Iteration   1: 5.686 ns/op
+Iteration   2: 5.416 ns/op
+Iteration   3: 5.655 ns/op
+Iteration   4: 5.849 ns/op
+Iteration   5: 5.721 ns/op
+
+
+Result "papo.bench.AabbCollapseBench.after_singleAlloc":
+  5.616 ±(99.9%) 0.188 ns/op [Average]
+  (min, avg, max) = (5.416, 5.616, 5.849), stdev = 0.124
+  CI (99.9%): [5.428, 5.804] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.AabbCollapseBench.before_threeAllocs
+
+# Run progress: 12.50% complete, ETA 00:01:59
+# Fork: 1 of 2
+# Warmup Iteration   1: 8.909 ns/op
+# Warmup Iteration   2: 7.553 ns/op
+# Warmup Iteration   3: 8.117 ns/op
+Iteration   1: 8.820 ns/op
+Iteration   2: 8.850 ns/op
+Iteration   3: 8.714 ns/op
+Iteration   4: 8.826 ns/op
+Iteration   5: 8.610 ns/op
+
+# Run progress: 18.75% complete, ETA 00:01:50
+# Fork: 2 of 2
+# Warmup Iteration   1: 8.801 ns/op
+# Warmup Iteration   2: 7.531 ns/op
+# Warmup Iteration   3: 7.789 ns/op
+Iteration   1: 8.634 ns/op
+Iteration   2: 8.639 ns/op
+Iteration   3: 9.019 ns/op
+Iteration   4: 8.818 ns/op
+Iteration   5: 8.989 ns/op
+
+
+Result "papo.bench.AabbCollapseBench.before_threeAllocs":
+  8.792 ±(99.9%) 0.216 ns/op [Average]
+  (min, avg, max) = (8.610, 8.792, 9.019), stdev = 0.143
+  CI (99.9%): [8.576, 9.008] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.BeaconEffectGateBench.after_zeroListenerFastPath
+
+# Run progress: 25.00% complete, ETA 00:01:42
+# Fork: 1 of 2
+# Warmup Iteration   1: 172.357 ns/op
+# Warmup Iteration   2: 204.346 ns/op
+# Warmup Iteration   3: 214.878 ns/op
+Iteration   1: 201.701 ns/op
+Iteration   2: 205.285 ns/op
+Iteration   3: 231.308 ns/op
+Iteration   4: 394.072 ns/op
+Iteration   5: 228.458 ns/op
+
+# Run progress: 31.25% complete, ETA 00:01:35
+# Fork: 2 of 2
+# Warmup Iteration   1: 155.018 ns/op
+# Warmup Iteration   2: 166.184 ns/op
+# Warmup Iteration   3: 123.829 ns/op
+Iteration   1: 155.185 ns/op
+Iteration   2: 304.059 ns/op
+Iteration   3: 324.202 ns/op
+Iteration   4: 245.568 ns/op
+Iteration   5: 171.449 ns/op
+
+
+Result "papo.bench.BeaconEffectGateBench.after_zeroListenerFastPath":
+  246.129 ±(99.9%) 111.965 ns/op [Average]
+  (min, avg, max) = (155.185, 246.129, 394.072), stdev = 74.058
+  CI (99.9%): [134.164, 358.093] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.BeaconEffectGateBench.before_eventPath
+
+# Run progress: 37.50% complete, ETA 00:01:27
+# Fork: 1 of 2
+# Warmup Iteration   1: 169.795 ns/op
+# Warmup Iteration   2: 199.529 ns/op
+# Warmup Iteration   3: 254.089 ns/op
+Iteration   1: 186.418 ns/op
+Iteration   2: 259.602 ns/op
+Iteration   3: 219.766 ns/op
+Iteration   4: 521.656 ns/op
+Iteration   5: 240.258 ns/op
+
+# Run progress: 43.75% complete, ETA 00:01:19
+# Fork: 2 of 2
+# Warmup Iteration   1: 198.319 ns/op
+# Warmup Iteration   2: 165.007 ns/op
+# Warmup Iteration   3: 204.981 ns/op
+Iteration   1: 297.104 ns/op
+Iteration   2: 174.907 ns/op
+Iteration   3: 270.057 ns/op
+Iteration   4: 273.240 ns/op
+Iteration   5: 283.884 ns/op
+
+
+Result "papo.bench.BeaconEffectGateBench.before_eventPath":
+  272.689 ±(99.9%) 145.834 ns/op [Average]
+  (min, avg, max) = (174.907, 272.689, 521.656), stdev = 96.460
+  CI (99.9%): [126.855, 418.523] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.BeaconPosScratchBench.after_baseScanScratch
+
+# Run progress: 50.00% complete, ETA 00:01:11
+# Fork: 1 of 2
+# Warmup Iteration   1: 14.550 ns/op
+# Warmup Iteration   2: 13.978 ns/op
+# Warmup Iteration   3: 14.272 ns/op
+Iteration   1: 18.370 ns/op
+Iteration   2: 18.048 ns/op
+Iteration   3: 18.135 ns/op
+Iteration   4: 16.597 ns/op
+Iteration   5: 17.507 ns/op
+
+# Run progress: 56.25% complete, ETA 00:01:02
+# Fork: 2 of 2
+# Warmup Iteration   1: 14.593 ns/op
+# Warmup Iteration   2: 14.305 ns/op
+# Warmup Iteration   3: 14.065 ns/op
+Iteration   1: 16.507 ns/op
+Iteration   2: 17.054 ns/op
+Iteration   3: 15.919 ns/op
+Iteration   4: 17.706 ns/op
+Iteration   5: 16.512 ns/op
+
+
+Result "papo.bench.BeaconPosScratchBench.after_baseScanScratch":
+  17.235 ±(99.9%) 1.263 ns/op [Average]
+  (min, avg, max) = (15.919, 17.235, 18.370), stdev = 0.835
+  CI (99.9%): [15.973, 18.498] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.BeaconPosScratchBench.after_tickScanField
+
+# Run progress: 62.50% complete, ETA 00:00:52
+# Fork: 1 of 2
+# Warmup Iteration   1: 2.442 ns/op
+# Warmup Iteration   2: 2.299 ns/op
+# Warmup Iteration   3: 2.388 ns/op
+Iteration   1: 2.779 ns/op
+Iteration   2: 2.730 ns/op
+Iteration   3: 2.716 ns/op
+Iteration   4: 2.689 ns/op
+Iteration   5: 2.836 ns/op
+
+# Run progress: 68.75% complete, ETA 00:00:43
+# Fork: 2 of 2
+# Warmup Iteration   1: 2.314 ns/op
+# Warmup Iteration   2: 2.413 ns/op
+# Warmup Iteration   3: 2.355 ns/op
+Iteration   1: 2.751 ns/op
+Iteration   2: 3.184 ns/op
+Iteration   3: 2.796 ns/op
+Iteration   4: 2.841 ns/op
+Iteration   5: 2.697 ns/op
+
+
+Result "papo.bench.BeaconPosScratchBench.after_tickScanField":
+  2.802 ±(99.9%) 0.219 ns/op [Average]
+  (min, avg, max) = (2.689, 2.802, 3.184), stdev = 0.145
+  CI (99.9%): [2.583, 3.020] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.BeaconPosScratchBench.before_baseScanAlloc
+
+# Run progress: 75.00% complete, ETA 00:00:35
+# Fork: 1 of 2
+# Warmup Iteration   1: 14.357 ns/op
+# Warmup Iteration   2: 12.083 ns/op
+# Warmup Iteration   3: 15.325 ns/op
+Iteration   1: 17.006 ns/op
+Iteration   2: 18.539 ns/op
+Iteration   3: 17.509 ns/op
+Iteration   4: 18.117 ns/op
+Iteration   5: 18.140 ns/op
+
+# Run progress: 81.25% complete, ETA 00:00:26
+# Fork: 2 of 2
+# Warmup Iteration   1: 14.195 ns/op
+# Warmup Iteration   2: 10.912 ns/op
+# Warmup Iteration   3: 15.356 ns/op
+Iteration   1: 18.514 ns/op
+Iteration   2: 17.154 ns/op
+Iteration   3: 17.012 ns/op
+Iteration   4: 16.731 ns/op
+Iteration   5: 16.784 ns/op
+
+
+Result "papo.bench.BeaconPosScratchBench.before_baseScanAlloc":
+  17.550 ±(99.9%) 1.078 ns/op [Average]
+  (min, avg, max) = (16.731, 17.550, 18.539), stdev = 0.713
+  CI (99.9%): [16.472, 18.629] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.BeaconPosScratchBench.before_tickScanAlloc
+
+# Run progress: 87.50% complete, ETA 00:00:17
+# Fork: 1 of 2
+# Warmup Iteration   1: 1.353 ns/op
+# Warmup Iteration   2: 1.332 ns/op
+# Warmup Iteration   3: 1.476 ns/op
+Iteration   1: 1.769 ns/op
+Iteration   2: 1.652 ns/op
+Iteration   3: 1.813 ns/op
+Iteration   4: 1.863 ns/op
+Iteration   5: 1.682 ns/op
+
+# Run progress: 93.75% complete, ETA 00:00:08
+# Fork: 2 of 2
+# Warmup Iteration   1: 1.331 ns/op
+# Warmup Iteration   2: 1.325 ns/op
+# Warmup Iteration   3: 1.505 ns/op
+Iteration   1: 1.840 ns/op
+Iteration   2: 1.819 ns/op
+Iteration   3: 1.693 ns/op
+Iteration   4: 1.646 ns/op
+Iteration   5: 1.717 ns/op
+
+
+Result "papo.bench.BeaconPosScratchBench.before_tickScanAlloc":
+  1.749 ±(99.9%) 0.123 ns/op [Average]
+  (min, avg, max) = (1.646, 1.749, 1.863), stdev = 0.081
+  CI (99.9%): [1.627, 1.872] (assumes normal distribution)
+
+
+# Run complete. Total time: 00:02:18
+
+REMEMBER: The numbers below are just data. To gain reusable insights, you need to follow up on
+why the numbers are the way they are. Use profilers (see -prof, -lprof), design factorial
+experiments, perform baseline and negative tests that provide experimental control, make sure
+the benchmarking environment is safe on JVM/OS/HW level, ask for reviews from the domain experts.
+Do not assume the numbers tell you what you want them to tell.
+
+NOTE: Current JVM experimentally supports Compiler Blackholes, and they are in use. Please exercise
+extra caution when trusting the results, look into the generated code to check the benchmark still
+works, and factor in a small probability of new VM bugs. Additionally, while comparisons between
+different JVMs are already problematic, the performance difference caused by different Blackhole
+modes can be very significant. Please make sure you use the consistent Blackhole mode for comparisons.
+
+Benchmark                                         Mode  Cnt    Score     Error  Units
+AabbCollapseBench.after_singleAlloc               avgt   10    5.616 ±   0.188  ns/op
+AabbCollapseBench.before_threeAllocs              avgt   10    8.792 ±   0.216  ns/op
+BeaconEffectGateBench.after_zeroListenerFastPath  avgt   10  246.129 ± 111.965  ns/op
+BeaconEffectGateBench.before_eventPath            avgt   10  272.689 ± 145.834  ns/op
+BeaconPosScratchBench.after_baseScanScratch       avgt   10   17.235 ±   1.263  ns/op
+BeaconPosScratchBench.after_tickScanField         avgt   10    2.802 ±   0.219  ns/op
+BeaconPosScratchBench.before_baseScanAlloc        avgt   10   17.550 ±   1.078  ns/op
+BeaconPosScratchBench.before_tickScanAlloc        avgt   10    1.749 ±   0.123  ns/op
+
+Benchmark result is saved to results/bench-20260801-030755.json
