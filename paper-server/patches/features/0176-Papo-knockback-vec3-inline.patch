@@ -1,0 +1,39 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 05:36:39 +0800
+Subject: [PATCH] =?UTF-8?q?=E5=87=BB=E9=80=80=E5=90=91=E9=87=8F=E5=86=85?=
+ =?UTF-8?q?=E8=81=94=EF=BC=9Aknockback=20=E6=B6=88=E9=99=A4=20new/normaliz?=
+ =?UTF-8?q?e/scale=20=E4=B8=89=E4=B8=AD=E9=97=B4=20Vec3=EF=BC=8C=E4=BB=85?=
+ =?UTF-8?q?=E5=8F=96=20x/z=20=E5=88=86=E9=87=8F=EF=BC=880176=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index 5891aa42e6f22cb68ae9f145d499928cd767302f..354ffa032c9d40d4c47ab67b7ff7bf69afcb2b0d 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -2110,12 +2110,19 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+                 z = (this.random.nextDouble() - this.random.nextDouble()) * 0.01;
+             }
+ 
+-            Vec3 vec3 = new Vec3(x, 0.0, z).normalize().scale(strength);
++            // Papo - skip the three intermediate Vec3 (new/normalize/scale): only the x/z components of the
++            // scaled normal are read below, so compute them inline with the identical FP op chain. The while
++            // loop above guarantees !(x*x + z*z < 1.0E-5F), hence len >= sqrt(1.0E-5F) and normalize's
++            // squareRoot < 1.0E-5F branch can never trigger; normalize's sum x*x + 0.0*0.0 + z*z equals
++            // x*x + z*z exactly (x*x is +0.0 or positive, adding +0.0 is the identity).
++            double papoKbLen = Math.sqrt(x * x + z * z);
++            double papoKbX = x / papoKbLen * strength;
++            double papoKbZ = z / papoKbLen * strength;
+             // Paper start - knockback events
+             Vec3 finalVelocity = new Vec3(
+-                deltaMovement.x / 2.0 - vec3.x,
++                deltaMovement.x / 2.0 - papoKbX,
+                 this.onGround() ? Math.min(0.4, deltaMovement.y / 2.0 + strength) : deltaMovement.y,
+-                deltaMovement.z / 2.0 - vec3.z
++                deltaMovement.z / 2.0 - papoKbZ
+             );
+             Vec3 diff = finalVelocity.subtract(deltaMovement);
+             io.papermc.paper.event.entity.EntityKnockbackEvent event = CraftEventFactory.callEntityKnockbackEvent((org.bukkit.craftbukkit.entity.CraftLivingEntity) this.getBukkitEntity(), attacker, attacker, eventCause, strength, diff);
