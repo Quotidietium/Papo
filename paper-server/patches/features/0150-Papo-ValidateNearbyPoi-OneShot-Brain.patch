@@ -1,0 +1,107 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 01:19:59 +0800
+Subject: [PATCH] =?UTF-8?q?Papo:=20ValidateNearbyPoi=20=E6=89=8B=E5=86=99?=
+ =?UTF-8?q?=20OneShot=20+=20Brain=20=E5=8E=9F=E7=94=9F=E8=AE=B0=E5=BF=86?=
+ =?UTF-8?q?=E8=AF=BB=E5=8F=96?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/entity/ai/Brain.java b/net/minecraft/world/entity/ai/Brain.java
+index 9db393ee30d72e561846cfbf93a426d80dd21913..27090cb797540a1a671f4185418452a7cac01768 100644
+--- a/net/minecraft/world/entity/ai/Brain.java
++++ b/net/minecraft/world/entity/ai/Brain.java
+@@ -206,6 +206,16 @@ public class Brain<E extends LivingEntity> {
+         return optional == null ? null : (Optional<U>) optional.map(ExpirableValue::getValue);
+     }
+ 
++    // Papo start - raw nullable read for hot behavior paths: identical to getMemoryInternal except
++    // the value is returned unwrapped, so a present memory does not allocate the result Optional.
++    // Same unchecked cast as getMemory/getMemoryInternal above (memories map is type-keyed by construction).
++    @SuppressWarnings("unchecked")
++    public <U> @Nullable U papoGetMemoryInternalRaw(MemoryModuleType<U> type) {
++        Optional<? extends ExpirableValue<?>> optional = this.memories.get(type);
++        return optional != null && optional.isPresent() ? (U) optional.get().getValue() : null;
++    }
++    // Papo end
++
+     public <U> long getTimeUntilExpiry(MemoryModuleType<U> memoryType) {
+         Optional<? extends ExpirableValue<?>> optional = this.memories.get(memoryType);
+         return optional.map(ExpirableValue::getTimeToLive).orElse(0L);
+diff --git a/net/minecraft/world/entity/ai/behavior/ValidateNearbyPoi.java b/net/minecraft/world/entity/ai/behavior/ValidateNearbyPoi.java
+index 47b085b866ea2ff424f2edee73fc5c5681d21559..476cd0d39c7140032e1d57810492b82c07a8ca6f 100644
+--- a/net/minecraft/world/entity/ai/behavior/ValidateNearbyPoi.java
++++ b/net/minecraft/world/entity/ai/behavior/ValidateNearbyPoi.java
+@@ -8,7 +8,6 @@ import net.minecraft.core.Holder;
+ import net.minecraft.server.level.ServerLevel;
+ import net.minecraft.tags.BlockTags;
+ import net.minecraft.world.entity.LivingEntity;
+-import net.minecraft.world.entity.ai.behavior.declarative.BehaviorBuilder;
+ import net.minecraft.world.entity.ai.memory.MemoryModuleType;
+ import net.minecraft.world.entity.ai.village.poi.PoiType;
+ import net.minecraft.world.entity.npc.villager.Villager;
+@@ -20,26 +19,46 @@ public class ValidateNearbyPoi {
+     private static final int MAX_DISTANCE = 16;
+ 
+     public static BehaviorControl<LivingEntity> create(Predicate<Holder<PoiType>> poiValidator, MemoryModuleType<GlobalPos> poiPosMemory) {
+-        return BehaviorBuilder.create(instance -> instance.group(instance.present(poiPosMemory)).apply(instance, poiPos -> (level, entity, gameTime) -> {
+-            GlobalPos globalPos = instance.get(poiPos);
+-            BlockPos blockPos = globalPos.pos();
+-            if (level.dimension() == globalPos.dimension() && blockPos.closerToCenterThan(entity.position(), 16.0)) {
+-                ServerLevel level1 = level.getServer().getLevel(globalPos.dimension());
+-                if (level1 == null || !level1.getPoiManager().exists(blockPos, poiValidator)) {
+-                    poiPos.erase();
+-                } else if (bedIsOccupied(level1, blockPos, entity)) {
+-                    poiPos.erase();
+-                    if (!bedIsOccupiedByVillager(level1, blockPos)) {
+-                        level.getPoiManager().release(blockPos);
+-                        level.debugSynchronizers().updatePoi(blockPos);
++        // Papo start - handwritten OneShot instead of the declarative BehaviorBuilder chain:
++        // per tryStart the chain allocates a MemoryAccessor (present memories) plus an Optional
++        // (getMemoryInternal map) and invokes through the applicative closure layers. OneShot
++        // semantics are identical: tryStart == trigger() with no entry conditions/durations.
++        // Gate = instance.present(poiPosMemory) (memory absent/unregistered -> false);
++        // poiPos.erase() == brain.eraseMemory(poiPosMemory) (MemoryAccessor.java:36-37).
++        // debugString differs textually from the declarative "OneShot[M[...]]" chain description
++        // (brain debug dump / crash report only, not gameplay-observable).
++        return new OneShot<LivingEntity>() {
++            @Override
++            public boolean trigger(ServerLevel level, LivingEntity entity, long gameTime) {
++                GlobalPos globalPos = entity.getBrain().papoGetMemoryInternalRaw(poiPosMemory); // Papo - raw read, no Optional
++                if (globalPos == null) {
++                    return false; // instance.present(poiPosMemory) gate
++                }
++                BlockPos blockPos = globalPos.pos();
++                if (level.dimension() == globalPos.dimension() && blockPos.closerToCenterThan(entity.position(), MAX_DISTANCE)) {
++                    ServerLevel level1 = level.getServer().getLevel(globalPos.dimension());
++                    if (level1 == null || !level1.getPoiManager().exists(blockPos, poiValidator)) {
++                        entity.getBrain().eraseMemory(poiPosMemory); // poiPos.erase()
++                    } else if (bedIsOccupied(level1, blockPos, entity)) {
++                        entity.getBrain().eraseMemory(poiPosMemory); // poiPos.erase()
++                        if (!bedIsOccupiedByVillager(level1, blockPos)) {
++                            level.getPoiManager().release(blockPos);
++                            level.debugSynchronizers().updatePoi(blockPos);
++                        }
+                     }
++
++                    return true;
++                } else {
++                    return false;
+                 }
++            }
+ 
+-                return true;
+-            } else {
+-                return false;
++            @Override
++            public String debugString() {
++                return "OneShot[ValidateNearbyPoi]";
+             }
+-        }));
++        };
++        // Papo end
+     }
+ 
+     private static boolean bedIsOccupied(ServerLevel level, BlockPos pos, LivingEntity entity) {
