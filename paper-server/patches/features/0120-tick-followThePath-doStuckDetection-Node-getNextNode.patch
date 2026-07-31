@@ -1,0 +1,68 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 20:43:02 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=E5=AF=BB=E8=B7=AF=20tick?=
+ =?UTF-8?q?=EF=BC=9AfollowThePath/doStuckDetection=20=E7=9B=B4=E8=AF=BB=20?=
+ =?UTF-8?q?Node=20=E5=9D=90=E6=A0=87=E6=9B=BF=E4=BB=A3=20getNextNodePos=20?=
+ =?UTF-8?q?=E7=9A=84=E6=AF=8F=20tick=20BlockPos=20=E5=88=86=E9=85=8D?=
+ =?UTF-8?q?=EF=BC=88getNextNodePos=3DasBlockPos=20=E6=96=B0=E5=AE=9E?=
+ =?UTF-8?q?=E4=BE=8B=EF=BC=9BVec3i.equals=20=E7=BA=AF=E5=9D=90=E6=A0=87?=
+ =?UTF-8?q?=E6=AF=94=E8=BE=83=EF=BC=9BtimeoutCachedNode=20=E4=BB=85?=
+ =?UTF-8?q?=E5=9C=A8=E8=8A=82=E7=82=B9=E6=8E=A8=E8=BF=9B=E6=97=B6=E5=88=86?=
+ =?UTF-8?q?=E9=85=8D=EF=BC=8C=E8=BA=AB=E4=BB=BD=E4=B8=8D=E5=8F=AF=E8=A7=82?=
+ =?UTF-8?q?=E5=AF=9F=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/entity/ai/navigation/PathNavigation.java b/net/minecraft/world/entity/ai/navigation/PathNavigation.java
+index 61c7ca1d262098583d40b78e22db8fa67cf1dec2..3d66e26d557e27abe1cbe3667f091133967dc0a7 100644
+--- a/net/minecraft/world/entity/ai/navigation/PathNavigation.java
++++ b/net/minecraft/world/entity/ai/navigation/PathNavigation.java
+@@ -296,12 +296,16 @@ public abstract class PathNavigation {
+     protected void followThePath() {
+         Vec3 tempMobPos = this.getTempMobPos();
+         this.maxDistanceToWaypoint = this.mob.getBbWidth() > 0.75F ? this.mob.getBbWidth() / 2.0F : 0.75F - this.mob.getBbWidth() / 2.0F;
+-        Vec3i nextNodePos = this.path.getNextNodePos();
+-        double abs = Math.abs(this.mob.getX() - (nextNodePos.getX() + 0.5));
+-        double abs1 = Math.abs(this.mob.getY() - nextNodePos.getY());
+-        double abs2 = Math.abs(this.mob.getZ() - (nextNodePos.getZ() + 0.5));
++        // Papo start - read the next Node's fields directly instead of materializing a BlockPos via
++        // getNextNodePos() (Node.x/y/z == asBlockPos() coordinates; also folds the second getNextNode()
++        // below into the same lookup; no path mutation can occur between these reads)
++        Node nextNode = this.path.getNextNode();
++        double abs = Math.abs(this.mob.getX() - (nextNode.x + 0.5));
++        double abs1 = Math.abs(this.mob.getY() - nextNode.y);
++        double abs2 = Math.abs(this.mob.getZ() - (nextNode.z + 0.5));
+         boolean flag = abs < this.maxDistanceToWaypoint && abs2 < this.maxDistanceToWaypoint && abs1 < 1.0;
+-        if (flag || this.canCutCorner(this.path.getNextNode().type) && this.shouldTargetNextNodeInDirection(tempMobPos)) {
++        if (flag || this.canCutCorner(nextNode.type) && this.shouldTargetNextNodeInDirection(tempMobPos)) {
++        // Papo end
+             this.path.advance();
+         }
+ 
+@@ -352,15 +356,20 @@ public abstract class PathNavigation {
+         }
+ 
+         if (this.path != null && !this.path.isDone()) {
+-            Vec3i nextNodePos = this.path.getNextNodePos();
++            // Papo start - compare node coordinates directly instead of materializing a BlockPos per
++            // tick (Vec3i.equals is a pure x/y/z compare; timeoutCachedNode is only ever compared and
++            // passed to atBottomCenterOf, so identity is unobservable). The BlockPos is now allocated
++            // only when the node actually advances.
++            Node nextNode = this.path.getNextNode();
+             long gameTime = this.level.getGameTime();
+-            if (nextNodePos.equals(this.timeoutCachedNode)) {
++            if (nextNode.x == this.timeoutCachedNode.getX() && nextNode.y == this.timeoutCachedNode.getY() && nextNode.z == this.timeoutCachedNode.getZ()) {
+                 this.timeoutTimer = this.timeoutTimer + (gameTime - this.lastTimeoutCheck);
+             } else {
+-                this.timeoutCachedNode = nextNodePos;
++                this.timeoutCachedNode = nextNode.asBlockPos();
+                 double d = pos.distanceTo(Vec3.atBottomCenterOf(this.timeoutCachedNode));
+                 this.timeoutLimit = this.mob.getSpeed() > 0.0F ? d / this.mob.getSpeed() * 20.0 : 0.0;
+             }
++            // Papo end
+ 
+             if (this.timeoutLimit > 0.0 && this.timeoutTimer > this.timeoutLimit * 3.0) {
+                 this.timeoutPath();
