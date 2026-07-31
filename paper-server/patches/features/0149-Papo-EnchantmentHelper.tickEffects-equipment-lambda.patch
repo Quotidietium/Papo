@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 23:47:50 +0800
+Subject: [PATCH] =?UTF-8?q?Papo:=20EnchantmentHelper.tickEffects=20?=
+ =?UTF-8?q?=E5=B1=95=E5=BC=80=20equipment=20=E8=BF=AD=E4=BB=A3=E4=B8=8E?=
+ =?UTF-8?q?=E8=AE=BF=E9=97=AE=E8=80=85=20lambda?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/item/enchantment/EnchantmentHelper.java b/net/minecraft/world/item/enchantment/EnchantmentHelper.java
+index b61e0e179e78f37f670ad86476b5a533e7835948..5ce24e4aaf3bbc207d8e36d19ff5f3b470f57c55 100644
+--- a/net/minecraft/world/item/enchantment/EnchantmentHelper.java
++++ b/net/minecraft/world/item/enchantment/EnchantmentHelper.java
+@@ -271,7 +271,26 @@ public class EnchantmentHelper {
+     }
+ 
+     public static void tickEffects(ServerLevel level, LivingEntity entity) {
+-        runIterationOnEquipment(entity, (enchantment, level1, item) -> enchantment.value().tick(level, level1, item, entity));
++        // Papo - inline runIterationOnEquipment/runIterationOnItem/visitor-lambda: the lambda
++        // captured level+entity (one allocation per entity per tick) only to forward to
++        // Enchantment.tick. Iteration order (EquipmentSlot.VALUES, then enchantment entrySet)
++        // and the per-item EnchantedItemInUse allocation are unchanged.
++        for (EquipmentSlot equipmentSlot : EquipmentSlot.VALUES) {
++            ItemStack stack = entity.getItemBySlot(equipmentSlot);
++            if (!stack.isEmpty()) {
++                ItemEnchantments itemEnchantments = stack.get(DataComponents.ENCHANTMENTS);
++                if (itemEnchantments != null && !itemEnchantments.isEmpty()) {
++                    EnchantedItemInUse enchantedItemInUse = new EnchantedItemInUse(stack, equipmentSlot, entity);
++
++                    for (Entry<Holder<Enchantment>> entry : itemEnchantments.entrySet()) {
++                        Holder<Enchantment> holder = entry.getKey();
++                        if (holder.value().matchingSlot(equipmentSlot)) {
++                            holder.value().tick(level, entry.getIntValue(), enchantedItemInUse, entity);
++                        }
++                    }
++                }
++            }
++        }
+     }
+ 
+     public static int getEnchantmentLevel(Holder<Enchantment> enchantment, LivingEntity entity) {
