@@ -1,0 +1,36 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 23:25:27 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=E5=8F=B3=E9=94=AE=E8=8C=83?=
+ =?UTF-8?q?=E5=9B=B4=E6=A3=80=E6=9F=A5=EF=BC=9AhandleUseItemOn=20=E5=91=BD?=
+ =?UTF-8?q?=E4=B8=AD=E8=B7=9D=E7=A6=BB=E5=88=A4=E6=96=AD=20Vec3=C3=972=20?=
+ =?UTF-8?q?=E5=B1=95=E5=BC=80=E4=B8=BA=E5=88=86=E9=87=8F=E7=AE=97=E6=9C=AF?=
+ =?UTF-8?q?=EF=BC=88atCenterOf=3D=E6=AF=8F=E8=BD=B4+0.5=EF=BC=88Vec3.java:?=
+ =?UTF-8?q?52-54=EF=BC=89=E3=80=81subtract=3D=E9=80=90=E5=88=86=E9=87=8F?=
+ =?UTF-8?q?=EF=BC=88:95-97=EF=BC=89=EF=BC=8C=E5=B1=95=E5=BC=80=E4=BD=8D?=
+ =?UTF-8?q?=E7=BA=A7=E4=B8=80=E8=87=B4=EF=BC=9B=E9=A1=BA=E5=B8=A6=E5=88=A0?=
+ =?UTF-8?q?=E9=99=A4=E6=9C=AA=E4=BD=BF=E7=94=A8=E7=9A=84=E6=AD=BB=E5=B1=80?=
+ =?UTF-8?q?=E9=83=A8=E9=87=8F=20d=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+index 5a0eb641a27952509a917cdcd35cc4c7ca897907..9df138083132b072134f2dd3f4756e3f5a6b3bd5 100644
+--- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+@@ -2109,9 +2109,10 @@ public class ServerGamePacketListenerImpl
+                 // Paper end - improve distance check
+                 BlockPos blockPos = hitResult.getBlockPos();
+                 if (this.player.isWithinBlockInteractionRange(blockPos, 1.0)) {
+-                    Vec3 vec3 = location.subtract(Vec3.atCenterOf(blockPos));
+-                    double d = 1.0000001;
+-                    if (Math.abs(vec3.x()) < 1.0000001 && Math.abs(vec3.y()) < 1.0000001 && Math.abs(vec3.z()) < 1.0000001) {
++                    // Papo - scalar range check (was: location.subtract(Vec3.atCenterOf(blockPos)) = 2 Vec3
++                    // allocations + a dead local): atCenterOf is +0.5 per axis (Vec3.java:52-54) and subtract
++                    // is componentwise (Vec3.java:95-97), so the expanded form is bit-identical.
++                    if (Math.abs(location.x() - (blockPos.getX() + 0.5)) < 1.0000001 && Math.abs(location.y() - (blockPos.getY() + 0.5)) < 1.0000001 && Math.abs(location.z() - (blockPos.getZ() + 0.5)) < 1.0000001) {
+                         Direction direction = hitResult.getDirection();
+                         this.player.resetLastActionTime();
+                         int maxY = this.player.level().getMaxY();
