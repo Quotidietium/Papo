@@ -1,0 +1,49 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 23:03:59 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=E7=9C=BC=E9=83=A8=E6=B5=81?=
+ =?UTF-8?q?=E4=BD=93=E6=A3=80=E6=B5=8B=EF=BC=9AEntity.updateFluidOnEyes=20?=
+ =?UTF-8?q?=E5=A4=8D=E7=94=A8=200104=20scratch=20pos=EF=BC=88=E6=AF=8F?=
+ =?UTF-8?q?=E5=AE=9E=E4=BD=93=E6=AF=8F=20tick=20=E7=9C=81=201=20=E4=B8=AA?=
+ =?UTF-8?q?=20BlockPos=EF=BC=9Bcontaining=20=E4=BB=85=E9=80=90=E5=9D=90?=
+ =?UTF-8?q?=E6=A0=87=20floor=EF=BC=88BlockPos.java:97-99=EF=BC=89=EF=BC=8C?=
+ =?UTF-8?q?getFluidState/getHeight=20=E5=8F=AA=E8=AF=BB=E5=9D=90=E6=A0=87?=
+ =?UTF-8?q?=E4=B8=8E=200104=20=E5=90=8C=E4=B8=80=E9=9D=9E=E9=80=83?=
+ =?UTF-8?q?=E9=80=B8=E8=AE=BA=E8=AF=81=EF=BC=9B=E4=B8=A4=E4=B8=AA=20scratc?=
+ =?UTF-8?q?h=20=E7=94=A8=E6=88=B7=E5=9C=A8=20tick=20=E7=BA=BF=E7=A8=8B?=
+ =?UTF-8?q?=E4=B8=B2=E8=A1=8C=E4=B8=94=E4=B8=8D=E8=B7=A8=E8=B0=83=E7=94=A8?=
+ =?UTF-8?q?=E6=8C=81=E6=9C=89=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
+index 024b72cd4c3cf90b19d3bf0a689960fff86fd09a..1c98462e33cb7007b56b2905bbafd14f4a6a5ae6 100644
+--- a/net/minecraft/world/entity/Entity.java
++++ b/net/minecraft/world/entity/Entity.java
+@@ -336,7 +336,7 @@ public abstract class Entity implements SyncedDataHolder, DebugValueSource, Name
+     private double papoLastKnownPosX, papoLastKnownPosY, papoLastKnownPosZ;
+     private boolean papoLastKnownPosValid;
+     // Papo end
+-    private BlockPos.MutableBlockPos papoFluidMutablePos; // Papo - reused scratch pos in updateFluidHeightAndDoFluidPushing (provably non-escaping; tick-thread only)
++    private BlockPos.MutableBlockPos papoFluidMutablePos; // Papo - reused scratch pos in updateFluidHeightAndDoFluidPushing + updateFluidOnEyes (provably non-escaping; tick-thread only)
+     public net.kyori.adventure.util.TriState visualFire = net.kyori.adventure.util.TriState.NOT_SET; // Paper - improve visual fire API
+     private @Nullable BlockState inBlockState = null;
+     public static final int MAX_MOVEMENTS_HANDELED_PER_TICK = 100;
+@@ -2087,7 +2087,14 @@ public abstract class Entity implements SyncedDataHolder, DebugValueSource, Name
+                 && abstractBoat.getBoundingBox().maxY >= eyeY
+                 && abstractBoat.getBoundingBox().minY <= eyeY
+         )) {
+-            BlockPos blockPos = BlockPos.containing(this.getX(), eyeY, this.getZ());
++            // Papo start - reuse the per-entity scratch pos (same field and non-escape proof as 0104):
++            // BlockPos.containing only floors the three coordinates (BlockPos.java:97-99), and
++            // getFluidState/getHeight only read them; the two users of papoFluidMutablePos
++            // (updateFluidOnEyes / updateFluidHeightAndDoFluidPushing) are sequential on the tick
++            // thread and never hold the pos across a call into the other user.
++            final BlockPos.MutableBlockPos blockPos = this.papoFluidMutablePos != null ? this.papoFluidMutablePos : (this.papoFluidMutablePos = new BlockPos.MutableBlockPos());
++            blockPos.set(Mth.floor(this.getX()), Mth.floor(eyeY), Mth.floor(this.getZ()));
++            // Papo end
+             FluidState fluidState = this.level().getFluidState(blockPos);
+             double d = blockPos.getY() + fluidState.getHeight(this.level(), blockPos);
+             if (d > eyeY) {
