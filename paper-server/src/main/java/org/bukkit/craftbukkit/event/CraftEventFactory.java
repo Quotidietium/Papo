@@ -1327,6 +1327,16 @@ public class CraftEventFactory {
         CraftBlockState snapshot = CraftBlockStates.getBlockState(world, pos);
         snapshot.setData(state);
 
+        // Papo start - zero listeners => callEvent() always true (never cancelled) and the event
+        // object is never read; skip event construction, keep snapshot+place semantics identical.
+        // BlockGrowEvent has its own HandlerList; subclasses (BlockFormEvent/BlockSpreadEvent/
+        // EntityBlockFormEvent/DragonEggFormEvent) register listeners elsewhere, so an empty list
+        // here is exact (no listener can observe a plain BlockGrowEvent dispatch).
+        if (BlockGrowEvent.getHandlerList().getRegisteredListeners().length == 0) {
+            snapshot.place(flags);
+            return true;
+        }
+        // Papo end
         BlockGrowEvent event = new BlockGrowEvent(snapshot.getBlock(), snapshot);
         if (event.callEvent()) {
             snapshot.place(flags);
@@ -1561,6 +1571,17 @@ public class CraftEventFactory {
         event.callEvent();
         return event;
     }
+
+    // Papo start - zero-listener fast path for callRedstoneChange: with no listeners nobody can call
+    // setNewCurrent, so getNewCurrent() always equals the passed newCurrent (BlockRedstoneEvent has
+    // its own HandlerList, no subclasses, constructor only stores fields). Old method retained.
+    public static int handleRedstoneChange(LevelAccessor level, BlockPos pos, int oldCurrent, int newCurrent) {
+        if (BlockRedstoneEvent.getHandlerList().getRegisteredListeners().length == 0) {
+            return newCurrent;
+        }
+        return CraftEventFactory.callRedstoneChange(level, pos, oldCurrent, newCurrent).getNewCurrent();
+    }
+    // Papo end
 
     public static NotePlayEvent callNotePlayEvent(Level world, BlockPos pos, NoteBlockInstrument instrument, int note) {
         NotePlayEvent event = new NotePlayEvent(CraftBlock.at(world, pos), org.bukkit.Instrument.getByType((byte) instrument.ordinal()), new org.bukkit.Note(note));
