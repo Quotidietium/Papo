@@ -1,0 +1,79 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 04:08:34 +0800
+Subject: [PATCH] =?UTF-8?q?=E6=B4=BB=E5=A1=9E=E7=A2=B0=E6=92=9E=E6=89=AB?=
+ =?UTF-8?q?=E6=8F=8F=E7=9B=92=E4=B8=89=E6=AC=A1=E5=88=86=E9=85=8D=E6=8A=98?=
+ =?UTF-8?q?=E5=8F=A0=E4=B8=BA=E4=B8=80=E6=AC=A1=EF=BC=880168=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/level/block/piston/PistonMovingBlockEntity.java b/net/minecraft/world/level/block/piston/PistonMovingBlockEntity.java
+index bc42a6c678987a39b0a70a1a3e96eb90340ffea5..7db6cf12220d698113b01872892d23fcafdb3550 100644
+--- a/net/minecraft/world/level/block/piston/PistonMovingBlockEntity.java
++++ b/net/minecraft/world/level/block/piston/PistonMovingBlockEntity.java
+@@ -115,8 +115,15 @@ public class PistonMovingBlockEntity extends BlockEntity {
+         double d = partialTick - piston.progress;
+         VoxelShape collisionShape = piston.getCollisionRelatedBlockState().getCollisionShape(level, pos);
+         if (!collisionShape.isEmpty()) {
+-            AABB aabb = moveByPositionAndProgress(pos, collisionShape.bounds(), piston);
+-            List<Entity> entities = level.getEntities(null, PistonMath.getMovementArea(aabb, movementDirection, d).minmax(aabb));
++            // Papo start - scan box as one AABB (3 allocs -> 1): the moveByPositionAndProgress ->
++            // getMovementArea -> minmax chain only feeds this getEntities call. With m = bounds moved by
++            // the pos+progress offset and d' = delta*axisStep, the union collapses per axis to
++            // lo = min(m.edge + min(d',0), m.min) / hi = max(m.edge + max(d',0), m.max) on the movement
++            // axis (edge = min for negative dirs, max for positive) and plain m.min/m.max elsewhere.
++            // FP op order matches the chain exactly (left-associative adds, same Math.min/max operand
++            // order) and the ctor normalization is the identity in both forms (union always normalized).
++            List<Entity> entities = level.getEntities(null, papoMovementUnionBox(pos, collisionShape.bounds(), piston, movementDirection, d));
++            // Papo end
+             if (!entities.isEmpty()) {
+                 List<AABB> list = collisionShape.toAabbs();
+                 boolean isSlimeBlock = piston.movedState.is(Blocks.SLIME_BLOCK);
+@@ -251,6 +258,45 @@ public class PistonMovingBlockEntity extends BlockEntity {
+         );
+     }
+ 
++    // Papo start - one-AABB equivalent of PistonMath.getMovementArea(moveByPositionAndProgress(...), dir, delta).minmax(sameMovedBox);
++    // see the call site in moveCollidedEntities for the equivalence argument.
++    private static AABB papoMovementUnionBox(BlockPos pos, AABB bounds, PistonMovingBlockEntity piston, Direction dir, double delta) {
++        double progress = piston.getExtendedProgress(piston.progress);
++        double ox = pos.getX() + progress * piston.direction.getStepX();
++        double oy = pos.getY() + progress * piston.direction.getStepY();
++        double oz = pos.getZ() + progress * piston.direction.getStepZ();
++        double dMove = delta * dir.getAxisDirection().getStep();
++        double min = Math.min(dMove, 0.0);
++        double max = Math.max(dMove, 0.0);
++        return switch (dir) {
++            case WEST -> new AABB(
++                Math.min(bounds.minX + ox + min, bounds.minX + ox), bounds.minY + oy, bounds.minZ + oz,
++                Math.max(bounds.minX + ox + max, bounds.maxX + ox), bounds.maxY + oy, bounds.maxZ + oz
++            );
++            case EAST -> new AABB(
++                Math.min(bounds.maxX + ox + min, bounds.minX + ox), bounds.minY + oy, bounds.minZ + oz,
++                Math.max(bounds.maxX + ox + max, bounds.maxX + ox), bounds.maxY + oy, bounds.maxZ + oz
++            );
++            case DOWN -> new AABB(
++                bounds.minX + ox, Math.min(bounds.minY + oy + min, bounds.minY + oy), bounds.minZ + oz,
++                bounds.maxX + ox, Math.max(bounds.minY + oy + max, bounds.maxY + oy), bounds.maxZ + oz
++            );
++            case NORTH -> new AABB(
++                bounds.minX + ox, bounds.minY + oy, Math.min(bounds.minZ + oz + min, bounds.minZ + oz),
++                bounds.maxX + ox, bounds.maxY + oy, Math.max(bounds.minZ + oz + max, bounds.maxZ + oz)
++            );
++            case SOUTH -> new AABB(
++                bounds.minX + ox, bounds.minY + oy, Math.min(bounds.maxZ + oz + min, bounds.minZ + oz),
++                bounds.maxX + ox, bounds.maxY + oy, Math.max(bounds.maxZ + oz + max, bounds.maxZ + oz)
++            );
++            case UP -> new AABB(
++                bounds.minX + ox, Math.min(bounds.maxY + oy + min, bounds.minY + oy), bounds.minZ + oz,
++                bounds.maxX + ox, Math.max(bounds.maxY + oy + max, bounds.maxY + oy), bounds.maxZ + oz
++            );
++        };
++    }
++    // Papo end
++
+     private static void fixEntityWithinPistonBase(BlockPos pos, Entity entity, Direction dir, double progress) {
+         AABB boundingBox = entity.getBoundingBox();
+         AABB aabb = Shapes.block().bounds().move(pos);
