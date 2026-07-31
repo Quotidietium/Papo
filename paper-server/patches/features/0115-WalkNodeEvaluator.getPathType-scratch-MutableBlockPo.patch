@@ -1,0 +1,73 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 20:08:56 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=E5=AF=BB=E8=B7=AF=EF=BC=9AWa?=
+ =?UTF-8?q?lkNodeEvaluator.getPathType=20=E5=A4=8D=E7=94=A8=20scratch=20Mu?=
+ =?UTF-8?q?tableBlockPos=EF=BC=88getPathTypeStatic=20=E5=85=A5=E5=8F=A3?=
+ =?UTF-8?q?=E5=8D=B3=E8=AF=BB=E5=87=BA=E5=9D=90=E6=A0=87=E4=B8=BA=E5=B1=80?=
+ =?UTF-8?q?=E9=83=A8=20int=EF=BC=8C=E4=BB=8E=E4=B8=8D=E4=BF=9D=E7=95=99/?=
+ =?UTF-8?q?=E4=BF=AE=E6=94=B9=20pos=EF=BC=89+=20FlyNodeEvaluator.getPathTy?=
+ =?UTF-8?q?pe=20=E6=8A=98=E5=8F=A0=E7=BA=AF=E5=9D=90=E6=A0=87=E8=BD=BD?=
+ =?UTF-8?q?=E4=BD=93=20BlockPos=EF=BC=88Vec3i.equals=20=E9=80=90=E5=9D=90?=
+ =?UTF-8?q?=E6=A0=87=E6=AF=94=E8=BE=83=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/level/pathfinder/FlyNodeEvaluator.java b/net/minecraft/world/level/pathfinder/FlyNodeEvaluator.java
+index 19fd3d4e80f1cbc72f76760d68344df4a3ca887e..1c0c23ca7bcd2d6906bf0e141ed5019dc146f762 100644
+--- a/net/minecraft/world/level/pathfinder/FlyNodeEvaluator.java
++++ b/net/minecraft/world/level/pathfinder/FlyNodeEvaluator.java
+@@ -289,8 +289,12 @@ public class FlyNodeEvaluator extends WalkNodeEvaluator {
+     public PathType getPathType(PathfindingContext context, int x, int y, int z) {
+         PathType pathTypeFromState = context.getPathTypeFromState(x, y, z);
+         if (pathTypeFromState == PathType.OPEN && y >= context.level().getMinY() + 1) {
+-            BlockPos blockPos = new BlockPos(x, y - 1, z);
+-            PathType pathTypeFromState1 = context.getPathTypeFromState(blockPos.getX(), blockPos.getY(), blockPos.getZ());
++            // Papo start - avoid BlockPos allocation: the pos below would be (x, y-1, z) by construction
++            // and is only decomposed back to coordinates plus one BlockPos.equals against mobPosition()
++            // (Vec3i.equals compares x/y/z; a fresh pos is never reference-equal to the stored mob pos),
++            // so compare coordinates directly instead of materializing the BlockPos.
++            PathType pathTypeFromState1 = context.getPathTypeFromState(x, y - 1, z);
++            // Papo end
+             if (pathTypeFromState1 == PathType.DAMAGE_FIRE || pathTypeFromState1 == PathType.LAVA) {
+                 pathTypeFromState = PathType.DAMAGE_FIRE;
+             } else if (pathTypeFromState1 == PathType.DAMAGE_OTHER) {
+@@ -298,7 +302,9 @@ public class FlyNodeEvaluator extends WalkNodeEvaluator {
+             } else if (pathTypeFromState1 == PathType.COCOA) {
+                 pathTypeFromState = PathType.COCOA;
+             } else if (pathTypeFromState1 == PathType.FENCE) {
+-                if (!blockPos.equals(context.mobPosition())) {
++                // Papo - coordinate compare replacing blockPos.equals(context.mobPosition()) (see above)
++                BlockPos papoMobPos = context.mobPosition();
++                if (!(x == papoMobPos.getX() && y - 1 == papoMobPos.getY() && z == papoMobPos.getZ())) {
+                     pathTypeFromState = PathType.FENCE;
+                 }
+             } else {
+diff --git a/net/minecraft/world/level/pathfinder/WalkNodeEvaluator.java b/net/minecraft/world/level/pathfinder/WalkNodeEvaluator.java
+index 28ec361a41bbccd30c67ba81a53b92eac36abfb4..5ba4cb9d53c3dbd7220044db298e64650170fb90 100644
+--- a/net/minecraft/world/level/pathfinder/WalkNodeEvaluator.java
++++ b/net/minecraft/world/level/pathfinder/WalkNodeEvaluator.java
+@@ -38,6 +38,10 @@ public class WalkNodeEvaluator extends NodeEvaluator {
+     // for-each) in exact Plane.HORIZONTAL order, and reuse a mutable pos for getFloorLevel.
+     private static final Direction[] HORIZONTAL = {Direction.NORTH, Direction.EAST, Direction.SOUTH, Direction.WEST};
+     private final BlockPos.MutableBlockPos floorLevelPos = new BlockPos.MutableBlockPos();
++    // Scratch pos for getPathType: getPathTypeStatic(PathfindingContext, MutableBlockPos) reads the
++    // coordinates into local ints at entry and never retains or mutates the pos, so a per-evaluator
++    // reusable instance is safe (pathfinding runs on the tick thread, evaluators are per-navigation).
++    private final BlockPos.MutableBlockPos papoPathTypePos = new BlockPos.MutableBlockPos();
+     // Papo end
+ 
+     @Override
+@@ -454,7 +458,9 @@ public class WalkNodeEvaluator extends NodeEvaluator {
+ 
+     @Override
+     public PathType getPathType(PathfindingContext context, int x, int y, int z) {
+-        return getPathTypeStatic(context, new BlockPos.MutableBlockPos(x, y, z));
++        // Papo - reuse scratch pos instead of allocating a MutableBlockPos per call (see field comment);
++        // subclasses override this method wholesale and do not call super, so the field is Walk-only.
++        return getPathTypeStatic(context, this.papoPathTypePos.set(x, y, z));
+     }
+ 
+     public static PathType getPathTypeStatic(Mob mob, BlockPos pos) {
