@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 02:00:41 +0800
+Subject: [PATCH] =?UTF-8?q?Papo:=20EntitySelector.getPredicate=20=E4=B8=8A?=
+ =?UTF-8?q?=E4=B8=8B=E6=96=87=E6=97=A0=E5=85=B3=E8=B7=AF=E5=BE=84=E7=BB=84?=
+ =?UTF-8?q?=E5=90=88=E8=B0=93=E8=AF=8D=E7=BC=93=E5=AD=98?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/commands/arguments/selector/EntitySelector.java b/net/minecraft/commands/arguments/selector/EntitySelector.java
+index af71e0e1eb1c93745f3e4954ecc8fbd2ad4808a3..94e8c0f1cb41dbcd411240e53a1d87a10e2c46ba 100644
+--- a/net/minecraft/commands/arguments/selector/EntitySelector.java
++++ b/net/minecraft/commands/arguments/selector/EntitySelector.java
+@@ -51,6 +51,7 @@ public class EntitySelector {
+     private final @Nullable UUID entityUUID;
+     private final EntityTypeTest<Entity, ?> type;
+     private final boolean usesSelector;
++    private @Nullable Predicate<Entity> papoCachedContextFreePredicate; // Papo - 0156 lazy composite cache (main-thread only, idempotent)
+ 
+     public EntitySelector(
+         int maxResults,
+@@ -234,7 +235,17 @@ public class EntitySelector {
+         int i = (flag ? 1 : 0) + (flag1 ? 1 : 0) + (flag2 ? 1 : 0);
+         List<Predicate<Entity>> list;
+         if (i == 0) {
+-            list = this.contextFreePredicates;
++            // Papo start - cache the composite for the context-free path (0156):
++            // contextFreePredicates is an immutable List.copyOf snapshot (see EntitySelectorParser#getSelector)
++            // and Util.allOf is a pure function of it, so the composed predicate can be built once.
++            // Only the size>=2 case allocates in Util.allOf; sizes 0/1 are already allocation-free.
++            Predicate<Entity> cached = this.papoCachedContextFreePredicate;
++            if (cached == null) {
++                cached = Util.allOf(this.contextFreePredicates);
++                this.papoCachedContextFreePredicate = cached;
++            }
++            return cached;
++            // Papo end
+         } else {
+             List<Predicate<Entity>> list1 = new ObjectArrayList<>(this.contextFreePredicates.size() + i);
+             list1.addAll(this.contextFreePredicates);
