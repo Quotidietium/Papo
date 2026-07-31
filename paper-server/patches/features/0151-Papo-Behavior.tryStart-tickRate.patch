@@ -1,0 +1,54 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 01:19:59 +0800
+Subject: [PATCH] =?UTF-8?q?Papo:=20Behavior.tryStart=20tickRate=20?=
+ =?UTF-8?q?=E6=9F=A5=E6=89=BE=E6=8C=89=EF=BC=88=E9=85=8D=E7=BD=AE=E7=BA=AA?=
+ =?UTF-8?q?=E5=85=83,=E4=B8=96=E7=95=8C=E9=85=8D=E7=BD=AE=E5=BC=95?=
+ =?UTF-8?q?=E7=94=A8=EF=BC=89=E7=BC=93=E5=AD=98?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/entity/ai/behavior/Behavior.java b/net/minecraft/world/entity/ai/behavior/Behavior.java
+index 5b0cadd2544fb2a627822e645ff32fec2e9cfda9..ba21e5dfd6abd9543253126893dbf7dce8524a57 100644
+--- a/net/minecraft/world/entity/ai/behavior/Behavior.java
++++ b/net/minecraft/world/entity/ai/behavior/Behavior.java
+@@ -15,6 +15,15 @@ public abstract class Behavior<E extends LivingEntity> implements BehaviorContro
+     private final int minDuration;
+     private final int maxDuration;
+     private final String configKey; // Paper - configurable behavior tick rate and timings
++    // Papo start - tickRate lookup cache: the Table.get(entityType, configKey) below costs two
++    // hash lookups per tryStart (every stopped behavior, every entity, every tick). A Behavior
++    // instance belongs to one entity, so the result only depends on the level's
++    // WorldConfiguration and the config content; cache keyed by (config epoch, config reference)
++    // covers /paper reload (epoch bump) and cross-dimension travel (reference change).
++    private long papoTickRateEpoch = -1L;
++    private Object papoTickRateConfig = null;
++    private int papoCachedTickRate = -1;
++    // Papo end
+ 
+     public Behavior(Map<MemoryModuleType<?>, MemoryStatus> entryCondition) {
+         this(entryCondition, 60);
+@@ -46,7 +55,20 @@ public abstract class Behavior<E extends LivingEntity> implements BehaviorContro
+     @Override
+     public final boolean tryStart(ServerLevel level, E owner, long gameTime) {
+         // Paper start - configurable behavior tick rate and timings
+-        int tickRate = java.util.Objects.requireNonNullElse(level.paperConfig().tickRates.behavior.get(owner.getType(), this.configKey), -1);
++        // Papo start - cached lookup (see field comment); re-reads exactly when the epoch or the
++        // level's WorldConfiguration reference changes. Only in-place mutation of the live config
++        // table through NMS internals (no Bukkit API path) would not be observed until reload.
++        long papoEpoch = io.papermc.paper.configuration.PaperConfigurations.PAPO_CONFIG_EPOCH;
++        io.papermc.paper.configuration.WorldConfiguration papoConfig = level.paperConfig();
++        int tickRate;
++        if (papoEpoch == this.papoTickRateEpoch && papoConfig == this.papoTickRateConfig) {
++            tickRate = this.papoCachedTickRate;
++        } else {
++            this.papoTickRateEpoch = papoEpoch;
++            this.papoTickRateConfig = papoConfig;
++            this.papoCachedTickRate = tickRate = java.util.Objects.requireNonNullElse(papoConfig.tickRates.behavior.get(owner.getType(), this.configKey), -1);
++        }
++        // Papo end
+         if (tickRate > -1 && gameTime < this.endTimestamp + tickRate) {
+             return false;
+         }
