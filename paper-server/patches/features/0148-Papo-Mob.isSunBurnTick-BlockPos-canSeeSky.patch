@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 23:46:01 +0800
+Subject: [PATCH] =?UTF-8?q?Papo:=20Mob.isSunBurnTick=20BlockPos=20?=
+ =?UTF-8?q?=E5=BB=B6=E8=BF=9F=E5=88=B0=20canSeeSky=20=E5=88=86=E6=94=AF?=
+ =?UTF-8?q?=E5=86=85=E6=9E=84=E9=80=A0?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/entity/Mob.java b/net/minecraft/world/entity/Mob.java
+index 1c77714d38369013939e8fd77e1c8766c1b2b77a..fe921ea7a288d260f973b18a91652e7906386b7a 100644
+--- a/net/minecraft/world/entity/Mob.java
++++ b/net/minecraft/world/entity/Mob.java
+@@ -592,12 +592,13 @@ public abstract class Mob extends LivingEntity implements EquipmentUser, Leashab
+     public boolean isSunBurnTick() {
+         if (!this.level().isClientSide() && this.level().environmentAttributes().getValue(EnvironmentAttributes.MONSTERS_BURN, this.position())) {
+             float lightLevelDependentMagicValue = this.getLightLevelDependentMagicValue();
+-            BlockPos blockPos = BlockPos.containing(this.getX(), this.getEyeY(), this.getZ());
+             boolean flag = this.isInWaterOrRain() || this.isInPowderSnow || this.wasInPowderSnow;
++            // Papo - construct the BlockPos only where it is consumed: canSeeSky is gated behind
++            // the light/random/wetness checks, and BlockPos.containing is side-effect free.
+             if (lightLevelDependentMagicValue > 0.5F
+                 && this.random.nextFloat() * 30.0F < (lightLevelDependentMagicValue - 0.4F) * 2.0F
+                 && !flag
+-                && this.level().canSeeSky(blockPos)) {
++                && this.level().canSeeSky(BlockPos.containing(this.getX(), this.getEyeY(), this.getZ()))) {
+                 return true;
+             }
+         }
