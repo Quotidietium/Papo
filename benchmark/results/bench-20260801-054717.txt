@@ -1,0 +1,269 @@
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.BlockViewAngleBench.after_inline
+
+# Run progress: 0.00% complete, ETA 00:01:36
+# Fork: 1 of 2
+# Warmup Iteration   1: 10.930 ns/op
+# Warmup Iteration   2: 10.830 ns/op
+# Warmup Iteration   3: 11.114 ns/op
+Iteration   1: 11.247 ns/op
+Iteration   2: 11.294 ns/op
+Iteration   3: 11.324 ns/op
+Iteration   4: 11.625 ns/op
+Iteration   5: 11.735 ns/op
+
+# Run progress: 8.33% complete, ETA 00:01:32
+# Fork: 2 of 2
+# Warmup Iteration   1: 11.098 ns/op
+# Warmup Iteration   2: 10.813 ns/op
+# Warmup Iteration   3: 10.949 ns/op
+Iteration   1: 11.743 ns/op
+Iteration   2: 11.360 ns/op
+Iteration   3: 11.650 ns/op
+Iteration   4: 11.350 ns/op
+Iteration   5: 11.312 ns/op
+
+
+Result "papo.bench.BlockViewAngleBench.after_inline":
+  11.464 ±(99.9%) 0.300 ns/op [Average]
+  (min, avg, max) = (11.247, 11.464, 11.743), stdev = 0.198
+  CI (99.9%): [11.164, 11.764] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.BlockViewAngleBench.before_fourAlloc
+
+# Run progress: 16.67% complete, ETA 00:01:24
+# Fork: 1 of 2
+# Warmup Iteration   1: 11.972 ns/op
+# Warmup Iteration   2: 12.036 ns/op
+# Warmup Iteration   3: 12.093 ns/op
+Iteration   1: 12.322 ns/op
+Iteration   2: 12.421 ns/op
+Iteration   3: 12.512 ns/op
+Iteration   4: 12.945 ns/op
+Iteration   5: 12.428 ns/op
+
+# Run progress: 25.00% complete, ETA 00:01:15
+# Fork: 2 of 2
+# Warmup Iteration   1: 11.996 ns/op
+# Warmup Iteration   2: 12.205 ns/op
+# Warmup Iteration   3: 12.085 ns/op
+Iteration   1: 12.754 ns/op
+Iteration   2: 12.472 ns/op
+Iteration   3: 12.488 ns/op
+Iteration   4: 12.477 ns/op
+Iteration   5: 12.341 ns/op
+
+
+Result "papo.bench.BlockViewAngleBench.before_fourAlloc":
+  12.516 ±(99.9%) 0.289 ns/op [Average]
+  (min, avg, max) = (12.322, 12.516, 12.945), stdev = 0.191
+  CI (99.9%): [12.227, 12.806] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.InputVectorInlineBench.after_inline
+
+# Run progress: 33.33% complete, ETA 00:01:07
+# Fork: 1 of 2
+# Warmup Iteration   1: 17.817 ns/op
+# Warmup Iteration   2: 16.916 ns/op
+# Warmup Iteration   3: 17.090 ns/op
+Iteration   1: 19.033 ns/op
+Iteration   2: 17.664 ns/op
+Iteration   3: 19.116 ns/op
+Iteration   4: 17.949 ns/op
+Iteration   5: 18.457 ns/op
+
+# Run progress: 41.67% complete, ETA 00:00:58
+# Fork: 2 of 2
+# Warmup Iteration   1: 17.877 ns/op
+# Warmup Iteration   2: 17.403 ns/op
+# Warmup Iteration   3: 17.476 ns/op
+Iteration   1: 18.204 ns/op
+Iteration   2: 17.394 ns/op
+Iteration   3: 17.485 ns/op
+Iteration   4: 17.735 ns/op
+Iteration   5: 18.176 ns/op
+
+
+Result "papo.bench.InputVectorInlineBench.after_inline":
+  18.121 ±(99.9%) 0.911 ns/op [Average]
+  (min, avg, max) = (17.394, 18.121, 19.116), stdev = 0.602
+  CI (99.9%): [17.211, 19.032] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.InputVectorInlineBench.before_normalizeScaleAlloc
+
+# Run progress: 50.00% complete, ETA 00:00:50
+# Fork: 1 of 2
+# Warmup Iteration   1: 18.350 ns/op
+# Warmup Iteration   2: 17.187 ns/op
+# Warmup Iteration   3: 16.866 ns/op
+Iteration   1: 18.160 ns/op
+Iteration   2: 17.823 ns/op
+Iteration   3: 18.721 ns/op
+Iteration   4: 17.663 ns/op
+Iteration   5: 17.355 ns/op
+
+# Run progress: 58.33% complete, ETA 00:00:42
+# Fork: 2 of 2
+# Warmup Iteration   1: 17.838 ns/op
+# Warmup Iteration   2: 17.004 ns/op
+# Warmup Iteration   3: 17.043 ns/op
+Iteration   1: 17.629 ns/op
+Iteration   2: 17.609 ns/op
+Iteration   3: 17.347 ns/op
+Iteration   4: 17.582 ns/op
+Iteration   5: 19.054 ns/op
+
+
+Result "papo.bench.InputVectorInlineBench.before_normalizeScaleAlloc":
+  17.894 ±(99.9%) 0.873 ns/op [Average]
+  (min, avg, max) = (17.347, 17.894, 19.054), stdev = 0.577
+  CI (99.9%): [17.022, 18.767] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.KnockbackVec3Bench.after_inline
+
+# Run progress: 66.67% complete, ETA 00:00:33
+# Fork: 1 of 2
+# Warmup Iteration   1: 10.897 ns/op
+# Warmup Iteration   2: 8.658 ns/op
+# Warmup Iteration   3: 6.129 ns/op
+Iteration   1: 6.362 ns/op
+Iteration   2: 6.616 ns/op
+Iteration   3: 6.400 ns/op
+Iteration   4: 6.681 ns/op
+Iteration   5: 6.517 ns/op
+
+# Run progress: 75.00% complete, ETA 00:00:25
+# Fork: 2 of 2
+# Warmup Iteration   1: 10.902 ns/op
+# Warmup Iteration   2: 8.843 ns/op
+# Warmup Iteration   3: 6.076 ns/op
+Iteration   1: 6.458 ns/op
+Iteration   2: 6.398 ns/op
+Iteration   3: 6.371 ns/op
+Iteration   4: 6.884 ns/op
+Iteration   5: 6.393 ns/op
+
+
+Result "papo.bench.KnockbackVec3Bench.after_inline":
+  6.508 ±(99.9%) 0.258 ns/op [Average]
+  (min, avg, max) = (6.362, 6.508, 6.884), stdev = 0.171
+  CI (99.9%): [6.250, 6.766] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.KnockbackVec3Bench.before_normalizeScaleAlloc
+
+# Run progress: 83.33% complete, ETA 00:00:16
+# Fork: 1 of 2
+# Warmup Iteration   1: 11.018 ns/op
+# Warmup Iteration   2: 8.671 ns/op
+# Warmup Iteration   3: 6.143 ns/op
+Iteration   1: 6.840 ns/op
+Iteration   2: 6.430 ns/op
+Iteration   3: 6.468 ns/op
+Iteration   4: 6.550 ns/op
+Iteration   5: 6.331 ns/op
+
+# Run progress: 91.67% complete, ETA 00:00:08
+# Fork: 2 of 2
+# Warmup Iteration   1: 10.815 ns/op
+# Warmup Iteration   2: 8.656 ns/op
+# Warmup Iteration   3: 6.036 ns/op
+Iteration   1: 6.405 ns/op
+Iteration   2: 6.383 ns/op
+Iteration   3: 6.514 ns/op
+Iteration   4: 6.589 ns/op
+Iteration   5: 6.334 ns/op
+
+
+Result "papo.bench.KnockbackVec3Bench.before_normalizeScaleAlloc":
+  6.484 ±(99.9%) 0.230 ns/op [Average]
+  (min, avg, max) = (6.331, 6.484, 6.840), stdev = 0.152
+  CI (99.9%): [6.254, 6.715] (assumes normal distribution)
+
+
+# Run complete. Total time: 00:01:41
+
+REMEMBER: The numbers below are just data. To gain reusable insights, you need to follow up on
+why the numbers are the way they are. Use profilers (see -prof, -lprof), design factorial
+experiments, perform baseline and negative tests that provide experimental control, make sure
+the benchmarking environment is safe on JVM/OS/HW level, ask for reviews from the domain experts.
+Do not assume the numbers tell you what you want them to tell.
+
+NOTE: Current JVM experimentally supports Compiler Blackholes, and they are in use. Please exercise
+extra caution when trusting the results, look into the generated code to check the benchmark still
+works, and factor in a small probability of new VM bugs. Additionally, while comparisons between
+different JVMs are already problematic, the performance difference caused by different Blackhole
+modes can be very significant. Please make sure you use the consistent Blackhole mode for comparisons.
+
+Benchmark                                          Mode  Cnt   Score   Error  Units
+BlockViewAngleBench.after_inline                   avgt   10  11.464 ± 0.300  ns/op
+BlockViewAngleBench.before_fourAlloc               avgt   10  12.516 ± 0.289  ns/op
+InputVectorInlineBench.after_inline                avgt   10  18.121 ± 0.911  ns/op
+InputVectorInlineBench.before_normalizeScaleAlloc  avgt   10  17.894 ± 0.873  ns/op
+KnockbackVec3Bench.after_inline                    avgt   10   6.508 ± 0.258  ns/op
+KnockbackVec3Bench.before_normalizeScaleAlloc      avgt   10   6.484 ± 0.230  ns/op
+
+Benchmark result is saved to results/bench-20260801-054717.json
