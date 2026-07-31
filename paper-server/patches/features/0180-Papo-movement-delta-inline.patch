@@ -1,0 +1,39 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 06:05:08 +0800
+Subject: [PATCH] =?UTF-8?q?=E5=9D=97=E5=86=85=E6=A3=80=E6=B5=8B=E4=BD=8D?=
+ =?UTF-8?q?=E7=A7=BB=E5=B7=AE=E5=86=85=E8=81=94=EF=BC=9Amovement.to().subt?=
+ =?UTF-8?q?ract(from)=20=E9=80=90=E5=88=86=E9=87=8F=EF=BC=880180=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
+index 26a24c2840bfb955a401dcc1af075083c104fcf7..2f147bc9ce780af4dce355081a92059ddf731863 100644
+--- a/net/minecraft/world/entity/Entity.java
++++ b/net/minecraft/world/entity/Entity.java
+@@ -1706,11 +1706,20 @@ public abstract class Entity implements SyncedDataHolder, DebugValueSource, Name
+ 
+             for (Entity.Movement movement : movements) {
+                 Vec3 vec3 = movement.from;
+-                Vec3 vec31 = movement.to().subtract(movement.from());
++                // Papo - inline the to.subtract(from) delta Vec3: only its lengthSqr() and per-axis
++                // components are read below; same components, same FP expressions (subtract is
++                // componentwise, lengthSqr is x*x + y*y + z*z, get(axis) picks one component).
++                double papoDeltaX = movement.to().x - movement.from().x;
++                double papoDeltaY = movement.to().y - movement.from().y;
++                double papoDeltaZ = movement.to().z - movement.from().z;
+                 int i = 16;
+-                if (movement.axisDependentOriginalMovement().isPresent() && vec31.lengthSqr() > 0.0) {
++                if (movement.axisDependentOriginalMovement().isPresent() && papoDeltaX * papoDeltaX + papoDeltaY * papoDeltaY + papoDeltaZ * papoDeltaZ > 0.0) {
+                     for (Direction.Axis axis : Direction.axisStepOrder(movement.axisDependentOriginalMovement().get())) {
+-                        double d = vec31.get(axis);
++                        double d = switch (axis) {
++                            case X -> papoDeltaX;
++                            case Y -> papoDeltaY;
++                            case Z -> papoDeltaZ;
++                        };
+                         if (d != 0.0) {
+                             Vec3 vec32 = vec3.relative(axis.getPositive(), d);
+                             i -= this.checkInsideBlocks(vec3, vec32, stepBasedCollector, set, i);
