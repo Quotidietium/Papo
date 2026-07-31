@@ -589,7 +589,7 @@
 - **PathNavigation 每 tick Vec3/BlockPos 拆分量**：`getGroundY(Vec3)` 是 protected 虚方法（3 个实现），NMS 插件 override 后会被改道绕过，不满足兼容红线；原版内可证等价但扩展点风险不可接受。
 - **declarative Behavior MemoryAccessor/Optional 复用**：需先全量审计是否存在跨 tick 持有 MemoryAccessor 的 trigger，工作量大，留待下批。
 - **getSpread EnumMap/SpreadContext 线程级复用**：需严格保序复刻（EnumMap ordinal 序 vs 插入序、i1<i clear 语义），改动面大且事件顺序可被插件观察，留待下批单独仔细核对。
-- ~~**漏斗 AABB 缓存**~~ **批次 33 已完成（0113，仅 getItemsAtAndAbove；getEntityContainer 需签名穿线暂缓）**。
+- ~~**漏斗 AABB 缓存**~~ **批次 33 已完成（0113，getItemsAtAndAbove）；批次 34 已完成 getEntityContainer（0116，suck 侧 BE 字段 + eject 侧 searchPosition 键控）**。
 - ~~**PlayerPickupItemEvent/EntityPickupItemEvent 双事件门控**~~ **批次 32 已完成（0112）**。
 - ~~**CraftEventFactory.handleBlockFormEvent 门控**~~ **批次 32 已完成（0114）**：EntityBlockFormEvent 无独立 HandlerList，单检查覆盖。
 - **Biome.shouldFreeze / tickPrecipitation BlockPos 复用**：频率受 randomTickSpeed/48 与 biome 限制，价值低。
@@ -627,9 +627,119 @@
 
 ---
 
+## 批次 34（2026-07-31）：事件门控规模化 + 寻路/挤压/检查路径分配消除（0114-0124 + 直接提交）
+
+三个 survey 子代理（网络与玩家同步 / 生物 AI 与寻路 / 区块与世界 tick IO）共产出 24 个候选，逐个代码复核（含 HandlerList 层级、事件子类、构造副作用全库 grep 实证）后实现 11 个补丁 + 1 个 CraftEventFactory 直接提交。另将批次 30/31/33 的三个暂缓项（touchingUnloadedChunk、getEntityContainer、批次 31 遗留的 getPathType pos）经等价性实证后落地。全部 compileJava + 全量 test 通过，applyPatches 干净应用（915 patches）。
+
+### 0114 — Entity.touchingUnloadedChunk 内联 inflate(1.0) 边界算术
+- **文件**：`net/minecraft/world/entity/Entity.java` `touchingUnloadedChunk`
+- **热点**：`doCheckFallDamage`（每次移动）与 `updateFluidHeightAndDoFluidPushing`（每实体每 tick ×2 路径，0114 实为 0104 同方法入口）各调用一次；每次分配 `getBoundingBox().inflate(1.0)` 新 AABB。
+- **改法**：仅读 minX/maxX/minZ/maxZ，内联为 `bb.minX - 1.0` 等 4 个 double 运算（同 0104 deflate 内联模式；`AABB.inflate(v)` 逐运算相同）。方法体内部改动，无签名变化——批次 30 暂缓时担忧的"签名穿线"实际不需要。
+- **等价性**：`inflate(1.0)` = `inflate(1.0,1.0,1.0)` = min-v/max+v（AABB.java:178-190 实证）；`getBoundingBox()` final 返回存储字段。基准 main：10 万随机 box + 3 万整数边界点逐位比对。
+- **基准**：4.464 → 2.072 ns/op（**2.15×**）。
+- **风险**：零。
+
+### 0115 — 寻路 getPathType 的 BlockPos 分配消除（2 文件）
+- **文件**：`net/minecraft/world/level/pathfinder/WalkNodeEvaluator.java` + `FlyNodeEvaluator.java`
+- **热点**：A) `WalkNodeEvaluator.getPathType` 每调用 `new MutableBlockPos(x,y,z)` 仅为 `getPathTypeStatic` 入口读出坐标为局部 int（寻路内层循环，每节点多次）；B) `FlyNodeEvaluator.getPathType` `new BlockPos(x, y-1, z)` 仅为取回坐标 + FENCE 分支一次 `BlockPos.equals`。
+- **改法**：A) per-evaluator scratch `papoPathTypePos.set(x,y,z)`（0076 floorLevelPos 同款先例）；B) 直接 `getPathTypeFromState(x, y-1, z)` + FENCE 分支坐标比较。
+- **等价性**：A) `getPathTypeStatic` 入口三行 `pos.getX/Y/Z()` 读出后从不保留/修改 pos（全方法实证），且 `PathfindingContext` 自身已用同款 mutablePos 复用；子类（Amphibious/Fly/Swim）整体重写 getPathType 不调 super；寻路 tick 线程单线程。B) `Vec3i.equals` final 纯坐标比较（Vec3i.java:45-47），fresh pos 与存储的 mobPosition 恒非引用相等；`PathfindingContext.mobPosition` 非空 BlockPos。
+- **基准**：A 2.045 → 1.231（**1.66×**）；B 2.208 → 0.789（**2.80×**）。
+- **风险**：低。
+
+### 0116 — HopperBlockEntity getEntityContainer 实体容器搜索 AABB 缓存（批次 33 暂缓项回头攻克）
+- **文件**：`net/minecraft/world/level/block/entity/HopperBlockEntity.java`（getSourceContainer/getAttachedContainer/getContainerAt/getEntityContainer + 3 新字段）
+- **热点**：漏斗 suck（`getSourceContainer`）与 eject（`getAttachedContainer`→`getContainerAt`）每条搬运周期各构造 `new AABB(x-0.5, y-0.5, z-0.5, x+0.5, y+0.5, z+0.5)`；批次 33 以"静态方法链需穿线"暂缓，复核发现两个入口本就持有 hopper/blockEntity，无需穿线。
+- **改法**：suck 侧 `papoEntitySuckAabb` BE 惰性字段（worldPosition final 故常量，0113 同款先例）；eject 侧按 `searchPosition` 键控缓存（`papoEntityEjectSearchPos`+`papoEntityEjectAabb`，pos.equals 命中复用——同方块 setBlock 改 facing 保留 BE 时自动重算）；新增 8-arg getContainerAt 重载传 @Nullable AABB，矿车漏斗 instanceof 门控传 null 走原逐次构造。
+- **等价性**：缓存构造表达式与逐次构造逐字符相同（bit 级一致，基准 main 10 万随机 BE 逐分量 Double.compare 比对 + eject 双目标交替键控重算验证）；AABB 不可变且 `getEntitiesOfClass` 只读；公共 3-arg getContainerAt（CrafterBlock/DropperBlock 用）路径不动。
+- **基准**：suck 3.606 → 0.560（**6.44×**）；eject 3.602 → 0.729（**4.94×**）。
+- **风险**：低。
+
+### 0117 — BlockFadeEvent 16 个调用点迁移至零监听器快路
+- **文件**：`CraftEventFactory.java`（新增 `handleBlockFadeEvent`，直接提交部分）+ 16 个 NMS 文件调用点（补丁）
+- **热点**：火自然熄灭（BaseFireBlock）、冰融化、草/菌丝衰变、积雪融化、红石矿熄灭、珊瑚死亡、耕地退化等 randomTick 路径每次固定分配 `CraftBlock` + `CraftBlockState` + `BlockFadeEvent` + 派发；16 个调用点全部只读 `.isCancelled()`。
+- **改法**：`CraftEventFactory.handleBlockFadeEvent` = `getRegisteredListeners().length > 0 && callBlockFadeEvent(...).isCancelled()`（旧方法保留）；16 调用点机械替换 `callBlockFadeEvent(...).isCancelled()` → `handleBlockFadeEvent(...)`（python 脚本执行，逐文件 1:1 核验）。
+- **等价性**：零监听器时 Cancellable 事件恒不取消（BlockFadeEvent 有自己的 HANDLER_LIST、无子类、构造仅字段赋值，全库实证）；`CraftBlockStates.getBlockState` = `new CraftBlockState(CraftBlock.at(...))` 纯分配无世界修改——整个方法体在零监听器时可证无副作用，跳过即 `false`。
+- **风险**：低。**价值：高**（火/冰/草衰变是自然世界稳定热源）。
+
+### 0118 — 玩家状态切换事件门控×4：PlayerToggleSprint / PlayerToggleSneak / PlayerItemHeld / EntityPoseChange
+- **文件**：`ServerGamePacketListenerImpl.java`（handlePlayerCommand/handlePlayerInput/handleSetCarriedItem）+ `Entity.java`（setPose）
+- **热点**：每次冲刺/潜行切换、热键栏切换、每次实体姿势切换（潜行/游泳/鞘翅，全实体）无条件构造事件 + 派发；setPose 还每次克隆 `Pose.values()` 数组。
+- **改法**：`length > 0` 门控（sneak 的零监听器分支复刻 `!isCancelled() && hasClientLoaded()` → `setShiftKeyDown` 语义；itemheld 零监听器直接落到槽位切换）。
+- **等价性**：4 事件均 Cancellable 默认 false（Pose 事件非 Cancellable 且 callEvent 结果被丢弃）、有自己的 HANDLER_LIST、无子类、构造仅字段赋值（逐事件 paper-api 实证）；零监听器时控制流落点逐分支一致。
+- **风险**：零-低。
+
+### 0119 — 世界 tick 事件门控：LeavesDecayEvent + BlockIgniteEvent
+- **文件**：`LeavesBlock.java`（randomTick）+ `FireBlock.java`（tick 蔓延循环）
+- **热点**：树叶腐烂是 MC 最密集世界事件之一（砍树后数百叶片逐片 randomTick）；火蔓延对每个通过随机判定的邻位构造 `CraftBlock.at` ×2 + 事件 + 派发。
+- **改法**：叶衰减零监听器分支保留 `!level.getBlockState(pos).is(this)` 复查（无分配，控制流逐点一致）；火点燃调用点 `length > 0 &&` 短路。
+- **等价性**：两事件均有自己的 HANDLER_LIST、无子类、构造仅字段赋值；零监听器时 isCancelled 恒 false，原控制流必然前进到 dropResources/removeBlock（叶）与 handleBlockSpreadEvent（火）。
+- **风险**：低。
+
+### 0120 — PathNavigation.followThePath/doStuckDetection 直读 Node 坐标
+- **文件**：`net/minecraft/world/entity/ai/navigation/PathNavigation.java`
+- **热点**：每个寻路中的生物每 tick：`followThePath` `getNextNodePos()`（`nodes.get(i).asBlockPos()` = new BlockPos）+ `doStuckDetection` 再一次，另有 `getNextNode()` 重复取值。
+- **改法**：`Node nextNode = this.path.getNextNode()` 一次取值直读 `x/y/z/type`；`doStuckDetection` 改手工坐标比较，`timeoutCachedNode` 仅在节点推进时 `nextNode.asBlockPos()`（分配从每 tick 降为每次推进）。
+- **等价性**：`getNextNodePos()` 与 `getNextNode()` 同一 `nodes.get(nextNodeIndex)`（Path.java:88-94 实证），两次读间无 path 变更；`Vec3i.equals` final 纯坐标比较，fresh pos 与缓存 pos 恒非引用相等；`timeoutCachedNode` 仅被 equals 与 `atBottomCenterOf`（坐标方法）使用，身份不可观察。基准 main：10 万随机推进/回退序列两路径判定与缓存坐标一致。
+- **基准**：3.514 → 1.957（**1.80×**）。
+- **风险**：低。
+
+### 0121 — EntityPathfindEvent 零监听器门控
+- **文件**：`net/minecraft/world/entity/ai/navigation/PathNavigation.java` `createPath`
+- **热点**：每次寻路尝试对 targets 每个目标构造 `CraftLocation.toBukkit`（Location）+ 事件 + 派发；村民/敌对生物寻路是大服 AI 最重入口之一。
+- **改法**：循环外一次 `papoHasPathfindListeners`，循环条件加 `papoHasPathfindListeners &&` 短路。
+- **等价性**：事件有自己的 HANDLER_LIST、无子类、构造仅字段赋值；零监听器时 `callEvent()` 恒 true，原条件精确退化为仅世界边界检查。已知取舍（0100 同款）：零监听器异步寻路不再触发同步事件线程检查——仅插件违规调用可达。
+- **风险**：低。
+
+### 0122 — AbstractMinecart.tick VehicleUpdateEvent/VehicleMoveEvent 整块门控
+- **文件**：`net/minecraft/world/entity/vehicle/minecart/AbstractMinecart.java` `tick`
+- **热点**：每矿车每 tick 构造 2 个 Location + VehicleUpdateEvent 派发，移动时再 VehicleMoveEvent；漏斗矿车农场/运输线数十至数百矿车。
+- **改法**：两事件任一 `length > 0` 才进入原 CraftBukkit 块（整块原样保留，混合监听场景行为逐字节一致）。
+- **等价性**：两事件均非 Cancellable、有自己的 HANDLER_LIST、无子类、构造仅字段赋值；from/to/vehicle/bworld 四个局部量只服务于事件构造，零监听器时整块为可证空操作。
+- **风险**：低。
+
+### 0123 — Entity.push(x,y,z,null) 路径 Vector 分配消除
+- **文件**：`net/minecraft/world/entity/Entity.java` `push(double,double,double,Entity)`
+- **热点**：实体-实体挤压（`push(Entity)` → 三参 → 四参 null）每对重叠可推实体每 tick；`new org.bukkit.util.Vector(x,y,z)` 在 null 路径无条件分配仅为读回分量。
+- **改法**：null 分支直接 `setDeltaMovement(getDeltaMovement().add(x, y, z))`；Vector 构造移入非 null 分支内。
+- **等价性**：`Vector(double,double,double)` 仅存字段（Vector.java:71-75），getX/Y/Z 原样读回 → `add(delta.getX(),...)` 与 `add(x,y,z)` 位级一致；`needsSync` 两路径均置位；取消早退语义不变。基准 main：100 万随机输入累加逐位一致。
+- **基准**：3.168 → 2.793（**1.13×**——单点分配部分被 EA 掩盖，如实记录；高频调用下仍稳定为正）。
+- **风险**：极低。
+
+### 0124 — EntityTargetEvent 系门控×3 + EndermanAttackPlayerEvent 门控
+- **文件**：`TemptGoal.java`（canUse）+ `TemptingSensor.java`（doTick）+ `Mob.java`（setTarget）+ `EnderMan.java`（isBeingStaredBy）
+- **热点**：TemptGoal 运行中每 tick `canContinueToUse`→`canUse` 构造+派发目标事件；TemptingSensor 每 20 tick 每动物；`Mob.setTarget` 是所有目标获取/丢失必经口；末影人对每个候选玩家构造+派发。
+- **改法**：前三处按 `EntityTargetEvent.getHandlerList()` 门控——**关键实证**：`EntityTargetLivingEntityEvent` 不声明自己的 HandlerList，其监听器注册进 `EntityTargetEvent` 的列表，故该列表为空 ⟺ 无人能观察此事件；TemptingSensor 零监听器分支复刻 `setMemory(TEMPTING_PLAYER, player)`（getHandle() 即同一 NMS 对象）；EnderMan 零监听器直接 `return shouldAttack`（cancelled 保持 `!shouldAttack`，callEvent 返回 `!cancelled`）。
+- **等价性**：各事件构造仅字段赋值；零监听器时默认取消规则与 target 重映射逐分支比对（TemptGoal player 不变、setTarget target 不变含 null 情形、TemptingSensor setMemory 同对象、EnderMan 返回值同）。
+- **风险**：低。
+
+### 直接提交（无补丁文件，编号 0125）— CraftEventFactory 四事件门控
+- **文件**：`paper-server/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java`（直接提交的源码）
+- **内容**：
+  1. 新增 `handleBlockFadeEvent` 零监听器快路（配合 0117 的 16 调用点）；
+  2. `handleBlockSpreadEvent` 零监听器跳过事件构造（保留 snapshot+place；BlockSpreadEvent 有自己的 HANDLER_LIST、无子类）——火蔓延/藤蔓/草蔓延/海带/紫水晶/钟乳石 20 个调用点受益；
+  3. `handleMoistureChangeEvent` 同款门控（耕地湿度）；
+  4. `callEntityChangeBlockEvent` 零监听器早退返回 `!cancelled`（**关键实证**：唯一子类 EntityBreakDoorEvent 不声明 HandlerList，其监听器注册进 EntityChangeBlockEvent 列表，门控精确充分）——羊吃草、狐狸吃浆果、兔子啃胡萝卜、凋零破坏、 weaving 蛛丝等 15+ 调用点受益。
+- **等价性**：零监听器时各事件恒不取消（Cancellable 默认 false），snapshot 构造/place 语义逐行保留（spread/moisture 仅省事件构造；EntityChangeBlock 全方法体可证无副作用故整体跳过）；均 0114（handleBlockFormEvent）同款已验证模式。
+- **风险**：低。
+
+### 暂缓（批次 34 评估后未做，附原因）
+- **PlayerMoveEvent from/to Location 延迟到 delta 阈值后分配**（survey 1 #5，中价值）：CraftBukkit 魔改区分支重排，数值等价论证已备但需移动/传送冒烟验证，留批次 35 单独落地。
+- **RegistryOps(NbtOps) 按 RegistryAccess 实例缓存**（survey 1 #8，中价值）：核心 registry 类改动，需先基准验证聊天路径，留批次 35。
+- **getSpread EnumMap/SpreadContext 复用**：返回值 protected 逃逸 + 插件可观察 spread 顺序，三次评估维持暂缓。
+- **EntitySelector.getPredicate 特性谓词缓存**：lambda 捕获调用时值（box/pos/range），缓存键复杂，收益小，维持暂缓。
+- **PlayerSensor.getFollowDistance 外提 + TemptingSensor TargetingConditions 字段**（survey 2 #7/#8，低价值）：成立，留批次 35 顺手带走。
+- **shouldTargetNextNodeInDirection 的 getNextNodePos/getNodePos**（0120 同方法区）：仅 canCutCorner 短路路径条件性到达，频次低，未动。
+- **FoodLevelChangeEvent×4 / PlayerInputEvent**（survey 1 后备）：频率远低于入选项，记录后备。
+- **survey 3 全部 6 项**（handleBlockGrowEvent 门控、PlayerNaturallySpawnCreaturesEvent 门控+复用、SerializableChunkData sections Optional、ChunkGenerator stream×2、callRedstoneChange 门控+7 调用点、DEFLATE 写侧 Deflater 池化）：复核通过，整体移入批次 35。
+
+---
+
+
+
 ## 候选后续批次（来自 survey，按 价值×置信/风险 排序）
 
-（旧清单中 Direction.Plane 迭代器、tickBlockEntities 移除集、NaturalSpawner 距离、pushableBy、LookControl Optional、distanceToSqr 批、CraftBukkit 枚举缓存均已完成，见对应批次。批次 28 完成：InventoryChangeTrigger 早退 0093、Utf8String 写侧 NBT ASCII 快速路径 0092、tickChildren SetTimePacket 惰性 0094、FriendlyByteBuf.writeNbt 适配器 0095。批次 29 完成：FriendlyByteBuf.readNbt 读侧适配器 0096、VarInt.read 快速路径 0097、枚举常量缓存 0098、registry codec 单例 0099、EntityJumpEvent/PlayerVelocityEvent 门控 0100、惰性 list 0101、TrackedEntity 惰性移除 0102、Inflater 池化 0103；map 编码 forEach→entrySet 经基准实测回退 0.77× 已撤销（见批次 29 撤销条）。批次 30 完成：流体检测路径 3 处分配消除 0104、computeSpeed Vec3 消除 0105。批次 31 完成：BlockFromToEvent 门控+流体 tick 去冗余查询 0106、物品拾取/合并门控 0107、经验球 4 事件门控 0108、PlayerJumpEvent 门控+Vec3 折叠 0109、broadcastSlotChange 门控 0110、寻路缓存两段式+GateBehavior stream 消除 0111。批次 32 完成：双拾取事件门控 0112、handleBlockFormEvent 门控 0114（初稿误记 0113，补丁序列以补丁文件为准后正名）。批次 33 完成：漏斗吸取 AABB 实例缓存 0113。）
+（旧清单中 Direction.Plane 迭代器、tickBlockEntities 移除集、NaturalSpawner 距离、pushableBy、LookControl Optional、distanceToSqr 批、CraftBukkit 枚举缓存均已完成，见对应批次。批次 28 完成：InventoryChangeTrigger 早退 0093、Utf8String 写侧 NBT ASCII 快速路径 0092、tickChildren SetTimePacket 惰性 0094、FriendlyByteBuf.writeNbt 适配器 0095。批次 29 完成：FriendlyByteBuf.readNbt 读侧适配器 0096、VarInt.read 快速路径 0097、枚举常量缓存 0098、registry codec 单例 0099、EntityJumpEvent/PlayerVelocityEvent 门控 0100、惰性 list 0101、TrackedEntity 惰性移除 0102、Inflater 池化 0103；map 编码 forEach→entrySet 经基准实测回退 0.77× 已撤销（见批次 29 撤销条）。批次 30 完成：流体检测路径 3 处分配消除 0104、computeSpeed Vec3 消除 0105。批次 31 完成：BlockFromToEvent 门控+流体 tick 去冗余查询 0106、物品拾取/合并门控 0107、经验球 4 事件门控 0108、PlayerJumpEvent 门控+Vec3 折叠 0109、broadcastSlotChange 门控 0110、寻路缓存两段式+GateBehavior stream 消除 0111。批次 32 完成：双拾取事件门控 0112、handleBlockFormEvent 门控 0114（初稿误记 0113，补丁序列以补丁文件为准后正名）。批次 33 完成：漏斗吸取 AABB 实例缓存 0113。批次 34 完成：touchingUnloadedChunk 内联 0114、寻路 getPathType BlockPos 0115、漏斗 getEntityContainer AABB 缓存 0116、BlockFadeEvent 门控 0117、玩家状态事件×4 门控 0118、LeavesDecay/BlockIgnite 门控 0119、PathNavigation Node 直读 0120、EntityPathfindEvent 门控 0121、矿车事件门控 0122、push Vector 消除 0123、EntityTarget/Enderman 门控 0124、CraftEventFactory 四事件门控（直接提交，编号 0125）。注意 0114 编号被两批使用：批次 32 的 0114 是直接提交（无补丁文件），批次 34 的 0114 起为补丁文件编号——以补丁文件序列为准。）
 
 ### 批次 23-27 survey 新增候选（2026-07-30，尚未做）
 
@@ -648,6 +758,7 @@
 - **ClientboundLightUpdatePacketData BitSet.toLongArray 缓存**（中价值）：getter public 可变，**不满足可证等价，暂缓**。
 - **PlayerNaturallySpawnCreaturesEvent 复用**（每玩家每 tick）：残留状态管理复杂，**暂缓**。
 - **Varint21FrameDecoder helperBuf 消除**（低价值）：每入站帧 ≤3 字节抄写。
-- **Entity.touchingUnloadedChunk inflate(1.0) AABB 内联**（批次 30 新增，低-中价值）：每调用 1 个 AABB，但方法被多处调用需改签名穿线，暂缓。
+- ~~**Entity.touchingUnloadedChunk inflate(1.0) AABB 内联**~~ **批次 34 已完成（0114）**：方法体内联即可，无需签名穿线。
+- **批次 35 预定**（批次 34 survey 已复核通过）：handleBlockGrowEvent 门控、PlayerNaturallySpawnCreaturesEvent 门控+复用、SerializableChunkData sections Optional、ChunkGenerator stream×2、callRedstoneChange 门控+7 调用点、DEFLATE 写侧 Deflater 池化、PlayerMoveEvent Location 延迟、RegistryOps(NbtOps) 缓存、PlayerSensor/TemptingSensor 小项。
 
 已确认**已优化、勿重复**：EntityTickList.forEach、LevelTicks、LevelChunk.getBlockState、getEntitiesOfClass、Entity.collide 数学、CompoundTag.copy、PatchedDataComponentMap、getNearestPlayer、PoiManager、Brigadier 子节点查找等。
