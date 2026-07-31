@@ -1,0 +1,80 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 01:20:01 +0800
+Subject: [PATCH] =?UTF-8?q?Papo:=20InventoryClickEvent=20=E9=9B=B6?=
+ =?UTF-8?q?=E7=9B=91=E5=90=AC=E5=99=A8=E5=BF=AB=E8=B7=AF=EF=BC=88QUICK=5FC?=
+ =?UTF-8?q?RAFT=20=E6=8B=96=E6=8B=BD=E5=88=86=E6=94=AF=E9=80=90=E5=AD=97?=
+ =?UTF-8?q?=E5=A4=8D=E5=88=B6=EF=BC=8C=E4=BD=99=E8=80=85=20clicked+craft/s?=
+ =?UTF-8?q?mith=20=E9=87=8D=E5=90=8C=E6=AD=A5=E8=AF=AD=E4=B9=89=E4=BF=9D?=
+ =?UTF-8?q?=E6=8C=81=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+index 9df138083132b072134f2dd3f4756e3f5a6b3bd5..edfcadd1aa60ab0cae9fc8a90aa7b4d944ac3462 100644
+--- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+@@ -3077,6 +3077,53 @@ public class ServerGamePacketListenerImpl
+                     }
+ 
+                     org.bukkit.inventory.InventoryView inventory = this.player.containerMenu.getBukkitView();
++
++                    // Papo start - zero-listener fast path: CraftItemEvent/SmithItemEvent/
++                    // CartographyItemEvent declare no own getHandlerList, so all click events
++                    // share InventoryClickEvent's single HandlerList. With zero listeners the
++                    // event cannot be observed. The mapping switch (:3109-3318) is pure
++                    // click/action computation EXCEPT its QUICK_CRAFT case (Paper drag fix +
++                    // unconditional clicked() at :3302), which is replicated verbatim below for
++                    // that click type. For other click types the observable outcomes of the
++                    // skipped block are exactly: (1) containerMenu.clicked unless cancelled
++                    // (cancelled == isSpectator, set at :3057 and never reassigned);
++                    // (2) sendAllDataToRemote when the event would have been a CraftItemEvent
++                    // (slotNum==0, crafting top, recipe present) or SmithItemEvent (slotNum==3,
++                    // smithing top, result present); (3) no menu change is possible without a
++                    // listener.
++                    if (InventoryClickEvent.getHandlerList().getRegisteredListeners().length == 0) {
++                        if (packet.clickType() == net.minecraft.world.inventory.ClickType.QUICK_CRAFT) {
++                            // verbatim copy of the switch's QUICK_CRAFT case (Paper - Fix CraftBukkit drag system)
++                            net.minecraft.world.inventory.AbstractContainerMenu containerMenu = this.player.containerMenu;
++                            int currentStatus = this.player.containerMenu.quickcraftStatus;
++                            int newStatus = net.minecraft.world.inventory.AbstractContainerMenu.getQuickcraftHeader(packet.buttonNum());
++                            if ((currentStatus != 1 || newStatus != 2 && currentStatus != newStatus)) {
++                            } else if (containerMenu.getCarried().isEmpty()) {
++                            } else if (newStatus == 0) {
++                            } else if (newStatus == 1) {
++                            } else if (newStatus == 2) {
++                                if (!this.player.containerMenu.quickcraftSlots.isEmpty()) {
++                                    if (this.player.containerMenu.quickcraftSlots.size() == 1) {
++                                        int index = containerMenu.quickcraftSlots.iterator().next().index;
++                                        containerMenu.resetQuickCraft();
++                                        this.handleContainerClick(new ServerboundContainerClickPacket(packet.containerId(), packet.stateId(), (short) index, (byte) containerMenu.quickcraftType, net.minecraft.world.inventory.ClickType.PICKUP, packet.changedSlots(), packet.carriedItem()));
++                                        return;
++                                    }
++                                }
++                            }
++                            this.player.containerMenu.clicked(slotNum, packet.buttonNum(), packet.clickType(), this.player);
++                        } else {
++                            if (!cancelled) { // setCancelled(false) -> getResult() != DENY
++                                this.player.containerMenu.clicked(slotNum, packet.buttonNum(), packet.clickType(), this.player);
++                            }
++
++                            org.bukkit.inventory.Inventory papoTop = inventory.getTopInventory();
++                            if (slotNum == 0 && papoTop instanceof org.bukkit.inventory.CraftingInventory papoCrafting && papoCrafting.getRecipe() != null
++                                || slotNum == 3 && papoTop instanceof org.bukkit.inventory.SmithingInventory papoSmithing && papoSmithing.getResult() != null) {
++                                this.player.containerMenu.sendAllDataToRemote();
++                            }
++                        }
++                    } else {
+                     SlotType type = inventory.getSlotType(slotNum);
+ 
+                     InventoryClickEvent event;
+@@ -3362,6 +3409,7 @@ public class ServerGamePacketListenerImpl
+                             this.player.containerMenu.sendAllDataToRemote();
+                         }
+                     }
++                    } // Papo - end of has-listeners branch (zero-listener fast path above)
+                     // CraftBukkit end
+ 
+                     for (Entry<HashedStack> entry : Int2ObjectMaps.fastIterable(packet.changedSlots())) {
