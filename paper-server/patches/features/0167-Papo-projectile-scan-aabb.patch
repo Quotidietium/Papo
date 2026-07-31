@@ -1,0 +1,46 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 04:06:40 +0800
+Subject: [PATCH] =?UTF-8?q?=E5=BC=B9=E5=B0=84=E7=89=A9=E5=91=BD=E4=B8=AD?=
+ =?UTF-8?q?=E6=89=AB=E6=8F=8F=20expandTowards+inflate=20=E4=B8=A4=E6=AC=A1?=
+ =?UTF-8?q?=E5=88=86=E9=85=8D=E6=8A=98=E5=8F=A0=E4=B8=BA=E4=B8=80=E6=AC=A1?=
+ =?UTF-8?q?=EF=BC=880167=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/entity/projectile/ProjectileUtil.java b/net/minecraft/world/entity/projectile/ProjectileUtil.java
+index 00e7dd53ed4f82001b681f32e1b88495d66669d0..230366938b70e2210c2b6ebb3678164b485ebc61 100644
+--- a/net/minecraft/world/entity/projectile/ProjectileUtil.java
++++ b/net/minecraft/world/entity/projectile/ProjectileUtil.java
+@@ -69,9 +69,28 @@ public final class ProjectileUtil {
+             vec3 = hitResult.getLocation();
+         }
+ 
++        // Papo start - collapse expandTowards(deltaMovement).inflate(1.0) into one AABB (2 allocs -> 1):
++        // per axis min' = (min + (dm<0?dm:0)) - 1, max' = (max + (dm>0?dm:0)) + 1. Ternaries (not
++        // Math.min/max) keep NaN deltaMovement identical to expandTowards' >0/<0 branches; FP op order
++        // (left-associative) and the -0.0 edge (erased by the subsequent ±1.0) match the chain bit for bit.
++        AABB papoSourceBb = source.getBoundingBox();
+         HitResult entityHitResult = getEntityHitResult(
+-            level, source, pos, vec3, source.getBoundingBox().expandTowards(deltaMovement).inflate(1.0), filter, margin
++            level,
++            source,
++            pos,
++            vec3,
++            new AABB(
++                papoSourceBb.minX + (deltaMovement.x < 0.0 ? deltaMovement.x : 0.0) - 1.0,
++                papoSourceBb.minY + (deltaMovement.y < 0.0 ? deltaMovement.y : 0.0) - 1.0,
++                papoSourceBb.minZ + (deltaMovement.z < 0.0 ? deltaMovement.z : 0.0) - 1.0,
++                papoSourceBb.maxX + (deltaMovement.x > 0.0 ? deltaMovement.x : 0.0) + 1.0,
++                papoSourceBb.maxY + (deltaMovement.y > 0.0 ? deltaMovement.y : 0.0) + 1.0,
++                papoSourceBb.maxZ + (deltaMovement.z > 0.0 ? deltaMovement.z : 0.0) + 1.0
++            ),
++            filter,
++            margin
+         );
++        // Papo end
+         if (entityHitResult != null) {
+             hitResult = entityHitResult;
+         }
