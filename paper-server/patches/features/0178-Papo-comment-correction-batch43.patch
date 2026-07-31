@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 05:37:34 +0800
+Subject: [PATCH] =?UTF-8?q?=E5=8B=98=E6=AD=A3=E6=89=B9=E6=AC=A143=E6=B3=A8?=
+ =?UTF-8?q?=E9=87=8A=EF=BC=9AsetDeltaMovement(Vec3)=20=E4=B8=BA=20isFinite?=
+ =?UTF-8?q?=20=E5=AE=88=E5=8D=AB=E8=B5=8B=E5=80=BC=E9=9D=9E=E7=BA=AF?=
+ =?UTF-8?q?=E5=A7=94=E6=89=98=EF=BC=8C=E4=B8=AD=E9=97=B4=E9=87=8F=E8=AE=A1?=
+ =?UTF-8?q?=E6=95=B0=E4=BF=AE=E6=AD=A3=EF=BC=880178=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/entity/projectile/FireworkRocketEntity.java b/net/minecraft/world/entity/projectile/FireworkRocketEntity.java
+index f86b2e05299fc9a9d88dda2e0755d71c96c172b2..b6c8164920304d1368a8669e0b4ec1218d8ec5e8 100644
+--- a/net/minecraft/world/entity/projectile/FireworkRocketEntity.java
++++ b/net/minecraft/world/entity/projectile/FireworkRocketEntity.java
+@@ -143,9 +143,10 @@ public class FireworkRocketEntity extends Projectile implements ItemSupplier {
+                     double d = 1.5;
+                     double d1 = 0.1;
+                     Vec3 deltaMovement = this.attachedToEntity.getDeltaMovement();
+-                    // Papo - skip the intermediate Vec3: add(...) + setDeltaMovement(Vec3) reads the same
+-                    // components the direct form computes (setDeltaMovement(Vec3) is a pure delegate);
+-                    // FP op order per component is identical.
++                    // Papo - compute the add(...) inline per component with the identical FP op order;
++                    // the three-arg setDeltaMovement builds the same single Vec3 the add would have
++                    // produced and flows through the same isFinite-guarded assignment (both overloads
++                    // funnel to setDeltaMovement(Vec3)), so behavior is bitwise identical.
+                     this.attachedToEntity
+                         .setDeltaMovement(
+                             deltaMovement.x + (lookAngle.x * 0.1 + (lookAngle.x * 1.5 - deltaMovement.x) * 0.5),
+@@ -169,8 +170,10 @@ public class FireworkRocketEntity extends Projectile implements ItemSupplier {
+         } else {
+             if (!this.isShotAtAngle()) {
+                 double d2 = this.horizontalCollision ? 1.0 : 1.15;
+-                // Papo - skip the two intermediate Vec3: multiply(d2,1.0,d2).add(0,0.04,0) computed inline
+-                // with the identical FP op chain (incl. the +0.0 terms, which the original add performs too).
++                // Papo - skip the multiply(d2,1.0,d2) intermediate Vec3: multiply(...).add(0,0.04,0) computed
++                // inline with the identical FP op chain (incl. the +0.0 terms, which the original add performs
++                // too); the three-arg setDeltaMovement builds the same final Vec3 the add would have produced
++                // and flows through the same isFinite-guarded assignment.
+                 Vec3 papoDm = this.getDeltaMovement();
+                 this.setDeltaMovement(papoDm.x * d2 + 0.0, papoDm.y * 1.0 + 0.04, papoDm.z * d2 + 0.0);
+             }
+diff --git a/net/minecraft/world/entity/projectile/hurtingprojectile/AbstractHurtingProjectile.java b/net/minecraft/world/entity/projectile/hurtingprojectile/AbstractHurtingProjectile.java
+index c8d968f8eed33e62d62d9f96f42c458e08c1730b..02f650d944c9bde78bdd3465958fdec87d981e86 100644
+--- a/net/minecraft/world/entity/projectile/hurtingprojectile/AbstractHurtingProjectile.java
++++ b/net/minecraft/world/entity/projectile/hurtingprojectile/AbstractHurtingProjectile.java
+@@ -131,9 +131,11 @@ public abstract class AbstractHurtingProjectile extends Projectile {
+             liquidInertia = this.getInertia();
+         }
+ 
+-        // Papo - skip the four intermediate Vec3 (normalize/scale/add/scale): computed inline below with the
++        // Papo - skip the three intermediate Vec3 (normalize/scale/add): computed inline below with the
+         // identical FP op chain ((dm + (dm/|dm|) * accelerationPower) * inertia per component; normalize's
+-        // squareRoot < 1.0E-5F branch yields zero components exactly as Vec3.ZERO.scale would).
++        // squareRoot < 1.0E-5F branch yields zero components exactly as Vec3.ZERO.scale would). The final
++        // scale result the original assigns is replaced one-for-one by the three-arg setDeltaMovement's
++        // Vec3, which flows through the same isFinite-guarded assignment.
+         double papoLength = Math.sqrt(deltaMovement.x * deltaMovement.x + deltaMovement.y * deltaMovement.y + deltaMovement.z * deltaMovement.z);
+         double papoNX = papoLength < 1.0E-5F ? 0.0 : deltaMovement.x / papoLength;
+         double papoNY = papoLength < 1.0E-5F ? 0.0 : deltaMovement.y / papoLength;
