@@ -1,0 +1,135 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 04:30:52 +0800
+Subject: [PATCH] =?UTF-8?q?canHitEntity=20=E8=B0=93=E8=AF=8D=E5=AE=9E?=
+ =?UTF-8?q?=E4=BE=8B=E6=8F=90=E5=8D=87=E4=B8=BA=20Projectile=20=E5=AD=97?=
+ =?UTF-8?q?=E6=AE=B5=EF=BC=8C8=20=E5=A4=84=E6=AF=8F=20tick=20=E6=96=B9?=
+ =?UTF-8?q?=E6=B3=95=E5=BC=95=E7=94=A8=E5=88=86=E9=85=8D=E6=B6=88=E9=99=A4?=
+ =?UTF-8?q?=EF=BC=880170=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/entity/projectile/FireworkRocketEntity.java b/net/minecraft/world/entity/projectile/FireworkRocketEntity.java
+index 1b633d2eb77704fd9a6358f09ed368fab2a5b212..d7d0e1174cb81ec0ff69ed5fe318bf13c11241d7 100644
+--- a/net/minecraft/world/entity/projectile/FireworkRocketEntity.java
++++ b/net/minecraft/world/entity/projectile/FireworkRocketEntity.java
+@@ -164,7 +164,7 @@ public class FireworkRocketEntity extends Projectile implements ItemSupplier {
+                 this.setDeltaMovement(this.attachedToEntity.getDeltaMovement());
+             }
+ 
+-            hitResultOnMoveVector = ProjectileUtil.getHitResultOnMoveVector(this, this::canHitEntity);
++            hitResultOnMoveVector = ProjectileUtil.getHitResultOnMoveVector(this, this.papoCanHitPredicate);
+         } else {
+             if (!this.isShotAtAngle()) {
+                 double d2 = this.horizontalCollision ? 1.0 : 1.15;
+@@ -172,7 +172,7 @@ public class FireworkRocketEntity extends Projectile implements ItemSupplier {
+             }
+ 
+             Vec3 handHoldingItemAngle = this.getDeltaMovement();
+-            hitResultOnMoveVector = ProjectileUtil.getHitResultOnMoveVector(this, this::canHitEntity);
++            hitResultOnMoveVector = ProjectileUtil.getHitResultOnMoveVector(this, this.papoCanHitPredicate);
+             this.move(MoverType.SELF, handHoldingItemAngle);
+             this.applyEffectsFromBlocks();
+             this.setDeltaMovement(handHoldingItemAngle);
+diff --git a/net/minecraft/world/entity/projectile/FishingHook.java b/net/minecraft/world/entity/projectile/FishingHook.java
+index 4a7abf4ae0c1f4c22c1c77d5ce9e67418b274365..61b19dc84b68dbf567ae9ffa9e882ce979f61e74 100644
+--- a/net/minecraft/world/entity/projectile/FishingHook.java
++++ b/net/minecraft/world/entity/projectile/FishingHook.java
+@@ -285,7 +285,7 @@ public class FishingHook extends Projectile {
+     }
+ 
+     private void checkCollision() {
+-        HitResult hitResultOnMoveVector = ProjectileUtil.getHitResultOnMoveVector(this, this::canHitEntity);
++        HitResult hitResultOnMoveVector = ProjectileUtil.getHitResultOnMoveVector(this, this.papoCanHitPredicate);
+         this.preHitTargetOrDeflectSelf(hitResultOnMoveVector);
+     }
+ 
+diff --git a/net/minecraft/world/entity/projectile/LlamaSpit.java b/net/minecraft/world/entity/projectile/LlamaSpit.java
+index b8e3616de5f07e49a8bbab314329157e4268fb1e..22bcacf9edc0929462d042df00bd3d19eb10601a 100644
+--- a/net/minecraft/world/entity/projectile/LlamaSpit.java
++++ b/net/minecraft/world/entity/projectile/LlamaSpit.java
+@@ -42,7 +42,7 @@ public class LlamaSpit extends Projectile {
+     public void tick() {
+         super.tick();
+         Vec3 deltaMovement = this.getDeltaMovement();
+-        HitResult hitResultOnMoveVector = ProjectileUtil.getHitResultOnMoveVector(this, this::canHitEntity);
++        HitResult hitResultOnMoveVector = ProjectileUtil.getHitResultOnMoveVector(this, this.papoCanHitPredicate);
+         this.preHitTargetOrDeflectSelf(hitResultOnMoveVector); // CraftBukkit - projectile hit event
+         double d = this.getX() + deltaMovement.x;
+         double d1 = this.getY() + deltaMovement.y;
+diff --git a/net/minecraft/world/entity/projectile/Projectile.java b/net/minecraft/world/entity/projectile/Projectile.java
+index 6298e6de25f1dd9ff880a9ad2882dc7ccb2f100c..2f147fe5e13e96fe12a3dc3bd3be153ddd2a8979 100644
+--- a/net/minecraft/world/entity/projectile/Projectile.java
++++ b/net/minecraft/world/entity/projectile/Projectile.java
+@@ -39,6 +39,10 @@ import org.jspecify.annotations.Nullable;
+ public abstract class Projectile extends Entity implements TraceableEntity {
+     private static final boolean DEFAULT_LEFT_OWNER = false;
+     private static final boolean DEFAULT_HAS_BEEN_SHOT = false;
++    // Papo - cache the canHitEntity predicate (same pattern as the Pufferfish lambda caches): a method
++    // reference to a virtual method still dispatches virtually per call, so one shared instance is
++    // behavior-identical to allocating `this::canHitEntity` per tick; consumers never compare identity.
++    protected final java.util.function.Predicate<Entity> papoCanHitPredicate = this::canHitEntity;
+     public @Nullable EntityReference<Entity> owner;
+     public boolean leftOwner = false;
+     private boolean leftOwnerChecked;
+diff --git a/net/minecraft/world/entity/projectile/ShulkerBullet.java b/net/minecraft/world/entity/projectile/ShulkerBullet.java
+index 7ab335a90c2b873b7d4eff148303bcc3f031dd64..ef8feda0064c77496a56b67137d70cd068f450b4 100644
+--- a/net/minecraft/world/entity/projectile/ShulkerBullet.java
++++ b/net/minecraft/world/entity/projectile/ShulkerBullet.java
+@@ -223,7 +223,7 @@ public class ShulkerBullet extends Projectile {
+                 );
+             }
+ 
+-            hitResult = ProjectileUtil.getHitResultOnMoveVector(this, this::canHitEntity);
++            hitResult = ProjectileUtil.getHitResultOnMoveVector(this, this.papoCanHitPredicate);
+         }
+ 
+         Vec3 deltaMovement = this.getDeltaMovement();
+diff --git a/net/minecraft/world/entity/projectile/ThrowableProjectile.java b/net/minecraft/world/entity/projectile/ThrowableProjectile.java
+index dfda0560e364aa7777bc1aa76febc55f1c2dd5a0..34a25aabde096022946ef87d02cbfa9ed7312374 100644
+--- a/net/minecraft/world/entity/projectile/ThrowableProjectile.java
++++ b/net/minecraft/world/entity/projectile/ThrowableProjectile.java
+@@ -47,7 +47,7 @@ public abstract class ThrowableProjectile extends Projectile {
+         this.handleFirstTickBubbleColumn();
+         this.applyGravity();
+         this.applyInertia();
+-        HitResult hitResultOnMoveVector = ProjectileUtil.getHitResultOnMoveVector(this, this::canHitEntity);
++        HitResult hitResultOnMoveVector = ProjectileUtil.getHitResultOnMoveVector(this, this.papoCanHitPredicate);
+         Vec3 location;
+         if (hitResultOnMoveVector.getType() != HitResult.Type.MISS) {
+             location = hitResultOnMoveVector.getLocation();
+diff --git a/net/minecraft/world/entity/projectile/arrow/AbstractArrow.java b/net/minecraft/world/entity/projectile/arrow/AbstractArrow.java
+index 51d3560c5d8cba89469c07fe6b13f0016adc6db7..224471668b3a064fb7d45cc913364b0efd94b41c 100644
+--- a/net/minecraft/world/entity/projectile/arrow/AbstractArrow.java
++++ b/net/minecraft/world/entity/projectile/arrow/AbstractArrow.java
+@@ -607,13 +607,13 @@ public abstract class AbstractArrow extends Projectile {
+ 
+     protected @Nullable EntityHitResult findHitEntity(Vec3 startVec, Vec3 endVec) {
+         return ProjectileUtil.getEntityHitResult(
+-            this.level(), this, startVec, endVec, this.getBoundingBox().expandTowards(this.getDeltaMovement()).inflate(1.0), this::canHitEntity
++            this.level(), this, startVec, endVec, this.getBoundingBox().expandTowards(this.getDeltaMovement()).inflate(1.0), this.papoCanHitPredicate
+         );
+     }
+ 
+     protected Collection<EntityHitResult> findHitEntities(Vec3 startVec, Vec3 endVec) {
+         return ProjectileUtil.getManyEntityHitResult(
+-            this.level(), this, startVec, endVec, this.getBoundingBox().expandTowards(this.getDeltaMovement()).inflate(1.0), this::canHitEntity, false
++            this.level(), this, startVec, endVec, this.getBoundingBox().expandTowards(this.getDeltaMovement()).inflate(1.0), this.papoCanHitPredicate, false
+         );
+     }
+ 
+diff --git a/net/minecraft/world/entity/projectile/hurtingprojectile/AbstractHurtingProjectile.java b/net/minecraft/world/entity/projectile/hurtingprojectile/AbstractHurtingProjectile.java
+index 6edff432866ae72db657b47bf9726be9a4ef1562..7e8a966e48a40030559995c4f180a5ff75f4f1e5 100644
+--- a/net/minecraft/world/entity/projectile/hurtingprojectile/AbstractHurtingProjectile.java
++++ b/net/minecraft/world/entity/projectile/hurtingprojectile/AbstractHurtingProjectile.java
+@@ -71,7 +71,7 @@ public abstract class AbstractHurtingProjectile extends Projectile {
+         Entity owner = this.getOwner();
+         this.applyInertia();
+         if (this.level().isClientSide() || (owner == null || !owner.isRemoved()) && this.level().hasChunkAt(this.blockPosition())) {
+-            HitResult hitResultOnMoveVector = ProjectileUtil.getHitResultOnMoveVector(this, this::canHitEntity, this.getClipType());
++            HitResult hitResultOnMoveVector = ProjectileUtil.getHitResultOnMoveVector(this, this.papoCanHitPredicate, this.getClipType());
+             Vec3 location;
+             if (hitResultOnMoveVector.getType() != HitResult.Type.MISS) {
+                 location = hitResultOnMoveVector.getLocation();
