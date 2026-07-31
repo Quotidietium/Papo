@@ -1,0 +1,55 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 23:01:15 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=E7=BB=84=E4=BB=B6=E5=BA=8F?=
+ =?UTF-8?q?=E5=88=97=E5=8C=96=EF=BC=9AComponentSerialization=20Paper=20?=
+ =?UTF-8?q?=E7=BF=BB=E8=AF=91=E6=84=9F=E7=9F=A5=20codec=20=E7=BC=96?=
+ =?UTF-8?q?=E8=A7=A3=E7=A0=81=E6=8E=A5=E5=85=A5=200133=20RegistryOps=20?=
+ =?UTF-8?q?=E7=BC=93=E5=AD=98=EF=BC=88ByteBufCodecs.papoNbtSerializationCo?=
+ =?UTF-8?q?ntext=20=E8=BD=AC=20public=20=E5=A4=8D=E7=94=A8=EF=BC=9B?=
+ =?UTF-8?q?=E8=A6=86=E7=9B=96=E8=81=8A=E5=A4=A9=E4=B8=89=E4=BB=B6=E5=A5=97?=
+ =?UTF-8?q?/=E5=8A=A8=E4=BD=9C=E6=9D=A1/=E6=A0=87=E9=A2=98/TabList/Boss?=
+ =?UTF-8?q?=E6=9D=A1/=E5=AE=9E=E4=BD=93=20CustomName/=E7=89=A9=E5=93=81=20?=
+ =?UTF-8?q?name+lore=20=E7=BB=84=E4=BB=B6=E7=AD=89=E5=85=A8=E9=83=A8=20Com?=
+ =?UTF-8?q?ponent=20=E5=8C=85=E8=B7=AF=E5=BE=84=EF=BC=9B=E5=AE=89=E5=85=A8?=
+ =?UTF-8?q?=E6=80=A7=E5=90=8C=200133=20=E5=B7=B2=E5=AE=9E=E8=AF=81?=
+ =?UTF-8?q?=E6=A1=86=E6=9E=B6=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/network/chat/ComponentSerialization.java b/net/minecraft/network/chat/ComponentSerialization.java
+index ad80a3523132351bd63e7a5a096eec22c0923080..5b8667353da07f633e3014d50d423e016403e887 100644
+--- a/net/minecraft/network/chat/ComponentSerialization.java
++++ b/net/minecraft/network/chat/ComponentSerialization.java
+@@ -46,13 +46,13 @@ public class ComponentSerialization {
+             @Override
+             public Component decode(RegistryFriendlyByteBuf registryFriendlyByteBuf) {
+                 net.minecraft.nbt.Tag tag = this.streamCodec.decode(registryFriendlyByteBuf);
+-                RegistryOps<net.minecraft.nbt.Tag> registryOps = registryFriendlyByteBuf.registryAccess().createSerializationContext(net.minecraft.nbt.NbtOps.INSTANCE);
++                RegistryOps<net.minecraft.nbt.Tag> registryOps = ByteBufCodecs.papoNbtSerializationContext(registryFriendlyByteBuf.registryAccess()); // Papo - cached ops (0133 pattern)
+                 return CODEC.parse(registryOps, tag).getOrThrow(error -> new io.netty.handler.codec.DecoderException("Failed to decode: " + error + " " + tag));
+             }
+ 
+             @Override
+             public void encode(RegistryFriendlyByteBuf registryFriendlyByteBuf, Component object) {
+-                RegistryOps<net.minecraft.nbt.Tag> registryOps = registryFriendlyByteBuf.registryAccess().createSerializationContext(net.minecraft.nbt.NbtOps.INSTANCE);
++                RegistryOps<net.minecraft.nbt.Tag> registryOps = ByteBufCodecs.papoNbtSerializationContext(registryFriendlyByteBuf.registryAccess()); // Papo - cached ops (0133 pattern)
+                 net.minecraft.nbt.Tag tag = (DONT_RENDER_TRANSLATABLES.get() ? CODEC : ComponentSerialization.localizedCodec(registryFriendlyByteBuf.adventure$locale))
+                     .encodeStart(registryOps, object).getOrThrow(error -> new io.netty.handler.codec.EncoderException("Failed to encode: " + error + " " + object));
+                 this.streamCodec.encode(registryFriendlyByteBuf, tag);
+diff --git a/net/minecraft/network/codec/ByteBufCodecs.java b/net/minecraft/network/codec/ByteBufCodecs.java
+index def2d4cb6e3059a17ca0d9dd02759c35f0463607..36974e2de77784505f424bdf8470c44dca02dbd1 100644
+--- a/net/minecraft/network/codec/ByteBufCodecs.java
++++ b/net/minecraft/network/codec/ByteBufCodecs.java
+@@ -429,7 +429,8 @@ public interface ByteBufCodecs {
+     // case: the server's frozen composite access). A RegistryOps only captures the access, and its
+     // HolderLookupAdapter lookup cache is a ConcurrentHashMap, so sharing one instance across calls
+     // and threads is safe and behavior-identical to creating one per call.
+-    private static RegistryOps<Tag> papoNbtSerializationContext(RegistryAccess registryAccess) {
++    // public: reused by ComponentSerialization's Paper translation-aware codec (same pattern).
++    static RegistryOps<Tag> papoNbtSerializationContext(RegistryAccess registryAccess) {
+         return registryAccess instanceof RegistryAccess.ImmutableRegistryAccess immutable
+             ? immutable.papoNbtSerializationContext()
+             : registryAccess.createSerializationContext(NbtOps.INSTANCE);
