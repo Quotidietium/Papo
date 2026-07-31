@@ -1,0 +1,67 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 02:02:39 +0800
+Subject: [PATCH] =?UTF-8?q?Papo:=20tickCarriedBy=20=E5=9C=B0=E5=9B=BE?=
+ =?UTF-8?q?=E5=8C=B9=E9=85=8D=E8=B0=93=E8=AF=8D=E5=86=85=E8=81=94=EF=BC=88?=
+ =?UTF-8?q?=E6=B6=88=E9=99=A4=E6=AF=8F=E6=AC=A1=E8=B0=83=E7=94=A8=E6=8D=95?=
+ =?UTF-8?q?=E8=8E=B7=20lambda=20=E5=88=86=E9=85=8D=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/level/saveddata/maps/MapItemSavedData.java b/net/minecraft/world/level/saveddata/maps/MapItemSavedData.java
+index cb91f57a5bcd919af19a88d0bbf789967c150b69..bbd6cc3af669330a81ccc7ac09c98637894020ad 100644
+--- a/net/minecraft/world/level/saveddata/maps/MapItemSavedData.java
++++ b/net/minecraft/world/level/saveddata/maps/MapItemSavedData.java
+@@ -14,7 +14,6 @@ import java.util.List;
+ import java.util.Map;
+ import java.util.Objects;
+ import java.util.Optional;
+-import java.util.function.Predicate;
+ import net.minecraft.core.BlockPos;
+ import net.minecraft.core.Holder;
+ import net.minecraft.core.component.DataComponents;
+@@ -193,10 +192,21 @@ public class MapItemSavedData extends SavedData {
+         return createFresh(this.centerX, this.centerZ, (byte)Mth.clamp(this.scale + 1, 0, 4), this.trackingPosition, this.unlimitedTracking, this.dimension);
+     }
+ 
+-    private static Predicate<ItemStack> mapMatcher(ItemStack stack) {
++    // Papo start - 0158: scan the inventory with the map-matcher test inlined, avoiding the
++    // capturing lambda allocated per tickCarriedBy call. The per-item test is verbatim the
++    // mapMatcher body and the iteration is the same Inventory iterator with the same
++    // short-circuit, so results are identical.
++    private static boolean papoInventoryHasMap(Player player, ItemStack stack) {
+         MapId mapId = stack.get(DataComponents.MAP_ID);
+-        return itemStack -> itemStack == stack || itemStack.is(stack.getItem()) && Objects.equals(mapId, itemStack.get(DataComponents.MAP_ID));
++        for (ItemStack itemStack : player.getInventory()) {
++            if (itemStack == stack || itemStack.is(stack.getItem()) && Objects.equals(mapId, itemStack.get(DataComponents.MAP_ID))) {
++                return true;
++            }
++        }
++
++        return false;
+     }
++    // Papo end
+ 
+     public void tickCarriedBy(Player player, ItemStack mapStack) {
+         if (!this.carriedByPlayers.containsKey(player)) {
+@@ -205,8 +215,7 @@ public class MapItemSavedData extends SavedData {
+             this.carriedBy.add(holdingPlayer);
+         }
+ 
+-        Predicate<ItemStack> predicate = mapMatcher(mapStack);
+-        if (!player.getInventory().contains(predicate)) {
++        if (!papoInventoryHasMap(player, mapStack)) { // Papo - 0158 inline matcher (was mapMatcher lambda)
+             this.removeDecoration(player.getPlainTextName());
+         }
+ 
+@@ -214,7 +223,7 @@ public class MapItemSavedData extends SavedData {
+             MapItemSavedData.HoldingPlayer holdingPlayer1 = this.carriedBy.get(i);
+             Player player1 = holdingPlayer1.player;
+             String plainTextName = player1.getPlainTextName();
+-            if (!player1.isRemoved() && (player1.getInventory().contains(predicate) || mapStack.isFramed())) {
++            if (!player1.isRemoved() && (papoInventoryHasMap(player1, mapStack) || mapStack.isFramed())) { // Papo - 0158 inline matcher (was mapMatcher lambda)
+                 if (!mapStack.isFramed() && player1.level().dimension() == this.dimension && this.trackingPosition) {
+                     this.addDecoration(MapDecorationTypes.PLAYER, player1.level(), plainTextName, player1.getX(), player1.getZ(), player1.getYRot(), null);
+                 }
