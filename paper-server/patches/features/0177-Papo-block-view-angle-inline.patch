@@ -1,0 +1,60 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 05:37:34 +0800
+Subject: [PATCH] =?UTF-8?q?=E6=A0=BC=E6=8C=A1=E8=A7=86=E8=A7=92=E5=90=91?=
+ =?UTF-8?q?=E9=87=8F=E5=86=85=E8=81=94=C3=972=EF=BC=9AapplyItemBlocking/re?=
+ =?UTF-8?q?solveBlockedDamage=20=E6=B6=88=E9=99=A4=20position/subtract/?=
+ =?UTF-8?q?=E6=B0=B4=E5=B9=B3=E5=8C=96/normalize=20=E5=9B=9B=E4=B8=AD?=
+ =?UTF-8?q?=E9=97=B4=20Vec3=EF=BC=880177=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index 354ffa032c9d40d4c47ab67b7ff7bf69afcb2b0d..da40ceb3dcbe57c1e35d693d11f85ec1c4c0a73b 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -1615,9 +1615,19 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+                         double acos;
+                         if (sourcePosition != null) {
+                             Vec3 vec3 = this.calculateViewVector(0.0F, this.getYHeadRot());
+-                            Vec3 vec31 = sourcePosition.subtract(this.position());
+-                            vec31 = new Vec3(vec31.x, 0.0, vec31.z).normalize();
+-                            acos = Math.acos(vec31.dot(vec3));
++                            // Papo - skip the four intermediate Vec3 (position/subtract/horizontalize/normalize):
++                            // the dot product below only needs the horizontal-normalized x/z, computed inline
++                            // with the identical FP op chain (normalize's squareRoot < 1.0E-5F threshold branch
++                            // preserved). The dropped y-term 0.0*vec3.y contributes ±0.0 to the dot sum; adding
++                            // ±0.0 is the identity unless the rest of the sum collapses to a zero of the other
++                            // sign, and Math.acos erases that last case (acos(±0.0) = π/2) — so the observable
++                            // value is bitwise identical.
++                            double papoSx = sourcePosition.x - this.getX();
++                            double papoSz = sourcePosition.z - this.getZ();
++                            double papoLen = Math.sqrt(papoSx * papoSx + papoSz * papoSz);
++                            double papoNX = papoLen < 1.0E-5F ? 0.0 : papoSx / papoLen;
++                            double papoNZ = papoLen < 1.0E-5F ? 0.0 : papoSz / papoLen;
++                            acos = Math.acos(papoNX * vec3.x + papoNZ * vec3.z);
+                         } else {
+                             acos = (float) Math.PI;
+                         }
+@@ -1667,9 +1677,16 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+         double acos;
+         if (sourcePosition != null) {
+             Vec3 vec3 = this.calculateViewVector(0.0F, this.getYHeadRot());
+-            Vec3 vec31 = sourcePosition.subtract(this.position());
+-            vec31 = new Vec3(vec31.x, 0.0, vec31.z).normalize();
+-            acos = Math.acos(vec31.dot(vec3));
++            // Papo - same inline as applyItemBlocking above: skip the four intermediate Vec3
++            // (position/subtract/horizontalize/normalize); identical FP op chain with normalize's
++            // squareRoot < 1.0E-5F threshold branch preserved; the dropped ±0.0 y-term is erased by
++            // Math.acos in the only case where it could flip the sum's zero sign.
++            double papoSx = sourcePosition.x - this.getX();
++            double papoSz = sourcePosition.z - this.getZ();
++            double papoLen = Math.sqrt(papoSx * papoSx + papoSz * papoSz);
++            double papoNX = papoLen < 1.0E-5F ? 0.0 : papoSx / papoLen;
++            double papoNZ = papoLen < 1.0E-5F ? 0.0 : papoSz / papoLen;
++            acos = Math.acos(papoNX * vec3.x + papoNZ * vec3.z);
+         } else {
+             acos = (float) Math.PI;
+         }
