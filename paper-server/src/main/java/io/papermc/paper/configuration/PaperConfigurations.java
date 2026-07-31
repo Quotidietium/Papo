@@ -329,6 +329,7 @@ public class PaperConfigurations extends Configurations<GlobalConfiguration, Wor
     }
 
     public void reloadConfigs(MinecraftServer server) {
+        PAPO_CONFIG_EPOCH++; // Papo - invalidate per-behavior/sensor tickRate caches up front (safe even on partial failure)
         try {
             this.initializeGlobalConfiguration(server.registryAccess(), reloader(this.globalConfigClass, GlobalConfiguration.get()));
             this.initializeWorldDefaultsConfiguration(server.registryAccess());
@@ -339,6 +340,14 @@ public class PaperConfigurations extends Configurations<GlobalConfiguration, Wor
             throw new RuntimeException("Could not reload paper configuration files", ex);
         }
     }
+
+    // Papo start - monotonically increasing configuration epoch, bumped by every successful
+    // reloadConfigs pass. NMS Behavior/Sensor cache their per-instance tickRates lookup keyed
+    // by (this epoch, the level's WorldConfiguration reference); a bump forces exactly one
+    // re-read, preserving reload semantics. Volatile for visibility; increments happen on the
+    // main thread (reload command), reads on the main thread (entity ticks).
+    public static volatile long PAPO_CONFIG_EPOCH = 0;
+    // Papo end
 
     private static List<Definition<? extends Annotation, ?, ? extends FieldProcessor.Factory<?, ?>>> defaultFieldProcessors() {
         return List.of(
