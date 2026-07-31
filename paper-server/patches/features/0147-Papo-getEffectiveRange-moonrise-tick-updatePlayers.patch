@@ -1,0 +1,63 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 23:44:50 +0800
+Subject: [PATCH] =?UTF-8?q?Papo:=20=E5=AE=9E=E4=BD=93=E8=BF=BD=E8=B8=AA=20?=
+ =?UTF-8?q?getEffectiveRange=20=E5=9C=A8=E6=89=AB=E6=8F=8F=E5=BE=AA?=
+ =?UTF-8?q?=E7=8E=AF=E5=A4=96=E6=8F=90=E5=8F=96=EF=BC=88moonrise$tick/upda?=
+ =?UTF-8?q?tePlayers=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/server/level/ChunkMap.java b/net/minecraft/server/level/ChunkMap.java
+index d3d5d08b234aea0e23b40e246aeff1761b5c2eae..82c54161734df987c7b9892631eba99073c607b4 100644
+--- a/net/minecraft/server/level/ChunkMap.java
++++ b/net/minecraft/server/level/ChunkMap.java
+@@ -1240,9 +1240,12 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
+ 
+             final ServerPlayer[] playersRaw = players.getRawDataUnchecked();
+ 
++            // Papo - getEffectiveRange only reads this.range + the entity's passenger list + server
++            // config, none of which updatePlayer mutates: compute once per sweep instead of per player.
++            final int papoEffectiveRange = this.getEffectiveRange();
+             for (int i = 0, len = players.size(); i < len; ++i) {
+                 final ServerPlayer player = playersRaw[i];
+-                this.updatePlayer(player);
++                this.updatePlayer(player, papoEffectiveRange); // Papo - hoisted range
+             }
+ 
+             if (lastChunkUpdate != currChunkUpdate || lastTrackedChunk != chunk) {
+@@ -1377,6 +1380,11 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
+         }
+ 
+         public void updatePlayer(ServerPlayer player) {
++            this.updatePlayer(player, this.getEffectiveRange()); // Papo - delegate with per-call range (unchanged semantics)
++        }
++
++        // Papo - split out so sweeps (moonrise$tick / updatePlayers) can hoist the invariant getEffectiveRange()
++        private void updatePlayer(ServerPlayer player, int papoEffectiveRange) {
+             org.spigotmc.AsyncCatcher.catchOp("player tracker update"); // Spigot
+             if (player != this.entity) {
+                 // Paper start - remove allocation of Vec3D here
+@@ -1385,7 +1393,7 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
+                 double vec3_dz = player.getZ() - this.entity.getZ();
+                 // Paper end - remove allocation of Vec3D here
+                 int playerViewDistance = ChunkMap.this.getPlayerViewDistance(player);
+-                double d = Math.min(this.getEffectiveRange(), playerViewDistance * 16);
++                double d = Math.min(papoEffectiveRange, playerViewDistance * 16); // Papo - hoisted range
+                 double d1 = vec3_dx * vec3_dx + vec3_dz * vec3_dz; // Paper
+                 double d2 = d * d;
+                 // Paper start - Configurable entity tracking range by Y
+@@ -1450,8 +1458,10 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
+         }
+ 
+         public void updatePlayers(List<ServerPlayer> playersList) {
++            // Papo - hoist the sweep-invariant getEffectiveRange() (see moonrise$tick)
++            int papoEffectiveRange = this.getEffectiveRange();
+             for (ServerPlayer serverPlayer : playersList) {
+-                this.updatePlayer(serverPlayer);
++                this.updatePlayer(serverPlayer, papoEffectiveRange); // Papo - hoisted range
+             }
+         }
+     }
