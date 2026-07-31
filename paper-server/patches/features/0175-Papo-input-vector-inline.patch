@@ -1,0 +1,45 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 05:34:52 +0800
+Subject: [PATCH] =?UTF-8?q?=E7=A7=BB=E5=8A=A8=E8=BE=93=E5=85=A5=E5=90=91?=
+ =?UTF-8?q?=E9=87=8F=E5=86=85=E8=81=94=EF=BC=9AgetInputVector=20=E6=B6=88?=
+ =?UTF-8?q?=E9=99=A4=20normalize/scale=20=E4=B8=AD=E9=97=B4=20Vec3?=
+ =?UTF-8?q?=EF=BC=880175=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
+index 1c98462e33cb7007b56b2905bbafd14f4a6a5ae6..792d64608c63a2ee4cb0e7c4780e068394efe62d 100644
+--- a/net/minecraft/world/entity/Entity.java
++++ b/net/minecraft/world/entity/Entity.java
+@@ -2196,10 +2196,26 @@ public abstract class Entity implements SyncedDataHolder, DebugValueSource, Name
+         if (d < 1.0E-7) {
+             return Vec3.ZERO;
+         } else {
+-            Vec3 vec3 = (d > 1.0 ? relative.normalize() : relative).scale(motionScaler);
++            // Papo - skip the normalize/scale intermediate Vec3: computed inline below with the identical
++            // FP op chain. lengthSqr() and normalize() both compute x*x + y*y + z*z (same expression, same
++            // value); when d > 1.0 the length is > 1.0 so normalize's squareRoot < 1.0E-5F branch can never
++            // trigger, and each component is (x / len) * motionScaler exactly as normalize().scale() yields.
++            double scaledX;
++            double scaledY;
++            double scaledZ;
++            if (d > 1.0) {
++                double len = Math.sqrt(d); // same value normalize() computes (identical sum expression)
++                scaledX = relative.x / len * motionScaler;
++                scaledY = relative.y / len * motionScaler;
++                scaledZ = relative.z / len * motionScaler;
++            } else {
++                scaledX = relative.x * motionScaler;
++                scaledY = relative.y * motionScaler;
++                scaledZ = relative.z * motionScaler;
++            }
+             float sin = Mth.sin(facing * (float) (Math.PI / 180.0));
+             float cos = Mth.cos(facing * (float) (Math.PI / 180.0));
+-            return new Vec3(vec3.x * cos - vec3.z * sin, vec3.y, vec3.z * cos + vec3.x * sin);
++            return new Vec3(scaledX * cos - scaledZ * sin, scaledY, scaledZ * cos + scaledX * sin);
+         }
+     }
+ 
