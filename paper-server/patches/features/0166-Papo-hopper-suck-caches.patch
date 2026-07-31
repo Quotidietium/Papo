@@ -1,0 +1,142 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 04:05:35 +0800
+Subject: [PATCH] =?UTF-8?q?=E6=BC=8F=E6=96=97=E5=90=B8=E5=8F=96=E8=B7=AF?=
+ =?UTF-8?q?=E5=BE=84=E7=BC=93=E5=AD=98=EF=BC=9A=E6=96=B9=E5=9D=97=E6=BC=8F?=
+ =?UTF-8?q?=E6=96=97=20suck=20pos=20=E4=B8=80=E6=AC=A1=E6=80=A7=E7=BC=93?=
+ =?UTF-8?q?=E5=AD=98=EF=BC=8C=E7=9F=BF=E8=BD=A6=E6=BC=8F=E6=96=97=E4=BD=8D?=
+ =?UTF-8?q?=E7=BD=AE=E9=94=AE=E6=8E=A7=20pos/AABB/bb=20=E4=B8=89=E7=BC=93?=
+ =?UTF-8?q?=E5=AD=98=EF=BC=880166=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/entity/vehicle/minecart/MinecartHopper.java b/net/minecraft/world/entity/vehicle/minecart/MinecartHopper.java
+index 3c961b76769f16160caedce8ec32bb2a2561163f..230add43a6b19d8938a3ed1b6fba6a8d64d191f6 100644
+--- a/net/minecraft/world/entity/vehicle/minecart/MinecartHopper.java
++++ b/net/minecraft/world/entity/vehicle/minecart/MinecartHopper.java
+@@ -107,8 +107,17 @@ public class MinecartHopper extends AbstractMinecartContainer implements Hopper
+             this.immunize(); // Paper
+             return true;
+         } else {
++            // Papo start - cache the pickup-scan AABB keyed on the bounding-box instance: inflate is a pure
++            // function of the box values and AABB is immutable, so an unchanged bb reference yields the
++            // identical box (setPos/movement replaces the bb object, invalidating naturally).
++            net.minecraft.world.phys.AABB papoBb = this.getBoundingBox();
++            if (this.papoPickupAabb == null || this.papoPickupAabbSource != papoBb) {
++                this.papoPickupAabb = papoBb.inflate(0.25, 0.0, 0.25);
++                this.papoPickupAabbSource = papoBb;
++            }
+             for (ItemEntity itemEntity : this.level()
+-                .getEntitiesOfClass(ItemEntity.class, this.getBoundingBox().inflate(0.25, 0.0, 0.25), EntitySelector.ENTITY_STILL_ALIVE)) {
++                .getEntitiesOfClass(ItemEntity.class, this.papoPickupAabb, EntitySelector.ENTITY_STILL_ALIVE)) {
++            // Papo end
+                 if (HopperBlockEntity.addItem(this, itemEntity)) {
+                     this.immunize(); // Paper
+                     return true;
+@@ -119,6 +128,51 @@ public class MinecartHopper extends AbstractMinecartContainer implements Hopper
+         }
+     }
+ 
++    // Papo start - position-keyed caches for the suck path: BlockPos.containing and AABB.move are pure
++    // functions of the level-coord doubles (getLevelX/Y/Z are pure field-derived reads), so identical
++    // coordinates yield identical results; NaN coordinates never match and simply recompute.
++    private double papoSuckKeyX = Double.NaN;
++    private double papoSuckKeyY = Double.NaN;
++    private double papoSuckKeyZ = Double.NaN;
++    private BlockPos papoSuckPos;
++    private net.minecraft.world.phys.AABB papoSuckAabb;
++    private net.minecraft.world.phys.AABB papoPickupAabb;
++    private net.minecraft.world.phys.AABB papoPickupAabbSource;
++
++    private boolean papoSuckKeyMatches(double x, double y, double z) {
++        return this.papoSuckPos != null && this.papoSuckKeyX == x && this.papoSuckKeyY == y && this.papoSuckKeyZ == z;
++    }
++
++    /** Same value as BlockPos.containing(getLevelX(), getLevelY() + 1.0, getLevelZ()), cached per position. */
++    public BlockPos papoSuckPos() {
++        double x = this.getLevelX(), y = this.getLevelY(), z = this.getLevelZ();
++        if (!this.papoSuckKeyMatches(x, y, z)) {
++            this.papoSuckPos = BlockPos.containing(x, y + 1.0, z);
++            this.papoSuckAabb = null; // same key triple covers the moved suck AABB
++            this.papoSuckKeyX = x;
++            this.papoSuckKeyY = y;
++            this.papoSuckKeyZ = z;
++        }
++        return this.papoSuckPos;
++    }
++
++    /** Same value as getSuckAabb().move(getLevelX() - 0.5, getLevelY() - 0.5, getLevelZ() - 0.5), cached per position. */
++    public net.minecraft.world.phys.AABB papoSuckAabb() {
++        double x = this.getLevelX(), y = this.getLevelY(), z = this.getLevelZ();
++        if (!this.papoSuckKeyMatches(x, y, z)) {
++            this.papoSuckPos = BlockPos.containing(x, y + 1.0, z); // keep pos/key invariant
++            this.papoSuckKeyX = x;
++            this.papoSuckKeyY = y;
++            this.papoSuckKeyZ = z;
++        }
++        net.minecraft.world.phys.AABB aabb = this.papoSuckAabb;
++        if (aabb == null) {
++            aabb = this.papoSuckAabb = this.getSuckAabb().move(x - 0.5, y - 0.5, z - 0.5);
++        }
++        return aabb;
++    }
++    // Papo end
++
+     @Override
+     public Item getDropItem() {
+         return Items.HOPPER_MINECART;
+diff --git a/net/minecraft/world/level/block/entity/HopperBlockEntity.java b/net/minecraft/world/level/block/entity/HopperBlockEntity.java
+index c5253ad8420de576c4d8c32bbc0c52decde19b2c..5cee22f619c9e882e6e5aaa8c97cc9186d158452 100644
+--- a/net/minecraft/world/level/block/entity/HopperBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/HopperBlockEntity.java
+@@ -39,6 +39,7 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+     private long tickedGameTime;
+     private Direction facing;
+     private net.minecraft.world.phys.AABB papoSuckAabb; // Papo - cached moved suck AABB (constant per block entity; see getItemsAtAndAbove)
++    private BlockPos papoSuckPos; // Papo - cached suck BlockPos (== worldPosition.above() bit-exactly; see suckInItems)
+     // Papo start - cached entity-search AABBs for getEntityContainer (both are constant per block entity:
+     // suck side derives from worldPosition (final) via getLevelX/Y/Z; eject side is keyed on the search
+     // position so a facing change via same-block setBlock (which keeps the BE) recomputes. AABB is
+@@ -538,7 +539,22 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+     }
+ 
+     public static boolean suckInItems(Level level, Hopper hopper) {
+-        BlockPos blockPos = BlockPos.containing(hopper.getLevelX(), hopper.getLevelY() + 1.0, hopper.getLevelZ());
++        // Papo start - cache the suck BlockPos: a block entity's worldPosition is final (vanilla cannot move
++        // block entities; a setBlock recreates the BE with a fresh cache) and
++        // containing(x+0.5, (y+0.5)+1.0, z+0.5) == (x, y+1, z) == worldPosition.above() bit-exactly (all int
++        // halves are exact doubles). Minecart hoppers use a position-keyed cache (BlockPos.containing is a
++        // pure function of the three level-coord doubles); other Hopper implementations keep the per-call path.
++        final BlockPos blockPos;
++        if (hopper instanceof HopperBlockEntity hopperBlockEntity) {
++            blockPos = hopperBlockEntity.papoSuckPos != null
++                ? hopperBlockEntity.papoSuckPos
++                : (hopperBlockEntity.papoSuckPos = hopperBlockEntity.worldPosition.above());
++        } else if (hopper instanceof net.minecraft.world.entity.vehicle.minecart.MinecartHopper minecartHopper) {
++            blockPos = minecartHopper.papoSuckPos();
++        } else {
++            blockPos = BlockPos.containing(hopper.getLevelX(), hopper.getLevelY() + 1.0, hopper.getLevelZ());
++        }
++        // Papo end
+         BlockState blockState = level.getBlockState(blockPos);
+         Container sourceContainer = getSourceContainer(level, hopper, blockPos, blockState);
+         if (sourceContainer != null) {
+@@ -795,12 +811,15 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+         // immutable Hopper.SUCK_AABB constant and a block entity's worldPosition is final (vanilla
+         // cannot move block entities; a setBlock recreates the BE with a fresh cache), so the moved
+         // AABB is constant per block entity. AABB itself is immutable and getEntitiesOfClass only
+-        // reads it. Minecart hoppers keep the per-call computation (they move).
++        // reads it. Minecart hoppers use a position-keyed cache (AABB.move is a pure function of the
++        // level-coord doubles); other Hopper implementations keep the per-call computation.
+         final AABB aabb;
+         if (hopper instanceof HopperBlockEntity hopperBlockEntity) {
+             aabb = hopperBlockEntity.papoSuckAabb != null
+                 ? hopperBlockEntity.papoSuckAabb
+                 : (hopperBlockEntity.papoSuckAabb = hopper.getSuckAabb().move(hopper.getLevelX() - 0.5, hopper.getLevelY() - 0.5, hopper.getLevelZ() - 0.5));
++        } else if (hopper instanceof net.minecraft.world.entity.vehicle.minecart.MinecartHopper minecartHopper) {
++            aabb = minecartHopper.papoSuckAabb();
+         } else {
+             aabb = hopper.getSuckAabb().move(hopper.getLevelX() - 0.5, hopper.getLevelY() - 0.5, hopper.getLevelZ() - 0.5);
+         }
