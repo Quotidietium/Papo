@@ -1,0 +1,38 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 06:04:14 +0800
+Subject: [PATCH] =?UTF-8?q?=E5=9D=97=E5=86=85=E6=A3=80=E6=B5=8B=20AABB=20?=
+ =?UTF-8?q?=E6=8A=98=E5=8F=A0=EF=BC=9AmakeBoundingBox(to).deflate(1.0E-5F)?=
+ =?UTF-8?q?=20=E5=8D=95=E6=9E=84=E9=80=A0=EF=BC=880179=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
+index 792d64608c63a2ee4cb0e7c4780e068394efe62d..26a24c2840bfb955a401dcc1af075083c104fcf7 100644
+--- a/net/minecraft/world/entity/Entity.java
++++ b/net/minecraft/world/entity/Entity.java
+@@ -1731,7 +1731,21 @@ public abstract class Entity implements SyncedDataHolder, DebugValueSource, Name
+     }
+ 
+     private int checkInsideBlocks(Vec3 from, Vec3 to, InsideBlockEffectApplier.StepBasedCollector stepBasedCollector, LongSet visited, int maxSteps) {
+-        AABB aabb = this.makeBoundingBox(to).deflate(1.0E-5F);
++        // Papo - collapse makeBoundingBox(to).deflate(1.0E-5F) into a single AABB construction (saves
++        // one AABB per call): makeBoundingBox is new AABB(x-f, y, z-f, x+f, y+h, z+f)
++        // (EntityDimensions.java:19-23) and deflate(v) == inflate(-v), i.e. mins - (-v) / maxes + (-v)
++        // (AABB.java:178-190,275-281); each component keeps its exact left-associative FP op chain and
++        // the AABB constructor's min/max normalization receives the same six inputs.
++        float papoHalfWidth = this.dimensions.width() / 2.0F;
++        float papoHeight = this.dimensions.height();
++        AABB aabb = new AABB(
++            to.x - papoHalfWidth - -1.0E-5F,
++            to.y - -1.0E-5F,
++            to.z - papoHalfWidth - -1.0E-5F,
++            to.x + papoHalfWidth + -1.0E-5F,
++            to.y + papoHeight + -1.0E-5F,
++            to.z + papoHalfWidth + -1.0E-5F
++        );
+         boolean flag = from.distanceToSqr(to) > Mth.square(0.9999900000002526);
+         boolean flag1 = this.level instanceof ServerLevel serverLevel
+             && serverLevel.getServer().debugSubscribers().hasAnySubscriberFor(DebugSubscriptions.ENTITY_BLOCK_INTERSECTIONS);
