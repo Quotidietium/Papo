@@ -1,0 +1,103 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 23:12:46 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=E4=BA=A4=E4=BA=92=E8=BF=9B?=
+ =?UTF-8?q?=E5=BA=A6=E8=A7=A6=E5=8F=91=E5=99=A8=EF=BC=9AAnyBlockInteractio?=
+ =?UTF-8?q?n/ItemUsedOnLocation/DefaultBlockInteraction=20=E4=B8=89?=
+ =?UTF-8?q?=E8=A7=A6=E5=8F=91=E5=99=A8=20hasListeners=20=E6=97=A9=E9=80=80?=
+ =?UTF-8?q?=EF=BC=880086=20=E5=90=8C=E6=AC=BE=EF=BC=9B=E6=97=A0=E7=9B=91?=
+ =?UTF-8?q?=E5=90=AC=E5=99=A8=E6=97=B6=E5=9F=BA=E7=B1=BB=20trigger=20?=
+ =?UTF-8?q?=E5=AF=B9=E7=A9=BA=E9=9B=86=E7=9B=B4=E6=8E=A5=E8=BF=94=E5=9B=9E?=
+ =?UTF-8?q?=E5=AE=9E=E8=AF=81=EF=BC=89+=20=E4=B8=A4=E5=A4=84=E4=BB=85?=
+ =?UTF-8?q?=E4=B8=BA=20TOOL=20=E5=8F=82=E6=95=B0=E6=9C=8D=E5=8A=A1?=
+ =?UTF-8?q?=E7=9A=84=20ItemStack.copy=20=E7=A7=BB=E5=85=A5=E9=97=A8?=
+ =?UTF-8?q?=E6=8E=A7=E5=90=8E=EF=BC=88=E6=96=B0=E5=A2=9E=20papoHasListener?=
+ =?UTF-8?q?s=20public=20=E9=97=A8=E6=8E=A7=EF=BC=9B=E7=9B=91=E5=90=AC?=
+ =?UTF-8?q?=E5=99=A8=E9=9B=86=E5=90=88=E5=90=8C=20tick=20=E5=8D=95?=
+ =?UTF-8?q?=E7=BA=BF=E7=A8=8B=E4=B8=8D=E5=8F=AF=E4=BA=A4=E9=94=99=E5=8F=98?=
+ =?UTF-8?q?=E6=9B=B4=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/advancements/criterion/AnyBlockInteractionTrigger.java b/net/minecraft/advancements/criterion/AnyBlockInteractionTrigger.java
+index 922b4030bc30e7cc7eda10e29d9bc6182cdd3eb0..aebc4b3277f03353bcd84ff37c2d12a1686410f3 100644
+--- a/net/minecraft/advancements/criterion/AnyBlockInteractionTrigger.java
++++ b/net/minecraft/advancements/criterion/AnyBlockInteractionTrigger.java
+@@ -19,9 +19,14 @@ public class AnyBlockInteractionTrigger extends SimpleCriterionTrigger<AnyBlockI
+         return AnyBlockInteractionTrigger.TriggerInstance.CODEC;
+     }
+ 
++    // Papo - public gate so call sites can skip the eager ItemStack.copy that only serves the TOOL parameter
++    public boolean papoHasListeners(ServerPlayer player) {
++        return this.hasListeners(player);
++    }
++
+     public void trigger(ServerPlayer player, BlockPos pos, ItemStack stack) {
+-        ServerLevel serverLevel = player.level();
+-        BlockState blockState = serverLevel.getBlockState(pos);
++        if (!this.hasListeners(player)) return; // Papo - skip eager LootParams/LootContext build when nobody listens (0086 pattern)
++        ServerLevel serverLevel = player.level();        BlockState blockState = serverLevel.getBlockState(pos);
+         LootParams lootParams = new LootParams.Builder(serverLevel)
+             .withParameter(LootContextParams.ORIGIN, pos.getCenter())
+             .withParameter(LootContextParams.THIS_ENTITY, player)
+diff --git a/net/minecraft/advancements/criterion/DefaultBlockInteractionTrigger.java b/net/minecraft/advancements/criterion/DefaultBlockInteractionTrigger.java
+index 795cd227ce830cf18ae53a407cb54c41d7083de7..1c71e5c7095c1ed5119ea444fa5bbcd37c1bade4 100644
+--- a/net/minecraft/advancements/criterion/DefaultBlockInteractionTrigger.java
++++ b/net/minecraft/advancements/criterion/DefaultBlockInteractionTrigger.java
+@@ -19,6 +19,7 @@ public class DefaultBlockInteractionTrigger extends SimpleCriterionTrigger<Defau
+     }
+ 
+     public void trigger(ServerPlayer player, BlockPos pos) {
++        if (!this.hasListeners(player)) return; // Papo - skip eager LootParams/LootContext build when nobody listens (0086 pattern)
+         ServerLevel serverLevel = player.level();
+         BlockState blockState = serverLevel.getBlockState(pos);
+         LootParams lootParams = new LootParams.Builder(serverLevel)
+diff --git a/net/minecraft/advancements/criterion/ItemUsedOnLocationTrigger.java b/net/minecraft/advancements/criterion/ItemUsedOnLocationTrigger.java
+index 9ab22fe356e357653f7de98e297f312ac7184ed9..3bac1209fd486f7f17ed2df636adf1b80432cb0c 100644
+--- a/net/minecraft/advancements/criterion/ItemUsedOnLocationTrigger.java
++++ b/net/minecraft/advancements/criterion/ItemUsedOnLocationTrigger.java
+@@ -29,7 +29,13 @@ public class ItemUsedOnLocationTrigger extends SimpleCriterionTrigger<ItemUsedOn
+         return ItemUsedOnLocationTrigger.TriggerInstance.CODEC;
+     }
+ 
++    // Papo - public gate so call sites can skip the eager ItemStack.copy that only serves the TOOL parameter
++    public boolean papoHasListeners(ServerPlayer player) {
++        return this.hasListeners(player);
++    }
++
+     public void trigger(ServerPlayer player, BlockPos pos, ItemStack stack) {
++        if (!this.hasListeners(player)) return; // Papo - skip eager LootParams/LootContext build when nobody listens (0086 pattern)
+         ServerLevel serverLevel = player.level();
+         BlockState blockState = serverLevel.getBlockState(pos);
+         LootParams lootParams = new LootParams.Builder(serverLevel)
+diff --git a/net/minecraft/server/level/ServerPlayerGameMode.java b/net/minecraft/server/level/ServerPlayerGameMode.java
+index 84d19d79e77cec6a5d64f59fbcce703e467b2407..3466634e4f2b51dc646ec47f546132b6827baac0 100644
+--- a/net/minecraft/server/level/ServerPlayerGameMode.java
++++ b/net/minecraft/server/level/ServerPlayerGameMode.java
+@@ -537,7 +537,10 @@ public class ServerPlayerGameMode {
+         } else {
+             boolean flag = !player.getMainHandItem().isEmpty() || !player.getOffhandItem().isEmpty();
+             boolean flag1 = player.isSecondaryUseActive() && flag;
+-            ItemStack itemStack = stack.copy();
++            // Papo - only copy when the trigger has listeners: the copy serves exclusively the two
++            // ITEM_USED_ON_BLOCK.trigger calls below, which early-return without touching the stack
++            // when nobody listens (advancement set changes cannot interleave on the tick thread).
++            ItemStack itemStack = CriteriaTriggers.ITEM_USED_ON_BLOCK.papoHasListeners(player) ? stack.copy() : null;
+             if (!flag1) {
+                 InteractionResult interactionResult = blockState.useItemOn(player.getItemInHand(hand), level, player, hand, hitResult);
+                 if (interactionResult.consumesAction()) {
+diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+index 32ac21f0b4a5b550100c187eeb56dcaf6600fc54..14cbca7d6a52a58fd96be59f48bd2e56a31e5183 100644
+--- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+@@ -2119,7 +2119,7 @@ public class ServerGamePacketListenerImpl
+                             if (this.awaitingPositionFromClient == null && (serverLevel.mayInteract(this.player, blockPos) || (serverLevel.paperConfig().spawn.allowUsingSignsInsideSpawnProtection && serverLevel.getBlockState(blockPos).getBlock() instanceof net.minecraft.world.level.block.SignBlock))) { // Paper - Allow using signs inside spawn protection
+                                 this.player.stopUsingItem(); // CraftBukkit - SPIGOT-4706
+                                 InteractionResult interactionResult = this.player.gameMode.useItemOn(this.player, serverLevel, itemInHand, hand, hitResult);
+-                                if (interactionResult.consumesAction()) {
++                                if (interactionResult.consumesAction() && CriteriaTriggers.ANY_BLOCK_USE.papoHasListeners(this.player)) { // Papo - skip the eager copy when nobody listens
+                                     CriteriaTriggers.ANY_BLOCK_USE.trigger(this.player, hitResult.getBlockPos(), itemInHand.copy());
+                                 }
+ 
