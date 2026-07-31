@@ -1,0 +1,135 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 23:08:18 +0800
+Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=20POI=20=E6=9F=A5=E8=AF=A2?=
+ =?UTF-8?q?=EF=BC=9APoiSection/PoiManager.exists=20=E4=B8=8E=20PoiCompetit?=
+ =?UTF-8?q?orScan=20Optional=20=E9=93=BE=E6=B6=88=E9=99=A4=EF=BC=88?=
+ =?UTF-8?q?=E6=9D=91=E6=B0=91=20CORE=20=E8=A1=8C=E4=B8=BA=E6=AF=8F=20tick?=
+ =?UTF-8?q?=20=E8=B7=AF=E5=BE=84=E3=80=82exists=EF=BC=9APoiRecord.poiType?=
+ =?UTF-8?q?=20final=20=E6=9E=84=E9=80=A0=E9=9D=9E=E7=A9=BA=20=E2=87=92=20o?=
+ =?UTF-8?q?fNullable.map.filter.isPresent=20=E7=AD=89=E4=BB=B7=20null=20?=
+ =?UTF-8?q?=E5=88=A4=E6=96=AD+=E7=9B=B4=E8=B0=83=EF=BC=9B=E6=96=B0?=
+ =?UTF-8?q?=E5=A2=9E=20getTypeOrNull=20=E4=B8=A4=E5=B1=82=E7=BA=A7?=
+ =?UTF-8?q?=EF=BC=88=E5=85=AC=E5=85=B1=20getType=20=E4=BF=9D=E7=95=99?=
+ =?UTF-8?q?=EF=BC=89=EF=BC=9BifPresent=20=E6=8D=95=E8=8E=B7=20lambda=20?=
+ =?UTF-8?q?=E4=B8=8E=20Optional=20=E5=85=A8=E6=B6=88=EF=BC=8C=E5=BE=AA?=
+ =?UTF-8?q?=E7=8E=AF=E4=BD=93=E9=80=90=E8=A1=8C=E5=8E=9F=E6=A0=B7=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/entity/ai/behavior/PoiCompetitorScan.java b/net/minecraft/world/entity/ai/behavior/PoiCompetitorScan.java
+index 9b595322b21b83d38886d515a3b8dd04cde43cea..8fda82bdc63714e0a31a83dabcec6980424cc94b 100644
+--- a/net/minecraft/world/entity/ai/behavior/PoiCompetitorScan.java
++++ b/net/minecraft/world/entity/ai/behavior/PoiCompetitorScan.java
+@@ -19,36 +19,37 @@ public class PoiCompetitorScan {
+                     instance,
+                     (jobSite, nearestLivingEntities) -> (level, villager, gameTime) -> {
+                         GlobalPos globalPos = instance.get(jobSite);
+-                        level.getPoiManager()
+-                            .getType(globalPos.pos())
+-                            .ifPresent(
+-                                // Paper start - Improve performance of PoiCompetitorScan by unrolling stream
+-                                // The previous logic used Stream#reduce to simulate a form of single-iteration bubble sort
+-                                // in which the "winning" villager would maintain MemoryModuleType.JOB_SITE while all others
+-                                // would lose said memory module type by passing each "current winner" and incoming next
+-                                // villager to #selectWinner.
+-                                poi -> {
+-                                    final List<LivingEntity> livingEntities = instance.get(nearestLivingEntities);
++                        // Papo start - avoid the Optional chain + capturing ifPresent lambda on this
++                        // per-tick villager CORE behavior: getTypeOrNull returns the same Holder or null;
++                        // the body runs iff non-null, exactly like ifPresent.
++                        Holder<PoiType> poi = level.getPoiManager().getTypeOrNull(globalPos.pos());
++                        if (poi != null) {
++                            // Paper start - Improve performance of PoiCompetitorScan by unrolling stream
++                            // The previous logic used Stream#reduce to simulate a form of single-iteration bubble sort
++                            // in which the "winning" villager would maintain MemoryModuleType.JOB_SITE while all others
++                            // would lose said memory module type by passing each "current winner" and incoming next
++                            // villager to #selectWinner.
++                            final List<LivingEntity> livingEntities = instance.get(nearestLivingEntities);
+ 
+-                                    Villager winner = villager;
+-                                    for (final LivingEntity other : livingEntities) {
+-                                        if (other == villager) {
+-                                            continue;
+-                                        }
+-                                        if (!(other instanceof final net.minecraft.world.entity.npc.villager.Villager otherVillager)) {
+-                                            continue;
+-                                        }
+-                                        if (!other.isAlive()) {
+-                                            continue;
+-                                        }
+-                                        if (!competesForSameJobsite(globalPos, poi, otherVillager)) {
+-                                            continue;
+-                                        }
+-                                        winner = selectWinner(winner, otherVillager);
+-                                    }
++                            Villager winner = villager;
++                            for (final LivingEntity other : livingEntities) {
++                                if (other == villager) {
++                                    continue;
+                                 }
+-                                // Paper end - Improve performance of PoiCompetitorScan by unrolling stream
+-                            );
++                                if (!(other instanceof final net.minecraft.world.entity.npc.villager.Villager otherVillager)) {
++                                    continue;
++                                }
++                                if (!other.isAlive()) {
++                                    continue;
++                                }
++                                if (!competesForSameJobsite(globalPos, poi, otherVillager)) {
++                                    continue;
++                                }
++                                winner = selectWinner(winner, otherVillager);
++                            }
++                            // Paper end - Improve performance of PoiCompetitorScan by unrolling stream
++                        }
++                        // Papo end
+                         return true;
+                     }
+                 )
+diff --git a/net/minecraft/world/entity/ai/village/poi/PoiManager.java b/net/minecraft/world/entity/ai/village/poi/PoiManager.java
+index 95fa0d9487542ba5308c60d29095efa6c90e86d6..e639d239d0d747601022f678af25d8faf2d35aef 100644
+--- a/net/minecraft/world/entity/ai/village/poi/PoiManager.java
++++ b/net/minecraft/world/entity/ai/village/poi/PoiManager.java
+@@ -335,7 +335,15 @@ public class PoiManager extends SectionStorage<PoiSection, PoiSection.Packed> im
+     }
+ 
+     public boolean exists(BlockPos pos, Predicate<Holder<PoiType>> typePredicate) {
+-        return this.getOrLoad(SectionPos.asLong(pos)).map(poiSection -> poiSection.exists(pos, typePredicate)).orElse(false);
++        // Papo - avoid the map Optional on this per-tick villager path (ValidateNearbyPoi)
++        Optional<PoiSection> poiSection = this.getOrLoad(SectionPos.asLong(pos));
++        return poiSection.isPresent() && poiSection.get().exists(pos, typePredicate);
++    }
++
++    // Papo - null-returning variant for hot paths (PoiCompetitorScan): same value as getType, no Optional chain.
++    public @Nullable Holder<PoiType> getTypeOrNull(BlockPos pos) {
++        Optional<PoiSection> poiSection = this.getOrLoad(SectionPos.asLong(pos));
++        return poiSection.isPresent() ? poiSection.get().getTypeOrNull(pos) : null;
+     }
+ 
+     public Optional<Holder<PoiType>> getType(BlockPos pos) {
+diff --git a/net/minecraft/world/entity/ai/village/poi/PoiSection.java b/net/minecraft/world/entity/ai/village/poi/PoiSection.java
+index 49cbdd80057250c37464ca5f5dd39a20dbaa9f2c..aa3a114950f00c8135c93f73ba81fee706cc5c5f 100644
+--- a/net/minecraft/world/entity/ai/village/poi/PoiSection.java
++++ b/net/minecraft/world/entity/ai/village/poi/PoiSection.java
+@@ -127,7 +127,17 @@ public class PoiSection implements ca.spottedleaf.moonrise.patches.chunk_system.
+     }
+ 
+     public boolean exists(BlockPos pos, Predicate<Holder<PoiType>> typePredicate) {
+-        return this.getType(pos).filter(typePredicate).isPresent();
++        // Papo - avoid the Optional chain on this per-tick villager path (ValidateNearbyPoi):
++        // getPoiType is non-null by construction (PoiRecord final field), so
++        // ofNullable(record).map(getPoiType).filter(pred).isPresent() == record != null && pred.test(type).
++        PoiRecord poiRecord = this.records.get(SectionPos.sectionRelativePos(pos));
++        return poiRecord != null && typePredicate.test(poiRecord.getPoiType());
++    }
++
++    // Papo - null-returning variant for hot paths (PoiCompetitorScan): same value as getType, no Optional.
++    public @Nullable Holder<PoiType> getTypeOrNull(BlockPos pos) {
++        PoiRecord poiRecord = this.records.get(SectionPos.sectionRelativePos(pos));
++        return poiRecord != null ? poiRecord.getPoiType() : null;
+     }
+ 
+     public Optional<Holder<PoiType>> getType(BlockPos pos) {
