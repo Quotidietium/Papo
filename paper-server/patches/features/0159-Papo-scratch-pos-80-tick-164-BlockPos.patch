@@ -1,0 +1,36 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 02:52:52 +0800
+Subject: [PATCH] =?UTF-8?q?Papo:=20=E4=BF=A1=E6=A0=87=E5=9F=BA=E5=BA=A7?=
+ =?UTF-8?q?=E6=89=AB=E6=8F=8F=E5=A4=8D=E7=94=A8=20scratch=20pos=EF=BC=88?=
+ =?UTF-8?q?=E6=AF=8F=2080=20tick=20=E7=9C=81=E8=87=B3=E5=A4=9A=20164=20?=
+ =?UTF-8?q?=E6=AC=A1=20BlockPos=20=E5=88=86=E9=85=8D=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/level/block/entity/BeaconBlockEntity.java b/net/minecraft/world/level/block/entity/BeaconBlockEntity.java
+index d14350889aa13a200b0ba6e51e5bde5adc176f37..cea93d8add8fb618be03f171a3b293bcceca809e 100644
+--- a/net/minecraft/world/level/block/entity/BeaconBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/BeaconBlockEntity.java
+@@ -250,6 +250,10 @@ public class BeaconBlockEntity extends BlockEntity implements MenuProvider, Name
+ 
+     private static int updateBase(Level level, int x, int y, int z) {
+         int i = 0;
++        // Papo start - reuse a scratch mutable pos for the base scan (0159): up to 164 new BlockPos
++        // per beacon per 80 ticks; the pos never escapes (getBlockState reads coordinates only)
++        BlockPos.MutableBlockPos papoScratch = new BlockPos.MutableBlockPos();
++        // Papo end
+ 
+         for (int i1 = 1; i1 <= 4; i = i1++) {
+             int i2 = y - i1;
+@@ -261,7 +265,7 @@ public class BeaconBlockEntity extends BlockEntity implements MenuProvider, Name
+ 
+             for (int i3 = x - i1; i3 <= x + i1 && flag; i3++) {
+                 for (int i4 = z - i1; i4 <= z + i1; i4++) {
+-                    if (!level.getBlockState(new BlockPos(i3, i2, i4)).is(BlockTags.BEACON_BASE_BLOCKS)) {
++                    if (!level.getBlockState(papoScratch.set(i3, i2, i4)).is(BlockTags.BEACON_BASE_BLOCKS)) { // Papo - scratch pos (0159, was new BlockPos)
+                         flag = false;
+                         break;
+                     }
