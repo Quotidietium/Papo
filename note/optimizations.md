@@ -969,9 +969,64 @@ survey 1（事件门控/AI/网络/物品四线）小中项 14 项落地；Player
 ---
 
 
+## 批次 37（2026-08-01）：AI 框架层开销 + 配置查找缓存 + 物品解码/点击事件快路（0150-0154 + 直接提交 0155）
+
+survey 1 "仔细复核"7 件中 4 件可证等价落地；Brain.getMemory 框架级改造（泛型穿线复杂、收益仅限"存在的记忆"路径）与 ServerEntity 增量合并（勘察细节不足）、RegionizedPlayerChunkLoader（moonrise 库不可补丁化）记录暂缓。全部 compileJava + 全量 test 通过，applyPatches 干净应用（945 patches）。编号说明：批次 36 直接提交占 0150（文档记法），批次 37 补丁自 0150 起——**0150 双用**（批次 36 直接提交 / 批次 37 补丁），以补丁文件序列为准（同 0114 先例）。
+
+### 0150 — ValidateNearbyPoi 手写 OneShot + Brain 原生记忆读取
+- **文件**：`net/minecraft/world/entity/ai/behavior/ValidateNearbyPoi.java` + `net/minecraft/world/entity/ai/Brain.java`
+- **热点**：村民每 tick POI 校验走声明式 BehaviorBuilder 链——每次 tryStart（记忆存在时）1 个 MemoryAccessor + 1 个 Optional（getMemoryInternal 的 map）+ 应用闭包层调用。
+- **改法**：`create()` 直接返回匿名 `OneShot`（声明式 `BehaviorBuilder.create` 本也返回 OneShot——tryStart==trigger、无进入条件/时长，语义类级一致）；门 = `papoGetMemoryInternalRaw`（Brain 新增：同 getMemoryInternal 但不包装结果 Optional）；`poiPos.erase()` → `brain.eraseMemory`（MemoryAccessor.java:36-37 实证）。
+- **等价性**：`instance.present` 门 = 原生读非空；主体逐行保留；`16.0` 字面量与 `MAX_DISTANCE`（int 16 拓宽）同一 double。debugString 文本与声明式链描述不同（仅脑调试转储/崩溃报告，非游戏可观察）——补丁注释载明。
+- **基准**：219.693 → 176.197 ns/op（**1.25×**）。
+- **风险**：低。
+
+### 0151 — Behavior.tryStart tickRate 按（配置纪元, 世界配置引用）缓存
+- **文件**：`net/minecraft/world/entity/ai/behavior/Behavior.java`
+- **热点**：每个停止行为每实体每 tick `tickRates.behavior.get(entityType, configKey)`——Guava Table.get 行/列双哈希 + Integer 拆箱（村民 30+ 行为）。
+- **改法**：实例字段缓存，双键校验：配置纪元（PaperConfigurations.PAPO_CONFIG_EPOCH，直接提交 0155）+ `level.paperConfig()` 引用；失配才重查。
+- **等价性**：`/paper reload` 重建全部世界配置且纪元递增（reloadConfigs 开头，部分失败亦失效）；跨维度传送换世界 → 配置引用变更 → 重查；NMS 内部直改配置表（无 Bukkit API 路径）下次 reload 前不可观察——补丁注释载明。
+- **基准**（与 0152 合测）：101.240 → 15.831 ns/op（**6.40×**）。
+- **风险**：低。
+
+### 0152 — Sensor.tick tickRate 同法缓存
+- **文件**：`net/minecraft/world/entity/ai/sensing/Sensor.java`
+- **热点**：每传感器每次触发（scanRate 到期）同一 Table.get。
+- **改法/等价性**：同 0151（字段同源注释）。
+- **基准**：同 0151 合测（**6.40×**）。
+- **风险**：低。
+
+### 0153 — ItemStack 解码深度校验 CountingOps RegistryOps 缓存
+- **文件**：`net/minecraft/core/RegistryAccess.java`（ImmutableRegistryAccess 增 `papoCountingOps`/`papoCountingSerializationContext()`）+ `net/minecraft/world/item/ItemStack.java`（validatedStreamCodec.decode）
+- **热点**：`validatedStreamCodec` 解码**每个非空入站物品栈**（容器点击/创造选取/任何含物品包）`createSerializationContext(CountingOps.INSTANCE)` = RegistryOps + HolderLookupAdapter + ConcurrentHashMap 三连分配，外加原有 encodeStart 全量校验。
+- **改法**：0133 同构——`instanceof ImmutableRegistryAccess` 走 volatile 缓存，否则原路径。
+- **等价性**：CountingOps.INSTANCE 不可变无状态（final maxDepth、每操作新建 builder——源码实证）；线程安全论证同 0133（CHM lookups + benign race）。
+- **基准**：5.502 → 0.519 ns/op（**10.60×**）。
+- **风险**：低。
+
+### 0154 — InventoryClickEvent 零监听器快路
+- **文件**：`net/minecraft/server/network/ServerGamePacketListenerImpl.java` `handleContainerClick`
+- **热点**：每次容器点击执行约 200 行点击/动作映射 switch + Bukkit 视图/槽位类型查询 + 事件构造（含 Craft/Smith/Cartography 子类替换条件）+ 派发——零插件服全部白做。
+- **改法**：`InventoryClickEvent.getHandlerList().getRegisteredListeners().length == 0` 快路：QUICK_CRAFT 逐字复制 switch 的对应 case（Paper 拖拽修复 + 无条件 clicked——全 switch 仅该 case 有副作用，已全量扫描实证）；其余点击类型 `!cancelled → clicked`（`cancelled == isSpectator`，:3057 唯一定义）+ craft/smith 重同步条件（slotNum==0 && CraftingInventory && recipe!=null / slotNum==3 && SmithingInventory && result!=null ⇔ 原 `event instanceof CraftItemEvent/SmithItemEvent`）；有监听器走原路径逐字节保留。
+- **等价性**：CraftItemEvent/SmithItemEvent/CartographyItemEvent 均未声明自己的 getHandlerList（paper-api 实证）⇒ 四类共享 InventoryClickEvent 单一 HandlerList；无监听器 ⇒ 菜单不可变更（:3349 检查可跳）、`getResult()` 仅由 setCancelled(cancelled) 决定。
+- **基准**：2.300 → 0.598 ns/op（**3.85×**；复刻仅含事件对象层，真实路径含整个 switch，收益更高）。
+- **风险**：低。
+
+### 直接提交（无补丁文件，编号 0155）— PaperConfigurations 配置纪元计数器
+- **文件**：`paper-server/src/main/java/io/papermc/paper/configuration/PaperConfigurations.java`（直接提交的源码）
+- **内容**：`public static volatile long PAPO_CONFIG_EPOCH`，`reloadConfigs` 开头递增（部分失败亦失效，保守安全）；读写在主线程，volatile 保证可见性。
+- **风险**：零。
+
+### 暂缓（批次 37 记录）
+- **Brain.getMemory 框架级原生读**：声明式框架 MemoryAccessor 全链 Optional 泛型穿线，收益仅限"存在的记忆"路径（空记忆 map 不分配），性价比低，暂缓。0150 已在手写路径带出其原生读。
+- **ServerEntity 增量合并（net#2）**：勘察细节不足，现有代码已经 Paper 多轮优化，待重勘察。
+- **RegionizedPlayerChunkLoader copy（net#5）**：moonrise 库类，不在补丁源树内，不可补丁化。
+
+---
+
 ## 候选后续批次（来自 survey，按 价值×置信/风险 排序）
 
-（旧清单中 Direction.Plane 迭代器、tickBlockEntities 移除集、NaturalSpawner 距离、pushableBy、LookControl Optional、distanceToSqr 批、CraftBukkit 枚举缓存均已完成，见对应批次。批次 28 完成：InventoryChangeTrigger 早退 0093、Utf8String 写侧 NBT ASCII 快速路径 0092、tickChildren SetTimePacket 惰性 0094、FriendlyByteBuf.writeNbt 适配器 0095。批次 29 完成：FriendlyByteBuf.readNbt 读侧适配器 0096、VarInt.read 快速路径 0097、枚举常量缓存 0098、registry codec 单例 0099、EntityJumpEvent/PlayerVelocityEvent 门控 0100、惰性 list 0101、TrackedEntity 惰性移除 0102、Inflater 池化 0103；map 编码 forEach→entrySet 经基准实测回退 0.77× 已撤销（见批次 29 撤销条）。批次 30 完成：流体检测路径 3 处分配消除 0104、computeSpeed Vec3 消除 0105。批次 31 完成：BlockFromToEvent 门控+流体 tick 去冗余查询 0106、物品拾取/合并门控 0107、经验球 4 事件门控 0108、PlayerJumpEvent 门控+Vec3 折叠 0109、broadcastSlotChange 门控 0110、寻路缓存两段式+GateBehavior stream 消除 0111。批次 32 完成：双拾取事件门控 0112、handleBlockFormEvent 门控 0114（初稿误记 0113，补丁序列以补丁文件为准后正名）。批次 33 完成：漏斗吸取 AABB 实例缓存 0113。批次 34 完成：touchingUnloadedChunk 内联 0114、寻路 getPathType BlockPos 0115、漏斗 getEntityContainer AABB 缓存 0116、BlockFadeEvent 门控 0117、玩家状态事件×4 门控 0118、LeavesDecay/BlockIgnite 门控 0119、PathNavigation Node 直读 0120、EntityPathfindEvent 门控 0121、矿车事件门控 0122、push Vector 消除 0123、EntityTarget/Enderman 门控 0124、CraftEventFactory 四事件门控（直接提交，编号 0125）。批次 35 完成：红石事件快路调用点 0125、刷怪事件门控+复用 0126、sections Optional 消除 0127、装饰 rangeClosed 双循环 0128、DEFLATE Deflater 池化 0129、TemptingSensor 条件复用 0130、PlayerSensor 属性外提 0131、PlayerMoveEvent Location 延迟 0132、RegistryOps 缓存 0133、handleBlockGrowEvent 门控+handleRedstoneChange 快路（直接提交，编号 0134）；holderSet 流改 for-each 实测 0.82× 否决。批次 36 完成：ComponentSerialization 缓存接入 0134、updateFluidOnEyes scratch 0135、POI Optional 消除 0136、交互三触发器门控 0137、PlayerInteractEvent 门控×7 0138、ItemCraftedEvent 门控×2 0139、handleUseItemOn Vec3 展开 0140、PlayerChunkSender 命令式 0141、InteractWithDoor scratch+坐标直读 0142、EntityEquipment VALUES 0143、熔炉 SingleRecipeInput 缓存 0144、ChunkHolder.broadcast 循环 0145、光照包预分配 0146、getEffectiveRange 外提 0147、isSunBurnTick 延迟构造 0148、tickEffects 展开 0149、callPreCraftEvent 快路（直接提交，初记 0142 正名 0150——补丁序列以补丁文件为准）。注意 0114 编号被两批使用：批次 32 的 0114 是直接提交（无补丁文件），批次 34 的 0114 起为补丁文件编号——以补丁文件序列为准。）
+（旧清单中 Direction.Plane 迭代器、tickBlockEntities 移除集、NaturalSpawner 距离、pushableBy、LookControl Optional、distanceToSqr 批、CraftBukkit 枚举缓存均已完成，见对应批次。批次 28 完成：InventoryChangeTrigger 早退 0093、Utf8String 写侧 NBT ASCII 快速路径 0092、tickChildren SetTimePacket 惰性 0094、FriendlyByteBuf.writeNbt 适配器 0095。批次 29 完成：FriendlyByteBuf.readNbt 读侧适配器 0096、VarInt.read 快速路径 0097、枚举常量缓存 0098、registry codec 单例 0099、EntityJumpEvent/PlayerVelocityEvent 门控 0100、惰性 list 0101、TrackedEntity 惰性移除 0102、Inflater 池化 0103；map 编码 forEach→entrySet 经基准实测回退 0.77× 已撤销（见批次 29 撤销条）。批次 30 完成：流体检测路径 3 处分配消除 0104、computeSpeed Vec3 消除 0105。批次 31 完成：BlockFromToEvent 门控+流体 tick 去冗余查询 0106、物品拾取/合并门控 0107、经验球 4 事件门控 0108、PlayerJumpEvent 门控+Vec3 折叠 0109、broadcastSlotChange 门控 0110、寻路缓存两段式+GateBehavior stream 消除 0111。批次 32 完成：双拾取事件门控 0112、handleBlockFormEvent 门控 0114（初稿误记 0113，补丁序列以补丁文件为准后正名）。批次 33 完成：漏斗吸取 AABB 实例缓存 0113。批次 34 完成：touchingUnloadedChunk 内联 0114、寻路 getPathType BlockPos 0115、漏斗 getEntityContainer AABB 缓存 0116、BlockFadeEvent 门控 0117、玩家状态事件×4 门控 0118、LeavesDecay/BlockIgnite 门控 0119、PathNavigation Node 直读 0120、EntityPathfindEvent 门控 0121、矿车事件门控 0122、push Vector 消除 0123、EntityTarget/Enderman 门控 0124、CraftEventFactory 四事件门控（直接提交，编号 0125）。批次 35 完成：红石事件快路调用点 0125、刷怪事件门控+复用 0126、sections Optional 消除 0127、装饰 rangeClosed 双循环 0128、DEFLATE Deflater 池化 0129、TemptingSensor 条件复用 0130、PlayerSensor 属性外提 0131、PlayerMoveEvent Location 延迟 0132、RegistryOps 缓存 0133、handleBlockGrowEvent 门控+handleRedstoneChange 快路（直接提交，编号 0134）；holderSet 流改 for-each 实测 0.82× 否决。批次 36 完成：ComponentSerialization 缓存接入 0134、updateFluidOnEyes scratch 0135、POI Optional 消除 0136、交互三触发器门控 0137、PlayerInteractEvent 门控×7 0138、ItemCraftedEvent 门控×2 0139、handleUseItemOn Vec3 展开 0140、PlayerChunkSender 命令式 0141、InteractWithDoor scratch+坐标直读 0142、EntityEquipment VALUES 0143、熔炉 SingleRecipeInput 缓存 0144、ChunkHolder.broadcast 循环 0145、光照包预分配 0146、getEffectiveRange 外提 0147、isSunBurnTick 延迟构造 0148、tickEffects 展开 0149、callPreCraftEvent 快路（直接提交，初记 0142 正名 0150——补丁序列以补丁文件为准）。批次 37 完成：ValidateNearbyPoi 手写 OneShot+Brain 原生读 0150、Behavior tickRate 缓存 0151、Sensor tickRate 缓存 0152、CountingOps RegistryOps 缓存 0153、InventoryClickEvent 零监听器快路 0154、PAPO_CONFIG_EPOCH 配置纪元失效钩子（直接提交，编号 0155）。注意 0114 与 0150 编号均被两批使用：批次 32 的 0114、批次 36 的 0150 是直接提交（无补丁文件），批次 34 的 0114、批次 37 的 0150 起为补丁文件编号——以补丁文件序列为准。）
 
 ### 批次 23-27 survey 新增候选（2026-07-30，尚未做）
 
