@@ -1,0 +1,63 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 04:57:46 +0800
+Subject: [PATCH] =?UTF-8?q?=E7=81=AB=E7=90=83=20tick=20Vec3=20=E4=B8=AD?=
+ =?UTF-8?q?=E9=97=B4=E9=87=8F=E6=B6=88=E9=99=A4=EF=BC=9AapplyInertia=20?=
+ =?UTF-8?q?=E5=9B=9B=E5=A4=84=20+=20MISS=20=E8=B7=AF=E5=BE=84=20setPos=20?=
+ =?UTF-8?q?=E4=B8=A4=E5=A4=84=EF=BC=880174=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/entity/projectile/hurtingprojectile/AbstractHurtingProjectile.java b/net/minecraft/world/entity/projectile/hurtingprojectile/AbstractHurtingProjectile.java
+index 7e8a966e48a40030559995c4f180a5ff75f4f1e5..c8d968f8eed33e62d62d9f96f42c458e08c1730b 100644
+--- a/net/minecraft/world/entity/projectile/hurtingprojectile/AbstractHurtingProjectile.java
++++ b/net/minecraft/world/entity/projectile/hurtingprojectile/AbstractHurtingProjectile.java
+@@ -73,14 +73,24 @@ public abstract class AbstractHurtingProjectile extends Projectile {
+         if (this.level().isClientSide() || (owner == null || !owner.isRemoved()) && this.level().hasChunkAt(this.blockPosition())) {
+             HitResult hitResultOnMoveVector = ProjectileUtil.getHitResultOnMoveVector(this, this.papoCanHitPredicate, this.getClipType());
+             Vec3 location;
++            Vec3 papoMissDelta; // Papo - MISS path delta, applied componentwise below (saves the position().add() intermediates)
+             if (hitResultOnMoveVector.getType() != HitResult.Type.MISS) {
+                 location = hitResultOnMoveVector.getLocation();
++                papoMissDelta = null;
+             } else {
+-                location = this.position().add(this.getDeltaMovement());
++                location = null;
++                papoMissDelta = this.getDeltaMovement();
+             }
+ 
+             ProjectileUtil.rotateTowardsMovement(this, 0.2F);
+-            this.setPos(location);
++            if (location != null) {
++                this.setPos(location);
++            } else {
++                // Papo - position().add(deltaMovement) computed componentwise (same FP adds per component);
++                // rotateTowardsMovement only mutates rotations, so getX/Y/Z here equal the values
++                // position() would have captured above.
++                this.setPos(this.getX() + papoMissDelta.x, this.getY() + papoMissDelta.y, this.getZ() + papoMissDelta.z);
++            }
+             this.applyEffectsFromBlocks();
+             super.tick();
+             if (this.shouldBurn()) {
+@@ -121,7 +131,18 @@ public abstract class AbstractHurtingProjectile extends Projectile {
+             liquidInertia = this.getInertia();
+         }
+ 
+-        this.setDeltaMovement(deltaMovement.add(deltaMovement.normalize().scale(this.accelerationPower)).scale(liquidInertia));
++        // Papo - skip the four intermediate Vec3 (normalize/scale/add/scale): computed inline below with the
++        // identical FP op chain ((dm + (dm/|dm|) * accelerationPower) * inertia per component; normalize's
++        // squareRoot < 1.0E-5F branch yields zero components exactly as Vec3.ZERO.scale would).
++        double papoLength = Math.sqrt(deltaMovement.x * deltaMovement.x + deltaMovement.y * deltaMovement.y + deltaMovement.z * deltaMovement.z);
++        double papoNX = papoLength < 1.0E-5F ? 0.0 : deltaMovement.x / papoLength;
++        double papoNY = papoLength < 1.0E-5F ? 0.0 : deltaMovement.y / papoLength;
++        double papoNZ = papoLength < 1.0E-5F ? 0.0 : deltaMovement.z / papoLength;
++        this.setDeltaMovement(
++            (deltaMovement.x + papoNX * this.accelerationPower) * liquidInertia,
++            (deltaMovement.y + papoNY * this.accelerationPower) * liquidInertia,
++            (deltaMovement.z + papoNZ * this.accelerationPower) * liquidInertia
++        );
+     }
+ 
+     private void createParticleTrail() {
