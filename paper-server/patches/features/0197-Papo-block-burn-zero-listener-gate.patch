@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 21:41:05 +0800
+Subject: [PATCH] Papo: block burn zero-listener gate
+
+
+diff --git a/net/minecraft/world/level/block/FireBlock.java b/net/minecraft/world/level/block/FireBlock.java
+index ad3758dc2e6514eb0fdb1a856cf99e00e477f024..10027912f9f017df031c609af1670d78492983d8 100644
+--- a/net/minecraft/world/level/block/FireBlock.java
++++ b/net/minecraft/world/level/block/FireBlock.java
+@@ -272,6 +272,9 @@ public class FireBlock extends BaseFireBlock {
+             BlockState blockState = level.getBlockState(pos);
+ 
+             // CraftBukkit start
++            // Papo start - zero-listener gate: BlockBurnEvent has its own HandlerList (no subclasses);
++            // skip CraftBlock + event construction when nobody is listening.
++            if (org.bukkit.event.block.BlockBurnEvent.getHandlerList().getRegisteredListeners().length > 0) {
+             org.bukkit.block.Block burnBlock = org.bukkit.craftbukkit.block.CraftBlock.at(level, pos);
+             org.bukkit.block.Block sourceBlock = org.bukkit.craftbukkit.block.CraftBlock.at(level, sourcePos);
+ 
+@@ -279,6 +282,7 @@ public class FireBlock extends BaseFireBlock {
+             if (!event.callEvent()) {
+                 return;
+             }
++            } // Papo - zero-listener gate
+ 
+             if (blockState.getBlock() instanceof TntBlock && !org.bukkit.craftbukkit.event.CraftEventFactory.callTNTPrimeEvent(level, pos, org.bukkit.event.block.TNTPrimeEvent.PrimeCause.FIRE, null, sourcePos)) {
+                 return;
