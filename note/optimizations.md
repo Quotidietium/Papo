@@ -556,7 +556,8 @@
 - **文件**：`net/minecraft/world/entity/item/ItemEntity.java`（playerTouch）+ `CraftEventFactory.callItemMergeEvent`（直接提交的源码，非补丁）
 - **热点**：玩家站在掉落物上时 `playerTouch` 每 tick 每物品构造事件 + 2×getBukkitEntity；物品密集场景每 2 tick 每可合并邻居构造 ItemMergeEvent + 2×getBukkitEntity。
 - **改法**：attempt 事件块加 `> 0` 门控；`callItemMergeEvent` 入口零监听器直接返回 true（同时省掉两次 getBukkitEntity）。
-- **等价性**：零监听器时 attempt 事件 flyAtPlayer=false 且不可取消（默认字段，与跳过后控制流一致）；merge 事件不可取消 → 返回值恒 true。两事件均无子类。
+- **等价性**：零监听器时 attempt 事件不可取消（默认字段）；merge 事件不可取消 → 返回值恒 true。两事件均无子类。
+- **2026-08-02 稳定性审计修复（行为 bug）**：原等价性论证误称"零监听器时 flyAtPlayer=false"——实际 `PlayerAttemptPickupItemEvent`/`PlayerPickupItemEvent` 的 `flyAtPlayer` 字段**默认均为 true**（PlayerAttemptPickupItemEvent.java:20、PlayerPickupItemEvent.java:24）。原版零监听器：事件块把局部 `flyAtPlayer` 设为 true → 行 491 `entity.take(this,count)` 触发拾取飞向玩家动画；Papo 零监听器快路跳过两事件块 → `flyAtPlayer` 保持初值 false → **`entity.take` 不触发，拾取动画丢失**（物品消失而非飞向玩家；物品仍正确进背包，无数据丢失，但属可观察的用户交互回归）。修复：`ItemEntity.playerTouch` 局部 `flyAtPlayer` 初值 false→true（0107 补丁），对全零监听器情形恢复默认 true；其余 listener 组合在 420/450 行被覆写前不消费该初值，故 init=true 对所有情况正确。0112 快路注释同步勘正。
 - **风险**：低。
 
 ### 0108 — 经验球事件门控×4：PlayerPickupExperience / ExperienceOrbMerge / ExpCooldown / ItemMend

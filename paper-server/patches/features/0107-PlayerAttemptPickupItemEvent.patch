@@ -14,12 +14,13 @@ index e82bb8f2d2b0e771dc371fd7e709116e1f5f204f..5692a9b4473c07f2d70d8d6f1248ed24
 --- a/net/minecraft/world/entity/item/ItemEntity.java
 +++ b/net/minecraft/world/entity/item/ItemEntity.java
 @@ -410,7 +410,10 @@ public class ItemEntity extends Entity implements TraceableEntity {
-             boolean flyAtPlayer = false; // Paper
- 
+-            boolean flyAtPlayer = false; // Paper
++            boolean flyAtPlayer = true; // Papo fix - PlayerAttemptPickupItemEvent/PlayerPickupItemEvent both default flyAtPlayer=true; the zero-listener fast paths below skip the event blocks that set it, so default true here to preserve the pickup fly animation (entity.take). Any listener combination overwrites this before use.
+
              // Paper start - PlayerAttemptPickupItemEvent
 -            if (this.pickupDelay <= 0) {
 +            // Papo - skip event allocation+fire when no plugin listens (event has no subclasses,
-+            // constructor is side-effect free; with zero listeners flyAtPlayer stays false and the
++            // constructor is side-effect free; with zero listeners flyAtPlayer keeps its true default above (matching the event) and the
 +            // event can never be cancelled, so skipping the block is identical).
 +            if (this.pickupDelay <= 0 && org.bukkit.event.player.PlayerAttemptPickupItemEvent.getHandlerList().getRegisteredListeners().length > 0) {
                  org.bukkit.event.player.PlayerAttemptPickupItemEvent attemptEvent = new org.bukkit.event.player.PlayerAttemptPickupItemEvent((org.bukkit.entity.Player) entity.getBukkitEntity(), (org.bukkit.entity.Item) this.getBukkitEntity(), remaining);

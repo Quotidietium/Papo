@@ -21,7 +21,7 @@ index 5692a9b4473c07f2d70d8d6f1248ed242832d57e..b8297f79edd421da46e900b2ebbdd240
              if (this.pickupDelay <= 0 && canHold > 0) {
                  item.setCount(canHold);
 +                // Papo start - no listeners on either pickup event: both events apply the same default
-+                // cancel rule (!getCanPickupItems()), flyAtPlayer defaults to false, and with zero
++                // cancel rule (!getCanPickupItems()), flyAtPlayer keeps its true init default (see playerTouch init), and with zero
 +                // listeners the stack can never be swapped, so replicate the outcome directly and skip
 +                // both event allocations + getBukkitEntity() calls.
 +                if (org.bukkit.event.player.PlayerPickupItemEvent.getHandlerList().getRegisteredListeners().length == 0
