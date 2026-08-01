@@ -1,0 +1,51 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 21:41:17 +0800
+Subject: [PATCH] Papo: follow parent goal scratch list
+
+
+diff --git a/net/minecraft/world/entity/ai/goal/FollowParentGoal.java b/net/minecraft/world/entity/ai/goal/FollowParentGoal.java
+index 3b158592d97f5ee2ad10b1da75101cb1669871a3..12aebe96f6f646d990b8870df04fb7e95ce960c1 100644
+--- a/net/minecraft/world/entity/ai/goal/FollowParentGoal.java
++++ b/net/minecraft/world/entity/ai/goal/FollowParentGoal.java
+@@ -2,6 +2,7 @@ package net.minecraft.world.entity.ai.goal;
+ 
+ import java.util.List;
+ import net.minecraft.world.entity.animal.Animal;
++import net.minecraft.world.level.entity.EntityTypeTest;
+ import org.jspecify.annotations.Nullable;
+ 
+ public class FollowParentGoal extends Goal {
+@@ -12,6 +13,8 @@ public class FollowParentGoal extends Goal {
+     private @Nullable Animal parent;
+     private final double speedModifier;
+     private int timeToRecalcPath;
++    // Papo start - per-goal scratch list (0190 pattern)
++    private List<Animal> papoFollowParentScratch;
+ 
+     public FollowParentGoal(Animal animal, double speedModifier) {
+         this.animal = animal;
+@@ -23,9 +26,20 @@ public class FollowParentGoal extends Goal {
+         if (this.animal.getAge() >= 0) {
+             return false;
+         } else {
+-            List<? extends Animal> entitiesOfClass = this.animal
+-                .level()
+-                .getEntitiesOfClass((Class<? extends Animal>)this.animal.getClass(), this.animal.getBoundingBox().inflate(8.0, 4.0, 8.0));
++            // Papo start - per-goal scratch list (0190 pattern): list consumed entirely within canUse loop.
++            List<Animal> entitiesOfClass = this.papoFollowParentScratch;
++            if (entitiesOfClass == null) {
++                entitiesOfClass = this.papoFollowParentScratch = new java.util.ArrayList<>();
++            } else {
++                entitiesOfClass.clear();
++            }
++            this.animal.level().getEntities(
++                EntityTypeTest.forClass((Class<Animal>)(Class<?>)this.animal.getClass()),
++                this.animal.getBoundingBox().inflate(8.0, 4.0, 8.0),
++                net.minecraft.world.entity.EntitySelector.NO_SPECTATORS,
++                entitiesOfClass
++            );
++            // Papo end
+             Animal animal = null;
+             double d = Double.MAX_VALUE;
+ 
