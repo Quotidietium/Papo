@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 21:40:54 +0800
+Subject: [PATCH] Papo: trade select zero-listener gate
+
+
+diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+index 40f149726a91fd8e804cc3a17b4b949edf5ca5a6..b7c6d237aa5606515f633ac4508d98491d5650ad 100644
+--- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+@@ -1289,11 +1289,15 @@ public class ServerGamePacketListenerImpl
+         int item = packet.getItem();
+         if (this.player.containerMenu instanceof MerchantMenu merchantMenu) {
+             // CraftBukkit start
++            // Papo start - zero-listener gate: TradeSelectEvent has its own HandlerList (no subclasses);
++            // with zero listeners callEvent is a no-op and isCancelled() defaults false.
++            if (org.bukkit.event.inventory.TradeSelectEvent.getHandlerList().getRegisteredListeners().length > 0) {
+             final org.bukkit.event.inventory.TradeSelectEvent tradeSelectEvent = CraftEventFactory.callTradeSelectEvent(item, merchantMenu);
+             if (tradeSelectEvent.isCancelled()) {
+                 this.player.containerMenu.sendAllDataToRemote();
+                 return;
+             }
++            } // Papo - zero-listener gate
+             // CraftBukkit end
+             if (!merchantMenu.stillValid(this.player)) {
+                 LOGGER.debug("Player {} interacted with invalid menu {}", this.player, merchantMenu);
