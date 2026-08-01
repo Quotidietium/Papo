@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 13:52:03 +0800
+Subject: [PATCH] Papo: ItemStack encode uses
+ ItemObfuscationSession.withItemStack
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Every non-empty ItemStack encode (container slots, equipment, entity data,
+per receiving connection) allocated a capturing lambda for
+withContext(c -> c.itemStack(value)). The new withItemStack performs the
+identical sequence — isObfuscating early-return, context.itemStack(x) (always a
+fresh ObfuscationContext, so the checkState invariant holds identically),
+switchContext, return the new context — without the lambda.
+
+diff --git a/net/minecraft/world/item/ItemStack.java b/net/minecraft/world/item/ItemStack.java
+index aa5dc697d4d3454e58745299029a352c958a3b29..71c28ff04e77e94cbe23d48e225438fb088e3f5f 100644
+--- a/net/minecraft/world/item/ItemStack.java
++++ b/net/minecraft/world/item/ItemStack.java
+@@ -209,7 +209,7 @@ public final class ItemStack implements DataComponentHolder {
+                     Item.STREAM_CODEC.encode(buffer, value.getItemHolder());
+                     // Paper start - adventure; conditionally render translatable components
+                     boolean prev = net.minecraft.network.chat.ComponentSerialization.DONT_RENDER_TRANSLATABLES.get();
+-                    try (final io.papermc.paper.util.SafeAutoClosable ignored = io.papermc.paper.util.sanitizer.ItemObfuscationSession.withContext(c -> c.itemStack(value))) { // pass the itemstack as context to the obfuscation session
++                    try (final io.papermc.paper.util.SafeAutoClosable ignored = io.papermc.paper.util.sanitizer.ItemObfuscationSession.withItemStack(value)) { // pass the itemstack as context to the obfuscation session // Papo - withItemStack: allocation-free equivalent of withContext(c -> c.itemStack(value))
+                         net.minecraft.network.chat.ComponentSerialization.DONT_RENDER_TRANSLATABLES.set(true);
+                     codec.encode(buffer, value.components.asPatch());
+                     } finally {
