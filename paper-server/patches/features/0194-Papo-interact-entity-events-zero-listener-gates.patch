@@ -1,0 +1,63 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 20:16:25 +0800
+Subject: [PATCH] Papo: interact entity events zero-listener gates
+
+
+diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+index e4f2628d6781e0ec86bbcbfcbe050d40841e3eb7..40f149726a91fd8e804cc3a17b4b949edf5ca5a6 100644
+--- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+@@ -2893,10 +2893,16 @@ public class ServerGamePacketListenerImpl
+                 if (packet.isWithinRange(this.player, boundingBox, io.papermc.paper.configuration.GlobalConfiguration.get().misc.clientInteractionLeniencyDistance.or(3.0))) { // Paper - configurable lenience value for interact range
+                     packet.dispatch(
+                         new ServerboundInteractPacket.Handler() {
+-                            private void performInteraction(InteractionHand hand, ServerGamePacketListenerImpl.EntityInteraction entityInteraction, PlayerInteractEntityEvent event) { // CraftBukkit
++                            private void performInteraction(InteractionHand hand, ServerGamePacketListenerImpl.EntityInteraction entityInteraction, @org.jetbrains.annotations.Nullable PlayerInteractEntityEvent event) { // CraftBukkit // Papo - nullable event: null = zero-listener gated path
+                                 ItemStack itemInHand = ServerGamePacketListenerImpl.this.player.getItemInHand(hand);
+                                 if (itemInHand.isItemEnabled(serverLevel.enabledFeatures())) {
+                                     ItemStack itemStack = itemInHand.copy();
++                                    // Papo start - zero-listener gate: with no listeners registered for the specific
++                                    // event's own HandlerList (both events have independent tables), callEvent is a
++                                    // no-op, isCancelled() is false, and the player's hand cannot change between the
++                                    // two reads, so resendData is always false and the entire event block is dead.
++                                    if (event != null) {
++                                    // Papo end
+                                     // CraftBukkit start
+                                     final Item itemType = itemInHand.getItem();
+                                     boolean triggerLeashUpdate = itemStack.is(Items.LEAD) && target instanceof net.minecraft.world.entity.Leashable;
+@@ -2943,6 +2949,7 @@ public class ServerGamePacketListenerImpl
+                                         return;
+                                     }
+                                     // CraftBukkit end
++                                    } // Papo - zero-listener gate
+                                     InteractionResult result = entityInteraction.run(ServerGamePacketListenerImpl.this.player, target, hand);
+ 
+                                     if (result instanceof InteractionResult.Success success // CraftBukkit
+@@ -2958,14 +2965,26 @@ public class ServerGamePacketListenerImpl
+ 
+                             @Override
+                             public void onInteraction(InteractionHand hand) {
++                                // Papo start - gate on the specific event's own HandlerList (tables are independent)
++                                if (PlayerInteractEntityEvent.getHandlerList().getRegisteredListeners().length == 0) {
++                                    this.performInteraction(hand, Player::interactOn, null);
++                                } else {
++                                // Papo end
+                                 this.performInteraction(hand, Player::interactOn, new PlayerInteractEntityEvent(ServerGamePacketListenerImpl.this.getCraftPlayer(), target.getBukkitEntity(), org.bukkit.craftbukkit.CraftEquipmentSlot.getHand(hand))); // CraftBukkit
++                                } // Papo - zero-listener gate
+                             }
+ 
+                             @Override
+                             public void onInteraction(InteractionHand hand, Vec3 interactionLocation) {
++                                // Papo start - gate on the specific event's own HandlerList (tables are independent)
++                                if (PlayerInteractAtEntityEvent.getHandlerList().getRegisteredListeners().length == 0) {
++                                    this.performInteraction(hand, (player, entity, interactionHand) -> entity.interactAt(player, interactionLocation, interactionHand), null);
++                                } else {
++                                // Papo end
+                                 this.performInteraction(
+                                     hand, (player, entity, interactionHand) -> entity.interactAt(player, interactionLocation, interactionHand), new PlayerInteractAtEntityEvent(ServerGamePacketListenerImpl.this.getCraftPlayer(), target.getBukkitEntity(), org.bukkit.craftbukkit.util.CraftVector.toBukkit(interactionLocation), org.bukkit.craftbukkit.CraftEquipmentSlot.getHand(hand)) // CraftBukkit
+                                 );
++                                } // Papo - zero-listener gate
+                             }
+ 
+                             @Override
