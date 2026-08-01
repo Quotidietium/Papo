@@ -181,6 +181,16 @@ codechicken diffpatch 引擎非常严格：
 - 0004 异步刷怪：自述可能产生不一致，需移植 AsyncExecutor 等工具类，风险大于收益；
 - 0009 DAB：侵入性强，EAR 2.0 已覆盖大部分收益，暂缓。
 
+## 2026-08-01 补充：批次 47 踩坑记录
+
+### scratch-list 微基准的小规模 JIT 伪影与 gc 探针证伪法（0190-0192 保留判例）
+
+ScratchListBench 小规模（盒内 6-10 实体）复测稳定出现 after（scratch 复用）比 before（每次 new ArrayList）慢约 2× 的反转（3 fork 一致），但：gc 探针实测 before 80 B/op 真实分配、after 0.001 B/op 零分配；成本模型上 after 工作量是 before 的严格子集（仅多 O(n) clear），反向差物理不可能；同一机制在 17-20 实体规模翻转为 1.08×-2.26× 正收益。三证合一判为 JIT 伪影（JMH 1.37 + JDK 21.0.10 的 compiler blackhole 实验特性警告亦提示 VM bug 可能），机制保留。**教训：微基准出现"工作量严格子集却更慢"的反直觉结果时，先跑 `-prof gc` 看 alloc.rate.norm 确认机制是否生效，再换规模复测看符号是否翻转，最后再谈撤销；"实测回退即撤销"只适用于物理上可解释的回退（0100/0181 缓存比较成本 > TLAB 分配）。**
+
+### EntityTypeTest 的包是 net.minecraft.world.level.entity（不是 world.entity）
+
+`EntityTypeTest` 在 `net.minecraft.world.level.entity` 包。Mob/LivingEntity 等在 `net.minecraft.world.entity` 包，同包直觉会写错 import，编译报"找不到符号"。类基 fill 重载签名：`Level.getEntities(EntityTypeTest<Entity,T>, AABB, Predicate<? super T>, List<? super T>)`（Level.java:1703 公开），`getEntitiesOfClass(Class, AABB)` 就是它的分配包装（EntityGetter.java:73-75，NO_SPECTATORS 谓词）——scratch-list 化类基查询无需新增 Level API。
+
 ## 2026-08-01 补充：批次 46 踩坑记录
 
 ### survey 候选的"分配"断言必须对照 JDK 实现复核（0187 记分板撤除案例）
