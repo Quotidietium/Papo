@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 21:41:17 +0800
+Subject: [PATCH] Papo: nearest item sensor scratch list
+
+
+diff --git a/net/minecraft/world/entity/ai/sensing/NearestItemSensor.java b/net/minecraft/world/entity/ai/sensing/NearestItemSensor.java
+index 09fd13e2d958da8326276c4dadf25bf488aff5ac..c6366295882f71284fed029ab08f3873de48b4ab 100644
+--- a/net/minecraft/world/entity/ai/sensing/NearestItemSensor.java
++++ b/net/minecraft/world/entity/ai/sensing/NearestItemSensor.java
+@@ -10,11 +10,15 @@ import net.minecraft.world.entity.Mob;
+ import net.minecraft.world.entity.ai.Brain;
+ import net.minecraft.world.entity.ai.memory.MemoryModuleType;
+ import net.minecraft.world.entity.item.ItemEntity;
++import net.minecraft.world.level.entity.EntityTypeTest;
+ 
+ public class NearestItemSensor extends Sensor<Mob> {
+     private static final long XZ_RANGE = 32L;
+     private static final long Y_RANGE = 16L;
+     public static final int MAX_DISTANCE_TO_WANTED_ITEM = 32;
++    // Papo start - per-sensor scratch list (0190 pattern): this Sensor instance is per-entity (Brain
++    // builds fresh sensors), the list is sorted + iterated then discarded entirely within doTick.
++    private final List<ItemEntity> papoNearestItemScratch = new java.util.ArrayList<>();
+ 
+     @Override
+     public Set<MemoryModuleType<?>> requires() {
+@@ -24,7 +28,14 @@ public class NearestItemSensor extends Sensor<Mob> {
+     @Override
+     protected void doTick(ServerLevel level, Mob entity) {
+         Brain<?> brain = entity.getBrain();
+-        List<ItemEntity> entitiesOfClass = level.getEntitiesOfClass(ItemEntity.class, entity.getBoundingBox().inflate(32.0, 16.0, 32.0), itemEntity -> itemEntity.closerThan(entity, MAX_DISTANCE_TO_WANTED_ITEM) && entity.wantsToPickUp(level, itemEntity.getItem())); // Paper - Perf: Move predicate into getEntities
++        List<ItemEntity> entitiesOfClass = this.papoNearestItemScratch;
++        entitiesOfClass.clear();
++        level.getEntities(
++            EntityTypeTest.forClass(ItemEntity.class),
++            entity.getBoundingBox().inflate(32.0, 16.0, 32.0),
++            itemEntity -> itemEntity.closerThan(entity, MAX_DISTANCE_TO_WANTED_ITEM) && entity.wantsToPickUp(level, itemEntity.getItem()),
++            entitiesOfClass
++        ); // Paper - Perf: Move predicate into getEntities // Papo - scratch fill
+         entitiesOfClass.sort(Comparator.comparingDouble(entity::distanceToSqr));
+         // Paper start - Perf: remove streams from hot code
+         ItemEntity nearest = null;
