@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 21:41:16 +0800
+Subject: [PATCH] Papo: cauldron level change zero-listener gate
+
+
+diff --git a/net/minecraft/world/level/block/LayeredCauldronBlock.java b/net/minecraft/world/level/block/LayeredCauldronBlock.java
+index 5cdd51eab09b85007b7d3c602752cf2399019097..5da350b9594fb25b16c4f21ab6a27b09460a24e9 100644
+--- a/net/minecraft/world/level/block/LayeredCauldronBlock.java
++++ b/net/minecraft/world/level/block/LayeredCauldronBlock.java
+@@ -124,6 +124,11 @@ public class LayeredCauldronBlock extends AbstractCauldronBlock {
+ 
+     public static boolean changeLevel(Level level, BlockPos pos, BlockState newBlock, @javax.annotation.Nullable Entity entity, org.bukkit.event.block.CauldronLevelChangeEvent.ChangeReason reason, boolean sendGameEvent) { // Paper - entity is nullable
+         // Paper end - Call CauldronLevelChangeEvent
++        // Papo start - zero-listener gate: CauldronLevelChangeEvent has its own HandlerList (no subclasses).
++        // Cauldron has no block entity, so newState.place(UPDATE_ALL) == level.setBlock(pos, newBlock, UPDATE_ALL).
++        if (org.bukkit.event.block.CauldronLevelChangeEvent.getHandlerList().getRegisteredListeners().length == 0) {
++            level.setBlock(pos, newBlock, Block.UPDATE_ALL);
++        } else {
+         org.bukkit.craftbukkit.block.CraftBlockState newState = org.bukkit.craftbukkit.block.CraftBlockStates.getBlockState(level, pos);
+         newState.setData(newBlock);
+ 
+@@ -135,6 +140,7 @@ public class LayeredCauldronBlock extends AbstractCauldronBlock {
+             return false;
+         }
+         newState.place(Block.UPDATE_ALL);
++        } // Papo - zero-listener gate
+         if (sendGameEvent) level.gameEvent(GameEvent.BLOCK_CHANGE, pos, GameEvent.Context.of(newBlock)); // Paper - Call CauldronLevelChangeEvent
+         return true;
+     }
