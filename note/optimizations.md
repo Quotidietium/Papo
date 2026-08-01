@@ -1344,6 +1344,39 @@ survey 1 "仔细复核"7 件中 4 件可证等价落地；Brain.getMemory 框架
 
 ---
 
+## 批次 48（2026-08-01）：暂缓清单清算——交互事件门控×2 + goal 目标缓存（0193-0195）
+
+批次 46 暂缓清单三项全部落地（MoveToBlockGoal above 缓存经全量子类审计解除暂缓、SWAP_ITEM_WITH_OFFHAND 门控、handleInteract 双事件门控）。全部 compileJava + 全量 test 通过（零 FAILED），applyPatches 干净应用。JMH 实测（note/report/perf/2026-08-01-jmh-microbench-batch48.md）：**3 项全部正收益（1.46×-8.58×，CI 均不重叠）**。
+
+### 0193 — SWAP_ITEM_WITH_OFFHAND 零监听器门控
+- **文件**：`net/minecraft/server/network/ServerGamePacketListenerImpl.java`（handlePlayerAction）
+- **热点**：每次 F 键交换（快捷栏高频操作）2×asCraftMirror + 2×clone + 事件 + callEvent。
+- **等价性**：PlayerSwapHandItemsEvent 自有 HandlerList、无子类（全库 grep 实证）；零监听器时 callEvent 无操作、isCancelled 恒 false；事件物品为 mirror 的 clone，`CraftItemStack.equals`（clone vs mirror：null==null 首查命中、双空、或 `ItemStack.matches` 内容匹配，CraftItemStack.java:76-83 逐行实证）恒 true ⟹ 两 setItemInHand 必走默认交换分支。门控路径直达两次 setItemInHand（顺序与原默认分支逐句一致）。
+- **基准**：SwapInteractGateBench.swap 10.892→1.353（**8.05×**，CI 不重叠）
+- **风险**：低。
+
+### 0194 — handleInteract 实体交互双事件零监听器门控
+- **文件**：`net/minecraft/server/network/ServerGamePacketListenerImpl.java`（handleInteract 匿名 Handler）
+- **热点**：每次实体右击/精准右击（村民交易、喂食、装备马匹等高频）构造事件 + getBukkitEntity + CraftEquipmentSlot（精准交互另有 CraftVector）+ callEvent + resendData 判定链。
+- **等价性**：PlayerInteractEntityEvent 与 PlayerInteractAtEntityEvent **各自独立 HandlerList**（paper-api 逐文件实证：各持私有静态表，At 不共享父表）⟹ 按调用点分别门控精确。performInteraction 改 `@Nullable event`（null=门控路径）：零监听器时 callEvent 无操作、isCancelled false、两次 getItemInHand 之间无任何调用 ⟹ resendData 恒 false，整个事件块（itemType/leash/resend/refreshEntityData/装备包重发）均为死代码；共享尾部 entityInteraction.run + CriteriaTriggers/swing 不变。
+- **基准**：SwapInteractGateBench.interact 4.952→0.577（**8.58×**，CI 不重叠）
+- **风险**：低。
+
+### 0195 — MoveToBlockGoal.getMoveToTarget above() identity 缓存
+- **文件**：`net/minecraft/world/entity/ai/goal/MoveToBlockGoal.java`
+- **热点**：每活跃 goal（猫坐箱、兔啃田、海龟产卵、僵尸拆门等）每 tick `blockPos.above()` 分配 1 BlockPos。
+- **等价性**：identity 缓存的失效信号完备性——blockPos 只被**重赋值**（findNearestBlock 赋新建 MutableBlockPos 后立即 return、Paper stop() 赋 ZERO 单例），从不原地 mutate（8 直接子类+RemoveBlockGoal 子树全库审计：无 `this.blockPos =` 直写、无 findNearestBlock 覆写——RemoveBlockGoal 仅调用、无 cast-mutate）；身份相同 ⟹ 坐标相同 ⟹ above 结果相同。StriderGoToLavaGoal 覆写 getMoveToTarget 不受影响。返回值使用方（tick 内 closerToCenterThan/getX/Y/Z）只读。
+- **基准**：MoveToTargetCacheBench.tick 2.185→1.496（**1.46×**，CI 不重叠）
+- **风险**：低。
+
+### 批次 46 暂缓清单结案
+- ~~MoveToBlockGoal above() identity 缓存~~ → 0195（子类审计完成解除暂缓）
+- ~~SWAP_ITEM_WITH_OFFHAND 门控~~ → 0193
+- ~~handleInteract 双事件门控~~ → 0194（null-event 重结构避免了改匿名 Handler 结构）
+- 批次 46 暂缓清单至此全部清算完毕。
+
+---
+
 ## 候选后续批次（来自 survey，按 价值×置信/风险 排序）
 
 
