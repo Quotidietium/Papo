@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 20:16:42 +0800
+Subject: [PATCH] Papo: movetoblockgoal above identity cache
+
+
+diff --git a/net/minecraft/world/entity/ai/goal/MoveToBlockGoal.java b/net/minecraft/world/entity/ai/goal/MoveToBlockGoal.java
+index e0dd7883a8b4dee018e05d85c2840f91ceadc3a8..60e96a44008c80573b463c9a4a84297d53de267d 100644
+--- a/net/minecraft/world/entity/ai/goal/MoveToBlockGoal.java
++++ b/net/minecraft/world/entity/ai/goal/MoveToBlockGoal.java
+@@ -76,9 +76,23 @@ public abstract class MoveToBlockGoal extends Goal {
+         return 1.0;
+     }
+ 
++    // Papo start - identity-keyed cache for getMoveToTarget(): blockPos is only ever REASSIGNED
++    // (findNearestBlock assigns a fresh MutableBlockPos and returns immediately without further mutation;
++    // stop() assigns BlockPos.ZERO; subclass audit: no subclass writes this.blockPos, none mutates it in
++    // place, StriderGoToLavaGoal overrides this method so it is unaffected), so identity change is a
++    // complete invalidation signal. Saves one BlockPos per active-goal tick.
++    private BlockPos papoMoveToTargetKey;
++    private BlockPos papoMoveToTargetCache;
++
+     protected BlockPos getMoveToTarget() {
+-        return this.blockPos.above();
++        BlockPos pos = this.blockPos;
++        if (pos != this.papoMoveToTargetKey) {
++            this.papoMoveToTargetKey = pos;
++            this.papoMoveToTargetCache = pos.above();
++        }
++        return this.papoMoveToTargetCache;
+     }
++    // Papo end
+ 
+     @Override
+     public boolean requiresUpdateEveryTick() {
