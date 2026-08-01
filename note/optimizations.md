@@ -229,8 +229,9 @@
 
 ### 0068 — IntArrayTag/LongArrayTag.readAccounted 批量读 + 大端解码
 - 逐元素 `readInt()/readLong()`（每次 4/8 次单字节拼接）→ `readFully(buf)` 一次系统调用 + `ByteBuffer.wrap(buf).order(BIG_ENDIAN).asIntBuffer()/asLongBuffer().get(...)` 批量解码。
-- IntArrayTag 有 Spigot 上限 `1<<24`，`_int<<2` 不溢出；LongArrayTag 无上限，`_int > Integer.MAX_VALUE/8` 时回退逐元素读取。
+- IntArrayTag 有 Spigot 上限 `1<<24`，`_int<<2` 不溢出；LongArrayTag 无上限，`_int > 1<<20` 时回退逐元素读取。
 - 区块高度图、生物群系、结构数据等大数组是区块加载期热点。
+- **2026-08-01 稳定性审计修复**：阈值由"仅溢出守卫 `Integer.MAX_VALUE/8`"下调为"内存安全阈值 `1<<20`"。原因：LongArrayTag 批量读会同时持有 `long[_int]`(8n)与临时 `byte[_int<<3]`(8n)，峰值 16n（vanilla 流式仅 8n）；LongArrayTag 无 Spigot 上限且区块加载走 `NbtAccounter.unlimitedHeap()`，恶意/损坏的 region 文件（世界导入等半可信磁盘输入）可在 8n<剩余堆<16n 时触发 OOM。下调后：`_int<=1<<20`（临时缓冲≤8MB，覆盖所有合法高度图/结构数组）走批量；更大/对抗性数组回退流式（vanilla 8n 峰值，消除 2x 放大，且 `_int<<3` 仍在 int 范围故覆盖原溢出守卫）。0075 写侧同步对称。客户端 NBT 不受影响（走 `readNbt`→`defaultQuota` 2MB 上限，放大本就受限于 4MB 峰值）。
 
 ## 批次 18（2026-07-30）：Raid 中心迁移 + 命令签名早退
 
@@ -274,7 +275,8 @@
 
 ### 0075 — IntArrayTag/LongArrayTag.write 批量编码
 - 读侧已在 0068 优化；写侧仍是逐元素 `writeInt/writeLong`（DataOutputStream 每元素 4/8 字节小缓冲拷贝 + 调用开销），区块保存（高度图、生物群系、`Position`/`UpgradeData` 等）热路径。
-- 改为 `ByteBuffer.wrap(buf).order(BIG_ENDIAN).asIntBuffer()/asLongBuffer().put(data)` 一次编码 + `output.write(buf)` 单次写出；`length > MAX_VALUE/4(/8)` 溢出保护回退逐元素（与读侧对称）。线上字节完全一致。
+- 改为 `ByteBuffer.wrap(buf).order(BIG_ENDIAN).asIntBuffer()/asLongBuffer().put(data)` 一次编码 + `output.write(buf)` 单次写出；`length > MAX_VALUE/4`（int）/ `> 1<<20`（long）回退逐元素（与读侧对称）。线上字节完全一致。
+- **2026-08-01 稳定性审计修复**：LongArrayTag 写侧阈值由 `MAX_VALUE/8`（仅溢出守卫）下调为 `1<<20`（内存安全，与读侧 0068 对称），消除对超大 long[] 写出时临时缓冲的 2x 峰值放大。int 侧有 Spigot 上限不动。
 - 基准：int 9.3-9.6×，long 5.4-6.3×。
 
 ---
