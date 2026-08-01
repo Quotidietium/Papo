@@ -1377,6 +1377,71 @@ survey 1 "仔细复核"7 件中 4 件可证等价落地；Brain.getMemory 框架
 
 ---
 
+## 批次 49（2026-08-01）：零监听器事件门控续批 + 实体扫描 scratch-list 续批（0196-0202）
+
+三路 survey（容器/菜单、区块IO/保存、AI/Brain）产出 28 候选，本批落地**已验证低风险子集**：4 个零监听器事件门控（自有表无子类，逐文件实证）+ 3 个 scratch-list（复用 0190 模式）。全部 compileJava + 全量 test 通过（零 FAILED），applyPatches 干净应用（sources 915 + features 202 + resources 6）。JMH 实测（note/report/perf/2026-08-01-jmh-microbench-batch49.md）：**5 项正收益（1.10×-6.68×，CI 不重叠）、2 项机制保留（0199/0200 浅栈 JIT 伪影，gc 探针证分配消除）**。
+
+### 0196 — handleSelectTrade 零监听器门控
+- **文件**：`net/minecraft/server/network/ServerGamePacketListenerImpl.java`（handleSelectTrade）
+- **热点**：每次村民交易选项点击构造事件 + getBukkitView + callEvent。
+- **等价性**：TradeSelectEvent 自有 HandlerList（TradeSelectEvent.java:19）、无子类（全库 grep）；零监听器 callEvent 无操作、isCancelled() 默认 false。
+- **基准**：EventGateMiscBench.trade 3.174→0.524（**6.06×**，CI 不重叠）
+- **风险**：零。
+
+### 0197 — BlockBurnEvent 零监听器门控
+- **文件**：`net/minecraft/world/level/block/FireBlock.java`（checkBurnOut）
+- **热点**：每次火烧毁判定（森林火灾/岩浆引燃高发期）CraftBlock×2 + 事件 + callEvent。
+- **等价性**：BlockBurnEvent 自有 HandlerList（BlockBurnEvent.java:18）、无子类；调用方只读取消标志。
+- **基准**：EventGateMiscBench.burn 3.243→0.485（**6.68×**，CI 不重叠）
+- **风险**：零。
+
+### 0198 — CauldronLevelChangeEvent 零监听器门控
+- **文件**：`net/minecraft/world/level/block/LayeredCauldronBlock.java`（changeLevel）
+- **热点**：降水随机刻填充 + 全部炼药锅玩家交互（瓶/桶/灭火等，8 处调用）CraftBlockState + CraftBlock + 事件。
+- **等价性**：CauldronLevelChangeEvent 自有 HandlerList（CauldronLevelChangeEvent.java:18）、无子类；炼药锅无方块实体 → `newState.place(UPDATE_ALL)` ≡ `level.setBlock(pos, newBlock, UPDATE_ALL)`；零监听器 callEvent 恒 true。
+- **基准**：EventGateMiscBench.cauldron 3.714→0.635（**5.85×**，CI 不重叠）
+- **风险**：零。
+
+### 0199 — 岩浆引火 BlockIgniteEvent 零监听器门控
+- **文件**：`net/minecraft/world/level/material/LavaFluid.java`（randomTick 两站点）
+- **热点**：岩浆 randomTick 2/3 概率引火尝试 CraftBlock×2 + 事件 + callEvent；FireBlock:231 已门控，岩浆两处漏网补齐。
+- **等价性**：BlockIgniteEvent 自有 HandlerList（BlockIgniteEvent.java:20）、无子类；与 FireBlock:231 同模式（已验证先例）。
+- **基准**：EventGateMiscBench.ignite 0.656→0.548（1.20× 复刻内中性——浅栈 CraftBlock 被 EA 标量替换；真实 callBlockIgniteEvent 跨方法深栈 EA 无法消除，机制保留）
+- **风险**：零。
+
+### 0200 — AvoidEntityGoal.canUse scratch list
+- **文件**：`net/minecraft/world/entity/ai/goal/AvoidEntityGoal.java`
+- **热点**：每个 goal 评估周期（约 2 tick）每只携带者（苦力怕避豹猫、骷髅避狼、兔、海龟等）getEntitiesOfClass 分配 ArrayList。
+- **等价性/重入**：0190 模式——getNearestEntity 仅迭代不保留（TargetingConditions.test 无事件），列表 canUse 内消费完毕。
+- **基准**：EntityScanScratchBench.avoid gc 探针 before 416 B/op → after 0.002 B/op（机制成立）；浅栈时间反转经批次47同款 JIT 伪影证伪（after 工作量是 before 严格子集），机制保留
+- **风险**：低。
+
+### 0201 — FollowParentGoal.canUse scratch list
+- **文件**：`net/minecraft/world/entity/ai/goal/FollowParentGoal.java`
+- **热点**：每只幼年动物每 goal 评估周期 getEntitiesOfClass 分配 ArrayList；繁殖场幼体密集。
+- **等价性/重入**：0190 模式——列表 canUse 内线性最近扫描消费完毕，无事件无重入。
+- **基准**：EntityScanScratchBench.parent 264.454→239.571（**1.10×**，CI 不重叠）
+- **风险**：低。
+
+### 0202 — NearestItemSensor.doTick scratch list
+- **文件**：`net/minecraft/world/entity/ai/sensing/NearestItemSensor.java`
+- **热点**：每 scanRate（默认 20 tick）getEntitiesOfClass(带谓词) 分配 ArrayList；携带者猪灵/悦灵/狐狸。
+- **等价性/重入**：0190 模式——sensor 每 Brain 实例化（per-entity），列表 sort+视线最近扫描后丢弃，setMemory 只存最近单引用不存列表。
+- **基准**：EntityScanScratchBench.item 460.049→409.521（**1.12×**，CI 不重叠）
+- **风险**：低。
+
+### 暂缓（批次 49 记录，待后续批次深分析）
+- **InventoryDragEvent 门控**（容器候选1，中价值）：含 setCarried 双拷贝语义（防 plugin 关闭背包时复制）、event.getCursor()==newCarried 等价链需逐句实证，留后续。
+- **InventoryCreativeEvent 门控**（容器候选2）：InventoryClickEvent 父表门控，ALLOW/DENY/getCursor 链需逐句实证，留后续。
+- **callPrepareResultEvent 门控**（容器候选3，中价值）：Prepare* 子类（PrepareAnvil/Smithing/Grindstone/Result）是否各自定义 getHandlerList/getHandlers 方法需逐文件实证（已知无 HANDLER_LIST 字段，但方法层未核），留后续。
+- **TransientCraftingContainer CraftingInput 缓存**（容器候选4，中-高价值）：mutation counter 失效信号完备性论证，留后续。
+- **RecipeManager.getRecipeFor Optional 内部路径**（容器候选5，低-中价值）：熔炉每 tick 双层 Optional，nullable 内部方法重载。
+- **PathNavigation.tick Vec3/BlockPos 分配**（AI候选3，中-高价值）：3 Vec3 + 2 BlockPos / tick / 移动中 mob，double 公式逐项照抄。
+- **PureMemory 声明式 OneShot Optional 系统性消除**（AI候选1，高价值）：Brain 新增 papoGetMemoryHolderRaw，村民交易所场景显著。
+- **TriggerGate 死 shuffle**（AI候选2，附带发现 Paper 语义偏差）：仅报告，不改语义。
+
+---
+
 ## 候选后续批次（来自 survey，按 价值×置信/风险 排序）
 
 
