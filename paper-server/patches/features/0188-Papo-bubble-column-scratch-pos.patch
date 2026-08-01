@@ -1,0 +1,48 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 13:57:22 +0800
+Subject: [PATCH] Papo: LivingEntity.baseTick bubble-column check reuses
+ scratch pos
+
+Every submerged living entity (fish, squid, drowned, guardians, diving
+players) allocated a BlockPos via BlockPos.containing(getX(), getEyeY(), getZ())
+every tick for a single read-only getBlockState(...).is(BUBBLE_COLUMN) check.
+BlockPos.containing is defined as new BlockPos(Mth.floor(x), ...) and
+ServerLevel.getBlockState only reads the coordinates (never retains the pos),
+so a per-entity set-and-read MutableBlockPos is bit-identical; tick-thread
+only, never escapes.
+
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index da40ceb3dcbe57c1e35d693d11f85ec1c4c0a73b..94a179d540040cfb53b059d00948bdbf4feb56ed 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -424,6 +424,20 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+         return this.getDeltaMovement().y() < 1.0E-5F && this.isInLiquid();
+     }
+ 
++    // Papo start - per-entity scratch pos for the baseTick bubble-column check:
++    // BlockPos.containing(x, y, z) is defined as new BlockPos(Mth.floor(x), ...) and
++    // ServerLevel.getBlockState only reads the coordinates (never retains the pos), so a
++    // set-and-read MutableBlockPos is bit-identical. Tick-thread only, never escapes.
++    private BlockPos.MutableBlockPos papoBubbleColumnPos;
++
++    private BlockPos papoBubbleColumnPos(double x, double y, double z) {
++        BlockPos.MutableBlockPos pos = this.papoBubbleColumnPos != null
++            ? this.papoBubbleColumnPos
++            : (this.papoBubbleColumnPos = new BlockPos.MutableBlockPos());
++        return pos.set(Mth.floor(x), Mth.floor(y), Mth.floor(z));
++    }
++    // Papo end
++
+     @Override
+     public void baseTick() {
+         this.oAttackAnim = this.attackAnim;
+@@ -453,7 +467,7 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+             }
+ 
+             if (this.isEyeInFluid(FluidTags.WATER)
+-                && !serverLevel1.getBlockState(BlockPos.containing(this.getX(), this.getEyeY(), this.getZ())).is(Blocks.BUBBLE_COLUMN)) {
++                && !serverLevel1.getBlockState(this.papoBubbleColumnPos(this.getX(), this.getEyeY(), this.getZ())).is(Blocks.BUBBLE_COLUMN)) { // Papo - scratch pos (see papoBubbleColumnPos)
+                 boolean flag1 = !this.canBreatheUnderwater()
+                     && !MobEffectUtil.hasWaterBreathing(this)
+                     && (!flag || !((Player)this).getAbilities().invulnerable);
