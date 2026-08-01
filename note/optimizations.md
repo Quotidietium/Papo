@@ -1302,7 +1302,7 @@ survey 1 "仔细复核"7 件中 4 件可证等价落地；Brain.getMemory 框架
 - **风险**：低。
 
 ### 暂缓（批次 46 记录）
-- **LivingEntity.pushEntities scratch list / Mob.aiStep looting scratch list / NearestAttackableTargetGoal.findTarget scratch list**（survey 3 #1/#4/#6，高-中价值）：需 Level 新增 fill 重载（papoGetEntitiesInto / 类基变体）+ 重入论证（cramming hurtServer 事件链），整体移入批次 47 单独落地。
+- ~~LivingEntity.pushEntities scratch list / Mob.aiStep looting scratch list / NearestAttackableTargetGoal.findTarget scratch list~~（survey 3 #1/#4/#6）：**批次 47 已落地（0190-0192）**。
 - **MoveToBlockGoal.tick 每 tick above() identity 缓存**（survey 3 #5）：findNearestBlock 对 blockPos 赋局部 MutableBlockPos 的原地 mutate 面需全量子类审计，暂缓。
 - **SWAP_ITEM_WITH_OFFHAND 双镜像+双 clone 门控**（survey 2 #7，中低价值）：成立，留后续批次顺手带走。
 - **handleInteract 实体交互双事件门控**（survey 2 #6，中风险）：需改 CraftBukkit 匿名 Handler 结构、两事件独立表分别检查，留后续批次单独补丁。
@@ -1311,6 +1311,36 @@ survey 1 "仔细复核"7 件中 4 件可证等价落地；Brain.getMemory 框架
 - **SynchedEntityData.packDirty 预尺寸 / DataValue.write 序列化 id 缓存 / Connection 限流 containsKey / PacketEncoder attr 读**：survey 2 评估为负收益或噪声级，**否决**（明细见 survey 记录）。
 - **LivingEntity.travel 系列 Vec3 / AbstractHorse.getRiddenInput**：travel(Vec3) 公开签名红线（0175 先例），**否决**。
 - **FollowParentGoal/AvoidEntityGoal/LookAtPlayerGoal 降频**：任何降频改语义，**否决**。
+
+---
+
+## 批次 47（2026-08-01）：实体查询 scratch list 机制（0190-0192）
+
+批次 46 survey 移入的 3 项 scratch-list 机制类候选落地。前置：Level 新增 entity-excluding fill 重载 `papoGetEntitiesInto`（类基 fill 重载 `getEntities(EntityTypeTest, AABB, Predicate, List)` 上游已存在，0191/0192 直接复用）+ 三站点重入论证。全部 compileJava + 全量 test 通过（零 FAILED），applyPatches 干净应用（sources 915 + features 192 + resources 6）。JMH 实测（note/report/perf/2026-08-01-jmh-microbench-batch47.md）：**真实规模（盒内 17-20 实体）3 项正收益 1.08×-2.26×（CI 不重叠）**；小规模（≤10 实体）复刻出现 after 慢约 2× 的稳定反转，经 gc 探针（before 80 B/op → after 0.001 B/op）+ 成本模型（after 工作量是 before 严格子集）+ 规模翻转三中证伪为 JIT 伪影，机制保留（0140/0157 先例），证伪记录全文载于报告。
+
+### 0190 — Level getEntities fill 重载 + LivingEntity.pushEntities scratch list
+- **文件**：`net/minecraft/world/level/Level.java` + `net/minecraft/world/entity/LivingEntity.java`
+- **热点**：每个 pushable LivingEntity 每 tick `getEntities(this, box, predicate)` 分配 ArrayList（+ 元素超 10 时扩容拷贝），实体密集农场/牧场每秒数千次。
+- **改法**：Level 新增 `papoGetEntitiesInto(entity, box, predicate, into)`——与分配版逐语句一致（同调 moonrise `getEntities(entity, box, into, predicate)` + `PlatformHooks.addToGetEntities` 追加），仅去掉 `new ArrayList<>()`；LivingEntity 每实体惰性 scratch list（clear+fill 复用）。
+- **等价性/重入**：列表不逃逸出 pushEntities；填充与消费之间仅 hurtServer（cramming EntityDamageEvent）与 doPush→Entity.push（位移数学无事件），protected 方法无 API 路径在同实体上重入；vanilla 同样在回调后继续迭代快照，语义一致。
+- **基准**：ScratchListBench.push 475.919→210.680（**2.26×**，CI 不重叠）
+- **风险**：低。
+
+### 0191 — Mob.aiStep looting 扫描 scratch list
+- **文件**：`net/minecraft/world/entity/Mob.java`
+- **热点**：每个 canPickUpLoot 生物（僵尸/骷髅/猪灵等）每 tick `getEntitiesOfClass(ItemEntity.class, box)` 分配 ArrayList。
+- **改法**：每 Mob 惰性 scratch list + 上游已有公开 fill 重载（`EntityTypeTest.forClass(ItemEntity.class)` + NO_SPECTATORS——`getEntitiesOfClass(Class, AABB)` 正是该重载的分配包装，EntityGetter.java:73-75）。
+- **等价性/重入**：循环内唯一回调 pickUpItem（EntityPickupItemEvent）无 API 路径重入同 Mob aiStep；vanilla 亦在事件触发中迭代快照。
+- **基准**：ScratchListBench.loot 76.957→71.586（**1.08×**，CI 不重叠）
+- **风险**：低。
+
+### 0192 — NearestAttackableTargetGoal.findTarget scratch list
+- **文件**：`net/minecraft/world/entity/ai/goal/target/NearestAttackableTargetGoal.java`
+- **热点**：每个敌对生物目标扫描（默认 10 tick 间隔×全服生物）`getEntitiesOfClass(targetType, area, entity -> true)` 分配 ArrayList。
+- **改法**：每 goal 实例惰性 scratch list + 上游 fill 重载。
+- **等价性/重入**：`getNearestEntity(List, …)` 仅迭代不保留（ServerEntityGetter.java:54-）；TargetingConditions.test 无事件；无子类覆写 findTarget（11 个子类全库 grep 实证）；EntityTargetEvent 在 start() 才触发、列表已用完；goal 每 Mob 实例化、主线程单线程 tick。
+- **基准**：ScratchListBench.find 498.618→413.620（**1.21×**，CI 不重叠）
+- **风险**：低。
 
 ---
 
