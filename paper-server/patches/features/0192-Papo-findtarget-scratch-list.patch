@@ -1,0 +1,57 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 15:07:48 +0800
+Subject: [PATCH] Papo: nearest attackable target goal findTarget scratch list
+
+
+diff --git a/net/minecraft/world/entity/ai/goal/target/NearestAttackableTargetGoal.java b/net/minecraft/world/entity/ai/goal/target/NearestAttackableTargetGoal.java
+index e8dc0eca01cf1a4eb1fe2a799e4dcbe391843318..313b2c0a3700fe62a46dc2f3b1f161d6bba52d3e 100644
+--- a/net/minecraft/world/entity/ai/goal/target/NearestAttackableTargetGoal.java
++++ b/net/minecraft/world/entity/ai/goal/target/NearestAttackableTargetGoal.java
+@@ -1,8 +1,10 @@
+ package net.minecraft.world.entity.ai.goal.target;
+ 
+ import java.util.EnumSet;
++import java.util.List;
+ import net.minecraft.server.level.ServerLevel;
+ import net.minecraft.server.level.ServerPlayer;
++import net.minecraft.world.level.entity.EntityTypeTest;
+ import net.minecraft.world.entity.LivingEntity;
+ import net.minecraft.world.entity.Mob;
+ import net.minecraft.world.entity.ai.goal.Goal;
+@@ -54,11 +56,34 @@ public class NearestAttackableTargetGoal<T extends LivingEntity> extends TargetG
+         return this.mob.getBoundingBox().inflate(targetDistance, targetDistance, targetDistance);
+     }
+ 
++    // Papo start - per-goal scratch list for findTarget: one ArrayList per goal instance instead of one per
++    // scan. Re-entrancy: the list is filled and consumed entirely inside findTarget; getNearestEntity only
++    // iterates it (TargetingConditions.test fires no events), no subclass overrides findTarget, and goals
++    // tick single-threaded on the main thread. EntityTargetEvent fires later in start(), after the list is
++    // no longer in use.
++    private List<T> papoFindTargetScratch;
++
++    private List<T> papoGetFindTargetScratch() {
++        List<T> scratch = this.papoFindTargetScratch;
++        if (scratch == null) {
++            scratch = this.papoFindTargetScratch = new java.util.ArrayList<>();
++        } else {
++            scratch.clear();
++        }
++        return scratch;
++    }
++    // Papo end
++
+     protected void findTarget() {
+         ServerLevel serverLevel = getServerLevel(this.mob);
+         if (this.targetType != Player.class && this.targetType != ServerPlayer.class) {
++            // Papo start - per-goal scratch list via the existing fill overload (getEntitiesOfClass allocates per call)
++            List<T> papoTargetCandidates = this.papoGetFindTargetScratch();
++            this.mob.level()
++                .getEntities(EntityTypeTest.forClass(this.targetType), this.getTargetSearchArea(this.getFollowDistance()), entity -> true, papoTargetCandidates);
+             this.target = serverLevel.getNearestEntity(
+-                this.mob.level().getEntitiesOfClass(this.targetType, this.getTargetSearchArea(this.getFollowDistance()), entity -> true),
++                papoTargetCandidates,
++                // Papo end
+                 this.getTargetConditions(),
+                 this.mob,
+                 this.mob.getX(),
