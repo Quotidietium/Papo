@@ -1,0 +1,56 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 21:41:17 +0800
+Subject: [PATCH] Papo: avoid entity goal scratch list
+
+
+diff --git a/net/minecraft/world/entity/ai/goal/AvoidEntityGoal.java b/net/minecraft/world/entity/ai/goal/AvoidEntityGoal.java
+index 526e9538d617ae4db85f0b85533cc8c3c85566a2..f2f619aa7c44079ae6ab0a88d60793ee4d89874f 100644
+--- a/net/minecraft/world/entity/ai/goal/AvoidEntityGoal.java
++++ b/net/minecraft/world/entity/ai/goal/AvoidEntityGoal.java
+@@ -1,6 +1,7 @@
+ package net.minecraft.world.entity.ai.goal;
+ 
+ import java.util.EnumSet;
++import java.util.List;
+ import java.util.function.Predicate;
+ import net.minecraft.world.entity.EntitySelector;
+ import net.minecraft.world.entity.LivingEntity;
+@@ -8,6 +9,7 @@ import net.minecraft.world.entity.PathfinderMob;
+ import net.minecraft.world.entity.ai.navigation.PathNavigation;
+ import net.minecraft.world.entity.ai.targeting.TargetingConditions;
+ import net.minecraft.world.entity.ai.util.DefaultRandomPos;
++import net.minecraft.world.level.entity.EntityTypeTest;
+ import net.minecraft.world.level.pathfinder.Path;
+ import net.minecraft.world.phys.Vec3;
+ import org.jspecify.annotations.Nullable;
+@@ -63,11 +65,28 @@ public class AvoidEntityGoal<T extends LivingEntity> extends Goal {
+         this(mob, avoidClass, livingEntity -> true, maxDist, walkSpeedModifier, sprintSpeedModifier, predicateOnAvoidEntity);
+     }
+ 
++    // Papo start - per-goal scratch list for the avoid scan (0190 pattern): getNearestEntity only iterates
++    // the list (TargetingConditions.test fires no events), the list is consumed entirely within canUse,
++    // and no re-entrant path exists during the scan.
++    private List<T> papoAvoidScratch;
++
+     @Override
+     public boolean canUse() {
++        List<T> papoCandidates = this.papoAvoidScratch;
++        if (papoCandidates == null) {
++            papoCandidates = this.papoAvoidScratch = new java.util.ArrayList<>();
++        } else {
++            papoCandidates.clear();
++        }
++        this.mob.level().getEntities(
++            EntityTypeTest.forClass(this.avoidClass),
++            this.mob.getBoundingBox().inflate(this.maxDist, 3.0, this.maxDist),
++            livingEntity -> true,
++            papoCandidates
++        );
+         this.toAvoid = getServerLevel(this.mob)
+             .getNearestEntity(
+-                this.mob.level().getEntitiesOfClass(this.avoidClass, this.mob.getBoundingBox().inflate(this.maxDist, 3.0, this.maxDist), livingEntity -> true),
++                papoCandidates,
+                 this.avoidEntityTargeting,
+                 this.mob,
+                 this.mob.getX(),
