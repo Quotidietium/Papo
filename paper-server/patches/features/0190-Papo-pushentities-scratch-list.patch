@@ -1,0 +1,69 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 15:07:47 +0800
+Subject: [PATCH] Papo: level getEntities fill overload + pushEntities scratch
+ list
+
+
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index 94a179d540040cfb53b059d00948bdbf4feb56ed..1b6afde1a743a4b05d47380fda91dac1324b0952 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -3890,6 +3890,24 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+     }
+     // Papo end
+ 
++    // Papo start - per-entity scratch list for pushEntities: one ArrayList per entity instead of one per
++    // tick. Re-entrancy: the list is filled and consumed entirely inside pushEntities; the only callbacks
++    // in between are hurtServer (cramming EntityDamageEvent) and doPush -> Entity.push (delta-movement
++    // math, no events). Neither can invoke pushEntities on this same entity (protected, no API path), and
++    // the vanilla code also keeps iterating its snapshot after those callbacks, so semantics are unchanged.
++    private List<Entity> papoPushEntitiesScratch;
++
++    private List<Entity> papoGetPushEntitiesScratch() {
++        List<Entity> scratch = this.papoPushEntitiesScratch;
++        if (scratch == null) {
++            scratch = this.papoPushEntitiesScratch = new java.util.ArrayList<>();
++        } else {
++            scratch.clear();
++        }
++        return scratch;
++    }
++    // Papo end
++
+     protected void pushEntities() {
+         // Paper start - don't run getEntities if we're not going to use its result
+         if (!this.isPushable()) {
+@@ -3906,7 +3924,8 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+             return;
+         }
+         // Paper end - don't run getEntities if we're not going to use its result
+-        List<Entity> pushableEntities = this.level().getEntities(this, this.getBoundingBox(), this.papoGetPushablePredicate()); // Papo - reuse cached pushable predicate (avoids per-tick allocation)
++        List<Entity> pushableEntities = this.papoGetPushEntitiesScratch(); // Papo - per-entity scratch list instead of per-tick ArrayList
++        this.level().papoGetEntitiesInto(this, this.getBoundingBox(), this.papoGetPushablePredicate(), pushableEntities); // Papo - fill overload (reuses cached pushable predicate, avoids per-tick allocations)
+         if (!pushableEntities.isEmpty()) {
+             if (this.level() instanceof ServerLevel serverLevel) {
+                 // Paper - don't run getEntities if we're not going to use its result; moved up
+diff --git a/net/minecraft/world/level/Level.java b/net/minecraft/world/level/Level.java
+index b08a9975a538cc756513e71f27a2aaf116fa30f9..798422a9d8b718dc47ca54f82b1893d2dadd8d55 100644
+--- a/net/minecraft/world/level/Level.java
++++ b/net/minecraft/world/level/Level.java
+@@ -1693,6 +1693,18 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
+         // Paper end - rewrite chunk system
+     }
+ 
++    // Papo start - fill overload of getEntities(Entity, AABB, Predicate): appends into the caller-provided
++    // list instead of allocating a fresh one (per-entity scratch lists; caller clears before filling).
++    // Body is statement-for-statement identical to the allocating variant above minus the allocation.
++    public void papoGetEntitiesInto(@Nullable Entity entity, AABB boundingBox, Predicate<? super Entity> predicate, List<Entity> into) {
++        Profiler.get().incrementCounter("getEntities");
++
++        ((ca.spottedleaf.moonrise.patches.chunk_system.level.ChunkSystemLevel)this).moonrise$getEntityLookup().getEntities(entity, boundingBox, into, predicate);
++
++        ca.spottedleaf.moonrise.common.PlatformHooks.get().addToGetEntities((Level)(Object)this, entity, boundingBox, predicate, into);
++    }
++    // Papo end
++
+     @Override
+     public <T extends Entity> List<T> getEntities(EntityTypeTest<Entity, T> entityTypeTest, AABB bounds, Predicate<? super T> predicate) {
+         List<T> list = Lists.newArrayList();
