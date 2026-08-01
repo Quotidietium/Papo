@@ -1,0 +1,39 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 13:50:37 +0800
+Subject: [PATCH] Papo: zero-listener gate for PlayerArmSwingEvent in
+ handleAnimate
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+ServerboundSwingPacket is one of the highest-frequency packets in PvP/mining
+scenarios; every packet built a PlayerArmSwingEvent and dispatched it even with
+no plugin listening. PlayerArmSwingEvent declares no HandlerList of its own and
+is PlayerAnimationEvent's only subclass, so all its listeners register into
+PlayerAnimationEvent's table — an empty table provably means nobody observes
+the event, callEvent is a no-op and isCancelled() is always false, so control
+flow always reaches swing().
+
+diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+index edfcadd1aa60ab0cae9fc8a90aa7b4d944ac3462..28dcc50bdef64c51c6c61a35c0b306ee50e11e3d 100644
+--- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+@@ -2707,10 +2707,17 @@ public class ServerGamePacketListenerImpl
+         // Papo end
+ 
+         // Arm swing animation
++        // Papo start - skip event construction when there are no listeners. PlayerArmSwingEvent
++        // declares no HandlerList of its own; it is PlayerAnimationEvent's only subclass, so all
++        // its listeners register into PlayerAnimationEvent's table. Zero listeners => callEvent
++        // is a no-op and isCancelled() is always false, so control flow always reaches swing().
++        if (org.bukkit.event.player.PlayerAnimationEvent.getHandlerList().getRegisteredListeners().length > 0) {
++        // Papo end
+         io.papermc.paper.event.player.PlayerArmSwingEvent event = new io.papermc.paper.event.player.PlayerArmSwingEvent(this.getCraftPlayer(), org.bukkit.craftbukkit.CraftEquipmentSlot.getHand(packet.getHand())); // Paper - Add PlayerArmSwingEvent
+         this.cserver.getPluginManager().callEvent(event);
+ 
+         if (event.isCancelled()) return;
++        } // Papo - end zero-listener gate
+         // CraftBukkit end
+         this.player.swing(packet.getHand());
+     }
