@@ -181,6 +181,24 @@ codechicken diffpatch 引擎非常严格：
 - 0004 异步刷怪：自述可能产生不一致，需移植 AsyncExecutor 等工具类，风险大于收益；
 - 0009 DAB：侵入性强，EAR 2.0 已覆盖大部分收益，暂缓。
 
+## 2026-08-01 补充：批次 46 踩坑记录
+
+### survey 候选的"分配"断言必须对照 JDK 实现复核（0187 记分板撤除案例）
+
+survey 子代理报告称 `Optional.ofNullable(score.display())` "每分数变更 2 次 Optional 分配"，据此实现并进了补丁。复核 JDK 源码证伪：`Optional.ofNullable(null)` 直接返回 `Optional.empty()` **单例**，null 分支（生产常态）两写法均零分配；非 null 分支两写法均分配一次。JMH 实测 1.791 vs 1.728（CI 重叠）证实中性——这不是 EA 伪影，是真零收益纯代码搅动，按"实测无收益即撤"精神从补丁撤除。**教训：survey 的分配断言只能按方法名望文生义，实现前必须打开 JDK/库源码确认真实分配路径（工厂方法常有单例/缓存快路）；"零监听器门控"类断言同理，需 grep 事件类确认自有 HandlerList 及子类层级。**
+
+### python 编辑 .patch 后缺尾部换行 → corrupt patch（可预防）
+
+用 python `split('\n')/'\n'.join(...)` 手工删 hunk 时，若被删段落延伸到文件末尾，会顺带丢掉最后一个空元素，产物文件**没有结尾换行**。`git apply` 报 "corrupt patch at line N"（N = hunk 最后一行），`git am` 报 "corrupt patch at .git/rebase-apply/patch"。教训：手工编辑补丁后统一 `rstrip` + 追加单个 `\n`，并立即 `git apply --check` 验证，再跑完整 applyPatches。
+
+### rebuildPatches 按内部提交 subject 再生命名（可预防，复发）
+
+内部仓库提交 subject 用中文（如"0168-xxxx"）时，rebuildPatches 会以 subject 重新生成补丁文件名，产生垃圾名（"0168-0168.patch"）。批次 39 起就踩过，本批又复发一次。教训：内部提交 subject 保持英文 kebab 命名（它会直接成为补丁文件名）；若已污染，脚本批量 `git mv -f` 恢复原名后再提交。
+
+### Blackhole 不能在 main() 中实例化（基准类自检结构）
+
+JMH 的 `Blackhole` 构造会检查 JMH 运行时上下文，在普通 `main()` 自检里 `new Blackhole(...)` 直接抛 IllegalStateException。基准类的等价性自检要把逻辑拆成**普通 body 方法**（用 `Object sink` 字段做逃逸汇对齐 `bh.consume` 语义），`@Benchmark` 方法只做薄包装，main() 调 body 方法自检。
+
 ## 注意事项
 
 - **游戏版本红线：始终保持 Minecraft 1.21.11**。同步上游/合并分支时，`gradle.properties`（mcVersion/apiVersion=1.21.11）、根 `build.gradle.kts`（paperweight **2.0.0-beta.19**、Java 工具链 **21**、snapshots 仓库）绝不能取上游 26.x 侧的值。2026-07-30 的事故：合并 ver/1.21.11 时以 26.x 为基底解决冲突，paperweight 变 beta.21 导致 `spigot {}` 等 DSL 无法解析、构建脚本编译失败（报错为 "Unresolved reference 'spigot'/'createMojmapPaperclipJar'"），mcVersion 变 26.2。修复方式：内容恢复提交（`git commit-tree <1.21.11树> -p HEAD` + reset），不改写历史。教训：**configuration cache 会掩盖构建脚本损坏**——compileJava 命中缓存成功，但 rebuildPatches/help 触发脚本重编译才暴露问题；合并后必须跑一次 rebuildPatches 或 help 验证。
