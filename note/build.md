@@ -209,6 +209,16 @@ survey 子代理报告称 `Optional.ofNullable(score.display())` "每分数变�
 
 JMH 的 `Blackhole` 构造会检查 JMH 运行时上下文，在普通 `main()` 自检里 `new Blackhole(...)` 直接抛 IllegalStateException。基准类的等价性自检要把逻辑拆成**普通 body 方法**（用 `Object sink` 字段做逃逸汇对齐 `bh.consume` 语义），`@Benchmark` 方法只做薄包装，main() 调 body 方法自检。
 
+## 2026-08-01 补充：稳定性审计踩坑记录
+
+### Paperweight 编译期访问宽化：package-private 源码可跨包调用（非 bug）
+
+稳定性审计时子代理报告 0134 的 `ByteBufCodecs.papoNbtSerializationContext(RegistryAccess)` 声明为 `static`（package-private，包 `net.minecraft.network.codec`）却被包 `net.minecraft.network.chat` 的 `ComponentSerialization` 跨包调用，判定为"javac 必报编译错误（HIGH）"。**复核证伪**：实跑 `./gradlew :paper-server:compileJava --rerun-tasks --no-configuration-cache`（强制重编译、绕开 configuration cache）**BUILD SUCCESSFUL**，`javap` 编译产物确认该方法字节码为 `public static`——尽管源码是 `static` 且 `paper.at` 无对应宽化条目（`grep network/codec build-data/paper.at` 为 0）。结论：**Paperweight 在编译期对 dev 源码做了访问宽化（package-private → public），故跨包调用 package-private 方法在本项目可编译且产出 public 字节码，非 bug。** 教训：审计"访问修饰符"类发现时，不能只读源码望文生义判定编译失败，必须用 `--rerun-tasks --no-configuration-cache` 实跑编译 + `javap` 核对字节码访问标志定论（configuration cache 会掩盖真实编译结果）。
+
+### 验证编译必须绕开 configuration cache（复发）
+
+与上方"configuration cache 会掩盖构建脚本损坏"同源：`touch` 源文件只改 mtime，Gradle 9 用内容哈希判定仍 UP-TO-DATE 跳过。要强制重编译验证，必须 `--rerun-tasks --no-configuration-cache`（见上条实证）。`compileJava` 增量缓存命中显示 "UP-TO-DATE / BUILD SUCCESSFUL" **不代表**当前源码真编译过。
+
 ## 注意事项
 
 - **游戏版本红线：始终保持 Minecraft 1.21.11**。同步上游/合并分支时，`gradle.properties`（mcVersion/apiVersion=1.21.11）、根 `build.gradle.kts`（paperweight **2.0.0-beta.19**、Java 工具链 **21**、snapshots 仓库）绝不能取上游 26.x 侧的值。2026-07-30 的事故：合并 ver/1.21.11 时以 26.x 为基底解决冲突，paperweight 变 beta.21 导致 `spigot {}` 等 DSL 无法解析、构建脚本编译失败（报错为 "Unresolved reference 'spigot'/'createMojmapPaperclipJar'"），mcVersion 变 26.2。修复方式：内容恢复提交（`git commit-tree <1.21.11树> -p HEAD` + reset），不改写历史。教训：**configuration cache 会掩盖构建脚本损坏**——compileJava 命中缓存成功，但 rebuildPatches/help 触发脚本重编译才暴露问题；合并后必须跑一次 rebuildPatches 或 help 验证。
