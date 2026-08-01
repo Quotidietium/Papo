@@ -1,0 +1,32 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 21:41:16 +0800
+Subject: [PATCH] Papo: lava ignite zero-listener gate
+
+
+diff --git a/net/minecraft/world/level/material/LavaFluid.java b/net/minecraft/world/level/material/LavaFluid.java
+index a42878c191445ba4b0d50dd2b789a132d5cf6a3e..17585dc4bd2039de1fd8a1d3669e922ddbe777af 100644
+--- a/net/minecraft/world/level/material/LavaFluid.java
++++ b/net/minecraft/world/level/material/LavaFluid.java
+@@ -96,7 +96,9 @@ public abstract class LavaFluid extends FlowingFluid {
+                         if (this.hasFlammableNeighbours(level, blockPos)) {
+                             // CraftBukkit start - Prevent lava putting something on fire
+                             if (!level.getBlockState(blockPos).is(Blocks.FIRE)) {
+-                                if (org.bukkit.craftbukkit.event.CraftEventFactory.callBlockIgniteEvent(level, blockPos, pos).isCancelled()) {
++                                // Papo - zero-listener gate (same pattern as FireBlock:231)
++                                if (org.bukkit.event.block.BlockIgniteEvent.getHandlerList().getRegisteredListeners().length > 0
++                                    && org.bukkit.craftbukkit.event.CraftEventFactory.callBlockIgniteEvent(level, blockPos, pos).isCancelled()) {
+                                     continue;
+                                 }
+                             }
+@@ -119,7 +121,9 @@ public abstract class LavaFluid extends FlowingFluid {
+                         // CraftBukkit start - Prevent lava putting something on fire
+                         BlockPos up = blockPos1.above();
+                         if (!level.getBlockState(up).is(Blocks.FIRE)) {
+-                            if (org.bukkit.craftbukkit.event.CraftEventFactory.callBlockIgniteEvent(level, up, pos).isCancelled()) {
++                            // Papo - zero-listener gate (same pattern as FireBlock:231)
++                            if (org.bukkit.event.block.BlockIgniteEvent.getHandlerList().getRegisteredListeners().length > 0
++                                && org.bukkit.craftbukkit.event.CraftEventFactory.callBlockIgniteEvent(level, up, pos).isCancelled()) {
+                                 continue;
+                             }
+                         }
