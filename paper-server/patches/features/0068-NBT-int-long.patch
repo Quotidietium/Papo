@@ -44,8 +44,8 @@ index 4e7de76b8acfdf6108ddb3bceabb3feb8e0cc623..d2bca367383b37aadcd29d4b047c6c09
 -            for (int i = 0; i < _int; i++) {
 -                longs[i] = input.readLong();
 +            // Papo start - bulk read + big-endian decode instead of per-element readLong.
-+            // LongArrayTag has no Spigot size cap, so guard _int<<3 overflow (absurd sizes fall back).
-+            if (_int > Integer.MAX_VALUE / 8) {
++            // LongArrayTag has no Spigot size cap: bulk only up to 1<<20 (temp buf <= 8MB); larger arrays stream (no 2x peak-memory).
++            if (_int > (1 << 20)) {
 +                for (int i = 0; i < _int; i++) {
 +                    longs[i] = input.readLong();
 +                }

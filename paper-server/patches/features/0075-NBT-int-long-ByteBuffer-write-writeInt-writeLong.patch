@@ -48,8 +48,8 @@ index d2bca367383b37aadcd29d4b047c6c097c93c55f..9476d0aeba5ab7719d73a1388b9f1853
 -        for (long l : this.data) {
 -            output.writeLong(l);
 +        // Papo start - bulk encode via ByteBuffer instead of per-element writeLong
-+        // (guard length<<3 overflow, symmetric with readAccounted).
-+        if (this.data.length > Integer.MAX_VALUE / 8) {
++        // (bulk only up to 1<<20 (temp buf <= 8MB); larger arrays stream, symmetric with readAccounted).
++        if (this.data.length > (1 << 20)) {
 +            for (long l : this.data) {
 +                output.writeLong(l);
 +            }
