@@ -1,0 +1,36 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 20:16:03 +0800
+Subject: [PATCH] Papo: swap hand items zero-listener gate
+
+
+diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+index 28dcc50bdef64c51c6c61a35c0b306ee50e11e3d..e4f2628d6781e0ec86bbcbfcbe050d40841e3eb7 100644
+--- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+@@ -1957,6 +1957,17 @@ public class ServerGamePacketListenerImpl
+                     }
+                 case SWAP_ITEM_WITH_OFFHAND:
+                     if (!this.player.isSpectator()) {
++                        // Papo start - zero-listener gate: PlayerSwapHandItemsEvent has its own HandlerList with no
++                        // subclasses. With zero listeners the event cannot be observed or cancelled, and the default
++                        // path always wins: the event's items are clones of the mirrors, and CraftItemStack.equals
++                        // (clone vs mirror: null==null, both-empty, or ItemStack.matches on the copied handle) is
++                        // always true, so both setItemInHand calls take the swap branch. Skip mirrors/clones/event.
++                        if (org.bukkit.event.player.PlayerSwapHandItemsEvent.getHandlerList().getRegisteredListeners().length == 0) {
++                            ItemStack offHandStack = this.player.getItemInHand(InteractionHand.OFF_HAND);
++                            this.player.setItemInHand(InteractionHand.OFF_HAND, this.player.getItemInHand(InteractionHand.MAIN_HAND));
++                            this.player.setItemInHand(InteractionHand.MAIN_HAND, offHandStack);
++                        } else {
++                        // Papo end
+                         ItemStack itemInHand1 = this.player.getItemInHand(InteractionHand.OFF_HAND);
+                         // CraftBukkit start - inspiration taken from DispenserRegistry (See SpigotCraft#394)
+                         CraftItemStack mainHand = CraftItemStack.asCraftMirror(itemInHand1);
+@@ -1977,6 +1988,7 @@ public class ServerGamePacketListenerImpl
+                             this.player.setItemInHand(InteractionHand.MAIN_HAND, CraftItemStack.asNMSCopy(swapItemsEvent.getMainHandItem()));
+                         }
+                         // CraftBukkit end
++                        } // Papo - zero-listener gate
+                         this.player.stopUsingItem();
+                         if (io.papermc.paper.configuration.GlobalConfiguration.get().unsupportedSettings.updateEquipmentOnPlayerActions) this.player.detectEquipmentUpdates(); // Paper - Force update attributes.
+                     }
