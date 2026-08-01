@@ -1,0 +1,63 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 15:07:48 +0800
+Subject: [PATCH] Papo: mob aiStep looting scratch list
+
+
+diff --git a/net/minecraft/world/entity/Mob.java b/net/minecraft/world/entity/Mob.java
+index fe921ea7a288d260f973b18a91652e7906386b7a..90d34bdd4a64e926a4938278d59689c2b99971b4 100644
+--- a/net/minecraft/world/entity/Mob.java
++++ b/net/minecraft/world/entity/Mob.java
+@@ -76,6 +76,7 @@ import net.minecraft.world.level.Level;
+ import net.minecraft.world.level.LevelAccessor;
+ import net.minecraft.world.level.LevelReader;
+ import net.minecraft.world.level.ServerLevelAccessor;
++import net.minecraft.world.level.entity.EntityTypeTest;
+ import net.minecraft.world.level.gameevent.GameEvent;
+ import net.minecraft.world.level.gamerules.GameRules;
+ import net.minecraft.world.level.material.Fluid;
+@@ -531,6 +532,23 @@ public abstract class Mob extends LivingEntity implements EquipmentUser, Leashab
+         this.resetAngularLeashMomentum();
+     }
+ 
++    // Papo start - per-mob scratch list for the looting scan in aiStep: one ArrayList per mob instead of
++    // one per tick. Re-entrancy: the list is filled and consumed entirely inside aiStep; the only callback
++    // in between is pickUpItem (EntityPickupItemEvent), which cannot re-enter aiStep on this same mob
++    // (no API path), and vanilla also iterates its snapshot while firing that event, so semantics match.
++    private List<ItemEntity> papoLootingScratch;
++
++    private List<ItemEntity> papoGetLootingScratch() {
++        List<ItemEntity> scratch = this.papoLootingScratch;
++        if (scratch == null) {
++            scratch = this.papoLootingScratch = new ArrayList<>();
++        } else {
++            scratch.clear();
++        }
++        return scratch;
++    }
++    // Papo end
++
+     @Override
+     public void aiStep() {
+         super.aiStep();
+@@ -547,8 +565,18 @@ public abstract class Mob extends LivingEntity implements EquipmentUser, Leashab
+             && serverLevel.getGameRules().get(GameRules.MOB_GRIEFING)) {
+             Vec3i pickupReach = this.getPickupReach();
+ 
+-            for (ItemEntity itemEntity : this.level()
+-                .getEntitiesOfClass(ItemEntity.class, this.getBoundingBox().inflate(pickupReach.getX(), pickupReach.getY(), pickupReach.getZ()))) {
++            // Papo start - per-mob scratch list via the existing fill overload (getEntitiesOfClass(Class, AABB)
++            // delegates to getEntities(EntityTypeTest, AABB, NO_SPECTATORS) which allocates per call)
++            List<ItemEntity> papoLootTargets = this.papoGetLootingScratch();
++            this.level()
++                .getEntities(
++                    EntityTypeTest.forClass(ItemEntity.class),
++                    this.getBoundingBox().inflate(pickupReach.getX(), pickupReach.getY(), pickupReach.getZ()),
++                    EntitySelector.NO_SPECTATORS,
++                    papoLootTargets
++                );
++            for (ItemEntity itemEntity : papoLootTargets) {
++            // Papo end
+                 if (!itemEntity.isRemoved()
+                     && !itemEntity.getItem().isEmpty()
+                     && !itemEntity.hasPickUpDelay()
