@@ -1,0 +1,86 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 13:45:54 +0800
+Subject: [PATCH] Papo: GameEventDispatcher.post BlockPos elimination + debug
+ subscriber gate
+
+BlockPos.containing(pos) was allocated on every game event post (every entity
+step, container open/close, block change, projectile, etc.) only to read its
+three floored coordinates for the section scan. Floor into plain ints instead
+(BlockPos.containing(pos).getX() is defined as Mth.floor(pos.x)); the
+GenericGameEvent-gated branch re-materializes the BlockPos only when a plugin
+actually listens.
+
+Also gate the debug broadcast on hasAnySubscriberFor: broadcastEventToTracking's
+first statement performs the same check (LevelDebugSynchronizers.java:205-209),
+so with no debug subscriber the BlockPos + DebugGameEventInfo were constructed
+and dropped on every post that visited any listener.
+
+diff --git a/net/minecraft/world/level/gameevent/GameEventDispatcher.java b/net/minecraft/world/level/gameevent/GameEventDispatcher.java
+index 0777f3e6b053cc47d7f2c79514be02845776b528..1fdc66b5339c72ce8117edfa5661592e5fe82ce1 100644
+--- a/net/minecraft/world/level/gameevent/GameEventDispatcher.java
++++ b/net/minecraft/world/level/gameevent/GameEventDispatcher.java
+@@ -7,6 +7,7 @@ import net.minecraft.core.BlockPos;
+ import net.minecraft.core.Holder;
+ import net.minecraft.core.SectionPos;
+ import net.minecraft.server.level.ServerLevel;
++import net.minecraft.util.Mth;
+ import net.minecraft.util.debug.DebugGameEventInfo;
+ import net.minecraft.util.debug.DebugSubscriptions;
+ import net.minecraft.world.level.chunk.ChunkAccess;
+@@ -21,14 +22,21 @@ public class GameEventDispatcher {
+ 
+     public void post(Holder<GameEvent> gameEvent, Vec3 pos, GameEvent.Context context) {
+         int notificationRadius = gameEvent.value().notificationRadius();
+-        BlockPos blockPos = BlockPos.containing(pos);
++        // Papo start - floor the position into plain int coords instead of allocating a
++        // BlockPos per post (BlockPos.containing(pos).getX() is defined as Mth.floor(pos.x),
++        // so the section-coordinate inputs are bit-identical). The GenericGameEvent-gated
++        // branch re-materializes the BlockPos only when it actually runs.
++        int papoBlockX = Mth.floor(pos.x);
++        int papoBlockY = Mth.floor(pos.y);
++        int papoBlockZ = Mth.floor(pos.z);
++        // Papo end
+         // CraftBukkit start
+         // Papo start - skip GenericGameEvent allocation+fire when no plugin listens.
+         // GenericGameEvent has its own HandlerList and no subclasses; with zero listeners
+         // callEvent() returns true and the radius is never modified, so skipping is identical.
+         if (org.bukkit.event.world.GenericGameEvent.getHandlerList().getRegisteredListeners().length > 0) {
+             org.bukkit.event.world.GenericGameEvent apiEvent = new org.bukkit.event.world.GenericGameEvent(
+-                org.bukkit.craftbukkit.CraftGameEvent.minecraftHolderToBukkit(gameEvent), org.bukkit.craftbukkit.util.CraftLocation.toBukkit(blockPos, this.level),
++                org.bukkit.craftbukkit.CraftGameEvent.minecraftHolderToBukkit(gameEvent), org.bukkit.craftbukkit.util.CraftLocation.toBukkit(BlockPos.containing(pos), this.level), // Papo - BlockPos only materialized inside the gated branch
+                 (context.sourceEntity() == null) ? null : context.sourceEntity().getBukkitEntity(), notificationRadius, !org.bukkit.Bukkit.isPrimaryThread());
+             if (!apiEvent.callEvent()) {
+                 return;
+@@ -37,12 +45,12 @@ public class GameEventDispatcher {
+         }
+         // Papo end
+         // CraftBukkit end
+-        int sectionPosCoord = SectionPos.blockToSectionCoord(blockPos.getX() - notificationRadius);
+-        int sectionPosCoord1 = SectionPos.blockToSectionCoord(blockPos.getY() - notificationRadius);
+-        int sectionPosCoord2 = SectionPos.blockToSectionCoord(blockPos.getZ() - notificationRadius);
+-        int sectionPosCoord3 = SectionPos.blockToSectionCoord(blockPos.getX() + notificationRadius);
+-        int sectionPosCoord4 = SectionPos.blockToSectionCoord(blockPos.getY() + notificationRadius);
+-        int sectionPosCoord5 = SectionPos.blockToSectionCoord(blockPos.getZ() + notificationRadius);
++        int sectionPosCoord = SectionPos.blockToSectionCoord(papoBlockX - notificationRadius); // Papo - int coords (see above)
++        int sectionPosCoord1 = SectionPos.blockToSectionCoord(papoBlockY - notificationRadius); // Papo
++        int sectionPosCoord2 = SectionPos.blockToSectionCoord(papoBlockZ - notificationRadius); // Papo
++        int sectionPosCoord3 = SectionPos.blockToSectionCoord(papoBlockX + notificationRadius); // Papo
++        int sectionPosCoord4 = SectionPos.blockToSectionCoord(papoBlockY + notificationRadius); // Papo
++        int sectionPosCoord5 = SectionPos.blockToSectionCoord(papoBlockZ + notificationRadius); // Papo
+         // Papo - lazily-allocated BY_DISTANCE queue via a stateful visitor (was: one
+         // ArrayList per post() call that stays empty whenever no BY_DISTANCE listener —
+         // e.g. sculk sensor — is in range, which is the common case). The visitor visit
+@@ -66,7 +74,11 @@ public class GameEventDispatcher {
+             this.handleGameEventMessagesInQueue(listenerVisitor.byDistance);
+         }
+ 
+-        if (flag) {
++        // Papo start - gate the debug broadcast on an actual subscriber: broadcastEventToTracking's
++        // first statement is the same hasAnySubscriberFor check (LevelDebugSynchronizers.java:205-209),
++        // so with no subscriber the BlockPos + DebugGameEventInfo below were constructed and dropped.
++        if (flag && this.level.debugSynchronizers().hasAnySubscriberFor(DebugSubscriptions.GAME_EVENTS)) {
++        // Papo end
+             this.level
+                 .debugSynchronizers()
+                 .broadcastEventToTracking(BlockPos.containing(pos), DebugSubscriptions.GAME_EVENTS, new DebugGameEventInfo(gameEvent, pos));
