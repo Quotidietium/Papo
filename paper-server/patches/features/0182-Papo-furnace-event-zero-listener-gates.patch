@@ -1,0 +1,128 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 13:48:19 +0800
+Subject: [PATCH] Papo: furnace zero-listener gates for
+ FurnaceBurn/StartSmelt/Smelt events
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Every fuel consume, every smelt start and every produced item built CraftItemStack
+mirrors, CraftBlock wrappers, toBukkitRecipe() conversions and event objects even
+with no plugin listening. Gate all three on their listener tables:
+
+- FurnaceBurnEvent: own HandlerList, no subclasses, constructor stores burnTime
+  raw (clamp lives in setBurnTime), burning/consumeFuel default true — with zero
+  listeners callEvent() is always true and every getter returns its default, so
+  the default flow is reproduced statement-for-statement.
+- FurnaceStartSmeltEvent: declares no HandlerList; its listeners register into
+  InventoryBlockStartEvent's table (shared with BrewingStartEvent/
+  CampfireStartEvent), so an empty table provably means nobody can observe it.
+  Not Cancellable; getTotalCookTime() defaults to the constructor arg.
+- FurnaceSmeltEvent: declares no HandlerList; it is BlockCookEvent's only
+  subclass so BlockCookEvent's table is authoritative. Round-trip lemma
+  (CraftItemStack.java:106-113,133-138,439-454): asBukkitCopy(x) =
+  asCraftMirror(x.copy()), asNMSCopy(craft) = craft.handle.copy(), and
+  CraftItemStack.isSimilar == ItemStack.isSameItemSameComponents when both
+  handles are non-null — with zero listeners the event round-trip yields a
+  content-identical fresh copy (here the exclusive assemble() output itself)
+  and the isSimilar check is exactly the NMS comparison.
+
+diff --git a/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java b/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java
+index d4c6984d33a2c9aebff2b077e6660524b240723a..bdba2027dbbde1739363ba18adac9bc0a8c1d894 100644
+--- a/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java
+@@ -216,6 +216,26 @@ public abstract class AbstractFurnaceBlockEntity extends BaseContainerBlockEntit
+ 
+             int maxStackSize = furnace.getMaxStackSize();
+             if (!furnace.isLit() && canBurn(level.registryAccess(), recipeHolder, singleRecipeInput, furnace.items, maxStackSize)) {
++                // Papo start - zero-listener fast path for FurnaceBurnEvent. The event has its own
++                // HandlerList and no subclasses; the constructor stores burnTime raw (clamping lives
++                // in setBurnTime), burning/consumeFuel default to true. With zero listeners
++                // callEvent() is always true and every getter returns its default, so the default
++                // flow below reproduces the ungated execution statement-for-statement.
++                if (org.bukkit.event.inventory.FurnaceBurnEvent.getHandlerList().getRegisteredListeners().length == 0) {
++                    furnace.litTimeRemaining = furnace.getBurnDuration(level.fuelValues(), itemStack);
++                    furnace.litTotalTime = furnace.litTimeRemaining;
++                    if (furnace.isLit()) {
++                        flag = true;
++                        if (flag2) {
++                            Item item = itemStack.getItem();
++                            itemStack.shrink(1);
++                            if (itemStack.isEmpty()) {
++                                furnace.items.set(1, item.getCraftingRemainder());
++                            }
++                        }
++                    }
++                } else {
++                // Papo end
+                 // CraftBukkit start
+                 org.bukkit.craftbukkit.inventory.CraftItemStack fuel = org.bukkit.craftbukkit.inventory.CraftItemStack.asCraftMirror(itemStack);
+ 
+@@ -239,11 +259,21 @@ public abstract class AbstractFurnaceBlockEntity extends BaseContainerBlockEntit
+                         }
+                     }
+                 }
++                } // Papo - end zero-listener fast path else-branch
+             }
+ 
+             if (furnace.isLit() && canBurn(level.registryAccess(), recipeHolder, singleRecipeInput, furnace.items, maxStackSize)) {
+                 // CraftBukkit start
+                 if (recipeHolder != null && furnace.cookingTimer == 0) {
++                    // Papo start - zero-listener fast path for FurnaceStartSmeltEvent. The event
++                    // declares no HandlerList of its own; its listeners register into
++                    // InventoryBlockStartEvent's table (shared with BrewingStartEvent/
++                    // CampfireStartEvent, so an empty table provably means nobody can observe this
++                    // event). Not Cancellable; getTotalCookTime() defaults to the constructor arg.
++                    if (org.bukkit.event.block.InventoryBlockStartEvent.getHandlerList().getRegisteredListeners().length == 0) {
++                        furnace.cookingTotalTime = getTotalCookTime(level, furnace, furnace.recipeType, furnace.cookSpeedMultiplier); // Paper - cook speed multiplier API
++                    } else {
++                    // Papo end
+                     org.bukkit.craftbukkit.inventory.CraftItemStack source = org.bukkit.craftbukkit.inventory.CraftItemStack.asCraftMirror(furnace.items.get(0));
+                     org.bukkit.inventory.CookingRecipe<?> recipe = (org.bukkit.inventory.CookingRecipe<?>) recipeHolder.toBukkitRecipe();
+ 
+@@ -256,6 +286,7 @@ public abstract class AbstractFurnaceBlockEntity extends BaseContainerBlockEntit
+                     event.callEvent();
+ 
+                     furnace.cookingTotalTime = event.getTotalCookTime();
++                    } // Papo - end zero-listener fast path else-branch
+                 }
+                 // CraftBukkit end
+ 
+@@ -325,6 +356,28 @@ public abstract class AbstractFurnaceBlockEntity extends BaseContainerBlockEntit
+             ItemStack itemStack = items.get(0); final ItemStack ingredient = itemStack; // Paper - OBFHELPER
+             ItemStack itemStack1 = recipe.value().assemble(recipeInput, registryAccess); ItemStack result = itemStack1; // Paper - OBFHELPER
+             ItemStack itemStack2 = items.get(2); final ItemStack existingResults = itemStack2; // Paper - OBFHELPER
++            // Papo start - zero-listener fast path for FurnaceSmeltEvent. The event declares no
++            // HandlerList of its own; it is BlockCookEvent's only subclass, so its listeners all
++            // register into BlockCookEvent's table (also used by CampfireBlockEntity's direct
++            // BlockCookEvent fire) — an empty table provably means nobody can observe this event.
++            // Lemma (CraftItemStack.java:106-113,133-138,439-454): asBukkitCopy(x) =
++            // asCraftMirror(x.copy()); asNMSCopy(craft) = craft.handle.copy(); and
++            // CraftItemStack.isSimilar == ItemStack.isSameItemSameComponents when both handles are
++            // non-null. So with zero listeners the event round-trip yields a content-identical
++            // fresh copy (here: the exclusive assemble() output itself) and the isSimilar check
++            // below is exactly the NMS comparison.
++            if (org.bukkit.event.block.BlockCookEvent.getHandlerList().getRegisteredListeners().length == 0) {
++                if (!result.isEmpty()) {
++                    if (existingResults.isEmpty()) {
++                        items.set(SLOT_RESULT, result.copy());
++                    } else if (ItemStack.isSameItemSameComponents(existingResults, result)) {
++                        existingResults.grow(result.getCount());
++                    } else {
++                        return false;
++                    }
++                }
++            } else {
++            // Papo end
+             // CraftBukkit start - fire FurnaceSmeltEvent
+             org.bukkit.craftbukkit.inventory.CraftItemStack apiIngredient = org.bukkit.craftbukkit.inventory.CraftItemStack.asCraftMirror(ingredient);
+             org.bukkit.inventory.ItemStack apiResult = org.bukkit.craftbukkit.inventory.CraftItemStack.asBukkitCopy(result);
+@@ -358,6 +411,7 @@ public abstract class AbstractFurnaceBlockEntity extends BaseContainerBlockEntit
+             }
+             */
+             // CraftBukkit end
++            } // Papo - end zero-listener fast path else-branch
+ 
+             if (itemStack.is(Blocks.WET_SPONGE.asItem()) && !items.get(1).isEmpty() && items.get(1).is(Items.BUCKET)) {
+                 items.set(1, new ItemStack(Items.WATER_BUCKET));
