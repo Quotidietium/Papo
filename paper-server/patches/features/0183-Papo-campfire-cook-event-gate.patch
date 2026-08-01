@@ -1,0 +1,53 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 13:49:09 +0800
+Subject: [PATCH] Papo: campfire zero-listener gate for BlockCookEvent
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Every cooked campfire item built CraftItemStack mirror + asBukkitCopy +
+CraftBlock + toBukkitRecipe + event + asNMSCopy even with no plugin listening.
+BlockCookEvent has its own HandlerList and its sole subclass FurnaceSmeltEvent
+shares the same table, so an empty table provably means nobody observes the
+event; with zero listeners callEvent() is always true and getResult() returns
+the constructor arg.
+
+The gated path pays a single copy() so the split() drop loop never mutates the
+container slot in place (itemStack1 aliases items.get(i) when no recipe
+matched) — still one copy cheaper than the ungated round-trip
+(asBukkitCopy = asCraftMirror(x.copy()), asNMSCopy = handle.copy(),
+CraftItemStack.java:106-113,133-138). EMPTY.copy() == ItemStack.EMPTY keeps the
+empty-stack path identical.
+
+diff --git a/net/minecraft/world/level/block/entity/CampfireBlockEntity.java b/net/minecraft/world/level/block/entity/CampfireBlockEntity.java
+index a27f578eb4d2dbcdb5cd72cb0aa3ec98cdb543c2..1653b9ad15b638fcf7a8de1472394e6cc8b6be03 100644
+--- a/net/minecraft/world/level/block/entity/CampfireBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/CampfireBlockEntity.java
+@@ -77,6 +77,18 @@ public class CampfireBlockEntity extends BlockEntity implements Clearable {
+                         .orElse(itemStack);
+                     // Paper end - add recipe to cook events
+                     if (itemStack1.isItemEnabled(level.enabledFeatures())) {
++                        // Papo start - zero-listener fast path for BlockCookEvent (own HandlerList,
++                        // sole subclass FurnaceSmeltEvent shares the same table — empty table
++                        // provably means nobody observes this event). Zero listeners => never
++                        // cancelled, and the asBukkitCopy/asNMSCopy round-trip yields a
++                        // content-identical fresh copy (CraftItemStack.java:106-113,133-138).
++                        // We pay a single copy() here so the split() loop below never mutates the
++                        // container slot in place (itemStack1 may alias items.get(i) when no recipe
++                        // matched) — two copies are saved versus the ungated path.
++                        if (org.bukkit.event.block.BlockCookEvent.getHandlerList().getRegisteredListeners().length == 0) {
++                            itemStack1 = itemStack1.copy();
++                        } else {
++                        // Papo end
+                         // CraftBukkit start - fire BlockCookEvent
+                         org.bukkit.craftbukkit.inventory.CraftItemStack source = org.bukkit.craftbukkit.inventory.CraftItemStack.asCraftMirror(itemStack);
+                         org.bukkit.inventory.ItemStack result = org.bukkit.craftbukkit.inventory.CraftItemStack.asBukkitCopy(itemStack1);
+@@ -95,6 +107,7 @@ public class CampfireBlockEntity extends BlockEntity implements Clearable {
+                         result = blockCookEvent.getResult();
+                         itemStack1 = org.bukkit.craftbukkit.inventory.CraftItemStack.asNMSCopy(result);
+                         // CraftBukkit end
++                        } // Papo - end zero-listener fast path else-branch
+                         // Paper start - Fix item locations dropped from campfires
+                         double deviation = 0.05F * RandomSource.GAUSSIAN_SPREAD_FACTOR;
+                         while (!itemStack1.isEmpty()) {
