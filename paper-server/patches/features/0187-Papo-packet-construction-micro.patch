@@ -1,0 +1,49 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 13:56:09 +0800
+Subject: [PATCH] =?UTF-8?q?Papo:=20packet=20construction=20micro=20?=
+ =?UTF-8?q?=E2=80=94=20attributes=20presize=20+=20scoreboard=20Optional.em?=
+ =?UTF-8?q?pty?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- ClientboundUpdateAttributesPacket: pre-size the snapshot list to the incoming
+  attribute count (capacity is not observable through the List API); avoids the
+  default-capacity grow copy on multi-attribute syncs.
+- ServerScoreboard.onScoreChanged: Optional.ofNullable(null) already returns
+  the Optional.empty() singleton; spelling out the null branch avoids two
+  Optional allocations per score change (display/numberFormat are almost always
+  null). On-wire bytes are identical in both cases.
+
+diff --git a/net/minecraft/network/protocol/game/ClientboundUpdateAttributesPacket.java b/net/minecraft/network/protocol/game/ClientboundUpdateAttributesPacket.java
+index 51ec726fcfe5b178d1e45fa14a604c81cf38bb3c..0727914a02d2560289a61352a438c1e55f8bd16a 100644
+--- a/net/minecraft/network/protocol/game/ClientboundUpdateAttributesPacket.java
++++ b/net/minecraft/network/protocol/game/ClientboundUpdateAttributesPacket.java
+@@ -29,7 +29,7 @@ public class ClientboundUpdateAttributesPacket implements Packet<ClientGamePacke
+ 
+     public ClientboundUpdateAttributesPacket(int entityId, Collection<AttributeInstance> attributes) {
+         this.entityId = entityId;
+-        this.attributes = Lists.newArrayList();
++        this.attributes = Lists.newArrayListWithExpectedSize(attributes.size()); // Papo - pre-size to the attribute count (capacity is not observable through the List API); avoids the default-capacity grow copy for multi-attribute syncs
+ 
+         for (AttributeInstance attributeInstance : attributes) {
+             this.attributes
+diff --git a/net/minecraft/server/ServerScoreboard.java b/net/minecraft/server/ServerScoreboard.java
+index 04a62e5ab9c0d0b9b7959280b0e0ea3ff388c017..acd12d0c197f81c5e180212d39d0696c8a771962 100644
+--- a/net/minecraft/server/ServerScoreboard.java
++++ b/net/minecraft/server/ServerScoreboard.java
+@@ -56,8 +56,11 @@ public class ServerScoreboard extends Scoreboard {
+                         scoreHolder.getScoreboardName(),
+                         objective.getName(),
+                         score.value(),
+-                        Optional.ofNullable(score.display()),
+-                        Optional.ofNullable(score.numberFormat())
++                        // Papo - ofNullable(null) already returns the Optional.empty() singleton;
++                        // spelling it out avoids two Optional allocations per score change (display
++                        // and numberFormat are almost always null)
++                        score.display() == null ? Optional.empty() : Optional.of(score.display()),
++                        score.numberFormat() == null ? Optional.empty() : Optional.of(score.numberFormat())
+                     )
+                 );
+         }
