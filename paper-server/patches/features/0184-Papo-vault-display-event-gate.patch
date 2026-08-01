@@ -1,0 +1,37 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 1 Aug 2026 13:49:49 +0800
+Subject: [PATCH] Papo: vault zero-listener gate for VaultDisplayItemEvent
+
+Every ACTIVE vault rebuilt CraftBlock + asBukkitCopy + event + asNMSCopy per
+display-item cycle (every 20 ticks per vault). VaultDisplayItemEvent has its own
+HandlerList and no subclasses; Cancellable defaults to false and
+getDisplayItem() returns the constructor arg, so with zero listeners the event
+is never cancelled and the round-trip is a content-identical fresh copy of the
+rolled stack. The rolled stack is an exclusive fresh stack from the loot roll,
+so passing it to setDisplayItem directly is equivalent. The loot roll itself
+(vanilla display cycling) is untouched.
+
+diff --git a/net/minecraft/world/level/block/entity/vault/VaultBlockEntity.java b/net/minecraft/world/level/block/entity/vault/VaultBlockEntity.java
+index ecf36e261f1a50b34f0e10d9abe62bc590cc6a7c..44111aed33f96a66783ba5f94d8c2793f2d5d8b2 100644
+--- a/net/minecraft/world/level/block/entity/vault/VaultBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/vault/VaultBlockEntity.java
+@@ -307,9 +307,18 @@ public class VaultBlockEntity extends BlockEntity {
+                     level, pos, config.overrideLootTableToDisplay().orElse(config.lootTable())
+                 );
+                 // CraftBukkit start
++                // Papo start - zero-listener fast path: VaultDisplayItemEvent has its own
++                // HandlerList and no subclasses; Cancellable defaults to false and
++                // getDisplayItem() returns the constructor arg. With zero listeners the event is
++                // never cancelled and asNMSCopy(event.getDisplayItem()) is a content-identical
++                // fresh copy of the rolled stack — which is itself an exclusive fresh stack from
++                // the loot roll, so passing it through directly is equivalent.
++                if (org.bukkit.event.block.VaultDisplayItemEvent.getHandlerList().getRegisteredListeners().length > 0) {
++                // Papo end
+                 org.bukkit.event.block.VaultDisplayItemEvent event = org.bukkit.craftbukkit.event.CraftEventFactory.callVaultDisplayItemEvent(level, pos, randomDisplayItemFromLootTable);
+                 if (event.isCancelled()) return;
+                 randomDisplayItemFromLootTable = org.bukkit.craftbukkit.inventory.CraftItemStack.asNMSCopy(event.getDisplayItem());
++                } // Papo - end zero-listener fast path
+                 // CraftBukkit end
+                 sharedData.setDisplayItem(randomDisplayItemFromLootTable);
+             }
