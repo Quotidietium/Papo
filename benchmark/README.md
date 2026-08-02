@@ -40,6 +40,7 @@ cd benchmark
 | `TrackCanSeeBench` | 0204 | 已追踪对每对重算 canSee（HashMap 查找）vs seenBy.contains 短路跳过（含等价性自检 main：稳态计数 + 未追踪-被hide 路径一致） |
 | `FingerprintHardeningSelfCheck` | 0205/批次51 | 非性能——指纹泄露加固的行为自检（复刻 brand/status resolve + plugin-channels shouldBroadcast 全分支，18 项断言） |
 | `EntityDataPairingBench` | 0206 | trackedDataValues 每 dirty 刷新（getNonDefaultValues 全扫）vs 延后到 pairing（仅 packDirty）（含自检 main：packDirty/getNonDefaultValues 输出一致） |
+| `PacketSendActionBench` | 0207 | PacketSendAction 3 对象（action+delegate lambda+AtomicBoolean）vs 1 对象（直调 accept+boolean）（含自检 main：accept 触发 sendPacket + tryMarkConsumed 语义一致；用 Object sink 不依赖 Blackhole） |
 
 ## 依赖
 
