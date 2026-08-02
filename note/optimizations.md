@@ -1445,6 +1445,36 @@ survey 1 "仔细复核"7 件中 4 件可证等价落地；Brain.getMemory 框架
 
 ---
 
+## 批次 50（2026-08-02）：网络突发选块去装箱 + 聚集追踪去冗余 canSee（0203-0204）
+
+用户报告两个痛点：① 网络与流畅度（尤其跑图突发）；② 多玩家聚集时延迟显著上升。三路 survey（聚集广播热路径 / 网络突发与区块发送 / 插件指纹泄露）产出候选后落地 2 个补丁。全部 compileJava（`--rerun-tasks --no-configuration-cache`）+ 全量 test BUILD SUCCESSFUL（零 FAILED）。JMH 报告：[note/report/perf/2026-08-02-jmh-microbench-batch50.md](report/perf/2026-08-02-jmh-microbench-batch50.md)。**0203 区块选块去装箱 10.0×（分配降 42×，gc 确证）；0204 已追踪对跳过冗余 canSee 在 vanish 场景 1.15×（CI 不重叠），空表 0.67× 为静态方法 JIT 折叠伪影（机制保留）**。
+
+### 0203 — PlayerChunkSender 区块发送选块去装箱（跑图突发路径）
+- **文件**：`net/minecraft/server/network/PlayerChunkSender.java` `collectChunksToSend`（`pending > floor` 分支）
+- **热点**：每玩家每 tick 区块发送收集；跑图/登录突发期 pending 可达数百。原实现 `.stream().collect(Comparators.least(floor, Comparator.comparingInt(chunkPos::distanceSquared)))` 把每个 pending long 装箱为 Long + Guava PriorityQueue/Collector + 结果 ArrayList。0053/0141 此前只改了第二段解析管道，**保留了装箱的 Comparators.least 选块**。
+- **改法**：原语 k 近邻——`longIterator()` + `long[floor]`/`int[floor]` 有界缓冲（保留当前 floor 个最近，新元素严格小于当前最远即替换）+ 末尾选择排序升序，再 `getChunkToSend` 解析。`ChunkPos.distanceSquared(long)` 是 int 返回的原语重载（无装箱）。floor ≤ 64（batchQuota 上限）。
+- **等价性**：距离两两不同时选择结果与 Comparators.least 逐元素一致；并列时哪个被选在两实现中均未定义且对客户端不可观察（等距区块本 tick 批量发送，未选者留 pendingChunks 下 tick 发送，玩家无法区分哪个等距区块先到）。distanceSquared 调用次数 = pending（原版 ≈ 2×pending×log floor，省调用）。main 自检：200 组随机输入下 before/after 选出的 floor 个最近"距离多重集"均等于输入的 floor 个最小距离，ALL OK。
+- **基准**：ChunkSelectBench before 8694.243 ± 1109.970 → after 869.026 ± 14.641 ns/op（**10.0×**，CI [7584,9804] vs [854,884] 不重叠）；`-prof gc` alloc.rate.norm 6088.053 → 144.006 B/op（**分配降 42×**，200 Long 装箱 + 大 ArrayList 全消除，after 仅 floor=9 结果数组）。
+- **风险**：低。
+
+### 0204 — ChunkMap.TrackedEntity.updatePlayer 已追踪对跳过冗余 canSee（聚集稳态）
+- **文件**：`net/minecraft/server/level/ChunkMap.java` `TrackedEntity.updatePlayer(ServerPlayer,int)`
+- **热点**：`moonrise$tick` 每 tick 对每个被追踪实体 × chunk 内每个玩家调 updatePlayer；稳态聚集时绝大多数 (实体,玩家) 对已在 seenBy 中（`seenBy.add` 返回 false 无副作用），但原实现仍重算 `player.getBukkitEntity().canSee(this.entity.getBukkitEntity())`（2× getBukkitEntity + CraftPlayer.canSee：visibleByDefault 字段 + getUniqueId + invertedVisibilityEntities.containsKey HashMap 查找）。聚集时 N×M 倍率放大。
+- **改法**：先 `boolean papoAlreadyTracked = seenBy.contains(player.connection)`（ReferenceOpenHashSet 身份查找）；已追踪则跳过 canSee（距离/broadcastToPlayer/isChunkTracked 检查保留，它们决定出界移除）。
+- **等价性（关键不变量，逐路径源码实证）**：`seenBy.contains(conn) ⟹ canSee == true`。令 canSee 变 false 的三条路径——`CraftPlayer.hideEntity`（:1851）、`setVisibleByDefault(false)`（CraftEntity:721，置字段前对所有在线玩家 resetAndHideEntity）、`resetAndHideEntity`——均经 `untrackAndHideEntity → unregisterEntity → TrackedEntity.removePlayer` 先把对移出 seenBy；seenBy 唯一写入点 `seenBy.add` 受 canSee 守卫，`trackAndShowEntity`（showEntity 路径）也复用 updatePlayer。故已追踪对的 canSee 必为 true，CraftBukkit vanish 分支不可能命中，跳过位级等价。六种 (已/未追踪 × flag 真/假 × canSee 真/假) 分支逐一对齐，仅"已追踪 + canSee 假"为不变量排除的不可能情形。main 自检：稳态两路径 tracked 计数一致；未追踪+被 hide 场景 flag 一致（false），ALL OK。
+- **基准**：TrackCanSeeBench。**非空 inverted map（每玩家藏 5 个其他实体，真实 vanish 插件场景）**：before 141.421 ± 8.581 → after 122.851 ± 7.098 ns/op（**1.15×**，CI [132.8,150.0] vs [115.7,129.9] 不重叠，canSee 不可折叠）。**空 inverted map（无 vanish）**：before 81.073 ± 6.732 → after 121.751 ± 5.912 ns/op（0.67× 反转）——基准的**静态** `canSee` 方法被 JIT 内联 + 空表 profiling 常量折叠为恒 true，before 工作被消除而 after 多出的 seenBy.contains 不可消除。真实服务器的 `player.getBukkitEntity().canSee(entity.getBukkitEntity())` 经多态虚方法 + 跨方法边界**不可如此折叠**，故空表场景仍受益（机制保留，同 0140/0186/0199/0200 先例：复刻浅栈内静态方法被 JIT 折叠掩盖真实收益）。
+- **风险**：低（不变量严格证明；唯一代价是未追踪对多一次 seenBy.contains，但未追踪对在稳态聚集属少数）。
+
+### 暂缓（批次 50 survey 产出，待后续批次）
+- **PacketBundleUnpacker.encode 每包 `list::add` Consumer**（网络 survey 候选2，零风险）：非 bundle 包（99%）只执行一次 `consumer.accept(packet)`；改 `if (packet instanceof BundlePacket) unbundlePacket(packet, list::add); else list.add(packet);` 即免每包 Consumer 分配。低价值（IO 线程 + EA 可能已消除），留后续顺手带走。
+- **ServerEntity.addPairing ArrayList 预尺寸**（网络 survey 候选5，低价值）：sendPairingData 填 2-4 项，默认 cap 10 略浪费；预尺寸 4。边际收益，留后续。
+- **Connection.sendPacket 跨线程 lambda 池化 / PacketSendAction AtomicBoolean→boolean**（网络 survey 候选3/4，高价值高并发风险）：reentrancy/clearPacketQueue 并发使池化易错，需单独验证，留后续。
+- **ChunkMap.getEffectiveRange ridden 实体 getIndirectPassengers 缓存**（聚集 survey 候选4）：mount/dismount 失效钩子，中风险，留后续。
+- **trackedDataValues 缓存刷新点延后到 pairing**（聚集 survey 候选2，触碰已结案区域的新角度）：把 getNonDefaultValues 从 sendDirtyEntityData（每 dirty）延后到 sendPairingData（新观众），消除稳态 dirty 的无效刷新；等价性可达但触碰已结案区，留后续单独复审。
+- **插件指纹泄露加固**（安全 survey）：P0 `/plugins` `/version` `/help` 默认权限 TRUE（人人可用，唯一直接吐明文插件清单）+ brand payload 发 "Papo" + ping 版本串 + plugin channel REGISTER 广播；建议在 `paper-global.yml` 新增 `fingerprint-hardening` 区段（默认全保现状兼容）。这是独立安全加固轮次，留作批次 51。
+
+---
+
 ## 候选后续批次（来自 survey，按 价值×置信/风险 排序）
 
 

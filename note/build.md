@@ -219,6 +219,36 @@ JMH 的 `Blackhole` 构造会检查 JMH 运行时上下文，在普通 `main()` 
 
 与上方"configuration cache 会掩盖构建脚本损坏"同源：`touch` 源文件只改 mtime，Gradle 9 用内容哈希判定仍 UP-TO-DATE 跳过。要强制重编译验证，必须 `--rerun-tasks --no-configuration-cache`（见上条实证）。`compileJava` 增量缓存命中显示 "UP-TO-DATE / BUILD SUCCESSFUL" **不代表**当前源码真编译过。
 
+## 2026-08-02 补充：批次 50 踩坑记录
+
+### rebuildPatches 垃圾重命名复发（0163–0180 中文 Subject 头）+ 确定性恢复法
+
+本批新增 0203/0204 时跑 `:paper-server:rebuildPatches`，BUILD SUCCESSFUL 且新补丁正确生成，但**同时把 0163–0192 一批已有补丁按内部仓库的中文 subject 重新命名成垃圾名**（如 `0168-Papo-piston-scan-aabb.patch` → `0168-0168.patch`、`0163-...→0163-scratch-pos-0163.patch`）。这是批次 39 起就踩过、build.md 已记录的坑的**又一次复发**。
+
+**根因（实证）**：0163–0180 的补丁**文件名**虽被当年手工 `git mv` 成干净英文，但其 patch 文件的 **`Subject:` 头仍是中文**（RFC 2047 编码 `=?UTF-8?q?...?=`，如"潮涌核心框架"）。`rebuildPatches` 从内部仓库提交 subject 重新生成文件名，而内部 subject 经 applyPatches 取自这些中文 Subject 头 → slug 退化成垃圾。0181+ 的 Subject 头是干净英文 `Papo: ...` 故不受影响。
+
+**确定性恢复法（已验证）**：发现垃圾重命名后，**核平 patches/features 再从 HEAD 恢复，最后只补回本次新补丁**：
+```bash
+cp paper-server/patches/features/0203-*.patch /tmp/papo_0203.patch   # 先备份新补丁
+cp paper-server/patches/features/0204-*.patch /tmp/papo_0204.patch
+git rm -r --cached --quiet paper-server/patches/features/
+rm -rf paper-server/patches/features
+git checkout HEAD -- paper-server/patches/features/                  # 恢复干净命名的存量补丁
+cp /tmp/papo_0203.patch paper-server/patches/features/0203-...patch  # 补回新补丁
+cp /tmp/papo_0204.patch paper-server/patches/features/0204-...patch
+git add paper-server/patches/features/0203-*.patch paper-server/patches/features/0204-*.patch
+```
+恢复后 `git status` 仅显示本次新增补丁、0163–0192 全为干净命名。0107 等"被 rebuildPatches 用更多上下文行重新生成"的修改也一并回退到 HEAD（语义等价，HEAD 是已发布验证态）。
+
+**多轮持续优化的对策（避免每轮都做恢复舞）**：
+1. **根除**：一次性把 0163–0180 的中文 Subject 头改成与文件名一致的干净英文（`Subject: [PATCH] Papo: <desc>`），applyPatches 后内部 subject 即干净，往后全量 rebuildPatches 不再复发。本批暂未做，留作独立清理项。
+2. **规避**：未来新增补丁**不跑全量 rebuildPatches**，改用定向导出——内部仓库提交后 `git -C paper-server/src/minecraft/java format-patch -1 HEAD --stdout > paper-server/patches/features/02NN-<slug>.patch`（只产出新补丁，不重生成存量文件名）。注意 format-patch 的 From 行用真实 commit hash，paperweight 用 `0000…0000`，两者 `git am` 均可应用，但若要完全一致可手工归一化 From 行。
+3. **增量编译无需 applyPatches**：改 `src/minecraft/java` 源码 + 内部仓库提交后，`compileJava`/`test` 直接在源码树上跑即可（源码树即编译输入）；applyPatches 仅在源码树被重置（如被某任务清空）时才需重跑以重建。
+
+### rebuildPatches 过程中源码树瞬时回退 vanilla（非损坏）
+
+本批 rebuildPatches 运行期间，系统曾报告 `PlayerChunkSender.java` 显示为 vanilla（无任何 Papo 改动，连 0053/0141 都没有）。**这是 rebuildPatches 内部 applySourcePatches 的瞬态**：任务完成后内部仓库工作树 == HEAD（含全部补丁+本次新提交），源码恢复正常（grep `papoSelKey`/`papoAlreadyTracked` 命中、`git diff HEAD` 无差异、compileJava SUCCESSFUL）。教训：rebuildPatches 期间看到的源码状态不可信，以**任务完成后的内部仓库 HEAD + compileJava 结果**为准。
+
 ## 注意事项
 
 - **游戏版本红线：始终保持 Minecraft 1.21.11**。同步上游/合并分支时，`gradle.properties`（mcVersion/apiVersion=1.21.11）、根 `build.gradle.kts`（paperweight **2.0.0-beta.19**、Java 工具链 **21**、snapshots 仓库）绝不能取上游 26.x 侧的值。2026-07-30 的事故：合并 ver/1.21.11 时以 26.x 为基底解决冲突，paperweight 变 beta.21 导致 `spigot {}` 等 DSL 无法解析、构建脚本编译失败（报错为 "Unresolved reference 'spigot'/'createMojmapPaperclipJar'"），mcVersion 变 26.2。修复方式：内容恢复提交（`git commit-tree <1.21.11树> -p HEAD` + reset），不改写历史。教训：**configuration cache 会掩盖构建脚本损坏**——compileJava 命中缓存成功，但 rebuildPatches/help 触发脚本重编译才暴露问题；合并后必须跑一次 rebuildPatches 或 help 验证。
