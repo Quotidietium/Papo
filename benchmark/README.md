@@ -36,6 +36,8 @@ cd benchmark
 | `NbtStringWriteBench` | 0092 | `DataOutput.writeUTF` vs ASCII 快速路径（含字节级等价自检 main：空/短/长分块/utf8 回退/NUL 回退/65535 边界/超长异常） |
 | `NbtWriteAdapterBench` | 0095 | 每次分配 `ByteBufOutputStream` vs ThreadLocal 轻量 DataOutput 适配器（含字节级等价自检 main：对真实 Netty 4.2.7 逐方法比对 + 树形写出） |
 | `InventoryTriggerScanBench` | 0093 | 背包全槽位扫描（组件查找模型化）vs hasListeners 早退 |
+| `ChunkSelectBench` | 0203 | `Comparators.least` 装箱 Long 流选块 vs 原语 k 近邻（含等价性自检 main：多组随机输入下选出的 floor 个最近"距离多重集"一致） |
+| `TrackCanSeeBench` | 0204 | 已追踪对每对重算 canSee（HashMap 查找）vs seenBy.contains 短路跳过（含等价性自检 main：稳态计数 + 未追踪-被hide 路径一致） |
 
 ## 依赖
 

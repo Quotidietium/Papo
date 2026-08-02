@@ -1,0 +1,185 @@
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.ChunkSelectBench.after_primitiveKNearest
+
+# Run progress: 0.00% complete, ETA 00:01:04
+# Fork: 1 of 2
+# Warmup Iteration   1: 912.332 ns/op
+# Warmup Iteration   2: 874.571 ns/op
+# Warmup Iteration   3: 874.169 ns/op
+Iteration   1: 886.206 ns/op
+Iteration   2: 878.108 ns/op
+Iteration   3: 871.706 ns/op
+Iteration   4: 875.366 ns/op
+Iteration   5: 871.531 ns/op
+
+# Run progress: 12.50% complete, ETA 00:00:58
+# Fork: 2 of 2
+# Warmup Iteration   1: 900.638 ns/op
+# Warmup Iteration   2: 877.915 ns/op
+# Warmup Iteration   3: 857.177 ns/op
+Iteration   1: 864.046 ns/op
+Iteration   2: 865.186 ns/op
+Iteration   3: 856.842 ns/op
+Iteration   4: 867.114 ns/op
+Iteration   5: 854.158 ns/op
+
+
+Result "papo.bench.ChunkSelectBench.after_primitiveKNearest":
+  869.026 ±(99.9%) 14.641 ns/op [Average]
+  (min, avg, max) = (854.158, 869.026, 886.206), stdev = 9.684
+  CI (99.9%): [854.386, 883.667] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.ChunkSelectBench.before_boxedStream
+
+# Run progress: 25.00% complete, ETA 00:00:50
+# Fork: 1 of 2
+# Warmup Iteration   1: 7533.966 ns/op
+# Warmup Iteration   2: 6896.256 ns/op
+# Warmup Iteration   3: 7578.825 ns/op
+Iteration   1: 9809.617 ns/op
+Iteration   2: 8922.186 ns/op
+Iteration   3: 9284.566 ns/op
+Iteration   4: 9688.374 ns/op
+Iteration   5: 8776.812 ns/op
+
+# Run progress: 37.50% complete, ETA 00:00:42
+# Fork: 2 of 2
+# Warmup Iteration   1: 7582.909 ns/op
+# Warmup Iteration   2: 6920.048 ns/op
+# Warmup Iteration   3: 7447.896 ns/op
+Iteration   1: 7963.024 ns/op
+Iteration   2: 8608.721 ns/op
+Iteration   3: 8130.670 ns/op
+Iteration   4: 7987.431 ns/op
+Iteration   5: 7771.025 ns/op
+
+
+Result "papo.bench.ChunkSelectBench.before_boxedStream":
+  8694.243 ±(99.9%) 1109.970 ns/op [Average]
+  (min, avg, max) = (7771.025, 8694.243, 9809.617), stdev = 734.176
+  CI (99.9%): [7584.273, 9804.213] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.TrackCanSeeBench.after_skipIfTracked
+
+# Run progress: 50.00% complete, ETA 00:00:33
+# Fork: 1 of 2
+# Warmup Iteration   1: 87.611 ns/op
+# Warmup Iteration   2: 85.553 ns/op
+# Warmup Iteration   3: 113.491 ns/op
+Iteration   1: 120.132 ns/op
+Iteration   2: 117.657 ns/op
+Iteration   3: 121.345 ns/op
+Iteration   4: 123.394 ns/op
+Iteration   5: 126.548 ns/op
+
+# Run progress: 62.50% complete, ETA 00:00:25
+# Fork: 2 of 2
+# Warmup Iteration   1: 86.550 ns/op
+# Warmup Iteration   2: 86.009 ns/op
+# Warmup Iteration   3: 113.793 ns/op
+Iteration   1: 118.427 ns/op
+Iteration   2: 129.646 ns/op
+Iteration   3: 118.541 ns/op
+Iteration   4: 119.005 ns/op
+Iteration   5: 122.816 ns/op
+
+
+Result "papo.bench.TrackCanSeeBench.after_skipIfTracked":
+  121.751 ±(99.9%) 5.912 ns/op [Average]
+  (min, avg, max) = (117.657, 121.751, 129.646), stdev = 3.910
+  CI (99.9%): [115.839, 127.663] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.10, Java HotSpot(TM) 64-Bit Server VM, 21.0.10+8-LTS-217
+# VM invoker: F:\Java\21\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.TrackCanSeeBench.before_canSeeEveryPair
+
+# Run progress: 75.00% complete, ETA 00:00:16
+# Fork: 1 of 2
+# Warmup Iteration   1: 61.020 ns/op
+# Warmup Iteration   2: 55.811 ns/op
+# Warmup Iteration   3: 74.158 ns/op
+Iteration   1: 76.222 ns/op
+Iteration   2: 79.604 ns/op
+Iteration   3: 82.221 ns/op
+Iteration   4: 92.426 ns/op
+Iteration   5: 77.616 ns/op
+
+# Run progress: 87.50% complete, ETA 00:00:08
+# Fork: 2 of 2
+# Warmup Iteration   1: 61.081 ns/op
+# Warmup Iteration   2: 55.630 ns/op
+# Warmup Iteration   3: 74.599 ns/op
+Iteration   1: 82.579 ns/op
+Iteration   2: 81.684 ns/op
+Iteration   3: 79.543 ns/op
+Iteration   4: 79.679 ns/op
+Iteration   5: 79.156 ns/op
+
+
+Result "papo.bench.TrackCanSeeBench.before_canSeeEveryPair":
+  81.073 ±(99.9%) 6.732 ns/op [Average]
+  (min, avg, max) = (76.222, 81.073, 92.426), stdev = 4.453
+  CI (99.9%): [74.341, 87.805] (assumes normal distribution)
+
+
+# Run complete. Total time: 00:01:07
+
+REMEMBER: The numbers below are just data. To gain reusable insights, you need to follow up on
+why the numbers are the way they are. Use profilers (see -prof, -lprof), design factorial
+experiments, perform baseline and negative tests that provide experimental control, make sure
+the benchmarking environment is safe on JVM/OS/HW level, ask for reviews from the domain experts.
+Do not assume the numbers tell you what you want them to tell.
+
+NOTE: Current JVM experimentally supports Compiler Blackholes, and they are in use. Please exercise
+extra caution when trusting the results, look into the generated code to check the benchmark still
+works, and factor in a small probability of new VM bugs. Additionally, while comparisons between
+different JVMs are already problematic, the performance difference caused by different Blackhole
+modes can be very significant. Please make sure you use the consistent Blackhole mode for comparisons.
+
+Benchmark                                 Mode  Cnt     Score      Error  Units
+ChunkSelectBench.after_primitiveKNearest  avgt   10   869.026 ±   14.641  ns/op
+ChunkSelectBench.before_boxedStream       avgt   10  8694.243 ± 1109.970  ns/op
+TrackCanSeeBench.after_skipIfTracked      avgt   10   121.751 ±    5.912  ns/op
+TrackCanSeeBench.before_canSeeEveryPair   avgt   10    81.073 ±    6.732  ns/op
+
+Benchmark result is saved to results/bench-20260802-132846.json
