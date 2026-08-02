@@ -39,6 +39,7 @@ cd benchmark
 | `ChunkSelectBench` | 0203 | `Comparators.least` 装箱 Long 流选块 vs 原语 k 近邻（含等价性自检 main：多组随机输入下选出的 floor 个最近"距离多重集"一致） |
 | `TrackCanSeeBench` | 0204 | 已追踪对每对重算 canSee（HashMap 查找）vs seenBy.contains 短路跳过（含等价性自检 main：稳态计数 + 未追踪-被hide 路径一致） |
 | `FingerprintHardeningSelfCheck` | 0205/批次51 | 非性能——指纹泄露加固的行为自检（复刻 brand/status resolve + plugin-channels shouldBroadcast 全分支，18 项断言） |
+| `EntityDataPairingBench` | 0206 | trackedDataValues 每 dirty 刷新（getNonDefaultValues 全扫）vs 延后到 pairing（仅 packDirty）（含自检 main：packDirty/getNonDefaultValues 输出一致） |
 
 ## 依赖
 
