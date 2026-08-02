@@ -1572,6 +1572,22 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 
 ---
 
+## 批次 56（2026-08-02）：网络 pivot — Connection.sendPacket 消除 send-lambda（0209，高风险用户授权）
+
+用户授权攻坚最高价值网络点。compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh-microbench-batch56.md](report/perf/2026-08-02-jmh-microbench-batch56.md)。**1.29×（CI 不重叠），主价值是消除网络出站最高频 per-packet lambda 分配（GC 压力，微基准测不出）**。**线程改动推理验证（用户接受无 live 压测）**。
+
+### 0209 — Connection.sendPacket 消除 per-outbound-packet lambda
+- **文件**：`net/minecraft/network/Connection.java` `sendPacket`
+- **热点**：主线程发包（非 netty event loop，服务端发包常态）原每包 `execute(() -> doSendPacket(...))` 分配 lambda——网络出站最高频分配点。
+- **改法**：去掉 inEventLoop 分支与 execute(lambda)，无条件直调 `doSendPacket`。
+- **线程安全论证（逐项）**：`channel.write/writeAndFlush`+`addListener` netty 跨线程安全且按 channel 串行化保序；`getPlayer()` 读 volatile packetListener；`isConnected()` 读 channel（send():403 已同模式）；`sentPackets++` 在 sendPacket 调用方线程**不在** doSendPacket，消除 lambda 不改其语义；异常路径 disconnect 是既有跨线程模式。详见报告表格。
+- **基准**：SendLambdaBench before 1.065 ± 0.087 → after 0.827 ± 0.047 ns/op（**1.29×**，CI 不重叠）。EventLoop 经接口虚调用建模防 EA 消除 lambda。
+- **价值定位**：微基准 modest，真实收益是 per-outbound-packet 分配消除降低高吞吐下 GC 压力（微基准小堆无压力测不出）。
+- **残留风险**：未做 live 压测（用户知悉）；极端并发下异常-disconnect 路径理论竞态罕见且在消亡连接；单补丁可独立 revert。
+- **风险**：中（线程改动推理验证，非 live 实证）。
+
+---
+
 ## 候选后续批次（来自 survey，按 价值×置信/风险 排序）
 
 
