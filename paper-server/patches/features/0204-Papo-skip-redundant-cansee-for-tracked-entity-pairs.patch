@@ -1,0 +1,34 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sun, 2 Aug 2026 13:15:32 +0800
+Subject: [PATCH] Papo: skip redundant cansee for tracked entity pairs
+
+
+diff --git a/net/minecraft/server/level/ChunkMap.java b/net/minecraft/server/level/ChunkMap.java
+index 82c54161734df987c7b9892631eba99073c607b4..0da300148eea9003200b533d3b390250b511bb61 100644
+--- a/net/minecraft/server/level/ChunkMap.java
++++ b/net/minecraft/server/level/ChunkMap.java
+@@ -1408,9 +1408,22 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
+                 flag = flag && this.entity.broadcastToPlayer(player) && ChunkMap.this.isChunkTracked(player, this.entity.chunkPosition().x, this.entity.chunkPosition().z);
+                 // Paper end - Configurable entity tracking range by Y
+                 // CraftBukkit start - respect vanish API
+-                if (flag && !player.getBukkitEntity().canSee(this.entity.getBukkitEntity())) { // Paper - only consider hits
++                // Papo start - skip redundant vanish check for already-tracked pairs.
++                // Invariant: seenBy.contains(player.connection) ⟹ canSee(player, entity) == true.
++                // Every path that makes canSee false removes the pair from seenBy first:
++                //   hideEntity / setVisibleByDefault(false) / resetAndHideEntity
++                //     -> untrackAndHideEntity -> unregisterEntity -> TrackedEntity.removePlayer
++                // (CraftPlayer). The only writer to seenBy is seenBy.add below, which runs only
++                // when flag (hence canSee) is true; trackAndShowEntity re-adds via this same
++                // updatePlayer. So for a pair already in seenBy the canSee result is provably true
++                // and the CraftBukkit vanish branch cannot fire — skip the two getBukkitEntity()
++                // fetches plus the invertedVisibilityEntities.containsKey(uuid) HashMap lookup on
++                // the steady-state (entity × player) sweep that dominates when players cluster.
++                final boolean papoAlreadyTracked = this.seenBy.contains(player.connection);
++                if (!papoAlreadyTracked && flag && !player.getBukkitEntity().canSee(this.entity.getBukkitEntity())) { // Paper - only consider hits
+                     flag = false;
+                 }
++                // Papo end - skip redundant vanish check for already-tracked pairs
+                 // CraftBukkit end
+                 if (flag) {
+                     if (this.seenBy.add(player.connection)) {
