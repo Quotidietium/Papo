@@ -1555,6 +1555,23 @@ fingerprint-hardening 现覆盖 survey 全部主要向量：V1 plugin-channels�
 
 ---
 
+## 批次 55（2026-08-02）：网络 pivot 续 — PacketBundleUnpacker 非 bundle 包免 Consumer（0208）
+
+compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh-microbench-batch55.md](report/perf/2026-08-02-jmh-microbench-batch55.md)。**1.23×（CI 不重叠，EA 未消除）**。
+
+### 0208 — PacketBundleUnpacker.encode 非 bundle 包免 list::add Consumer
+- **文件**：`net/minecraft/network/PacketBundleUnpacker.java` `encode`
+- **热点**：IO 线程每出站包 `this.bundlerInfo.unbundlePacket(packet, list::add)`——`list::add` 是捕获局部 list 的方法引用，每求值分配一个 Consumer，经虚调用传入。非 bundle 包（99%）实际只执行 `consumer.accept(packet)`=`list.add(packet)`。
+- **改法**：`if (packet instanceof BundlePacket) unbundlePacket(packet, list::add); else list.add(packet);`。
+- **等价性**：unbundlePacket 对非 bundle 包走 else `consumer.accept`==list.add（type()≠bundle type）；bundle 走 unbundlePacket（内部精确判定）。`instanceof BundlePacket` 路由结果逐字一致，仅免非 bundle 路径的 Consumer 分配。
+- **基准**：BundleUnpackerBench before 4.504 ± 0.291 → after 3.669 ± 0.241 ns/op（**1.23×**，CI 不重叠）。EA 未消除（CI 不重叠证真实，非 0155 那种 EA 伪影）。
+- **风险**：零。
+
+### 网络 pivot 状态评估
+已落地网络出站路径：0203 区块选块去装箱（10×）、0206 实体数据同步（2.16×）、0207 PacketSendAction 去分配（2.03×）、0208 帧编码免 Consumer（1.23×）。**剩余安全网络点价值低**（VecDeltaCodec 实体位置包 base 缓存，零风险低价值）。**最高价值网络点 `Connection.sendPacket` 行451 send-lambda 仍需授权 + live 并发验证**（消除会让 sentPackets++ 跨线程）。建议：要么授权攻坚 send-lambda，要么网络主线闭合、转回聚集/其他。
+
+---
+
 ## 候选后续批次（来自 survey，按 价值×置信/风险 排序）
 
 
