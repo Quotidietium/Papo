@@ -1523,6 +1523,20 @@ fingerprint-hardening 现覆盖 survey 全部主要向量：V1 plugin-channels�
 
 ---
 
+## 批次 53（2026-08-02）：实体数据同步 trackedDataValues 刷新延后到 pairing（0206）
+
+回到性能主线（用户指示优先网络，本批为网络发送管线——实体数据包服务端准备——的 CPU 优化）。compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh-microbench-batch53.md](report/perf/2026-08-02-jmh-microbench-batch53.md)。**per-dirty-tick 2.16×（CI 不重叠）**。
+
+### 0206 — ServerEntity trackedDataValues 缓存刷新延后（实体数据包发送管线）
+- **文件**：`net/minecraft/server/level/ServerEntity.java`（字段/构造/sendDirtyEntityData/sendPairingData）
+- **热点**：`sendDirtyEntityData` 每次 dirty 都刷新 `trackedDataValues = getNonDefaultValues()`（全量扫描实体全部数据项，常 20-40 项 + 分配 List），但该字段只在 `sendPairingData`（新观众加入）被读。稳态聚集（战斗/药水效果）下 dirty 频繁、新观众稀少，刷新纯浪费。
+- **改法**：删除字段 + 构造初始化 + dirty 刷新；`sendPairingData` 即时 `entity.getEntityData().getNonDefaultValues()` 计算。
+- **等价性（与"ServerEntity 增量合并结案"是不同优化）**：dirty DELTA 包仍由 sendDirtyEntityData 经 packDirty 产生发送（行不变）；full 快照仍由 sendPairingData 在新观众时发送，仅改即时计算。**协议时点完全不变**。getNonDefaultValues 读当前值，实体数据仅经 set() 变更，故 pairing 即时算 = 原 last-refresh 字段值；null（全默认）语义保留。
+- **基准**：EntityDataPairingBench before 62.524 ± 8.693 → after 28.915 ± 1.798 ns/op（**2.16×**，CI 不重叠）。
+- **风险**：低（机制仅移除冗余刷新，不改协议）。
+
+---
+
 ## 候选后续批次（来自 survey，按 价值×置信/风险 排序）
 
 
