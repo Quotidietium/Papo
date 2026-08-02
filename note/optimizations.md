@@ -1475,6 +1475,37 @@ survey 1 "仔细复核"7 件中 4 件可证等价落地；Brain.getMemory 框架
 
 ---
 
+## 批次 51（2026-08-02）：插件指纹泄露加固（fingerprint-hardening 可控开关）
+
+> 安全加固轮次（非性能优化），针对用户报告"作弊客户端能读取服务端数据推测装了哪些插件"。三路 survey 的"插件泄露"向量已完整测绘。本轮落地 paper-global.yml 的 `fingerprint-hardening` 区段（默认全保现状），覆盖三个**纯 paper-server、客户端被动接收**的向量。compileJava + 全量 test 全绿；行为自检 18 项 ALL OK。报告：[note/report/2026-08-02-fingerprint-hardening.md](report/2026-08-02-fingerprint-hardening.md)。
+
+### 配置区段（直接提交，paper-server/src/main/java/.../GlobalConfiguration.java）
+新增 `GlobalConfiguration.FingerprintHardening`（嵌套 ConfigurationPart）：`brand-payload`(mode REAL/VANILLA/CUSTOM + custom-value)、`status`(version-string REAL/VANILLA/CUSTOM + custom-value)、`plugin-channels`(broadcast-mode ALL/WHITELIST/NONE + allowed-channels)。三个 section 各带 `resolve`/`shouldBroadcast` 实例方法。默认全保现状（REAL/REAL/ALL），config 未加载时回退 REAL/ALL。
+
+### 0205 — brand payload 解析（补丁，NMS）
+- **文件**：`net/minecraft/server/network/ServerConfigurationPacketListenerImpl.java` `startConfiguration`
+- **向量**：配置阶段发 `BrandPayload(server.getServerModName())` = "Papo"，客户端 F3 可见、被动接收（V2）。
+- **改法**：`BrandPayload(papoBrand(server))`，`papoBrand` 经 `GlobalConfiguration.get().fingerprintHardening.brandPayload.resolve(realBrand)` 按 mode 返回（REAL=现状 / VANILLA="vanilla" / CUSTOM=custom-value）。NMS 读 GlobalConfiguration 是既有模式（122 处）。`get()` 静态字段读无异常。
+- **兼容性**：REAL 默认行为逐字不变；Brand-Id 仍 papermc:paper，不影响 isBrandCompatible。
+- **风险**：低。
+
+### 直接提交（无补丁文件）— status / plugin-channels
+- **status.version-string**（[PaperServerListPingEventImpl.java](../paper-server/src/main/java/com/destroystokyo/paper/network/PaperServerListPingEventImpl.java)）：ping 版本串经 `papoVersionName(server)` 解析（V3a：未登录即可读的 "Papo 1.21.11"）。VANILLA=仅 MC 版本。
+- **plugin-channels.broadcast-mode**（[CraftPlayer.sendSupportedChannels](../paper-server/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java#L2367)）：`minecraft:register` 广播的 incoming channel 名逐个经 `shouldBroadcast` 过滤（V1：channel 名常可识别插件，最直接的被动插件身份泄露）。NONE 全不发、WHITELIST 仅 allowed-channels、过滤后空则不发 REGISTER。`if (stream.size() > 0)` 守卫。
+
+### 暂缓（survey 已测绘，留后续批次）
+- **V5 `/plugins` `/version` `/help` 默认权限 TRUE**（P0，最严重，唯一直接吐明文插件清单）：跨 paper-api（CommandPermissions:17-20 硬编码 TRUE）↔ paper-server（config 在此）。留**批次 52**——在 `CraftDefaultPermissions.registerCorePermissions`（pluginManager 已就绪）后按 config 用 `Permission.setDefault(OP)` 覆写三者 + recalculate。
+- **V4 Brigadier 命令树**：复用 `spigot.yml` `commands.send-namespaced` + `PlayerCommandSendEvent`，无需新开关。
+- V3b/V7/V8/V6：插件配置依赖或泄露面小，文档化即可。
+
+### 性能影响
+可忽略——brand/status 各一次/玩家（配置阶段/ping），plugin-channels 一次/玩家 join；均为一次静态字段读 + 字符串比较，亚微秒级，无分配。故无 JMH（改用行为自检 18 项 ALL OK 验证 resolve/filter 全分支 + 默认值兼容性）。
+
+### 踩坑（已记入 build.md）
+`@Comment` 在本仓库为单 String（非 String[]）——多行用 `+` 拼接，数组语法 `@Comment({...})` 编译报"批注值不是允许的类型"。`final` 变量在 try+catch 都赋值触发"可能已分配"定值分析错误——`GlobalConfiguration.get()` 是静态字段读无异常，去掉 try/catch 改直接读 + null 检查。rebuildPatches `rebuildResourcePatches` 仍因 Windows 文件锁 `git add -A exit 128` 间歇失败（重跑即过，build.md 已记）；feature 补丁用 rebuildPatches 生成（正确格式）+ 恢复法保留（避开 0163–0192 垃圾重命名复发）。`git format-patch` 定向导出格式与 paperweight 约定有差异（index 缩写 hash / `--` 签名尾 / hunk 头 `+line` 而非 `+_`），未采用，留待后续验证。
+
+---
+
 ## 候选后续批次（来自 survey，按 价值×置信/风险 排序）
 
 

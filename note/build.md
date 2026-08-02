@@ -249,6 +249,28 @@ git add paper-server/patches/features/0203-*.patch paper-server/patches/features
 
 本批 rebuildPatches 运行期间，系统曾报告 `PlayerChunkSender.java` 显示为 vanilla（无任何 Papo 改动，连 0053/0141 都没有）。**这是 rebuildPatches 内部 applySourcePatches 的瞬态**：任务完成后内部仓库工作树 == HEAD（含全部补丁+本次新提交），源码恢复正常（grep `papoSelKey`/`papoAlreadyTracked` 命中、`git diff HEAD` 无差异、compileJava SUCCESSFUL）。教训：rebuildPatches 期间看到的源码状态不可信，以**任务完成后的内部仓库 HEAD + compileJava 结果**为准。
 
+## 2026-08-02 补充：批次 51 踩坑记录
+
+### Paper 配置 @Comment 是单 String，不是 String[]
+
+`org.spongepowered.configurate.objectmapping.meta.Comment` 在本仓库是**单 String**（`@Comment("…" + "…")` 拼接多行），**不是 `String[]`**。用数组语法 `@Comment({"a","b"})` 编译报"批注值不是允许的类型"。现有代码（如 GlobalConfiguration 的 chunkLoading* 段）一律用 `+` 拼接单 String。规则：`@Comment` 多行写 `"line1 " + "line2"`，**不要** `@Comment({...})`。
+
+### final 变量在 try + catch 都赋值 → 定值分析错误
+
+`final T x; try { x = …; } catch { x = null; }` 报"可能已分配变量"——Java 对 final 变量的定值分析保守地认为 try 块赋值后异常仍可能进入 catch 二次赋值。本批 `GlobalConfiguration.get()` 被误包进 try/catch 防御，触发此错。**规则**：若赋值表达式本身不会抛（如 `GlobalConfiguration.get()` 是静态字段读取），**直接赋值 + null 检查**，不要 try/catch；确需捕获异常时用非 final 变量或两段式（先在 try 内取值到局部，再在 try 外赋给 final）。
+
+### Windows 下 `python3` 是 Store 占位符，用 `python`
+
+`/c/Users/.../WindowsApps/python3` 是 Microsoft Store 占位（不实际运行 Python，静默无输出）。真实 Python 在 `/f/Python-Launcher/python`（3.12）。脚本一律调 `python`，不要 `python3`。另：Git Bash 的 `/tmp/...` 与 Windows Python 的 `/tmp/...`（当前盘根）**不是同一目录**——跨 bash/python 传文件用 repo 相对路径或 `F:/...` 绝对 Windows 路径（正斜杠 Windows Python 也认）。
+
+### rebuildResourcePatches 仍间歇 git add -A exit 128（重跑即过）
+
+批次 28 已记的 Windows 文件锁竞争在本批复发一次（rebuildPatches 整体 FAILED，但 feature 补丁可能已由 rebuildSourcePatches 生成）。重跑 rebuildPatches 即过。注意区分：`rebuildResourcePatches` 失败 ≠ feature 补丁未生成——要 `ls patches/features` 确认 02NN 是否在场、是否为 rebuildPatches 正确格式（全 hash index 行、无 `--` 签名尾）。
+
+### `git format-patch` 定向导出 ≠ paperweight 补丁约定（未采用）
+
+本批尝试用 `git format-patch -1 HEAD` 定向导出新补丁以避开全量 rebuildPatches 的垃圾重命名复发。`git apply --check` 通过，但与 rebuildPatches 产物有格式差异：index 行用缩写 hash（vs 全 40 字符）、尾部带 `-- \n2.55.0` 签名、**hunk 头 `+` 侧用真实行号（vs paperweight 的 `+_` 约定）**。paperweight 的 applier（codechicken diffpatch，对 hunk 头/计数严格）是否接受未验证，故本批仍用 rebuildPatches + 恢复法（保证正确格式）。format-patch 工作流待后续用 applyPatches 实证后再启用。结论：**目前新增补丁仍走 rebuildPatches + 恢复法**（见批次 50 踩坑），format-patch 留作待验证优化。
+
 ## 注意事项
 
 - **游戏版本红线：始终保持 Minecraft 1.21.11**。同步上游/合并分支时，`gradle.properties`（mcVersion/apiVersion=1.21.11）、根 `build.gradle.kts`（paperweight **2.0.0-beta.19**、Java 工具链 **21**、snapshots 仓库）绝不能取上游 26.x 侧的值。2026-07-30 的事故：合并 ver/1.21.11 时以 26.x 为基底解决冲突，paperweight 变 beta.21 导致 `spigot {}` 等 DSL 无法解析、构建脚本编译失败（报错为 "Unresolved reference 'spigot'/'createMojmapPaperclipJar'"），mcVersion 变 26.2。修复方式：内容恢复提交（`git commit-tree <1.21.11树> -p HEAD` + reset），不改写历史。教训：**configuration cache 会掩盖构建脚本损坏**——compileJava 命中缓存成功，但 rebuildPatches/help 触发脚本重编译才暴露问题；合并后必须跑一次 rebuildPatches 或 help 验证。
