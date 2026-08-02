@@ -1,0 +1,61 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sun, 2 Aug 2026 18:31:03 +0800
+Subject: [PATCH] Papo: defer tracked data values refresh to pairing
+
+
+diff --git a/net/minecraft/server/level/ServerEntity.java b/net/minecraft/server/level/ServerEntity.java
+index 74a4a2280cc66eba5ca7785a7cb06c6193bc072c..fc0a13e0c1e9f3dc9bebb93598cc7a0792f22342 100644
+--- a/net/minecraft/server/level/ServerEntity.java
++++ b/net/minecraft/server/level/ServerEntity.java
+@@ -68,7 +68,8 @@ public class ServerEntity {
+     private List<Entity> lastPassengers = com.google.common.collect.ImmutableList.of(); // Paper - optimize passenger checks
+     private boolean wasRiding;
+     private boolean wasOnGround;
+-    private @Nullable List<SynchedEntityData.DataValue<?>> trackedDataValues;
++    // Papo - trackedDataValues field removed: the full non-default data snapshot is now computed
++    // fresh at pairing time (sendPairingData) instead of refreshed on every dirty event.
+     private final Set<net.minecraft.server.network.ServerPlayerConnection> trackedPlayers; // Paper
+ 
+     public ServerEntity(ServerLevel level, Entity entity, int updateInterval, boolean trackDelta, ServerEntity.Synchronizer synchronizer, final Set<net.minecraft.server.network.ServerPlayerConnection> trackedPlayers) { // Paper
+@@ -84,7 +85,7 @@ public class ServerEntity {
+         this.lastSentXRot = Mth.packDegrees(entity.getXRot());
+         this.lastSentYHeadRot = Mth.packDegrees(entity.getYHeadRot());
+         this.wasOnGround = entity.onGround();
+-        this.trackedDataValues = entity.getEntityData().getNonDefaultValues();
++        // Papo - trackedDataValues init removed; computed fresh at pairing (sendPairingData)
+     }
+ 
+     // Paper start - fix desync when a player is added to the tracker
+@@ -327,9 +328,19 @@ public class ServerEntity {
+ 
+         Packet<ClientGamePacketListener> addEntityPacket = this.entity.getAddEntityPacket(this);
+         consumer.accept(addEntityPacket);
+-        if (this.trackedDataValues != null) {
+-            consumer.accept(new ClientboundSetEntityDataPacket(this.entity.getId(), this.trackedDataValues));
++        // Papo start - compute the full non-default data snapshot fresh at pairing time instead of
++        // reading a field that was refreshed on every dirty event (sendDirtyEntityData). The field was
++        // refreshed every dirty tick but only read here (new viewer); in clusters with combat / potion
++        // effects dirty events are frequent while new viewers are rare, so the refresh was wasted work.
++        // Computing fresh reads the current values, which equal the last refresh (entity data only
++        // changes via SynchedEntityData.set(), which marks dirty); protocol timing is unchanged — the
++        // dirty delta is still sent in sendDirtyEntityData, the full snapshot still here. null (all
++        // values default → no data packet) semantics preserved.
++        final List<SynchedEntityData.DataValue<?>> papoPairingData = this.entity.getEntityData().getNonDefaultValues();
++        if (papoPairingData != null) {
++            consumer.accept(new ClientboundSetEntityDataPacket(this.entity.getId(), papoPairingData));
+         }
++        // Papo end - compute the full non-default data snapshot fresh at pairing time
+ 
+         if (this.entity instanceof LivingEntity livingEntity) {
+             Collection<AttributeInstance> syncableAttributes = livingEntity.getAttributes().getSyncableAttributes();
+@@ -396,7 +407,8 @@ public class ServerEntity {
+         SynchedEntityData entityData = this.entity.getEntityData();
+         List<SynchedEntityData.DataValue<?>> list = entityData.packDirty();
+         if (list != null) {
+-            this.trackedDataValues = entityData.getNonDefaultValues();
++            // Papo - trackedDataValues refresh removed; the full snapshot is computed fresh at pairing
++            // (sendPairingData). This dirty path only sends the delta.
+             this.synchronizer.sendToTrackingPlayersAndSelf(new ClientboundSetEntityDataPacket(this.entity.getId(), list));
+         }
+ 
