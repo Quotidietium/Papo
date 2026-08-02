@@ -1472,3 +1472,18 @@ survey 1 "仔细复核"7 件中 4 件可证等价落地；Brain.getMemory 框架
 - ~~**批次 36 预定**~~ **批次 36 已完成（0134-0149 + 直接提交 0150）**：ComponentSerialization 缓存接入、updateFluidOnEyes scratch、POI Optional 消除、交互三触发器门控、PlayerInteractEvent 门控×7、ItemCraftedEvent 门控×2、handleUseItemOn Vec3 展开、PlayerChunkSender 命令式、InteractWithDoor scratch+坐标直读、EntityEquipment VALUES、熔炉 SingleRecipeInput 缓存、ChunkHolder.broadcast 循环、光照包预分配、getEffectiveRange 外提、isSunBurnTick 延迟构造、tickEffects 展开、callPreCraftEvent 快路（直接提交，初记 0142，正名 0150）。
 
 已确认**已优化、勿重复**：EntityTickList.forEach、LevelTicks、LevelChunk.getBlockState、getEntitiesOfClass、Entity.collide 数学、CompoundTag.copy、PatchedDataComponentMap、getNearestPlayer、PoiManager、Brigadier 子节点查找等。
+
+---
+
+## 否决评估：ReobfServer 多线程重映射（启动期，非 tick 热路径）
+
+> 2026-08-02。用户要求优化服务端启动 remapping 速度，候选：[ReobfServer.java:72](../paper-server/src/main/java/io/papermc/paper/pluginremap/ReobfServer.java#L72) `.threads(1)` → 多线程。
+
+**机制**：运行时 reobf 由 `[ReobfServer]` 完成（mojmap jar 为兼容传统 Spigot 插件，把 mojang 命名重映射为 Spigot 命名）。ART（AutoRenamingTool，paper-server shade 较新版）的 `threads(n)` 经 `AsyncHelper` 在 n>1 时用 `newWorkStealingPool(n)` 并行处理 class entry。
+
+**独立基准实证**（[报告](report/perf/2026-08-02-reobf-threads-bench.md)）：
+- 正确性 ✓：threads(1) vs threads(8) 产物 17590 entries 逐字节一致；
+- 速度 ✗：threads(1) 2611ms vs threads(8) 2577ms（1.01×）；scaling 1/2/4/8/16/32 = 2670/2275/2660/2659/2735/2988 ms（best），threads≥4 持平/略差；
+- 瓶颈：ART 内部单线程 jar IO + inheritance map 构建，可并行的 ASM class 重命名占比小且 threads=2 即饱和。
+
+**否决**：实测无实质收益，按「实测无收益即撤」纪律（同 0100/0181/0187）不落地。reobf 仅在缓存 `plugins/.paper-remapped/remap-classpath/<hash>.jar` 缺失时跑一次；减少其对启动影响的正道是保留缓存或分发 reobf jar（见 [启动分析报告](report/2026-08-02-startup-remap-analysis.md)），非加速单次。

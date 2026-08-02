@@ -198,11 +198,14 @@ Papo 是 **mojmap** jar → 运行时该类名为 `MobCategory` → `reobf()==fa
 - 适用：**仅**装的都是不碰 NMS 的纯现代 Paper 插件的服。对大多数真实服（常用 RPG/经济/物理等含 NMS 的插件）**不现实**。
 - 建议：仅作「排查对照」——临时开启可验证「reobf 是否就是启动慢的主因」。
 
-### 方案 D（不推荐，仅记录）：把 `threads(1)` 改多线程
+### 方案 D（已否决，实证）：把 `threads(1)` 改多线程 —— 实测无效
 
-[ReobfServer.java:72](../../paper-server/src/main/java/io/papermc/paper/pluginremap/ReobfServer.java#L72) `.threads(1)` 改为按 CPU 核数。理论上能把单次 reobf 从 5.4s 降到 ~1-2s。
+**2026-08-02 经独立基准实证否决**（详见 [reobf 多线程评估报告](perf/2026-08-02-reobf-threads-bench.md)）。曾设想把 [ReobfServer.java:72](../../paper-server/src/main/java/io/papermc/paper/pluginremap/ReobfServer.java#L72) 的 `.threads(1)` 改多线程以加速单次 reobf，实测 threads scaling（1/2/4/8/16/32）结果：
 
-- **不推荐**的原因：reobf 在方案 A 下只跑一次，为「只发生一次的 5s」去改上游 ART 调用并承担回归风险，ROI 极低；且 ART 多线程对签名/manifest 处理有已知的边界 case。**除非你坚持用 mojmap jar 且无法保留缓存（每次必跑）**，才值得考虑。
+- 正确性 ✓（threads(1) vs threads(8) 产物 17590 entries 逐字节一致）；
+- 速度 ✗（threads(1) 2611ms vs threads(8) 2577ms，**仅 1.01×**；threads≥4 持平/略差）。
+
+瓶颈是 ART 内部的**单线程 jar IO + inheritance map 构建**，可并行的 ASM class 重命名只占很小且 threads=2 即饱和的部分。**按「实测无收益即撤」纪律不落地。** 单次 reobf 速度本身难以优化，仍应走方案 A（缓存）/ 方案 B（reobf jar）。
 
 ---
 
