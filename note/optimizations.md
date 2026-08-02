@@ -1537,6 +1537,24 @@ fingerprint-hardening 现覆盖 survey 全部主要向量：V1 plugin-channels�
 
 ---
 
+## 批次 54（2026-08-02）：网络 pivot — Connection 出站队列 PacketSendAction 去分配（0207）
+
+按用户"优先网络性能"指示，本批起聚焦网络出站路径。compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh-microbench-batch54.md](report/perf/2026-08-02-jmh-microbench-batch54.md)。**per-queued-packet 2.03×（CI 不重叠）**。
+
+### 0207 — PacketSendAction 消除 delegate lambda + AtomicBoolean→boolean
+- **文件**：`net/minecraft/network/Connection.java`（WrappedConsumer + PacketSendAction）
+- **热点**：`send` 的非 canSendImmediate 分支（突发负载下 queue 非空时命中）每排队包 `new PacketSendAction` 分配 3 对象：PacketSendAction + delegate lambda（`connection -> connection.sendPacket(packet,listener,flush)` 捕获三元组）+ AtomicBoolean（consumed）。
+- **改法**：PacketSendAction 加 listener/flush 字段 + override `accept` 直调 sendPacket（免 delegate lambda，`super(null)`）；WrappedConsumer.consumed 由 AtomicBoolean 降为 boolean。
+- **等价性（线程安全）**：`tryMarkConsumed`/`isConsumed` 仅在 `processQueue`（:534/:546）调用；processQueue 经 flushQueue（:507 主线程 play / :511 synchronized login）单线程访问，同 Connection 不并发 → CAS 非必要，boolean 安全。tryMarkConsumed 首次 true/再 false 与 CAS 语义一致。accept 调用序列逐字一致（原 delegate→sendPacket，新直调 sendPacket 同参）。`WrappedConsumer(action)`/`WrappedConsumer(Connection::flush)` 仍用非空 delegate 不受影响。
+- **基准**：PacketSendActionBench before 5.379 ± 0.314 → after 2.651 ± 0.245 ns/op（**2.03×**，CI 不重叠）；每排队包 3 对象→1 对象。
+- **风险**：低（单线程不变量已实证；accept 调用序列逐字一致）。
+
+### 网络 pivot 后续
+- **高风险高价值（需授权 + live 验证）**：`Connection.sendPacket` 行451 `execute(() -> doSendPacket(...))`——主线程发包每包分配 lambda（网络出站最高频分配点）。消除会让 `sentPackets++`（普通 int）跨线程，需 live 压测。auto-driven 不盲改。
+- 待评估：PacketBundleUnpacker 每包 Consumer（零风险低价值）、VecDeltaCodec base 缓存（零风险低价值）。
+
+---
+
 ## 候选后续批次（来自 survey，按 价值×置信/风险 排序）
 
 
