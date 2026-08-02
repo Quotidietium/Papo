@@ -2367,21 +2367,35 @@ public class CraftPlayer extends CraftHumanEntity implements Player, PluginMessa
     public void sendSupportedChannels() {
         if (this.getHandle().connection == null) return;
         Set<String> listening = this.server.getMessenger().getIncomingChannels();
+        if (listening.isEmpty()) return;
 
-        if (!listening.isEmpty()) {
-            ByteArrayOutputStream stream = new ByteArrayOutputStream();
+        // Papo start - fingerprint hardening: filter which incoming channel names are broadcast to
+        // the client via minecraft:register (channel names can reveal installed plugins).
+        // GlobalConfiguration.get() is a static field read (throw-free); null when config not yet loaded.
+        final io.papermc.paper.configuration.GlobalConfiguration papoCfg = io.papermc.paper.configuration.GlobalConfiguration.get();
+        final io.papermc.paper.configuration.GlobalConfiguration.FingerprintHardening.PluginChannels papoPc =
+            (papoCfg != null) ? papoCfg.fingerprintHardening.pluginChannels : null;
+        // Papo end - fingerprint hardening
 
-            for (String channel : listening) {
-                try {
-                    stream.write(channel.getBytes(StandardCharsets.UTF_8));
-                    stream.write((byte) 0);
-                } catch (IOException ex) {
-                    Logger.getLogger(CraftPlayer.class.getName()).log(Level.SEVERE, "Could not send Plugin Channel REGISTER to " + this.getName(), ex);
-                }
+        ByteArrayOutputStream stream = new ByteArrayOutputStream();
+
+        for (String channel : listening) {
+            // Papo start - fingerprint hardening (per-channel broadcast filter)
+            if (papoPc != null && !papoPc.shouldBroadcast(channel)) continue;
+            // Papo end - fingerprint hardening (per-channel broadcast filter)
+            try {
+                stream.write(channel.getBytes(StandardCharsets.UTF_8));
+                stream.write((byte) 0);
+            } catch (IOException ex) {
+                Logger.getLogger(CraftPlayer.class.getName()).log(Level.SEVERE, "Could not send Plugin Channel REGISTER to " + this.getName(), ex);
             }
+        }
 
+        // Papo start - fingerprint hardening: only send if at least one channel passed the filter
+        if (stream.size() > 0) {
             this.sendCustomPayload(ServerGamePacketListenerImpl.CUSTOM_REGISTER, stream.toByteArray());
         }
+        // Papo end - fingerprint hardening
     }
 
     @Override

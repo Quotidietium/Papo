@@ -74,6 +74,77 @@ public class GlobalConfiguration extends ConfigurationPart {
         )
         public int playerMaxConcurrentChunkGenerates = 0;
     }
+
+    // Papo start - fingerprint hardening: control what identifying information the server sends to
+    // clients, so that a (modified) client cannot trivially infer the installed server software or
+    // plugins. Every option defaults to the current behavior for full compatibility; opt in to hide.
+    public FingerprintHardening fingerprintHardening;
+
+    public class FingerprintHardening extends ConfigurationPart {
+        @Comment("Fingerprint hardening: control what identifying information the server sends to clients. "
+            + "All options default to current behavior (REAL/ALL). Opt in to reduce server-software / plugin fingerprinting.")
+        public BrandPayload brandPayload;
+
+        public class BrandPayload extends ConfigurationPart {
+            @Comment("Brand string sent in the minecraft:brand payload (shown in the client F3 screen). "
+                + "REAL = actual server brand (default); VANILLA = \"vanilla\"; CUSTOM = custom-value.")
+            public String mode = "REAL";
+
+            @Comment("Brand sent when mode = CUSTOM. Falls back to REAL if empty.")
+            public String customValue = "";
+
+            /** Returns the brand to send, applying the configured mode (unknown mode falls back to REAL). */
+            public String resolve(final String realBrand) {
+                if ("VANILLA".equals(this.mode)) return "vanilla";
+                if ("CUSTOM".equals(this.mode)) return (this.customValue != null && !this.customValue.isEmpty()) ? this.customValue : realBrand;
+                return realBrand;
+            }
+        }
+
+        public Status status;
+
+        public class Status extends ConfigurationPart {
+            @Comment("Version string sent in the server-list ping (ServerStatus.Version.name). "
+                + "REAL = \"<brand> <mcversion>\" (default); VANILLA = MC version only; CUSTOM = custom-value.")
+            public String versionString = "REAL";
+
+            @Comment("Version string sent when version-string = CUSTOM. Falls back to REAL if empty.")
+            public String customValue = "";
+
+            /**
+             * Returns the version name to send, applying the configured mode.
+             *
+             * @param realVersionName the full current string ("<brand> <mcversion>")
+             * @param mcVersion the bare Minecraft version (used for VANILLA mode)
+             */
+            public String resolve(final String realVersionName, final String mcVersion) {
+                if ("VANILLA".equals(this.versionString)) return mcVersion;
+                if ("CUSTOM".equals(this.versionString)) return (this.customValue != null && !this.customValue.isEmpty()) ? this.customValue : realVersionName;
+                return realVersionName;
+            }
+        }
+
+        public PluginChannels pluginChannels;
+
+        public class PluginChannels extends ConfigurationPart {
+            @Comment("Controls which plugin-messaging channel names are broadcast to clients via minecraft:register. "
+                + "Channel names can reveal which plugins are installed. "
+                + "ALL = send all incoming channels (default); WHITELIST = only allowed-channels; NONE = send none.")
+            public String broadcastMode = "ALL";
+
+            @Comment("Channels to broadcast when broadcast-mode = WHITELIST.")
+            public java.util.List<String> allowedChannels = new java.util.ArrayList<>();
+
+            /** Returns whether a channel should be broadcast to clients given the configured mode. */
+            public boolean shouldBroadcast(final String channel) {
+                if ("NONE".equals(this.broadcastMode)) return false;
+                if ("WHITELIST".equals(this.broadcastMode)) return this.allowedChannels.contains(channel);
+                return true; // ALL (default) or unknown
+            }
+        }
+    }
+    // Papo end - fingerprint hardening
+
     static void set(final GlobalConfiguration instance) {
         GlobalConfiguration.instance = instance;
     }
