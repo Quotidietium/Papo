@@ -1,0 +1,80 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sun, 2 Aug 2026 13:15:32 +0800
+Subject: [PATCH] Papo: primitive k-nearest chunk send selection
+
+
+diff --git a/net/minecraft/server/network/PlayerChunkSender.java b/net/minecraft/server/network/PlayerChunkSender.java
+index cb41618405895bd920539a333cd8f8cd30233e0b..e7bb96b027a85d57413ef0b2081bd77d660fabc1 100644
+--- a/net/minecraft/server/network/PlayerChunkSender.java
++++ b/net/minecraft/server/network/PlayerChunkSender.java
+@@ -1,6 +1,5 @@
+ package net.minecraft.server.network;
+ 
+-import com.google.common.collect.Comparators;
+ import com.mojang.logging.LogUtils;
+ import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+ import it.unimi.dsi.fastutil.longs.LongSet;
+@@ -99,14 +98,54 @@ public class PlayerChunkSender {
+         int floor = Mth.floor(this.batchQuota);
+         List<LevelChunk> list;
+         if (!this.memoryConnection && this.pendingChunks.size() > floor) {
+-            // Papo start - keep Comparators.least selection exactly, but resolve the selected
+-            // keys with a plain loop instead of a second stream pipeline (mapToLong/mapToObj/filter/toList).
+-            java.util.List<Long> leastKeys = this.pendingChunks
+-                .stream()
+-                .collect(Comparators.least(floor, Comparator.comparingInt(chunkPos::distanceSquared)));
+-            list = new java.util.ArrayList<>(leastKeys.size());
+-            for (Long key : leastKeys) {
+-                LevelChunk levelChunk = chunkMap.getChunkToSend(key.longValue());
++            // Papo start - primitive k-nearest selection, replacing Comparators.least over a
++            // boxed Stream<Long>. The original .stream().collect(Comparators.least(floor, ...))
++            // boxed every pending long to Long and rebuilt Guava PriorityQueue/collector machinery
++            // on each call (burst movement: pending can be hundreds per tick per player). This
++            // version iterates the primitive longIterator and keeps the `floor` nearest chunks in
++            // primitive arrays (floor <= 64, the batchQuota cap). Result is the `floor` nearest
++            // pending chunks sorted nearest-first: identical to Comparators.least when chunk
++            // distances are distinct; when ties occur at the selection boundary, which equidistant
++            // chunk is chosen is unspecified in both implementations and unobservable (equidistant
++            // chunks are batch-sent this tick; unselected ones remain in pendingChunks and are sent
++            // on a later tick — the client cannot distinguish which tied chunk arrives first).
++            // distanceSquared is ChunkPos's own int-returning primitive overload, so no boxing.
++            final long[] papoSelKey = new long[floor];
++            final int[] papoSelDist = new int[floor];
++            int papoSel = 0;
++            int papoMaxIdx = 0;
++            for (it.unimi.dsi.fastutil.longs.LongIterator papoIt = this.pendingChunks.longIterator(); papoIt.hasNext();) {
++                final long papoKey = papoIt.nextLong();
++                final int papoDist = chunkPos.distanceSquared(papoKey);
++                if (papoSel < floor) {
++                    papoSelKey[papoSel] = papoKey;
++                    papoSelDist[papoSel] = papoDist;
++                    if (papoDist > papoSelDist[papoMaxIdx]) papoMaxIdx = papoSel;
++                    papoSel++;
++                } else if (papoDist < papoSelDist[papoMaxIdx]) {
++                    // evict the current farthest-held entry, replace with this nearer one
++                    papoSelKey[papoMaxIdx] = papoKey;
++                    papoSelDist[papoMaxIdx] = papoDist;
++                    // recompute the farthest among the `floor` held entries
++                    for (int j = 0; j < floor; j++) {
++                        if (papoSelDist[j] > papoSelDist[papoMaxIdx]) papoMaxIdx = j;
++                    }
++                }
++            }
++            // selection-sort the held entries ascending by distance (floor <= 64, tiny)
++            for (int a = 0; a < papoSel; a++) {
++                int best = a;
++                for (int b = a + 1; b < papoSel; b++) {
++                    if (papoSelDist[b] < papoSelDist[best]) best = b;
++                }
++                if (best != a) {
++                    final long tk = papoSelKey[a]; papoSelKey[a] = papoSelKey[best]; papoSelKey[best] = tk;
++                    final int td = papoSelDist[a]; papoSelDist[a] = papoSelDist[best]; papoSelDist[best] = td;
++                }
++            }
++            list = new java.util.ArrayList<>(papoSel);
++            for (int a = 0; a < papoSel; a++) {
++                LevelChunk levelChunk = chunkMap.getChunkToSend(papoSelKey[a]);
+                 if (levelChunk != null) {
+                     list.add(levelChunk);
+                 }
