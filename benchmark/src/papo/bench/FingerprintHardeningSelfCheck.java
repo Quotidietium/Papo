@@ -40,6 +40,13 @@ public final class FingerprintHardeningSelfCheck {
         return true; // ALL (default) or unknown
     }
 
+    // 复刻 GlobalConfiguration.FingerprintHardening.Commands.papoResolveDefault（返回串而非枚举，便于独立自检）
+    static String resolveCommandDefault(final String playerVisibleDefaults) {
+        if ("op".equalsIgnoreCase(playerVisibleDefaults)) return "OP";
+        if ("false".equalsIgnoreCase(playerVisibleDefaults)) return "FALSE";
+        return "TRUE"; // true (default) / unknown
+    }
+
     private static int checks = 0;
     private static void check(final boolean cond, final String msg) {
         checks++;
@@ -83,6 +90,16 @@ public final class FingerprintHardeningSelfCheck {
         check(!shouldBroadcast("NONE", allowed, "bungeecord:main"), "channels NONE blocks even listed");
         // 非法 mode 回退 ALL
         check(shouldBroadcast("GARBAGE", allowed, "x:y"), "channels unknown mode -> ALL");
+
+        // === commands.playerVisibleDefaults（V5 命令权限默认）===
+        // 默认 true=TRUE（兼容性：人人可用 /plugins，现状）
+        check(resolveCommandDefault("true").equals("TRUE"), "cmd true -> TRUE");
+        check(resolveCommandDefault("op").equals("OP"), "cmd op -> OP（仅 OP 可见插件清单）");
+        check(resolveCommandDefault("false").equals("FALSE"), "cmd false -> FALSE");
+        check(resolveCommandDefault("OP").equals("OP"), "cmd case-insensitive OP");
+        check(resolveCommandDefault("False").equals("FALSE"), "cmd case-insensitive FALSE");
+        check(resolveCommandDefault("").equals("TRUE"), "cmd empty -> TRUE fallback");
+        check(resolveCommandDefault("garbage").equals("TRUE"), "cmd unknown -> TRUE fallback");
 
         System.out.println("ALL OK (" + checks + " checks)");
     }
