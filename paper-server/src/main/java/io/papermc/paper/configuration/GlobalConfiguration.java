@@ -142,6 +142,23 @@ public class GlobalConfiguration extends ConfigurationPart {
                 return true; // ALL (default) or unknown
             }
         }
+
+        public Commands commands;
+
+        public class Commands extends ConfigurationPart {
+            @Comment("Default permission for player-visible commands that reveal server info "
+                + "(bukkit.command.plugins / bukkit.command.version / bukkit.command.help). "
+                + "true = everyone (default, current behavior); op = only operators; false = no one by default. "
+                + "Note: applied at server startup; changes require a restart to take effect.")
+            public String playerVisibleDefaults = "true";
+
+            /** Resolves the configured value to a PermissionDefault (unknown values fall back to TRUE). */
+            public org.bukkit.permissions.PermissionDefault papoResolveDefault() {
+                if ("op".equalsIgnoreCase(this.playerVisibleDefaults)) return org.bukkit.permissions.PermissionDefault.OP;
+                if ("false".equalsIgnoreCase(this.playerVisibleDefaults)) return org.bukkit.permissions.PermissionDefault.FALSE;
+                return org.bukkit.permissions.PermissionDefault.TRUE; // true (default) / unknown
+            }
+        }
     }
     // Papo end - fingerprint hardening
 
