@@ -42,6 +42,7 @@ cd benchmark
 | `EntityDataPairingBench` | 0206 | trackedDataValues 每 dirty 刷新（getNonDefaultValues 全扫）vs 延后到 pairing（仅 packDirty）（含自检 main：packDirty/getNonDefaultValues 输出一致） |
 | `PacketSendActionBench` | 0207 | PacketSendAction 3 对象（action+delegate lambda+AtomicBoolean）vs 1 对象（直调 accept+boolean）（含自检 main：accept 触发 sendPacket + tryMarkConsumed 语义一致；用 Object sink 不依赖 Blackhole） |
 | `BundleUnpackerBench` | 0208 | 帧编码每包 unbundlePacket+list::add Consumer vs 非 bundle 直 list.add（含自检 main：非 bundle list 内容一致） |
+| `SendLambdaBench` | 0209 | Connection.sendPacket 非 event loop 时 execute(lambda) vs 直调 doSendPacket（含自检 main：writes/sentPackets 一致） |
 
 ## 依赖
 
