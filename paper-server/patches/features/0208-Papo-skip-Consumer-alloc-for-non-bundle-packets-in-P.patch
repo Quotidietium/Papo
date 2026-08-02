@@ -1,0 +1,39 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sun, 2 Aug 2026 18:49:30 +0800
+Subject: [PATCH] Papo: skip Consumer alloc for non-bundle packets in
+ PacketBundleUnpacker
+
+
+diff --git a/net/minecraft/network/PacketBundleUnpacker.java b/net/minecraft/network/PacketBundleUnpacker.java
+index 4eb5ad164c82d61b7ec4d274634a93e57802a354..f93d17e28974835154ff538a31cbd625e8f65c5d 100644
+--- a/net/minecraft/network/PacketBundleUnpacker.java
++++ b/net/minecraft/network/PacketBundleUnpacker.java
+@@ -3,6 +3,7 @@ package net.minecraft.network;
+ import io.netty.channel.ChannelHandlerContext;
+ import io.netty.handler.codec.MessageToMessageEncoder;
+ import java.util.List;
++import net.minecraft.network.protocol.BundlePacket;
+ import net.minecraft.network.protocol.BundlerInfo;
+ import net.minecraft.network.protocol.Packet;
+ 
+@@ -15,7 +16,18 @@ public class PacketBundleUnpacker extends MessageToMessageEncoder<Packet<?>> {
+ 
+     @Override
+     protected void encode(ChannelHandlerContext ctx, Packet<?> packet, List<Object> list) throws Exception {
+-        this.bundlerInfo.unbundlePacket(packet, list::add);
++        // Papo start - avoid the per-packet list::add Consumer allocation for the common (non-bundle)
++        // case. unbundlePacket routes non-bundle packets to consumer.accept(packet) == list.add(packet)
++        // (its else branch — a non-BundlePacket's type() != the bundle type); only a BundlePacket needs
++        // the consumer for expansion. So route bundles through unbundlePacket (precise type()==type
++        // check inside, wrong-type bundles fall to its else == list.add) and add non-bundles directly.
++        // Outcome identical, no Consumer allocated on the IO thread for the 99% non-bundle path.
++        if (packet instanceof BundlePacket) {
++            this.bundlerInfo.unbundlePacket(packet, list::add);
++        } else {
++            list.add(packet);
++        }
++        // Papo end - avoid per-packet Consumer allocation for non-bundle packets
+         if (packet.isTerminal()) {
+             ctx.pipeline().remove(ctx.name());
+         }
