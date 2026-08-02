@@ -1506,6 +1506,23 @@ survey 1 "仔细复核"7 件中 4 件可证等价落地；Brain.getMemory 框架
 
 ---
 
+## 批次 52（2026-08-02）：V5 命令默认权限加固（闭合插件泄露主题）
+
+补齐批次 51 fingerprint-hardening 暂缓的第 4 个开关，闭合插件指纹泄露主题。无新补丁（两处均为 src/main 直接提交）。compileJava + 全量 test 全绿；行为自检扩到 25 项 ALL OK。报告：[note/report/2026-08-02-fingerprint-hardening-commands.md](report/2026-08-02-fingerprint-hardening-commands.md)。
+
+### 直接提交 — `fingerprint-hardening.commands.player-visible-defaults`（V5）
+- **文件**：`GlobalConfiguration.FingerprintHardening.Commands`（新增 section，`playerVisibleDefaults` String true/op/false + `papoResolveDefault()` → PermissionDefault）+ `CraftDefaultPermissions.registerCorePermissions`（新增 `papoOverrideCommandVisibility()`）。
+- **向量**：`CommandPermissions`（paper-api）把 `bukkit.command.plugins/version/help` 默认设为 TRUE（人人可用），是唯一**直接吐完整明文插件清单**的向量（主动，但默认权限 TRUE 使任意改装客户端可触发）。
+- **改法**：`CommandPermissions.registerPermissions(parent)` 之后，按 config 用 `Permission.setDefault(def)` 覆写三者 + `recalculatePermissibles()`；三者经 `Bukkit.getPluginManager().getPermission(name)` 取得（DefaultPermissions 经 `addPermission` 注册进 PluginManager）。时机在 `CraftServer.enablePlugins`（pluginManager 已就绪、无在线玩家），安全。
+- **等价性/兼容性**：`true`（默认）与 0.27.0 逐字一致；config 未加载回退 TRUE。`op`/`false` 仅改这三条命令的**默认**权限，OP 经附加/显式赋权不受影响。**仅启动时应用，改 config 需重启**（与其余三个 live 读取的开关不同，文档注明）。
+- **风险**：低（切 `op` 后普通玩家失去 `/plugins`/`/ver`/`/help`，老服依赖需自查）。
+- **性能**：启动一次性 setDefault+recalculate，运行时零开销。
+
+### 插件泄露主题闭合
+fingerprint-hardening 现覆盖 survey 全部主要向量：V1 plugin-channels（被动）/ V2 brand（被动）/ V3a status（被动）/ V5 commands（主动）。V4 Brigadier 命令树复用既有 `spigot.yml` `commands.send-namespaced`，无需新开关。
+
+---
+
 ## 候选后续批次（来自 survey，按 价值×置信/风险 排序）
 
 
