@@ -1630,3 +1630,26 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 - 瓶颈：ART 内部单线程 jar IO + inheritance map 构建，可并行的 ASM class 重命名占比小且 threads=2 即饱和。
 
 **否决**：实测无实质收益，按「实测无收益即撤」纪律（同 0100/0181/0187）不落地。reobf 仅在缓存 `plugins/.paper-remapped/remap-classpath/<hash>.jar` 缺失时跑一次；减少其对启动影响的正道是保留缓存或分发 reobf jar（见 [启动分析报告](report/2026-08-02-startup-remap-analysis.md)），非加速单次。
+
+---
+
+## 批次 57（2026-08-02）：稳定性修复——实体爆炸卡服防护 + 回退 0209
+
+> 性质：**稳定性/防护修复**（非 JMH 性能优化）。触发：用户报告领地（Residence）保护区域破坏草丛 + 掉种子插件在 BlockBreakEvent 被取消时仍无限 `world.dropItem` 生成种子 ItemEntity → 实体爆炸 → 主线程卡死（玩家均超时，经确认非异常崩溃、无堆栈）。详见 [release 0.32.1](release/0.32.1.md)。
+
+### 根因（逐行确认，排除 Papo 回归）
+1. `ServerPlayerGameMode.destroyBlock`：BlockBreakEvent 取消时走"不掉落、不破坏、只发 BlockUpdate 纠正客户端"——左键破坏路径 **Papo 未改**（门控只改右键 interact）。
+2. 种子是插件自己 `dropItem`（绕过 `captureDrops`），Papo 无法干预插件。
+3. ItemEntity 合并/拾取/tick 全原版，**Papo 未破坏合并**（`callItemMergeEvent` 零监听器快路返回 true=允许合并）。
+4. **关键防护缺失**：Moonrise tick 所有激活实体，无 Spigot 的 `max-tick-time.entity`、无任何 per-chunk/per-type 实体上限（`spawn-limits` 不管 ItemEntity——MISC 被 `CraftSpawnCategory` 排除；`altItemDespawnRate` 是时间限制非数量）。
+5. 是 Papo 与原版 Paper 共有的防护缺失，非 Papo 回归。
+
+### 0209（新）— per-chunk ItemEntity 数量上限（config-gated 默认 -1 关闭）
+照抄 Moonrise 既有的同构参考实现 `enderPearlChunkCount`（per-chunk 末影珍珠计数，[ServerEntityLookup.java](../paper-server/src/minecraft/java/ca/spottedleaf/moonrise/patches/chunk_system/level/entity/server/ServerEntityLookup.java)）：
+- `ServerEntityLookup` 加 `papoItemEntityChunkCount`（`Long2IntOpenHashMap`），在 `addEntityCallback`/`removeEntityCallback`/`entitySectionChangeCallback` 三处维护（统一咽喉点，每实体恰好一次，覆盖全部 7 条 discard + 卸载 + 换维度）。
+- `ServerLevel.addEntity` 在 captureDrops 块之后、`addNewEntity` 之前检查：目标 chunk ItemEntity 计数 ≥ cap 时丢弃新 item（返回 false）。**放 captureDrops 之后**使合法方块破坏掉落（被捕获）不受影响，只约束未捕获掉落（如插件 `dropItem`）。
+- 配置 `paper-world.yml`：`entities.spawning.item-entity-limit-per-chunk`，默认 -1（兼容红线，vanilla 行为）。
+- **等价性**：默认 -1 时 `addEntity` 整块跳过（`cap >= 0` 守卫），行为同原版；计数器维护是纯增量（不动原 enderPearl 逻辑）；跨 chunk 移动已处理，极端边界计数可能不归零但 add 检查严格性保证防护有效（计数偏低=更宽松不误杀）。
+
+### 回退原 0209（send-lambda 消除）— voidPromise 跨线程缺陷
+原 0209 把 `doSendPacket` 从 event-loop 移到调用方线程，而 `doSendPacket` 用 `this.channel.voidPromise()`（[Connection.java:483/485](../paper-server/src/minecraft/java/net/minecraft/network/Connection.java)）——netty 要求 `voidPromise()` 仅 event-loop 线程使用（无同步保护），0209 破坏此前提，构成跨线程并发缺陷。0.32.0 release note 自标"未做 live 压测；单补丁可 revert"。本批回退，恢复 `sendPacket` 的 `inEventLoop()` 判定，`voidPromise` 回到 event-loop 安全使用。无功能损失（仅恢复一个 per-outbound-packet lambda 分配）。**注**：该缺陷症状为 netty 异常/断连，不匹配本次"主线程静默卡死"——本次卡死根因是实体爆炸（新 0209 防护），回退原 0209 是顺带消除一个确凿隐患。
