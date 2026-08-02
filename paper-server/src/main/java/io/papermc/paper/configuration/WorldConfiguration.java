@@ -268,6 +268,15 @@ public class WorldConfiguration extends ConfigurationPart {
                 public boolean enabled = false;
                 public Reference2IntMap<Item> items = new Reference2IntOpenHashMap<>(Map.of(Items.COBBLESTONE, 300));
             }
+
+            // Papo start - per-chunk dropped item entity cap (config-gated, default off)
+            @Comment("Maximum number of dropped item entities (ItemEntity) allowed per chunk. "
+                + "New items that would push a chunk beyond this limit are discarded, preventing "
+                + "item-drop lag spirals (e.g. a plugin dropping items where block breaks are "
+                + "cancelled by region protection, so items generate but the block restores and the "
+                + "cycle repeats until the main thread is starved). -1 = disabled (vanilla behavior).")
+            public int itemEntityLimitPerChunk = -1;
+            // Papo end - per-chunk dropped item entity cap
         }
 
         public Behavior behavior;

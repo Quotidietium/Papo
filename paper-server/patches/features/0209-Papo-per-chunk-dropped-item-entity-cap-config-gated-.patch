@@ -1,0 +1,104 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sun, 2 Aug 2026 22:09:32 +0800
+Subject: [PATCH] Papo: per-chunk dropped item entity cap (config-gated,
+ default off)
+
+
+diff --git a/ca/spottedleaf/moonrise/patches/chunk_system/level/entity/server/ServerEntityLookup.java b/ca/spottedleaf/moonrise/patches/chunk_system/level/entity/server/ServerEntityLookup.java
+index f312a7f5b1b2a777ab36b94ce7cbf3873f5e88bc..553361fa6d0519f7fcea584c84df32f17e88fd3a 100644
+--- a/ca/spottedleaf/moonrise/patches/chunk_system/level/entity/server/ServerEntityLookup.java
++++ b/ca/spottedleaf/moonrise/patches/chunk_system/level/entity/server/ServerEntityLookup.java
+@@ -14,6 +14,7 @@ import net.minecraft.server.level.ServerLevel;
+ import net.minecraft.server.level.ServerPlayer;
+ import net.minecraft.server.level.TicketType;
+ import net.minecraft.world.entity.Entity;
++import net.minecraft.world.entity.item.ItemEntity;
+ import net.minecraft.world.entity.projectile.throwableitemprojectile.ThrownEnderpearl;
+ import net.minecraft.world.level.entity.LevelCallback;
+ 
+@@ -31,6 +32,9 @@ public final class ServerEntityLookup extends EntityLookup {
+     private static final TicketType ENDER_PEARL_TICKER = ChunkSystemTicketType.create("chunk_system:ender_pearl_ticker", null, 0L, TicketType.FLAG_LOADING | TicketType.FLAG_SIMULATION | TicketType.FLAG_KEEP_DIMENSION_ACTIVE);
+     private final Long2IntOpenHashMap enderPearlChunkCount = new Long2IntOpenHashMap();
+     private final boolean keepEnderPearlsTicking;
++    // Papo start - per-chunk ItemEntity count, backing the per-chunk dropped-item cap (entities.spawning.itemEntityLimitPerChunk)
++    private final Long2IntOpenHashMap papoItemEntityChunkCount = new Long2IntOpenHashMap();
++    // Papo end - per-chunk ItemEntity count
+ 
+     public ServerEntityLookup(final ServerLevel world, final LevelCallback<Entity> worldCallback) {
+         super(world, worldCallback);
+@@ -81,6 +85,12 @@ public final class ServerEntityLookup extends EntityLookup {
+             this.removeEnderPearl(CoordinateUtils.getChunkKey(oldSectionX, oldSectionZ));
+             this.addEnderPearl(CoordinateUtils.getChunkKey(newSectionX, newSectionZ));
+         }
++        // Papo start - per-chunk ItemEntity count: adjust counters on cross-chunk move
++        if (entity instanceof ItemEntity && (oldSectionX != newSectionX || oldSectionZ != newSectionZ)) {
++            this.papoItemEntityChunkCount.addTo(CoordinateUtils.getChunkKey(oldSectionX, oldSectionZ), -1);
++            this.papoItemEntityChunkCount.addTo(CoordinateUtils.getChunkKey(newSectionX, newSectionZ), 1);
++        }
++        // Papo end - per-chunk ItemEntity count
+         PlatformHooks.get().entityMove(
+             entity,
+             CoordinateUtils.getChunkSectionKey(oldSectionX, oldSectionY, oldSectionZ),
+@@ -96,6 +106,11 @@ public final class ServerEntityLookup extends EntityLookup {
+         if (entity instanceof ThrownEnderpearl enderpearl) {
+             this.addEnderPearl(CoordinateUtils.getChunkKey(enderpearl.chunkPosition()));
+         }
++        // Papo start - per-chunk ItemEntity count
++        if (entity instanceof ItemEntity) {
++            this.papoItemEntityChunkCount.addTo(CoordinateUtils.getChunkKey(entity.chunkPosition()), 1);
++        }
++        // Papo end - per-chunk ItemEntity count
+         entity.registerScheduler(); // Paper - optimise Folia entity scheduler
+     }
+ 
+@@ -107,6 +122,14 @@ public final class ServerEntityLookup extends EntityLookup {
+         if (entity instanceof ThrownEnderpearl enderpearl) {
+             this.removeEnderPearl(CoordinateUtils.getChunkKey(enderpearl.chunkPosition()));
+         }
++        // Papo start - per-chunk ItemEntity count
++        if (entity instanceof ItemEntity) {
++            final long papoItemKey = CoordinateUtils.getChunkKey(entity.chunkPosition());
++            if (this.papoItemEntityChunkCount.addTo(papoItemKey, -1) <= 1) {
++                this.papoItemEntityChunkCount.remove(papoItemKey);
++            }
++        }
++        // Papo end - per-chunk ItemEntity count
+     }
+ 
+     @Override
+@@ -164,4 +187,10 @@ public final class ServerEntityLookup extends EntityLookup {
+         ((ChunkSystemServerLevel)this.serverWorld).moonrise$getChunkTaskScheduler().chunkHolderManager
+             .removeTicketAtLevel(ENDER_PEARL_TICKER, coordinate, ChunkHolderManager.ENTITY_TICKING_TICKET_LEVEL, null);
+     }
++
++    // Papo start - per-chunk ItemEntity count: exposed for the per-chunk dropped-item cap checked in ServerLevel.addEntity
++    public int papoItemEntityCountInChunk(final long chunkKey) {
++        return this.papoItemEntityChunkCount.get(chunkKey);
++    }
++    // Papo end - per-chunk ItemEntity count
+ }
+diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
+index 431cea3b3a34b1956869fff356819a385fbe087b..18be6b1a287a9d70176b5ed1f5473d0c01285abb 100644
+--- a/net/minecraft/server/level/ServerLevel.java
++++ b/net/minecraft/server/level/ServerLevel.java
+@@ -1619,6 +1619,19 @@ public class ServerLevel extends Level implements ServerEntityGetter, WorldGenLe
+                 return true;
+             }
+             // Paper end - capture all item additions to the world
++            // Papo start - per-chunk dropped item entity cap (entities.spawning.itemEntityLimitPerChunk, default -1 = disabled).
++            // Placed AFTER captureDrops so legitimate block-break drops (captured into captureDrops) are unaffected;
++            // only uncaptured drops (e.g. a plugin's world.dropItem in a region where block-break is cancelled by
++            // protection, so items generate but the block restores and the cycle repeats) are subject to the cap.
++            final int papoItemCap = this.paperConfig().entities.spawning.itemEntityLimitPerChunk;
++            if (papoItemCap >= 0 && entity instanceof net.minecraft.world.entity.item.ItemEntity) {
++                final ca.spottedleaf.moonrise.patches.chunk_system.level.entity.server.ServerEntityLookup papoItemLookup = (ca.spottedleaf.moonrise.patches.chunk_system.level.entity.server.ServerEntityLookup) this.moonrise$getEntityLookup();
++                final long papoItemChunkKey = ca.spottedleaf.moonrise.common.util.CoordinateUtils.getChunkKey(entity.chunkPosition());
++                if (papoItemLookup.papoItemEntityCountInChunk(papoItemChunkKey) >= papoItemCap) {
++                    return false; // discard new item: chunk already at cap, prevents item-drop lag spiral
++                }
++            }
++            // Papo end - per-chunk dropped item entity cap
+             // SPIGOT-6415: Don't call spawn event when reason is null. For example when an entity teleports to a new world.
+             if (spawnReason != null && !org.bukkit.craftbukkit.event.CraftEventFactory.doEntityAddEventCalling(this, entity, spawnReason)) {
+                 return false;
