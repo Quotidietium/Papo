@@ -1,0 +1,75 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sun, 2 Aug 2026 18:42:03 +0800
+Subject: [PATCH] Papo: eliminate PacketSendAction delegate lambda and demote
+ consumed AtomicBoolean
+
+
+diff --git a/net/minecraft/network/Connection.java b/net/minecraft/network/Connection.java
+index 19ec939529eb638bdc4d7fd9260f161fae118314..90bcd40d182ccf5465a3c6913f13dd5fb2b51907 100644
+--- a/net/minecraft/network/Connection.java
++++ b/net/minecraft/network/Connection.java
+@@ -916,10 +916,14 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
+     }
+ 
+     private static class WrappedConsumer implements Consumer<Connection> {
+-        private final Consumer<Connection> delegate;
+-        private final java.util.concurrent.atomic.AtomicBoolean consumed = new java.util.concurrent.atomic.AtomicBoolean(false);
+-
+-        private WrappedConsumer(final Consumer<Connection> delegate) {
++        @Nullable
++        private final Consumer<Connection> delegate; // Papo - @Nullable: PacketSendAction overrides accept and does not use the delegate
++        // Papo start - AtomicBoolean -> plain boolean: tryMarkConsumed/isConsumed are only called from
++        // processQueue, which runs single-threaded per Connection (main thread for play stage, under
++        // synchronized for login/status stage — flushQueue:507/511). Hence the CAS was unnecessary.
++        private boolean consumed;
++
++        private WrappedConsumer(@Nullable final Consumer<Connection> delegate) {
+             this.delegate = delegate;
+         }
+ 
+@@ -929,21 +933,39 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
+         }
+ 
+         public boolean tryMarkConsumed() {
+-            return consumed.compareAndSet(false, true);
++            if (this.consumed) {
++                return false;
++            }
++            this.consumed = true;
++            return true;
+         }
+ 
+         public boolean isConsumed() {
+-            return consumed.get();
++            return this.consumed;
+         }
+     }
+ 
+     private static final class PacketSendAction extends WrappedConsumer {
+         private final Packet<?> packet;
+-
+-        private PacketSendAction(final Packet<?> packet, @Nullable final ChannelFutureListener channelFutureListener, final boolean flush) {
+-            super(connection -> connection.sendPacket(packet, channelFutureListener, flush));
++        // Papo start - store listener/flush as fields and override accept to call sendPacket directly,
++        // eliminating the per-packet delegate lambda capture (`connection -> connection.sendPacket(...)`).
++        // Delegate (super) is unused for this subclass (accept is overridden).
++        @Nullable
++        private final ChannelFutureListener listener;
++        private final boolean flush;
++
++        private PacketSendAction(final Packet<?> packet, @Nullable final ChannelFutureListener listener, final boolean flush) {
++            super(null); // Papo - delegate unused (accept overridden below)
+             this.packet = packet;
++            this.listener = listener;
++            this.flush = flush;
++        }
++
++        @Override
++        public void accept(final Connection connection) {
++            connection.sendPacket(this.packet, this.listener, this.flush);
+         }
++        // Papo end - eliminate delegate lambda
+     }
+     // Paper end - Optimize network
+ }
