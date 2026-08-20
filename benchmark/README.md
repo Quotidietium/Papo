@@ -58,6 +58,7 @@ cd benchmark
 | `MemoryOptionalProbe` | 0231 | 声明式记忆链 Present 读 Optional vs raw（gc 探针一票裁决：8 B/op 真分配差 + 1.8×） |
 | `PathNavBench` | 0230 | 寻路 shouldTargetNextNodeInDirection Vec3 链 vs Node 直读分量（含布尔等价矩阵自检；模型 EA 中性按 0175 先例机制保留） |
 | `WireSetOrderBench` | 0232 | 红石粉评估器 HashSet vs 桶序复刻（**1M 随机位置穷尽对拍真实 HashSet 迭代序**自检 ALL OK；1.68×） |
+| `SpawnScanBench` | 0235-0237 | merge 扫描分配 vs 复用（gc 探针 280 B/op 真差）+ despawn HashMap vs 数组 3.75×（含同集合同序/查值一致自检） |
 
 ## 依赖
 
