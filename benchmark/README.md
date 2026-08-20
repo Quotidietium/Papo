@@ -46,6 +46,7 @@ cd benchmark
 | `EncodeAllocBench` | 0213/0214 | 帧缓冲默认 256B+重分配 vs ioBuffer(3+n) 精确分配；编码 256B 增长链 vs 按类尺寸提示（真实 netty PooledByteBufAllocator；含自检 main：帧/编码字节逐字节一致） |
 | `DeflateBoundBench` | 0215 | 压缩输出 n+1 起步扩容续压 vs DEFLATE 实测上界一次到位（JDK 回退路径建模；自检 main：上界充分性 + before 重试触发面 + 两路径压缩流逐字节一致——首版公式被此自检证伪后据实测修正） |
 | `ScoreboardGateSelfCheck` | 0210-0212 | 非性能——记分板冗余广播门控行为自检（等值跳过/真变更广播/同实例 vanilla 奇偶性/双发去重恰少一个逐字节相同的包，全场景对比 vanilla/papo 模型） |
+| `OutboundFrameBench` | 0217 | 出站三阶段拷贝链 vs headroom 直通（EmbeddedChannel 真实 netty 管线；含自检 main：9 尺寸×2 可压性字节级全等 + 阈值边界 + varint 反向写全档位 + 万次引用计数） |
 
 ## 依赖
 

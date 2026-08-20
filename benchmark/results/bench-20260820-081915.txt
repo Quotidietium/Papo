@@ -1,0 +1,217 @@
+# JMH version: 1.37
+# VM version: JDK 25.0.4, Java HotSpot(TM) 64-Bit Server VM, 25.0.4+7-LTS-189
+# VM invoker: F:\Java\25\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.OutboundFrameBench.after_aboveThreshold
+
+# Run progress: 0.00% complete, ETA 00:01:04
+# Fork: 1 of 2
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/F:/Github/repo/Papo/benchmark/lib/jmh-core-1.37.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 132557.439 ns/op
+# Warmup Iteration   2: 115587.888 ns/op
+# Warmup Iteration   3: 116197.657 ns/op
+Iteration   1: 115798.727 ns/op
+Iteration   2: 115420.339 ns/op
+Iteration   3: 115404.725 ns/op
+Iteration   4: 115692.846 ns/op
+Iteration   5: 115597.228 ns/op
+
+# Run progress: 12.50% complete, ETA 00:00:59
+# Fork: 2 of 2
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/F:/Github/repo/Papo/benchmark/lib/jmh-core-1.37.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 131267.729 ns/op
+# Warmup Iteration   2: 115498.499 ns/op
+# Warmup Iteration   3: 114676.955 ns/op
+Iteration   1: 119080.038 ns/op
+Iteration   2: 115657.663 ns/op
+Iteration   3: 119697.524 ns/op
+Iteration   4: 116486.077 ns/op
+Iteration   5: 115252.448 ns/op
+
+
+Result "papo.bench.OutboundFrameBench.after_aboveThreshold":
+  116408.761 ±(99.9%) 2437.130 ns/op [Average]
+  (min, avg, max) = (115252.448, 116408.761, 119697.524), stdev = 1612.010
+  CI (99.9%): [113971.632, 118845.891] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 25.0.4, Java HotSpot(TM) 64-Bit Server VM, 25.0.4+7-LTS-189
+# VM invoker: F:\Java\25\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.OutboundFrameBench.after_belowThreshold
+
+# Run progress: 25.00% complete, ETA 00:00:50
+# Fork: 1 of 2
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/F:/Github/repo/Papo/benchmark/lib/jmh-core-1.37.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 352.004 ns/op
+# Warmup Iteration   2: 282.014 ns/op
+# Warmup Iteration   3: 287.505 ns/op
+Iteration   1: 287.026 ns/op
+Iteration   2: 283.830 ns/op
+Iteration   3: 289.037 ns/op
+Iteration   4: 288.832 ns/op
+Iteration   5: 287.200 ns/op
+
+# Run progress: 37.50% complete, ETA 00:00:41
+# Fork: 2 of 2
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/F:/Github/repo/Papo/benchmark/lib/jmh-core-1.37.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 330.046 ns/op
+# Warmup Iteration   2: 280.544 ns/op
+# Warmup Iteration   3: 278.200 ns/op
+Iteration   1: 301.150 ns/op
+Iteration   2: 282.084 ns/op
+Iteration   3: 282.609 ns/op
+Iteration   4: 278.283 ns/op
+Iteration   5: 276.932 ns/op
+
+
+Result "papo.bench.OutboundFrameBench.after_belowThreshold":
+  285.698 ±(99.9%) 10.349 ns/op [Average]
+  (min, avg, max) = (276.932, 285.698, 301.150), stdev = 6.845
+  CI (99.9%): [275.350, 296.047] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 25.0.4, Java HotSpot(TM) 64-Bit Server VM, 25.0.4+7-LTS-189
+# VM invoker: F:\Java\25\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.OutboundFrameBench.before_aboveThreshold
+
+# Run progress: 50.00% complete, ETA 00:00:33
+# Fork: 1 of 2
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/F:/Github/repo/Papo/benchmark/lib/jmh-core-1.37.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 132998.526 ns/op
+# Warmup Iteration   2: 116999.837 ns/op
+# Warmup Iteration   3: 117271.884 ns/op
+Iteration   1: 117538.512 ns/op
+Iteration   2: 116873.115 ns/op
+Iteration   3: 116995.252 ns/op
+Iteration   4: 116272.127 ns/op
+Iteration   5: 116750.397 ns/op
+
+# Run progress: 62.50% complete, ETA 00:00:25
+# Fork: 2 of 2
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/F:/Github/repo/Papo/benchmark/lib/jmh-core-1.37.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 132984.940 ns/op
+# Warmup Iteration   2: 116809.680 ns/op
+# Warmup Iteration   3: 116726.313 ns/op
+Iteration   1: 127605.977 ns/op
+Iteration   2: 162399.659 ns/op
+Iteration   3: 136122.281 ns/op
+Iteration   4: 116849.398 ns/op
+Iteration   5: 118134.053 ns/op
+
+
+Result "papo.bench.OutboundFrameBench.before_aboveThreshold":
+  124554.077 ±(99.9%) 22372.557 ns/op [Average]
+  (min, avg, max) = (116272.127, 124554.077, 162399.659), stdev = 14798.062
+  CI (99.9%): [102181.520, 146926.635] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 25.0.4, Java HotSpot(TM) 64-Bit Server VM, 25.0.4+7-LTS-189
+# VM invoker: F:\Java\25\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.OutboundFrameBench.before_belowThreshold
+
+# Run progress: 75.00% complete, ETA 00:00:16
+# Fork: 1 of 2
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/F:/Github/repo/Papo/benchmark/lib/jmh-core-1.37.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 579.971 ns/op
+# Warmup Iteration   2: 478.278 ns/op
+# Warmup Iteration   3: 467.911 ns/op
+Iteration   1: 472.113 ns/op
+Iteration   2: 469.270 ns/op
+Iteration   3: 467.491 ns/op
+Iteration   4: 466.724 ns/op
+Iteration   5: 471.864 ns/op
+
+# Run progress: 87.50% complete, ETA 00:00:08
+# Fork: 2 of 2
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/F:/Github/repo/Papo/benchmark/lib/jmh-core-1.37.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 558.348 ns/op
+# Warmup Iteration   2: 471.710 ns/op
+# Warmup Iteration   3: 467.709 ns/op
+Iteration   1: 467.207 ns/op
+Iteration   2: 468.739 ns/op
+Iteration   3: 477.588 ns/op
+Iteration   4: 468.912 ns/op
+Iteration   5: 467.002 ns/op
+
+
+Result "papo.bench.OutboundFrameBench.before_belowThreshold":
+  469.691 ±(99.9%) 5.081 ns/op [Average]
+  (min, avg, max) = (466.724, 469.691, 477.588), stdev = 3.361
+  CI (99.9%): [464.609, 474.772] (assumes normal distribution)
+
+
+# Run complete. Total time: 00:01:06
+
+REMEMBER: The numbers below are just data. To gain reusable insights, you need to follow up on
+why the numbers are the way they are. Use profilers (see -prof, -lprof), design factorial
+experiments, perform baseline and negative tests that provide experimental control, make sure
+the benchmarking environment is safe on JVM/OS/HW level, ask for reviews from the domain experts.
+Do not assume the numbers tell you what you want them to tell.
+
+NOTE: Current JVM experimentally supports Compiler Blackholes, and they are in use. Please exercise
+extra caution when trusting the results, look into the generated code to check the benchmark still
+works, and factor in a small probability of new VM bugs. Additionally, while comparisons between
+different JVMs are already problematic, the performance difference caused by different Blackhole
+modes can be very significant. Please make sure you use the consistent Blackhole mode for comparisons.
+
+Benchmark                                 Mode  Cnt       Score       Error  Units
+OutboundFrameBench.after_aboveThreshold   avgt   10  116408.761 ±  2437.130  ns/op
+OutboundFrameBench.after_belowThreshold   avgt   10     285.698 ±    10.349  ns/op
+OutboundFrameBench.before_aboveThreshold  avgt   10  124554.077 ± 22372.557  ns/op
+OutboundFrameBench.before_belowThreshold  avgt   10     469.691 ±     5.081  ns/op
+
+Benchmark result is saved to results/bench-20260820-081915.json

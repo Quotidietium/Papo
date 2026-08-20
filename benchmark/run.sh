@@ -6,7 +6,7 @@ cd "$(dirname "$0")"
 
 LIB=lib
 OUT=build/classes
-CP="$LIB/jmh-core-1.37.jar;$LIB/jmh-generator-annprocess-1.37.jar;$LIB/jopt-simple-5.0.4.jar;$LIB/commons-math3-3.6.1.jar;$LIB/fastutil-8.5.18.jar;$LIB/netty-buffer-4.2.7.Final.jar;$LIB/netty-common-4.2.7.Final.jar"
+CP="$LIB/jmh-core-1.37.jar;$LIB/jmh-generator-annprocess-1.37.jar;$LIB/jopt-simple-5.0.4.jar;$LIB/commons-math3-3.6.1.jar;$LIB/fastutil-8.5.18.jar;$LIB/netty-buffer-4.2.7.Final.jar;$LIB/netty-common-4.2.7.Final.jar;$LIB/netty-transport-4.2.7.Final.jar;$LIB/netty-codec-base-4.2.7.Final.jar"
 
 mkdir -p "$OUT" results "$LIB"
 
@@ -19,10 +19,13 @@ dl org/apache/commons/commons-math3/3.6.1/commons-math3-3.6.1.jar commons-math3-
 dl it/unimi/dsi/fastutil/8.5.18/fastutil-8.5.18.jar fastutil-8.5.18.jar
 dl io/netty/netty-buffer/4.2.7.Final/netty-buffer-4.2.7.Final.jar netty-buffer-4.2.7.Final.jar
 dl io/netty/netty-common/4.2.7.Final/netty-common-4.2.7.Final.jar netty-common-4.2.7.Final.jar
+dl io/netty/netty-transport/4.2.7.Final/netty-transport-4.2.7.Final.jar netty-transport-4.2.7.Final.jar
+dl io/netty/netty-codec-base/4.2.7.Final/netty-codec-base-4.2.7.Final.jar netty-codec-base-4.2.7.Final.jar
 
 echo "== 编译基准源码 =="
 find src -name '*.java' > build/sources.txt
-javac -cp "$CP" -d "$OUT" @build/sources.txt
+# JDK 21+ 需显式 -proc:full 才运行 classpath 上的 JMH 注解处理器（生成 BenchmarkList 与桩类）
+javac -proc:full -cp "$CP" -d "$OUT" @build/sources.txt
 
 FILTER="${1:-papo.bench.*}"
 STAMP=$(date +%Y%m%d-%H%M%S)
