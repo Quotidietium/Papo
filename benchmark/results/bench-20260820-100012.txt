@@ -1,0 +1,317 @@
+# JMH version: 1.37
+# VM version: JDK 25.0.4, Java HotSpot(TM) 64-Bit Server VM, 25.0.4+7-LTS-189
+# VM invoker: F:\Java\25\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.ContainerGateBench.after_creativeFastPath
+
+# Run progress: 0.00% complete, ETA 00:01:36
+# Fork: 1 of 2
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/F:/Github/repo/Papo/benchmark/lib/jmh-core-1.37.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 2.003 ns/op
+# Warmup Iteration   2: 1.721 ns/op
+# Warmup Iteration   3: 1.724 ns/op
+Iteration   1: 1.723 ns/op
+Iteration   2: 1.721 ns/op
+Iteration   3: 1.725 ns/op
+Iteration   4: 1.722 ns/op
+Iteration   5: 1.725 ns/op
+
+# Run progress: 8.33% complete, ETA 00:01:31
+# Fork: 2 of 2
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/F:/Github/repo/Papo/benchmark/lib/jmh-core-1.37.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 2.001 ns/op
+# Warmup Iteration   2: 1.730 ns/op
+# Warmup Iteration   3: 1.734 ns/op
+Iteration   1: 1.730 ns/op
+Iteration   2: 1.731 ns/op
+Iteration   3: 1.736 ns/op
+Iteration   4: 1.737 ns/op
+Iteration   5: 1.731 ns/op
+
+
+Result "papo.bench.ContainerGateBench.after_creativeFastPath":
+  1.728 ±(99.9%) 0.009 ns/op [Average]
+  (min, avg, max) = (1.721, 1.728, 1.737), stdev = 0.006
+  CI (99.9%): [1.720, 1.737] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 25.0.4, Java HotSpot(TM) 64-Bit Server VM, 25.0.4+7-LTS-189
+# VM invoker: F:\Java\25\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.ContainerGateBench.after_dragFastPath
+
+# Run progress: 16.67% complete, ETA 00:01:23
+# Fork: 1 of 2
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/F:/Github/repo/Papo/benchmark/lib/jmh-core-1.37.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 108.074 ns/op
+# Warmup Iteration   2: 94.642 ns/op
+# Warmup Iteration   3: 103.049 ns/op
+Iteration   1: 103.200 ns/op
+Iteration   2: 103.218 ns/op
+Iteration   3: 102.998 ns/op
+Iteration   4: 102.944 ns/op
+Iteration   5: 103.017 ns/op
+
+# Run progress: 25.00% complete, ETA 00:01:14
+# Fork: 2 of 2
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/F:/Github/repo/Papo/benchmark/lib/jmh-core-1.37.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 107.308 ns/op
+# Warmup Iteration   2: 94.872 ns/op
+# Warmup Iteration   3: 103.258 ns/op
+Iteration   1: 103.299 ns/op
+Iteration   2: 103.163 ns/op
+Iteration   3: 103.237 ns/op
+Iteration   4: 103.254 ns/op
+Iteration   5: 103.099 ns/op
+
+
+Result "papo.bench.ContainerGateBench.after_dragFastPath":
+  103.143 ±(99.9%) 0.184 ns/op [Average]
+  (min, avg, max) = (102.944, 103.143, 103.299), stdev = 0.122
+  CI (99.9%): [102.959, 103.327] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 25.0.4, Java HotSpot(TM) 64-Bit Server VM, 25.0.4+7-LTS-189
+# VM invoker: F:\Java\25\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.ContainerGateBench.after_singleWrap
+
+# Run progress: 33.33% complete, ETA 00:01:06
+# Fork: 1 of 2
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/F:/Github/repo/Papo/benchmark/lib/jmh-core-1.37.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 1.190 ns/op
+# Warmup Iteration   2: 1.042 ns/op
+# Warmup Iteration   3: 1.000 ns/op
+Iteration   1: 1.002 ns/op
+Iteration   2: 1.005 ns/op
+Iteration   3: 1.001 ns/op
+Iteration   4: 1.003 ns/op
+Iteration   5: 1.001 ns/op
+
+# Run progress: 41.67% complete, ETA 00:00:58
+# Fork: 2 of 2
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/F:/Github/repo/Papo/benchmark/lib/jmh-core-1.37.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 1.226 ns/op
+# Warmup Iteration   2: 1.006 ns/op
+# Warmup Iteration   3: 1.006 ns/op
+Iteration   1: 1.003 ns/op
+Iteration   2: 0.999 ns/op
+Iteration   3: 1.004 ns/op
+Iteration   4: 1.002 ns/op
+Iteration   5: 1.001 ns/op
+
+
+Result "papo.bench.ContainerGateBench.after_singleWrap":
+  1.002 ±(99.9%) 0.003 ns/op [Average]
+  (min, avg, max) = (0.999, 1.002, 1.005), stdev = 0.002
+  CI (99.9%): [0.999, 1.005] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 25.0.4, Java HotSpot(TM) 64-Bit Server VM, 25.0.4+7-LTS-189
+# VM invoker: F:\Java\25\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.ContainerGateBench.before_creativeEvent
+
+# Run progress: 50.00% complete, ETA 00:00:49
+# Fork: 1 of 2
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/F:/Github/repo/Papo/benchmark/lib/jmh-core-1.37.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 6.574 ns/op
+# Warmup Iteration   2: 5.740 ns/op
+# Warmup Iteration   3: 4.195 ns/op
+Iteration   1: 4.187 ns/op
+Iteration   2: 4.198 ns/op
+Iteration   3: 4.188 ns/op
+Iteration   4: 4.186 ns/op
+Iteration   5: 4.188 ns/op
+
+# Run progress: 58.33% complete, ETA 00:00:41
+# Fork: 2 of 2
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/F:/Github/repo/Papo/benchmark/lib/jmh-core-1.37.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 6.437 ns/op
+# Warmup Iteration   2: 5.708 ns/op
+# Warmup Iteration   3: 4.149 ns/op
+Iteration   1: 4.144 ns/op
+Iteration   2: 4.144 ns/op
+Iteration   3: 4.153 ns/op
+Iteration   4: 4.147 ns/op
+Iteration   5: 4.144 ns/op
+
+
+Result "papo.bench.ContainerGateBench.before_creativeEvent":
+  4.168 ±(99.9%) 0.035 ns/op [Average]
+  (min, avg, max) = (4.144, 4.168, 4.198), stdev = 0.023
+  CI (99.9%): [4.133, 4.203] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 25.0.4, Java HotSpot(TM) 64-Bit Server VM, 25.0.4+7-LTS-189
+# VM invoker: F:\Java\25\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.ContainerGateBench.before_doubleWrap
+
+# Run progress: 66.67% complete, ETA 00:00:33
+# Fork: 1 of 2
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/F:/Github/repo/Papo/benchmark/lib/jmh-core-1.37.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 1.183 ns/op
+# Warmup Iteration   2: 0.993 ns/op
+# Warmup Iteration   3: 0.992 ns/op
+Iteration   1: 0.991 ns/op
+Iteration   2: 0.989 ns/op
+Iteration   3: 0.991 ns/op
+Iteration   4: 0.994 ns/op
+Iteration   5: 0.990 ns/op
+
+# Run progress: 75.00% complete, ETA 00:00:24
+# Fork: 2 of 2
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/F:/Github/repo/Papo/benchmark/lib/jmh-core-1.37.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 1.201 ns/op
+# Warmup Iteration   2: 1.006 ns/op
+# Warmup Iteration   3: 1.003 ns/op
+Iteration   1: 1.007 ns/op
+Iteration   2: 1.012 ns/op
+Iteration   3: 1.001 ns/op
+Iteration   4: 1.002 ns/op
+Iteration   5: 1.007 ns/op
+
+
+Result "papo.bench.ContainerGateBench.before_doubleWrap":
+  0.998 ±(99.9%) 0.013 ns/op [Average]
+  (min, avg, max) = (0.989, 0.998, 1.012), stdev = 0.009
+  CI (99.9%): [0.985, 1.011] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 25.0.4, Java HotSpot(TM) 64-Bit Server VM, 25.0.4+7-LTS-189
+# VM invoker: F:\Java\25\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.ContainerGateBench.before_dragEvent
+
+# Run progress: 83.33% complete, ETA 00:00:16
+# Fork: 1 of 2
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/F:/Github/repo/Papo/benchmark/lib/jmh-core-1.37.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 208.867 ns/op
+# Warmup Iteration   2: 182.388 ns/op
+# Warmup Iteration   3: 193.230 ns/op
+Iteration   1: 193.385 ns/op
+Iteration   2: 193.388 ns/op
+Iteration   3: 193.315 ns/op
+Iteration   4: 193.196 ns/op
+Iteration   5: 193.531 ns/op
+
+# Run progress: 91.67% complete, ETA 00:00:08
+# Fork: 2 of 2
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/F:/Github/repo/Papo/benchmark/lib/jmh-core-1.37.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 209.415 ns/op
+# Warmup Iteration   2: 183.911 ns/op
+# Warmup Iteration   3: 194.642 ns/op
+Iteration   1: 193.882 ns/op
+Iteration   2: 194.343 ns/op
+Iteration   3: 193.596 ns/op
+Iteration   4: 193.831 ns/op
+Iteration   5: 193.748 ns/op
+
+
+Result "papo.bench.ContainerGateBench.before_dragEvent":
+  193.622 ±(99.9%) 0.514 ns/op [Average]
+  (min, avg, max) = (193.196, 193.622, 194.343), stdev = 0.340
+  CI (99.9%): [193.107, 194.136] (assumes normal distribution)
+
+
+# Run complete. Total time: 00:01:39
+
+REMEMBER: The numbers below are just data. To gain reusable insights, you need to follow up on
+why the numbers are the way they are. Use profilers (see -prof, -lprof), design factorial
+experiments, perform baseline and negative tests that provide experimental control, make sure
+the benchmarking environment is safe on JVM/OS/HW level, ask for reviews from the domain experts.
+Do not assume the numbers tell you what you want them to tell.
+
+NOTE: Current JVM experimentally supports Compiler Blackholes, and they are in use. Please exercise
+extra caution when trusting the results, look into the generated code to check the benchmark still
+works, and factor in a small probability of new VM bugs. Additionally, while comparisons between
+different JVMs are already problematic, the performance difference caused by different Blackhole
+modes can be very significant. Please make sure you use the consistent Blackhole mode for comparisons.
+
+Benchmark                                  Mode  Cnt    Score   Error  Units
+ContainerGateBench.after_creativeFastPath  avgt   10    1.728 ± 0.009  ns/op
+ContainerGateBench.after_dragFastPath      avgt   10  103.143 ± 0.184  ns/op
+ContainerGateBench.after_singleWrap        avgt   10    1.002 ± 0.003  ns/op
+ContainerGateBench.before_creativeEvent    avgt   10    4.168 ± 0.035  ns/op
+ContainerGateBench.before_doubleWrap       avgt   10    0.998 ± 0.013  ns/op
+ContainerGateBench.before_dragEvent        avgt   10  193.622 ± 0.514  ns/op
+
+Benchmark result is saved to results/bench-20260820-100012.json
