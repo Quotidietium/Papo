@@ -1,0 +1,236 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 20 Aug 2026 09:11:49 +0800
+Subject: [PATCH] Papo: per-connection wire byte accounting threaded through
+ frame codecs (netstat)
+
+
+diff --git a/net/minecraft/network/Connection.java b/net/minecraft/network/Connection.java
+index b42ae2eb993b887f7d54d86984ba4438f832c5f5..05af3554118f0db85b3f1a58ad2b6d16cd2e7083 100644
+--- a/net/minecraft/network/Connection.java
++++ b/net/minecraft/network/Connection.java
+@@ -82,6 +82,18 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
+     private int sentPackets;
+     private float averageReceivedPackets;
+     private float averageSentPackets;
++    // Papo start - per-connection wire byte accounting for /paper netstat
++    // The frame encoder/decoder (which see exact wire bytes: frame-length varint + payload, post
++    // compression / pre encryption) add into these AtomicLongs on the channel's event loop; the
++    // main thread snapshots them once per second in tickSecond() (same 20-tick phase as the packet
++    // averages above). Pure observation - counters only, no behavior coupling.
++    final java.util.concurrent.atomic.AtomicLong papoSentWireBytes = new java.util.concurrent.atomic.AtomicLong();
++    final java.util.concurrent.atomic.AtomicLong papoReceivedWireBytes = new java.util.concurrent.atomic.AtomicLong();
++    private volatile long papoSentBytesLastSec;
++    private volatile long papoReceivedBytesLastSec;
++    private volatile long papoSentBytesTotal;
++    private volatile long papoReceivedBytesTotal;
++    // Papo end - per-connection wire byte accounting
+     private int tickCount;
+     private boolean handlingFault;
+     private volatile @Nullable DisconnectionDetails delayedDisconnect;
+@@ -620,8 +632,43 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
+         this.averageReceivedPackets = Mth.lerp(0.75F, (float)this.receivedPackets, this.averageReceivedPackets);
+         this.sentPackets = 0;
+         this.receivedPackets = 0;
++        // Papo start - wire byte accounting snapshot (1s window, same phase as the packet averages)
++        final long papoSentThisSec = this.papoSentWireBytes.getAndSet(0);
++        final long papoReceivedThisSec = this.papoReceivedWireBytes.getAndSet(0);
++        this.papoSentBytesLastSec = papoSentThisSec;
++        this.papoReceivedBytesLastSec = papoReceivedThisSec;
++        this.papoSentBytesTotal += papoSentThisSec;
++        this.papoReceivedBytesTotal += papoReceivedThisSec;
++        // Papo end - wire byte accounting snapshot
+     }
+ 
++    // Papo start - wire byte accounting accessors (for /paper netstat; counter getters feed the
++    // pipeline wiring in configureSerialization)
++    public long getPapoSentWireBytesPerSecond() {
++        return this.papoSentBytesLastSec;
++    }
++
++    public long getPapoReceivedWireBytesPerSecond() {
++        return this.papoReceivedBytesLastSec;
++    }
++
++    public long getPapoSentWireBytesTotal() {
++        return this.papoSentBytesTotal;
++    }
++
++    public long getPapoReceivedWireBytesTotal() {
++        return this.papoReceivedBytesTotal;
++    }
++
++    public java.util.concurrent.atomic.AtomicLong papoSentWireBytesCounter() {
++        return this.papoSentWireBytes;
++    }
++
++    public java.util.concurrent.atomic.AtomicLong papoReceivedWireBytesCounter() {
++        return this.papoReceivedWireBytes;
++    }
++    // Papo end - wire byte accounting accessors
++
+     public SocketAddress getRemoteAddress() {
+         return this.address;
+     }
+@@ -684,7 +731,7 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
+                 }
+ 
+                 ChannelPipeline channelPipeline = channel.pipeline().addLast("timeout", new ReadTimeoutHandler(30));
+-                Connection.configureSerialization(channelPipeline, PacketFlow.CLIENTBOUND, false, connection.bandwidthDebugMonitor);
++                Connection.configureSerialization(channelPipeline, PacketFlow.CLIENTBOUND, false, connection.bandwidthDebugMonitor, connection.papoReceivedWireBytesCounter(), connection.papoSentWireBytesCounter()); // Papo - wire byte accounting
+                 connection.configurePacketHandler(channelPipeline);
+             }
+         }).channel(eventLoopGroupHolder.channelCls()).connect(address.getAddress(), address.getPort());
+@@ -707,33 +754,40 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
+         }).addLast("packet_handler", this);
+     }
+ 
++    // Papo start - wire byte accounting: thread per-connection counters into the frame codec factory
+     public static void configureSerialization(
+-        ChannelPipeline pipeline, PacketFlow flow, boolean memoryOnly, @Nullable BandwidthDebugMonitor bandwidthDebugMonitor
++        ChannelPipeline pipeline, PacketFlow flow, boolean memoryOnly, @Nullable BandwidthDebugMonitor bandwidthDebugMonitor,
++        @javax.annotation.Nullable java.util.concurrent.atomic.AtomicLong papoReceivedWireBytes, @javax.annotation.Nullable java.util.concurrent.atomic.AtomicLong papoSentWireBytes
+     ) {
+         PacketFlow opposite = flow.getOpposite();
+         boolean flag = flow == PacketFlow.SERVERBOUND;
+         boolean flag1 = opposite == PacketFlow.SERVERBOUND;
+-        pipeline.addLast("splitter", createFrameDecoder(bandwidthDebugMonitor, memoryOnly))
++        pipeline.addLast("splitter", createFrameDecoder(bandwidthDebugMonitor, memoryOnly, papoReceivedWireBytes))
+             .addLast(new FlowControlHandler())
+             .addLast(inboundHandlerName(flag), (ChannelHandler)(flag ? new PacketDecoder<>(INITIAL_PROTOCOL) : new UnconfiguredPipelineHandler.Inbound()))
+-            .addLast("prepender", createFrameEncoder(memoryOnly))
++            .addLast("prepender", createFrameEncoder(memoryOnly, papoSentWireBytes))
+             .addLast(outboundHandlerName(flag1), (ChannelHandler)(flag1 ? new PacketEncoder<>(INITIAL_PROTOCOL) : new UnconfiguredPipelineHandler.Outbound()));
+     }
++    // Papo end - wire byte accounting
+ 
+-    private static ChannelOutboundHandler createFrameEncoder(boolean memoryOnly) {
+-        return (ChannelOutboundHandler)(memoryOnly ? new LocalFrameEncoder() : new Varint21LengthFieldPrepender());
++    // Papo start - wire byte accounting: pass the connection's outbound counter into the prepender
++    private static ChannelOutboundHandler createFrameEncoder(boolean memoryOnly, @javax.annotation.Nullable java.util.concurrent.atomic.AtomicLong papoSentWireBytes) {
++        return (ChannelOutboundHandler)(memoryOnly ? new LocalFrameEncoder() : new Varint21LengthFieldPrepender(papoSentWireBytes));
+     }
++    // Papo end - wire byte accounting
+ 
+-    private static ChannelInboundHandler createFrameDecoder(@Nullable BandwidthDebugMonitor bandwidthDebugMonitor, boolean memoryOnly) {
++    // Papo start - wire byte accounting: pass the connection's inbound counter into the splitter
++    private static ChannelInboundHandler createFrameDecoder(@Nullable BandwidthDebugMonitor bandwidthDebugMonitor, boolean memoryOnly, @javax.annotation.Nullable java.util.concurrent.atomic.AtomicLong papoReceivedWireBytes) {
+         if (!memoryOnly) {
+-            return new Varint21FrameDecoder(bandwidthDebugMonitor);
++            return new Varint21FrameDecoder(bandwidthDebugMonitor, papoReceivedWireBytes);
+         } else {
+             return (ChannelInboundHandler)(bandwidthDebugMonitor != null ? new MonitoredLocalFrameDecoder(bandwidthDebugMonitor) : new LocalFrameDecoder());
+         }
+     }
++    // Papo end - wire byte accounting
+ 
+     public static void configureInMemoryPipeline(ChannelPipeline pipeline, PacketFlow flow) {
+-        configureSerialization(pipeline, flow, true, null);
++        configureSerialization(pipeline, flow, true, null, null, null); // Papo - wire byte accounting (memory channels uncounted)
+     }
+ 
+     public static Connection connectToLocalServer(SocketAddress address) {
+diff --git a/net/minecraft/network/Varint21FrameDecoder.java b/net/minecraft/network/Varint21FrameDecoder.java
+index e682696b4688875538a8efb155170ab367dcbd31..4ccd15e55b2a051544db97d03c376db7578b63de 100644
+--- a/net/minecraft/network/Varint21FrameDecoder.java
++++ b/net/minecraft/network/Varint21FrameDecoder.java
+@@ -10,10 +10,18 @@ import org.jspecify.annotations.Nullable;
+ public class Varint21FrameDecoder extends ByteToMessageDecoder {
+     // Papo start - helper buffer removed: the varint is parsed inline while reading (0155)
+     private final @Nullable BandwidthDebugMonitor monitor;
++    // Papo start - wire byte accounting for /paper netstat (inbound mirror of the prepender counter)
++    private final @javax.annotation.Nullable java.util.concurrent.atomic.AtomicLong papoReceivedWireBytes;
+ 
+     public Varint21FrameDecoder(@Nullable BandwidthDebugMonitor monitor) {
++        this(monitor, null);
++    }
++
++    public Varint21FrameDecoder(@Nullable BandwidthDebugMonitor monitor, @javax.annotation.Nullable java.util.concurrent.atomic.AtomicLong papoReceivedWireBytes) {
+         this.monitor = monitor;
++        this.papoReceivedWireBytes = papoReceivedWireBytes;
+     }
++    // Papo end - wire byte accounting
+ 
+     @Override
+     protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) {
+@@ -50,6 +58,9 @@ public class Varint21FrameDecoder extends ByteToMessageDecoder {
+                     if (this.monitor != null) {
+                         this.monitor.onReceive(i + VarInt.getByteSize(i));
+                     }
++                    if (this.papoReceivedWireBytes != null) { // Papo - wire byte accounting
++                        this.papoReceivedWireBytes.addAndGet(i + VarInt.getByteSize(i));
++                    }
+ 
+                     // Papo start - extract frames with retainedSlice instead of readBytes
+                     // readBytes(i) allocated a fresh buffer and memcpy'd the ENTIRE inbound payload
+diff --git a/net/minecraft/network/Varint21LengthFieldPrepender.java b/net/minecraft/network/Varint21LengthFieldPrepender.java
+index ec80200e89721a1cbce4a1968c6caf378d36652b..e196e80b575dd022ba2460c39d7b702a905ade59 100644
+--- a/net/minecraft/network/Varint21LengthFieldPrepender.java
++++ b/net/minecraft/network/Varint21LengthFieldPrepender.java
+@@ -11,6 +11,29 @@ import io.netty.handler.codec.MessageToByteEncoder;
+ public class Varint21LengthFieldPrepender extends MessageToByteEncoder<ByteBuf> {
+     public static final int MAX_VARINT21_BYTES = 3;
+ 
++    // Papo start - wire byte accounting for /paper netstat
++    // Although @Sharable, this prepender is instantiated per connection (Connection.createFrameEncoder),
++    // so holding the connection's outbound counter is safe; a shared instance would merely funnel
++    // multiple connections' counts into one counter, never miscount the wire. Counts the exact wire
++    // size of every frame (frame-length varint + payload; this stage sits after compression and
++    // length-preserving encryption is downstream).
++    private final @javax.annotation.Nullable java.util.concurrent.atomic.AtomicLong papoSentWireBytes;
++
++    public Varint21LengthFieldPrepender() {
++        this(null);
++    }
++
++    public Varint21LengthFieldPrepender(@javax.annotation.Nullable java.util.concurrent.atomic.AtomicLong papoSentWireBytes) {
++        this.papoSentWireBytes = papoSentWireBytes;
++    }
++
++    private void papoCount(final int wireBytes) {
++        if (this.papoSentWireBytes != null) {
++            this.papoSentWireBytes.addAndGet(wireBytes);
++        }
++    }
++    // Papo end - wire byte accounting
++
+     // Papo start - size-exact frame buffer allocation
+     // Vanilla default allocates a 256-byte buffer, then encode() grows it to the next power of two
+     // past 3 + payload (one extra pooled reallocation per packet, plus power-of-two over-allocation).
+@@ -39,6 +62,7 @@ public class Varint21LengthFieldPrepender extends MessageToByteEncoder<ByteBuf>
+                 throw new EncoderException("Packet too large: size " + i + " is over 8");
+             }
+             PapoOutboundFraming.writeVarIntBackwards(papoBuf, i);
++            this.papoCount(i + VarInt.getByteSize(i)); // Papo - wire byte accounting (full frame incl. length varint)
+             ctx.write(papoBuf, promise);
+             return;
+         }
+@@ -57,6 +81,7 @@ public class Varint21LengthFieldPrepender extends MessageToByteEncoder<ByteBuf>
+             decoder.ensureWritable(byteSize + i);
+             VarInt.write(decoder, i);
+             decoder.writeBytes(encoder, encoder.readerIndex(), i);
++            this.papoCount(byteSize + i); // Papo - wire byte accounting (full frame incl. length varint)
+         }
+     }
+ }
+diff --git a/net/minecraft/server/network/ServerConnectionListener.java b/net/minecraft/server/network/ServerConnectionListener.java
+index 33e1cdb00d648c992af03a976899253141314b27..063e099b54212103d02c993bc74b2a9643df9272 100644
+--- a/net/minecraft/server/network/ServerConnectionListener.java
++++ b/net/minecraft/server/network/ServerConnectionListener.java
+@@ -99,11 +99,15 @@ public class ServerConnectionListener {
+                                         channelPipeline.addLast("legacy_query", new LegacyQueryHandler(ServerConnectionListener.this.getServer()));
+                                     }
+ 
+-                                    Connection.configureSerialization(channelPipeline, PacketFlow.SERVERBOUND, false, null);
++                                    // Papo start - wire byte accounting: create the connection first so its
++                                    // per-connection counters can be threaded into the frame codec factory
++                                    // (constructor order is otherwise inert - it touches no channel state)
+                                     int rateLimitPacketsPerSecond = ServerConnectionListener.this.server.getRateLimitPacketsPerSecond();
+                                     Connection connection = (Connection)(rateLimitPacketsPerSecond > 0
+                                         ? new RateKickingConnection(rateLimitPacketsPerSecond)
+                                         : new Connection(PacketFlow.SERVERBOUND));
++                                    Connection.configureSerialization(channelPipeline, PacketFlow.SERVERBOUND, false, null, connection.papoReceivedWireBytesCounter(), connection.papoSentWireBytesCounter());
++                                    // Papo end - wire byte accounting
+                                     // Paper start - Add support for Proxy Protocol
+                                     if (io.papermc.paper.configuration.GlobalConfiguration.get().proxies.proxyProtocol) {
+                                         channel.pipeline().addAfter("timeout", "haproxy-decoder", new io.netty.handler.codec.haproxy.HAProxyMessageDecoder());
