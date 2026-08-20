@@ -1,0 +1,64 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 20 Aug 2026 07:46:46 +0800
+Subject: [PATCH] Papo: per-class size-hinted encode buffer allocation in
+ PacketEncoder
+
+
+diff --git a/net/minecraft/network/PacketEncoder.java b/net/minecraft/network/PacketEncoder.java
+index 546bfd09c703a2cb7cb39d6ca3e503a4ad3d79cb..cf667eeed066b98598f5571e26ac6fef3816930b 100644
+--- a/net/minecraft/network/PacketEncoder.java
++++ b/net/minecraft/network/PacketEncoder.java
+@@ -13,11 +13,40 @@ public class PacketEncoder<T extends PacketListener> extends MessageToByteEncode
+     private static final Logger LOGGER = LogUtils.getLogger();
+     private final ProtocolInfo<T> protocolInfo;
+ 
++    // Papo start - size-hinted encode buffer allocation
++    // Vanilla starts every packet at a 256-byte buffer and grows by pooled reallocation while the
++    // codec writes (each growth copies the already-written prefix); structurally large packets
++    // (chunk-with-light ~tens of KiB) incur ~8 grow-copies each during chunk-send bursts. Cache the
++    // last encoded size per packet class (only classes that produced >= 8 KiB) and allocate that
++    // capacity up front. Capacity is not observable on the wire; encoded bytes are unchanged.
++    // This handler is created per connection and encode/allocateBuffer run on the channel's single
++    // event loop thread, so a plain fastutil map is sufficient (no eviction: only structurally
++    // large packet classes are recorded; over-allocation for a smaller follow-up packet of the same
++    // class is a pooled-size-class miss, never a copy).
++    private static final int PAPO_SIZE_HINT_THRESHOLD = 8192;
++    private final it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap<Class<?>> papoEncodeSizeHints = new it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap<>();
++
++    {
++        this.papoEncodeSizeHints.defaultReturnValue(-1);
++    }
++    // Papo end
++
+     public PacketEncoder(ProtocolInfo<T> protocolInfo) {
+         this.protocolInfo = protocolInfo;
+     }
+ 
+     static final ThreadLocal<java.util.Locale> ADVENTURE_LOCALE = ThreadLocal.withInitial(() -> null); // Paper - adventure; set player's locale
++    // Papo start - size-hinted encode buffer allocation
++    @Override
++    protected ByteBuf allocateBuffer(ChannelHandlerContext ctx, Packet<T> msg, boolean preferDirect) throws Exception {
++        int papoHint = this.papoEncodeSizeHints.getInt(msg.getClass());
++        if (papoHint > 0) {
++            return ctx.alloc().ioBuffer(papoHint);
++        }
++        return super.allocateBuffer(ctx, msg, preferDirect);
++    }
++    // Papo end
++
+     @Override
+     protected void encode(ChannelHandlerContext channelHandlerContext, Packet<T> packet, ByteBuf byteBuf) throws Exception {
+         PacketType<? extends Packet<? super T>> packetType = packet.type();
+@@ -26,6 +55,11 @@ public class PacketEncoder<T extends PacketListener> extends MessageToByteEncode
+             ADVENTURE_LOCALE.set(channelHandlerContext.channel().attr(io.papermc.paper.adventure.PaperAdventure.LOCALE_ATTRIBUTE).get()); // Paper - adventure; set player's locale
+             this.protocolInfo.codec().encode(byteBuf, packet);
+             int i = byteBuf.readableBytes();
++            // Papo start - size-hinted encode buffer allocation
++            if (i >= PAPO_SIZE_HINT_THRESHOLD) {
++                this.papoEncodeSizeHints.put(packet.getClass(), i);
++            }
++            // Papo end
+             if (LOGGER.isDebugEnabled()) {
+                 LOGGER.debug(
+                     Connection.PACKET_SENT_MARKER, "OUT: [{}:{}] {} -> {} bytes", this.protocolInfo.id().id(), packetType, packet.getClass().getName(), i

@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 20 Aug 2026 07:46:46 +0800
+Subject: [PATCH] Papo: size compression output buffer to DEFLATE worst-case
+ bound
+
+
+diff --git a/net/minecraft/network/CompressionEncoder.java b/net/minecraft/network/CompressionEncoder.java
+index 1baa8daf880c5f87f1d72ecf0e1b93c7f749648d..3e527d08470bece41c9d0a1c7e301502ce42f858 100644
+--- a/net/minecraft/network/CompressionEncoder.java
++++ b/net/minecraft/network/CompressionEncoder.java
+@@ -87,7 +87,18 @@ public class CompressionEncoder extends MessageToByteEncoder<ByteBuf> {
+             //    size the compressed size will ever be is the input size minus one.
+             // - Uncompressed
+             //    This is fairly obvious - we will then have one more than the uncompressed size.
+-            final int initialBufferSize = msg.readableBytes() + 1;
++            // Papo start - size the initial buffer to the DEFLATE worst-case bound
++            // For incompressible payloads DEFLATE emits stored blocks. Measured expansion (JDK zlib,
++            // level 6, random input, 64 KiB..4 MiB): exactly 5 bytes per 16384-byte lit-buffer window
++            // plus 6 (2-byte zlib header + 4-byte adler32), i.e. n + 5*ceil(n/16384) + 6; libdeflate
++            // paces blocks on larger windows and stays below that. "n + 1" is below the bound, so
++            // such a packet hits the resize-retry path: on native libdeflate the caller doubles the
++            // capacity and compresses the ENTIRE input again (recompression spike). n + n/2048 + 32
++            // dominates the measured worst case with ~1.6x margin for both backends, making the
++            // retry unreachable (it remains as a backstop). Capacity only - wire bytes and packet
++            // framing are unchanged.
++            final int initialBufferSize = msg.readableBytes() + (msg.readableBytes() >>> 11) + 32;
++            // Papo end
+             return com.velocitypowered.natives.util.MoreByteBufUtils.preferredBuffer(ctx.alloc(), this.compressor, initialBufferSize);
+         }
+ 

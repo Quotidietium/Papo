@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 20 Aug 2026 07:46:46 +0800
+Subject: [PATCH] Papo: size-exact frame buffer allocation in
+ Varint21LengthFieldPrepender
+
+
+diff --git a/net/minecraft/network/Varint21LengthFieldPrepender.java b/net/minecraft/network/Varint21LengthFieldPrepender.java
+index 0506cba28a41dc468d133b608b7cb182d2847e88..21d04695409d11258cf95c3d61f32d0f9689dc23 100644
+--- a/net/minecraft/network/Varint21LengthFieldPrepender.java
++++ b/net/minecraft/network/Varint21LengthFieldPrepender.java
+@@ -10,6 +10,16 @@ import io.netty.handler.codec.MessageToByteEncoder;
+ public class Varint21LengthFieldPrepender extends MessageToByteEncoder<ByteBuf> {
+     public static final int MAX_VARINT21_BYTES = 3;
+ 
++    // Papo start - size-exact frame buffer allocation
++    // Vanilla default allocates a 256-byte buffer, then encode() grows it to the next power of two
++    // past 3 + payload (one extra pooled reallocation per packet, plus power-of-two over-allocation).
++    // Allocating 3 + readableBytes() up front is byte-identical output with a single allocation.
++    @Override
++    protected ByteBuf allocateBuffer(ChannelHandlerContext ctx, ByteBuf msg, boolean preferDirect) {
++        return ctx.alloc().ioBuffer(MAX_VARINT21_BYTES + msg.readableBytes());
++    }
++    // Papo end
++
+     @Override
+     protected void encode(ChannelHandlerContext ctx, ByteBuf encoder, ByteBuf decoder) {
+         int i = encoder.readableBytes();
