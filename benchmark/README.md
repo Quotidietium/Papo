@@ -59,6 +59,7 @@ cd benchmark
 | `PathNavBench` | 0230 | 寻路 shouldTargetNextNodeInDirection Vec3 链 vs Node 直读分量（含布尔等价矩阵自检；模型 EA 中性按 0175 先例机制保留） |
 | `WireSetOrderBench` | 0232 | 红石粉评估器 HashSet vs 桶序复刻（**1M 随机位置穷尽对拍真实 HashSet 迭代序**自检 ALL OK；1.68×） |
 | `SpawnScanBench` | 0235-0237 | merge 扫描分配 vs 复用（gc 探针 280 B/op 真差）+ despawn HashMap vs 数组 3.75×（含同集合同序/查值一致自检） |
+| `CombatEventGateBench` | 0238-0240 | 战斗事件门控模型 + EntityDamageEvent 构造器 stream vs 循环校验 2.74×（含异常类型/消息对拍自检） |
 
 ## 依赖
 
