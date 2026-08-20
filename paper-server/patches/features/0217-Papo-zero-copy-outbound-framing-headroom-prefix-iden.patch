@@ -1,0 +1,240 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 20 Aug 2026 08:16:59 +0800
+Subject: [PATCH] Papo: zero-copy outbound framing (headroom prefix +
+ identity-marked passthrough)
+
+
+diff --git a/net/minecraft/network/CompressionEncoder.java b/net/minecraft/network/CompressionEncoder.java
+index 3e527d08470bece41c9d0a1c7e301502ce42f858..6e483c22bee8a05e993df603ccd407fedfbbf380 100644
+--- a/net/minecraft/network/CompressionEncoder.java
++++ b/net/minecraft/network/CompressionEncoder.java
+@@ -2,6 +2,7 @@ package net.minecraft.network;
+ 
+ import io.netty.buffer.ByteBuf;
+ import io.netty.channel.ChannelHandlerContext;
++import io.netty.channel.ChannelPromise;
+ import io.netty.handler.codec.MessageToByteEncoder;
+ import java.util.zip.Deflater;
+ 
+@@ -29,6 +30,72 @@ public class CompressionEncoder extends MessageToByteEncoder<ByteBuf> {
+         // Paper end - Use Velocity cipher
+     }
+ 
++    // Papo start - zero-copy outbound framing
++    // When the incoming buffer identity-matches the headroom marker published by PacketEncoder, run the
++    // zero-copy path: below threshold the data-length varint (a single 0 byte) is written into the
++    // reserved prefix and the buffer passes through untouched (no allocation, no payload copy); at or
++    // above threshold a headroom-reserved output buffer is produced and the (unchanged) compressed
++    // framing is written in place. Any other buffer (or a stale marker) falls back to the copy-based
++    // encode below, so emitted bytes and reference-counting totals are identical either way.
++    //
++    // Reference-counting: papoEncodeHeadroom owns its input on every path - transferred downstream via
++    // ctx.write (netty's invokeWrite0 releases the message itself on a synchronous downstream failure,
++    // so ctx.write never throws the buffer back), or released exactly once in the finally. The outer
++    // write() therefore must NOT release on catch (the finally already did).
++    @Override
++    public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
++        if (msg instanceof ByteBuf papoBuf && papoBuf == ctx.channel().attr(PapoOutboundFraming.HEADROOM_BUF).get()) {
++            ctx.channel().attr(PapoOutboundFraming.HEADROOM_BUF).set(null);
++            this.papoEncodeHeadroom(ctx, papoBuf, promise);
++            return;
++        }
++        ctx.channel().attr(PapoOutboundFraming.HEADROOM_BUF).set(null); // foreign buffer: drop any stale marker
++        super.write(ctx, msg, promise);
++    }
++
++    private void papoEncodeHeadroom(ChannelHandlerContext ctx, ByteBuf in, ChannelPromise promise) throws Exception {
++        boolean papoConsumed = false; // input ownership left this method (or is dead) - skip the finally release
++        try {
++            int i = in.readableBytes();
++            if (i > 8388608) {
++                throw new IllegalArgumentException("Packet too big (is " + i + ", should be less than 8388608)");
++            }
++            if (i < this.threshold) {
++                in.setByte(PapoOutboundFraming.HEADROOM - 1, 0); // data-length varint of an uncompressed packet: one 0 byte
++                in.readerIndex(PapoOutboundFraming.HEADROOM - 1);
++                ctx.channel().attr(PapoOutboundFraming.HEADROOM_BUF).set(in); // re-publish for the prepender
++                papoConsumed = true; // set before ctx.write: if the call ever failed after taking the buffer, prefer a leak over a double release
++                ctx.write(in, promise);
++                return;
++            }
++
++            final ByteBuf out = com.velocitypowered.natives.util.MoreByteBufUtils.preferredBuffer(
++                ctx.alloc(), this.compressor, PapoOutboundFraming.HEADROOM + i + (i >>> 11) + 32);
++            try {
++                out.setIndex(PapoOutboundFraming.HEADROOM, PapoOutboundFraming.HEADROOM);
++                VarInt.write(out, i);
++                final ByteBuf compatibleIn = com.velocitypowered.natives.util.MoreByteBufUtils.ensureCompatible(ctx.alloc(), this.compressor, in);
++                try {
++                    this.compressor.deflate(compatibleIn, out);
++                } finally {
++                    compatibleIn.release();
++                }
++            } catch (Exception e) {
++                out.release(); // not yet published - release on failure (outer finally still releases `in`)
++                throw e;
++            }
++            in.release(); // consumed by compression; neither release below can throw from here on
++            papoConsumed = true;
++            ctx.channel().attr(PapoOutboundFraming.HEADROOM_BUF).set(out); // publish for the prepender
++            ctx.write(out, promise);
++        } finally {
++            if (!papoConsumed) {
++                in.release();
++            }
++        }
++    }
++    // Papo end
++
+     @Override
+     protected void encode(ChannelHandlerContext ctx, ByteBuf encodingByteBuf, ByteBuf byteBuf) throws Exception { // Paper - Use Velocity cipher
+         int i = encodingByteBuf.readableBytes();
+diff --git a/net/minecraft/network/PacketEncoder.java b/net/minecraft/network/PacketEncoder.java
+index cf667eeed066b98598f5571e26ac6fef3816930b..7ffc3490ec16731c1db98b16b35836c26b14342d 100644
+--- a/net/minecraft/network/PacketEncoder.java
++++ b/net/minecraft/network/PacketEncoder.java
+@@ -37,13 +37,18 @@ public class PacketEncoder<T extends PacketListener> extends MessageToByteEncode
+ 
+     static final ThreadLocal<java.util.Locale> ADVENTURE_LOCALE = ThreadLocal.withInitial(() -> null); // Paper - adventure; set player's locale
+     // Papo start - size-hinted encode buffer allocation
++    // Papo start - zero-copy outbound framing
++    // Reserve PapoOutboundFraming.HEADROOM bytes of prefix space (indices [0, HEADROOM)) so the
++    // compression and framing stages downstream can prepend their length varints in place instead of
++    // copying the whole payload into fresh buffers. Pre-advancing both indices keeps readableBytes()
++    // equal to the encoded content size (the size check in the finally block and every downstream
++    // consumer read from readerIndex), so the headroom is invisible outside this optimization.
+     @Override
+     protected ByteBuf allocateBuffer(ChannelHandlerContext ctx, Packet<T> msg, boolean preferDirect) throws Exception {
+         int papoHint = this.papoEncodeSizeHints.getInt(msg.getClass());
+-        if (papoHint > 0) {
+-            return ctx.alloc().ioBuffer(papoHint);
+-        }
+-        return super.allocateBuffer(ctx, msg, preferDirect);
++        ByteBuf papoBuf = ctx.alloc().ioBuffer((papoHint > 0 ? papoHint : 256) + PapoOutboundFraming.HEADROOM);
++        papoBuf.setIndex(PapoOutboundFraming.HEADROOM, PapoOutboundFraming.HEADROOM);
++        return papoBuf;
+     }
+     // Papo end
+ 
+@@ -54,6 +59,16 @@ public class PacketEncoder<T extends PacketListener> extends MessageToByteEncode
+         try {
+             ADVENTURE_LOCALE.set(channelHandlerContext.channel().attr(io.papermc.paper.adventure.PaperAdventure.LOCALE_ATTRIBUTE).get()); // Paper - adventure; set player's locale
+             this.protocolInfo.codec().encode(byteBuf, packet);
++            // Papo start - zero-copy outbound framing
++            // Publish this buffer's identity for the next outbound stage (same event loop, next
++            // handler in the same write traversal). Only published when the real framing prepender is
++            // installed (memory-channel LocalFrameEncoder never consumes it, and leaving it set would
++            // pin one buffer per channel). On encode failure the buffer is released by netty and the
++            // stale marker is cleared/overwritten by the next write - every consumer clears it first.
++            if (channelHandlerContext.pipeline().get("prepender") instanceof Varint21LengthFieldPrepender) {
++                channelHandlerContext.channel().attr(PapoOutboundFraming.HEADROOM_BUF).set(byteBuf);
++            }
++            // Papo end
+             int i = byteBuf.readableBytes();
+             // Papo start - size-hinted encode buffer allocation
+             if (i >= PAPO_SIZE_HINT_THRESHOLD) {
+diff --git a/net/minecraft/network/PapoOutboundFraming.java b/net/minecraft/network/PapoOutboundFraming.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..cff46094892594d3138bd948ba61d80dc491b974
+--- /dev/null
++++ b/net/minecraft/network/PapoOutboundFraming.java
+@@ -0,0 +1,53 @@
++package net.minecraft.network;
++
++import io.netty.buffer.ByteBuf;
++import io.netty.util.AttributeKey;
++
++/**
++ * Papo - zero-copy outbound framing.
++ *
++ * Outbound bytes are produced in three stages (packet encode, optional compression, length framing),
++ * and the framing stage historically copied the entire payload into a fresh buffer just to prepend the
++ * frame-length varint; the below-threshold compression path added another full copy. With a reserved
++ * prefix ("headroom", {@link #HEADROOM} bytes) allocated once at packet-encode time, every stage can
++ * work in place: the compression stage writes its data-length varint into the headroom (below threshold)
++ * or produces its own headroom buffer (compressed), and the prepender writes the frame-length varint
++ * right-aligned into the remaining headroom and passes the buffer through unmodified.
++ *
++ * Handoff between stages uses a per-channel attribute holding the identity of the buffer that currently
++ * carries headroom. All three stages run on the channel's single event loop thread, in pipeline order,
++ * so the attribute is set and consumed within one write traversal - no synchronization needed. Any
++ * buffer that does not identity-match (foreign ByteBuf injected by a plugin, stale marker) falls back to
++ * the original copy path, so the fast path is purely an internal allocation/copying optimization and the
++ * emitted byte stream is identical.
++ */
++final class PapoOutboundFraming {
++    /** Max varint21 size of the frame length + max varint size of the (un)compressed data length prefix. */
++    static final int HEADROOM = Varint21LengthFieldPrepender.MAX_VARINT21_BYTES + 3;
++
++    /** Identity of the buffer currently carrying {@link #HEADROOM} bytes of reserved prefix space. */
++    static final AttributeKey<ByteBuf> HEADROOM_BUF = AttributeKey.valueOf("papo.outboundHeadroomBuf");
++
++    private PapoOutboundFraming() {
++    }
++
++    /**
++     * Writes {@code value}'s varint encoding right-aligned immediately before {@code buf}'s readerIndex
++     * (into reserved headroom) and rewinds the readerIndex. Byte emission is identical to
++     * {@link VarInt#write} - least significant group first, continuation bit on all but the last byte -
++     * verified by round-trip in the batch 59 benchmark self-check.
++     */
++    static void writeVarIntBackwards(ByteBuf buf, int value) {
++        int size = VarInt.getByteSize(value);
++        int end = buf.readerIndex();
++        int index = end - size;
++        int shift = 0;
++        int last = size * 7;
++        while (shift < last) {
++            int b = value >>> shift & 0x7F;
++            shift += 7;
++            buf.setByte(index++, shift < last ? b | 0x80 : b);
++        }
++        buf.readerIndex(end - size);
++    }
++}
+diff --git a/net/minecraft/network/Varint21LengthFieldPrepender.java b/net/minecraft/network/Varint21LengthFieldPrepender.java
+index 21d04695409d11258cf95c3d61f32d0f9689dc23..ec80200e89721a1cbce4a1968c6caf378d36652b 100644
+--- a/net/minecraft/network/Varint21LengthFieldPrepender.java
++++ b/net/minecraft/network/Varint21LengthFieldPrepender.java
+@@ -3,6 +3,7 @@ package net.minecraft.network;
+ import io.netty.buffer.ByteBuf;
+ import io.netty.channel.ChannelHandlerContext;
+ import io.netty.channel.ChannelHandler.Sharable;
++import io.netty.channel.ChannelPromise;
+ import io.netty.handler.codec.EncoderException;
+ import io.netty.handler.codec.MessageToByteEncoder;
+ 
+@@ -20,6 +21,32 @@ public class Varint21LengthFieldPrepender extends MessageToByteEncoder<ByteBuf>
+     }
+     // Papo end
+ 
++    // Papo start - zero-copy outbound framing
++    // When the incoming buffer identity-matches the headroom marker (published by PacketEncoder or
++    // CompressionEncoder earlier in this same write traversal), the frame-length varint is written
++    // right-aligned into the reserved prefix space and the buffer is passed through unmodified - no
++    // output allocation and no payload copy. Any other buffer falls back to the copy-based encode
++    // below. Reference counting: on the fast path the message is transferred with ctx.write (netty
++    // releases it on a synchronous downstream failure); the too-large branch releases it explicitly,
++    // mirroring MessageToByteEncoder's release-on-encode-failure semantics.
++    @Override
++    public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
++        if (msg instanceof ByteBuf papoBuf && papoBuf == ctx.channel().attr(PapoOutboundFraming.HEADROOM_BUF).get()) {
++            ctx.channel().attr(PapoOutboundFraming.HEADROOM_BUF).set(null);
++            int i = papoBuf.readableBytes();
++            if (VarInt.getByteSize(i) > MAX_VARINT21_BYTES) {
++                papoBuf.release();
++                throw new EncoderException("Packet too large: size " + i + " is over 8");
++            }
++            PapoOutboundFraming.writeVarIntBackwards(papoBuf, i);
++            ctx.write(papoBuf, promise);
++            return;
++        }
++        ctx.channel().attr(PapoOutboundFraming.HEADROOM_BUF).set(null); // foreign buffer: drop any stale marker
++        super.write(ctx, msg, promise);
++    }
++    // Papo end
++
+     @Override
+     protected void encode(ChannelHandlerContext ctx, ByteBuf encoder, ByteBuf decoder) {
+         int i = encoder.readableBytes();
