@@ -1,0 +1,49 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 20 Aug 2026 12:35:10 +0800
+Subject: [PATCH] Papo: lazy + zero-listener redstone torch tick event
+
+
+diff --git a/net/minecraft/world/level/block/RedstoneTorchBlock.java b/net/minecraft/world/level/block/RedstoneTorchBlock.java
+index 9da1c701572ffd39632fcd2ed6fde5df451434bf..878616f18e71f8c5e555eff35f87b67147a90a12 100644
+--- a/net/minecraft/world/level/block/RedstoneTorchBlock.java
++++ b/net/minecraft/world/level/block/RedstoneTorchBlock.java
+@@ -84,19 +84,19 @@ public class RedstoneTorchBlock extends BaseTorchBlock {
+         // Paper end - Faster redstone torch rapid clock removal
+ 
+         // CraftBukkit start
+-        org.bukkit.plugin.PluginManager manager = level.getCraftServer().getPluginManager();
+-        org.bukkit.block.Block block = org.bukkit.craftbukkit.block.CraftBlock.at(level, pos);
++        // Papo start - lazy + zero-listener event handling: the original built CraftBlock + the
++        // event unconditionally on every scheduled tick even when no transition occurs (the common
++        // holding-state tick never dispatches). handleRedstoneChange constructs and dispatches only
++        // on an actual transition and skips everything with zero listeners; with listeners the
++        // dispatched event is field-identical (block/oldCurrent, newCurrent set to the target before
++        // dispatch) and the abort comparison (getNewCurrent() != target) is the returned value.
+         int oldCurrent = state.getValue(LIT) ? 15 : 0;
+-
+-        org.bukkit.event.block.BlockRedstoneEvent event = new org.bukkit.event.block.BlockRedstoneEvent(block, oldCurrent, oldCurrent);
+         // CraftBukkit end
+         if (state.getValue(LIT)) {
+             if (hasNeighborSignal) {
+                 // CraftBukkit start
+                 if (oldCurrent != 0) {
+-                    event.setNewCurrent(0);
+-                    manager.callEvent(event);
+-                    if (event.getNewCurrent() != 0) {
++                    if (org.bukkit.craftbukkit.event.CraftEventFactory.handleRedstoneChange(level, pos, oldCurrent, 0) != 0) {
+                         return;
+                     }
+                 }
+@@ -110,9 +110,8 @@ public class RedstoneTorchBlock extends BaseTorchBlock {
+         } else if (!hasNeighborSignal && !isToggledTooFrequently(level, pos, false)) {
+             // CraftBukkit start
+             if (oldCurrent != 15) {
+-                event.setNewCurrent(15);
+-                manager.callEvent(event);
+-                if (event.getNewCurrent() != 15) {
++                // Papo - lazy + zero-listener handling (see the lit branch above)
++                if (org.bukkit.craftbukkit.event.CraftEventFactory.handleRedstoneChange(level, pos, oldCurrent, 15) != 15) {
+                     return;
+                 }
+             }

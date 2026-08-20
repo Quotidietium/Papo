@@ -1,0 +1,101 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 20 Aug 2026 12:35:09 +0800
+Subject: [PATCH] Papo: gate redstone wire BlockRedstoneEvent (both missed
+ sites) and replicate HashSet bucket order
+
+
+diff --git a/net/minecraft/world/level/block/RedStoneWireBlock.java b/net/minecraft/world/level/block/RedStoneWireBlock.java
+index c10aaf882c1619e6b97e3245078d1fb9d9460aef..bd7dd1fa27f36eb6cb9e92dda90b3a5d0c75b7ac 100644
+--- a/net/minecraft/world/level/block/RedStoneWireBlock.java
++++ b/net/minecraft/world/level/block/RedStoneWireBlock.java
+@@ -303,10 +303,10 @@ public class RedStoneWireBlock extends Block {
+         int oldPower = state.getValue(POWER);
+         int newPower = ((DefaultRedstoneWireEvaluator) evaluator).calculateTargetStrength(level, pos);
+         if (oldPower != newPower) {
+-            org.bukkit.event.block.BlockRedstoneEvent event = new org.bukkit.event.block.BlockRedstoneEvent(org.bukkit.craftbukkit.block.CraftBlock.at(level, pos), oldPower, newPower);
+-            level.getCraftServer().getPluginManager().callEvent(event);
+-
+-            newPower = event.getNewCurrent();
++            // Papo start - zero-listener fast path (0125/0134 same shape; companion site to
++            // DefaultRedstoneWireEvaluator.updatePowerStrength)
++            newPower = org.bukkit.craftbukkit.event.CraftEventFactory.handleRedstoneChange(level, pos, oldPower, newPower);
++            // Papo end
+ 
+             if (level.getBlockState(pos) == state) {
+                 state = state.setValue(POWER, newPower);
+diff --git a/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java b/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
+index 1980ec95365aeb63ac5476f8c94bed0d6b766c2c..5c03243afe9ba631e8bb32108f439079710ece07 100644
+--- a/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
++++ b/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
+@@ -12,6 +12,12 @@ import org.jspecify.annotations.Nullable;
+ 
+ public class DefaultRedstoneWireEvaluator extends RedstoneWireEvaluator {
+     private static final Direction[] DIRECTIONS = Direction.values(); // Papo - cache enum array, values() clones per call
++    // Papo start - relative offsets for the bucket-order iteration below (index 0 = pos, 1..6 =
++    // DOWN, UP, NORTH, SOUTH, WEST, EAST - Direction.values() order, the original insertion order)
++    private static final int[] PAPO_OFF_X = {0, 0, 0, 0, 0, -1, 1};
++    private static final int[] PAPO_OFF_Y = {0, -1, 1, 0, 0, 0, 0};
++    private static final int[] PAPO_OFF_Z = {0, 0, 0, -1, 1, 0, 0};
++    // Papo end
+ 
+     public DefaultRedstoneWireEvaluator(RedStoneWireBlock wireBlock) {
+         super(wireBlock);
+@@ -23,10 +29,11 @@ public class DefaultRedstoneWireEvaluator extends RedstoneWireEvaluator {
+         // CraftBukkit start
+         int oldPower = state.getValue(RedStoneWireBlock.POWER);
+         if (oldPower != i) {
+-            org.bukkit.event.block.BlockRedstoneEvent event = new org.bukkit.event.block.BlockRedstoneEvent(org.bukkit.craftbukkit.block.CraftBlock.at(level, pos), oldPower, i);
+-            level.getCraftServer().getPluginManager().callEvent(event);
+-
+-            i = event.getNewCurrent();
++            // Papo start - zero-listener fast path (same shape as the 11 sites migrated in 0125/0134;
++            // this site and RedStoneWireBlock.calculateCurrentChanges were the two missed ones - and
++            // the highest-frequency ones: every wire power change under the default VANILLA evaluator)
++            i = org.bukkit.craftbukkit.event.CraftEventFactory.handleRedstoneChange(level, pos, oldPower, i);
++            // Papo end
+         }
+         if (oldPower != i) {
+             // CraftBukkit end
+@@ -34,16 +41,33 @@ public class DefaultRedstoneWireEvaluator extends RedstoneWireEvaluator {
+                 level.setBlock(pos, state.setValue(RedStoneWireBlock.POWER, i), Block.UPDATE_CLIENTS);
+             }
+ 
+-            Set<BlockPos> set = Sets.newHashSet();
+-            set.add(pos);
+-
+-            for (Direction direction : DIRECTIONS) { // Papo - cached array
+-                set.add(pos.relative(direction));
++            // Papo start - replicate the 7-position HashSet's iteration order directly
++            // The set never deduplicates (pos and its 6 relatives are always distinct) and never
++            // resizes or treeifies (7 entries < the size-12 resize threshold and < 8 per bin), so
++            // its iteration order is exactly HashMap's: table bucket ascending
++            // (spread(h) & 15, spread = h ^ h>>>16, h = Vec3i.hashCode = (y + z*31)*31 + x),
++            // ties in insertion order (pos, DOWN, UP, NORTH, SOUTH, WEST, EAST - Direction.values()
++            // order). A LinkedHashSet would NOT match (insertion order != bucket order). We compute
++            // each candidate's bucket index from its coordinates and walk buckets 0..15 emitting
++            // matching candidates in insertion order - byte-identical updateNeighborsAt ordering
++            // without the HashSet, its table, and 7 node allocations. Verified by a 1M-random-
++            // position exhaustive comparison against a real HashSet (WireSetOrderBench main).
++            final int papoX = pos.getX();
++            final int papoY = pos.getY();
++            final int papoZ = pos.getZ();
++            final int[] papoBucket = new int[7];
++            for (int papoIdx = 0; papoIdx < 7; papoIdx++) {
++                final int papoHash = (papoY + PAPO_OFF_Y[papoIdx] + (papoZ + PAPO_OFF_Z[papoIdx]) * 31) * 31 + papoX + PAPO_OFF_X[papoIdx];
++                papoBucket[papoIdx] = (papoHash ^ papoHash >>> 16) & 15;
+             }
+-
+-            for (BlockPos blockPos : set) {
+-                level.updateNeighborsAt(blockPos, this.wireBlock);
++            for (int papoB = 0; papoB < 16; papoB++) {
++                for (int papoIdx = 0; papoIdx < 7; papoIdx++) {
++                    if (papoBucket[papoIdx] == papoB) {
++                        level.updateNeighborsAt(papoIdx == 0 ? pos : pos.relative(DIRECTIONS[papoIdx - 1]), this.wireBlock);
++                    }
++                }
+             }
++            // Papo end - replicate the 7-position HashSet's iteration order directly
+         }
+     }
+ 

@@ -1,0 +1,36 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 20 Aug 2026 12:35:10 +0800
+Subject: [PATCH] Papo: cache comparator item-frame facing predicate
+
+
+diff --git a/net/minecraft/world/level/block/ComparatorBlock.java b/net/minecraft/world/level/block/ComparatorBlock.java
+index 3e23ee99a24b442c1f7c7f35216ddbc7998dd74b..878f5fd173ea34db0c558ad9189f102a4b187455 100644
+--- a/net/minecraft/world/level/block/ComparatorBlock.java
++++ b/net/minecraft/world/level/block/ComparatorBlock.java
+@@ -118,11 +118,24 @@ public class ComparatorBlock extends DiodeBlock implements EntityBlock {
+         return i;
+     }
+ 
++    // Papo start - cache the facing predicate per Direction (0170 canHitEntity pattern): the lambda
++    // captures only the facing constant; the method reference dispatches virtually at call time, so a
++    // shared singleton is behaviorally identical. The AABB depends on pos (block instance is a
++    // singleton) and stays as-is.
++    private static final java.util.function.Predicate<ItemFrame>[] PAPO_FRAME_PREDICATES = new java.util.function.Predicate[Direction.values().length];
++
++    static {
++        for (final Direction papoDir : Direction.values()) {
++            PAPO_FRAME_PREDICATES[papoDir.ordinal()] = itemFrame -> itemFrame.getDirection() == papoDir;
++        }
++    }
++    // Papo end - cache the facing predicate per Direction
++
+     private @Nullable ItemFrame getItemFrame(Level level, Direction facing, BlockPos pos) {
+         List<ItemFrame> entitiesOfClass = level.getEntitiesOfClass(
+             ItemFrame.class,
+             new AABB(pos.getX(), pos.getY(), pos.getZ(), pos.getX() + 1, pos.getY() + 1, pos.getZ() + 1),
+-            itemFrame -> itemFrame.getDirection() == facing
++            PAPO_FRAME_PREDICATES[facing.ordinal()] // Papo - cached facing predicate
+         );
+         return entitiesOfClass.size() == 1 ? entitiesOfClass.get(0) : null;
+     }
