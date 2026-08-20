@@ -1742,6 +1742,32 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 - EmbeddedChannel 构造参数序 = head→tail，出站遍历为 tail→head——**装配顺序必须与真实管线 list 序一致**（[prepender, compress, encoder]），首版装反导致 compress/prepender 全部直通、自检立刻抓包失败。
 - netty 4.2 的 MessageToByteEncoder 在 **netty-codec-base**（非 netty-codec）；benchmark 依赖与 run.sh 已补 netty-transport + netty-codec-base。
 
+---
+
+## 批次 60（2026-08-20）：批量分派否决 + send 快路径重排 + pairing 预尺寸（0218-0219）
+
+主题延续。本批主体是**否决评估**（B1 批量 event-loop 分派——两轮实测 + 机制证伪后撤回），落地 2 个小补丁。JMH 报告：[note/report/perf/2026-08-20-jmh-microbench-batch60.md](report/perf/2026-08-20-jmh-microbench-batch60.md)。
+
+### 否决评估：主线程每包 eventLoop().execute 批量化（未落地，证据留档）
+- **候选**：sendPacket 非 event-loop 分支每包 `execute(lambda)` → MPSC 队列 + 每突发一次排水任务（CAS 边界；event-loop 发送者保持 vanilla inline；每条目独立异常隔离）。实现完成、自检 ALL OK 后被实测否决。
+- **两轮实测**（BatchedDispatchBench，真实 NioEventLoopGroup(1)，32 包突发）：CLQ 版 **回退 4.8×**（462→2209ns，跨线程 CAS+每元素 Node 分配）；换 netty shaded MpscChunkedArrayQueue 修正版仍**劣化 1.49×**（534→793ns，CI 部分重叠）。
+- **机制前提证伪（关键）**：原假设"每包 execute = 每包一次 selector 唤醒"。复查 netty：`NioEventLoop.wakeup` 带 CAS 守卫（每 park 窗口至多一次），event loop 以 64 任务/批处理任务队列——vanilla 的逐包任务机制早已被 netty 内部摊销，可省的只剩每包一个 TLAB 便宜的 lambda。
+- **判例**：①"消除每任务开销"类候选必须先核实运行时是否已内建摊销（纸面逐包成本可能早就不存在）；②跨线程队列选型必须实测（CLQ vs MPSC 差 4.8×）；③与 0209 同类的跨线程复杂度，实测无收益一律撤。
+- 内部提交已摘除（rebase --onto），基准类与两轮结果留档作复评依据。
+
+### 0218 — Connection.send 立即发送判定析取重排
+- **文件**：`net/minecraft/network/Connection.java` `send`
+- **热点**：立即发送判定 `canSendImmediate(...) || (isMainThread && isReady && queueEmpty && noExtra)`——play 阶段主线程发送（常态）时，**非白名单包**（实体移动/数据/方块/区块更新，绝大多数流量）先走完 ~20 个 instanceof 全 miss 才落到恒真主线程臂（InnerUtil.java:916-935）。
+- **改法**：两臂均为无副作用纯谓词且导向同一 sendPacket 调用，求值顺序不可观察——廉价主线程臂（线程检查+3 字段读）提前短路。异步线程发送路径行为逐字不变。
+- **基准**：0.923 ± 0.006 → 0.534 ± 0.004 ns/op（**1.73×**，CI 不重叠；绝对节省 ~0.4ns/包，JIT 后 instanceof 链本身已是亚 ns 类比较——纯重排零风险白捡）。布尔等价矩阵自检 ALL OK。
+- **基准判例**：首版 static final 常量载荷被 JIT 整链常量折叠（伪平 0.48ns）；输入经 @State 非终态字段后真实差异显现——谓词类基准输入必须经 state 字段。
+- **风险**：零（纯求值序重排）。
+
+### 0219 — ServerEntity.addPairing 配对包列表预尺寸（批次 50 遗留项清账）
+- **文件**：`net/minecraft/server/level/ServerEntity.java` `addPairing`
+- **改法**：`new ArrayList<>()`（容量 10）→ `new ArrayList<>(4)`——sendPairingData 常态产出 2-4 个包，区块加载突发期每次实体配对省超额分配。容量不经 List API 可观察。
+- **风险**：零。
+
 ### 暂缓（批次 58 survey 产出，留批次 59）
 - **帧头合并免拷贝**（survey1 候选2，结构性大头）：CompressionEncoder 预留 3 字节头 + 帧长回填，prepender 对已帧化 buffer 直通——需管线结构改动与 marker 机制（channel attr 或包装类），config 门控，留批次 59 专项。
 - **主线程每包 eventLoop().execute → 按 tick 批量提交**（survey3 B1，高价值）：与已回退的 0209 同区域（跨线程 write 语义），但 drain task 在 event loop 内执行 → voidPromise 安全；需 config 门控 + 逐包 promise/listener 语义保持，留批次 59 专项。

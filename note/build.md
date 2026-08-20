@@ -277,6 +277,12 @@ git add paper-server/patches/features/0203-*.patch paper-server/patches/features
 
 批次 59 踩坑：`benchmark/run.sh` 的 javac 在 JDK 21+ 下**不运行 classpath 上的 JMH 注解处理器**（JDK-8306819：需显式 `-proc:full`/`-processor`），症状是 BenchmarkList 0 字节、无 `*_jmhTest` 桩类、JMH 报 "No matching benchmarks"。已给 run.sh 的 javac 加 `-proc:full`。另：netty 4.2 的 `MessageToByteEncoder` 在 **netty-codec-base**（非 netty-codec）；EmbeddedChannel 在 netty-transport——run.sh 依赖清单已补两 jar。**EmbeddedChannel 构造参数序 = head→tail，出站遍历 tail→head，装配序须与真实管线 list 序一致**（[prepender, compress, encoder]），装反时 compress/prepender 对非 ByteBuf 消息直通、出站字节=裸载荷，自检立刻抓包失败。
 
+## 2026-08-20 补充：批次 60 判例
+
+- **谓词类 JMH 基准的输入必须经 @State 非终态字段**：SendFastPathBench 首版载荷/旗标用 static final 常量，被 JIT 整链常量折叠（两版同测 0.48ns 伪平）；改经 @State 字段后真实差异 1.73× 显现。
+- **跨线程队列选型必须实测**：同一批量排水逻辑，ConcurrentLinkedQueue 版实测回退 4.8×（跨线程 CAS+每元素 Node 分配），netty shaded MpscChunkedArrayQueue 版 1.49× 劣化——MPSC 也救不回理论收益不存在的候选。
+- **"消除每任务开销"类候选先核实运行时内建摊销**：netty NioEventLoop.wakeup 带 CAS 守卫（每 park 窗口至多一次唤醒）+ 64 任务/批处理——"每包 execute = 每包一次唤醒 syscall" 的直觉在现代 netty 上不成立。
+
 ## 2026-08-02 补充：批次 51 踩坑记录
 
 ### Paper 配置 @Comment 是单 String，不是 String[]
