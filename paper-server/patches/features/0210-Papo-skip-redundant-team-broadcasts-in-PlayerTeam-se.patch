@@ -1,0 +1,119 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 20 Aug 2026 07:42:55 +0800
+Subject: [PATCH] Papo: skip redundant team broadcasts in PlayerTeam setters
+ (bandwidth)
+
+
+diff --git a/net/minecraft/world/scores/PlayerTeam.java b/net/minecraft/world/scores/PlayerTeam.java
+index 3feafbe8a953ea7fba8bc6f2351c61d9c865b83d..713bdca1d23633fb68b1dbb476b3d66dc7d643e6 100644
+--- a/net/minecraft/world/scores/PlayerTeam.java
++++ b/net/minecraft/world/scores/PlayerTeam.java
+@@ -84,12 +84,25 @@ public class PlayerTeam extends Team {
+         if (name == null) {
+             throw new IllegalArgumentException("Name cannot be null");
+         } else {
++            // Papo start - skip redundant team broadcast when a different-but-equal value is set
++            // Same-instance re-set keeps vanilla behavior (re-broadcast), so an in-place mutated
++            // NMS MutableComponent still refreshes clients via re-set; content-equal new instances
++            // are provably no-ops for clients (they already hold an equal rendering).
++            if (name != this.displayName && name.equals(this.displayName)) {
++                return;
++            }
++            // Papo end
+             this.displayName = name;
+             this.scoreboard.onTeamChanged(this);
+         }
+     }
+ 
+     public void setPlayerPrefix(@Nullable Component playerPrefix) {
++        // Papo start - skip redundant team broadcast (see setDisplayName)
++        if (playerPrefix != this.playerPrefix && java.util.Objects.equals(playerPrefix == null ? CommonComponents.EMPTY : playerPrefix, this.playerPrefix)) {
++            return;
++        }
++        // Papo end
+         this.playerPrefix = playerPrefix == null ? CommonComponents.EMPTY : playerPrefix;
+         this.scoreboard.onTeamChanged(this);
+     }
+@@ -99,6 +112,11 @@ public class PlayerTeam extends Team {
+     }
+ 
+     public void setPlayerSuffix(@Nullable Component playerSuffix) {
++        // Papo start - skip redundant team broadcast (see setDisplayName)
++        if (playerSuffix != this.playerSuffix && java.util.Objects.equals(playerSuffix == null ? CommonComponents.EMPTY : playerSuffix, this.playerSuffix)) {
++            return;
++        }
++        // Papo end
+         this.playerSuffix = playerSuffix == null ? CommonComponents.EMPTY : playerSuffix;
+         this.scoreboard.onTeamChanged(this);
+     }
+@@ -133,6 +151,11 @@ public class PlayerTeam extends Team {
+     }
+ 
+     public void setAllowFriendlyFire(boolean friendlyFire) {
++        // Papo start - skip redundant team broadcast (see setDisplayName)
++        if (friendlyFire == this.allowFriendlyFire) {
++            return;
++        }
++        // Papo end
+         this.allowFriendlyFire = friendlyFire;
+         this.scoreboard.onTeamChanged(this);
+     }
+@@ -143,6 +166,11 @@ public class PlayerTeam extends Team {
+     }
+ 
+     public void setSeeFriendlyInvisibles(boolean friendlyInvisibles) {
++        // Papo start - skip redundant team broadcast (see setDisplayName)
++        if (friendlyInvisibles == this.seeFriendlyInvisibles) {
++            return;
++        }
++        // Papo end
+         this.seeFriendlyInvisibles = friendlyInvisibles;
+         this.scoreboard.onTeamChanged(this);
+     }
+@@ -158,11 +186,21 @@ public class PlayerTeam extends Team {
+     }
+ 
+     public void setNameTagVisibility(Team.Visibility visibility) {
++        // Papo start - skip redundant team broadcast (see setDisplayName)
++        if (visibility == this.nameTagVisibility) {
++            return;
++        }
++        // Papo end
+         this.nameTagVisibility = visibility;
+         this.scoreboard.onTeamChanged(this);
+     }
+ 
+     public void setDeathMessageVisibility(Team.Visibility visibility) {
++        // Papo start - skip redundant team broadcast (see setDisplayName)
++        if (visibility == this.deathMessageVisibility) {
++            return;
++        }
++        // Papo end
+         this.deathMessageVisibility = visibility;
+         this.scoreboard.onTeamChanged(this);
+     }
+@@ -173,6 +211,11 @@ public class PlayerTeam extends Team {
+     }
+ 
+     public void setCollisionRule(Team.CollisionRule rule) {
++        // Papo start - skip redundant team broadcast (see setDisplayName)
++        if (rule == this.collisionRule) {
++            return;
++        }
++        // Papo end
+         this.collisionRule = rule;
+         this.scoreboard.onTeamChanged(this);
+     }
+@@ -196,6 +239,11 @@ public class PlayerTeam extends Team {
+     }
+ 
+     public void setColor(ChatFormatting color) {
++        // Papo start - skip redundant team broadcast (see setDisplayName)
++        if (color == this.color) {
++            return;
++        }
++        // Papo end
+         this.color = color;
+         this.scoreboard.onTeamChanged(this);
+     }

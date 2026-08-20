@@ -1,0 +1,34 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 20 Aug 2026 07:44:07 +0800
+Subject: [PATCH] Papo: dedupe identical display-slot packet in
+ ServerScoreboard (bandwidth)
+
+
+diff --git a/net/minecraft/server/ServerScoreboard.java b/net/minecraft/server/ServerScoreboard.java
+index 04a62e5ab9c0d0b9b7959280b0e0ea3ff388c017..60a6016cda85a42743fb0dee2180c546393d1b41 100644
+--- a/net/minecraft/server/ServerScoreboard.java
++++ b/net/minecraft/server/ServerScoreboard.java
+@@ -92,9 +92,11 @@ public class ServerScoreboard extends Scoreboard {
+     public void setDisplayObjective(DisplaySlot slot, @Nullable Objective objective) {
+         Objective displayObjective = this.getDisplayObjective(slot);
+         super.setDisplayObjective(slot, objective);
++        boolean papoBroadcastDisplay = false; // Papo - dedupe identical display-slot packet sent twice below
+         if (displayObjective != objective && displayObjective != null) {
+             if (this.getObjectiveDisplaySlotCount(displayObjective) > 0) {
+                 this.broadcastAll(new ClientboundSetDisplayObjectivePacket(slot, objective)); // CraftBukkit
++                papoBroadcastDisplay = true; // Papo - dedupe identical display-slot packet sent twice below
+             } else {
+                 this.stopTrackingObjective(displayObjective);
+             }
+@@ -102,7 +104,9 @@ public class ServerScoreboard extends Scoreboard {
+ 
+         if (objective != null) {
+             if (this.trackedObjectives.contains(objective)) {
+-                this.broadcastAll(new ClientboundSetDisplayObjectivePacket(slot, objective)); // CraftBukkit
++                if (!papoBroadcastDisplay) { // Papo - dedupe identical display-slot packet sent twice below
++                    this.broadcastAll(new ClientboundSetDisplayObjectivePacket(slot, objective)); // CraftBukkit
++                }
+             } else {
+                 this.startTrackingObjective(objective);
+             }

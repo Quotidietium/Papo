@@ -1,0 +1,75 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 20 Aug 2026 07:44:06 +0800
+Subject: [PATCH] Papo: skip redundant objective/score broadcasts (bandwidth)
+
+
+diff --git a/net/minecraft/world/scores/Objective.java b/net/minecraft/world/scores/Objective.java
+index ad3dc8f24ae127753ff6688af54e98d3faaf397d..3632572bc55093bfe8022bfb0bd4415873252d70 100644
+--- a/net/minecraft/world/scores/Objective.java
++++ b/net/minecraft/world/scores/Objective.java
+@@ -85,6 +85,13 @@ public class Objective {
+     }
+ 
+     public void setDisplayName(Component displayName) {
++        // Papo start - skip redundant objective broadcast when a different-but-equal value is set
++        // (same-instance re-set keeps vanilla re-broadcast so an in-place mutated NMS MutableComponent
++        // still refreshes clients; content-equal new instances are provable client no-ops)
++        if (displayName != this.displayName && displayName.equals(this.displayName)) {
++            return;
++        }
++        // Papo end
+         this.displayName = displayName;
+         this.formattedDisplayName = this.createFormattedDisplayName();
+         this.scoreboard.onObjectiveChanged(this);
+@@ -95,16 +102,31 @@ public class Objective {
+     }
+ 
+     public void setRenderType(ObjectiveCriteria.RenderType renderType) {
++        // Papo start - skip redundant objective broadcast (see setDisplayName)
++        if (renderType == this.renderType) {
++            return;
++        }
++        // Papo end
+         this.renderType = renderType;
+         this.scoreboard.onObjectiveChanged(this);
+     }
+ 
+     public void setDisplayAutoUpdate(boolean displayAutoUpdate) {
++        // Papo start - skip redundant objective broadcast (see setDisplayName)
++        if (displayAutoUpdate == this.displayAutoUpdate) {
++            return;
++        }
++        // Papo end
+         this.displayAutoUpdate = displayAutoUpdate;
+         this.scoreboard.onObjectiveChanged(this);
+     }
+ 
+     public void setNumberFormat(@Nullable NumberFormat numberFormat) {
++        // Papo start - skip redundant objective broadcast (see setDisplayName)
++        if (numberFormat != this.numberFormat && Objects.equals(numberFormat, this.numberFormat)) {
++            return;
++        }
++        // Papo end
+         this.numberFormat = numberFormat;
+         this.scoreboard.onObjectiveChanged(this);
+     }
+diff --git a/net/minecraft/world/scores/Scoreboard.java b/net/minecraft/world/scores/Scoreboard.java
+index 8ac6138dbf9299a0253599a57f85138fc7c80bd2..2d3e467ea9280c1b9ea907ebc189be5a30ea2e35 100644
+--- a/net/minecraft/world/scores/Scoreboard.java
++++ b/net/minecraft/world/scores/Scoreboard.java
+@@ -125,8 +125,12 @@ public class Scoreboard {
+ 
+             @Override
+             public void numberFormatOverride(@Nullable NumberFormat format) {
+-                score.numberFormat(format);
+-                this.sendScoreToPlayers();
++                // Papo start - skip redundant score packet (same gate as display(), above)
++                if (mutableBoolean.isTrue() || !Objects.equals(format, score.numberFormat())) {
++                    score.numberFormat(format);
++                    this.sendScoreToPlayers();
++                }
++                // Papo end
+             }
+ 
+             @Override
