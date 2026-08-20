@@ -1922,3 +1922,27 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 
 ### 正式否决 — getEffectiveRange ridden 缓存（批次 50 暂缓 → 否决）
 - 失效链测绘完成（addPassenger/removePassenger 双写点 + vehicle 链 + sendChanges diff 兜底）可闭合，但 0147 后非 ridden 实体（>99%）已 O(1) 快路，ridden 实体全服个位数——中风险换边际收益，不做。设计留档（载具农场场景可启用）。
+
+---
+
+## 批次 67（2026-08-20）：红石消费代码域（0232-0234，编号以补丁文件为准）
+
+计划刻/BE tick 域 survey 定案：刻容器层已封闭（两项结构否决留档），落地红石消费代码四项。报告：[note/report/perf/2026-08-20-jmh-microbench-batch67.md](report/perf/2026-08-20-jmh-microbench-batch67.md)。
+
+### 0232 — 红石粉 BlockRedstoneEvent 双站点零监听器快路 + HashSet 桶序复刻（同补丁；0125/0134 漏网补齐）
+- DefaultRedstoneWireEvaluator.updatePowerStrength + RedStoneWireBlock.calculateCurrentChanges——默认 VANILLA 评估器下**最高频红石事件源**；改走已有 handleRedstoneChange 快路（与已落地 11 站点逐字同型）。风险低。
+
+### 0232（续）— 粉评估器去 HashSet（桶序复刻，非 LinkedHashSet；与事件门控同一补丁）
+- 7 位置恒互异/不扩容/不树化 → HashSet 纯开销（~9 分配/次粉功率变化）。**LinkedHashSet 否决**（插入序≠桶序改邻更新顺序）；桶序直复刻（spread(hash)&15 升序 + 插入序平局），**1M 随机位置穷尽对拍真实 HashSet 迭代序 ALL OK**；JMH 1.68×（CI 不重叠）。
+- 判例补正：批次 23-27 的"HashSet→LinkedHashSet 暂缓"判定理由更正为"插入序≠桶序"（一票否决的是 LinkedHashSet 形态，桶序复刻可行）。
+
+### 0233 — 红石火把 tick 事件惰性化 + 门控
+- holding-state tick（时钟常态等待期）原本无条件构造 CraftBlock+事件却从不派发 → 两转换分支改 handleRedstoneChange（真转换才构造+派发；字段逐字一致）。
+
+### 0234 — 比较器 getItemFrame facing 谓词静态缓存（0170 模式）
+- 实心导体输入路径的捕获 lambda → 按 Direction.ordinal 静态缓存；AABB 依赖 pos 不缓存。
+
+### 否决留档
+- probe record 消除（LevelChunkTicks probe，两次暂缓）：probe 不逃逸 contains（EA 大概率消除），结构改法误判会抑制 scheduleTick → 红石破坏。结案不做。
+- LevelTicks.collect 结构改造：紧 long 循环微秒级，刻序等价难证。否决。
+- 刻容器层/BE ticker/ tickBlockEntities：已封闭无候选。
