@@ -1,0 +1,32 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 20 Aug 2026 08:34:50 +0800
+Subject: [PATCH] Papo: reorder immediate-send disjunction so the cheap
+ main-thread arm short-circuits first
+
+
+diff --git a/net/minecraft/network/Connection.java b/net/minecraft/network/Connection.java
+index 2966c2e2b197b0ccda75a051375f339ac84f1340..4925bb96feb0a30f74463ad1ec61b5d9e507115e 100644
+--- a/net/minecraft/network/Connection.java
++++ b/net/minecraft/network/Connection.java
+@@ -406,9 +406,17 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
+         }
+ 
+         packet.onPacketDispatch(this.getPlayer());
+-        if (connected && (InnerUtil.canSendImmediate(this, packet)
+-            || (io.papermc.paper.util.MCUtil.isMainThread() && packet.isReady() && this.pendingActions.isEmpty()
+-            && (packet.getExtraPackets() == null || packet.getExtraPackets().isEmpty())))) {
++        // Papo start - reorder the immediate-send disjunction
++        // Both disjuncts are side-effect-free pure predicates (isMainThread/isReady/isEmpty/getters on
++        // one side; isPending/protocol/instanceof chain on the other) leading to the same sendPacket
++        // call, so evaluation order is unobservable. The main-thread condition is the overwhelmingly
++        // common true case during the play stage and costs a few field reads, while canSendImmediate
++        // walks an instanceof chain of ~20 packet classes for every non-whitelisted play packet
++        // (entity movement, entity data, block/chunk updates...) before falling through. Evaluating
++        // the cheap arm first removes that chain from the per-packet hot path.
++        if (connected && ((io.papermc.paper.util.MCUtil.isMainThread() && packet.isReady() && this.pendingActions.isEmpty()
++            && (packet.getExtraPackets() == null || packet.getExtraPackets().isEmpty()))
++            || InnerUtil.canSendImmediate(this, packet))) {
+             this.sendPacket(packet, sendListener, flush);
+         } else {
+             // Write the packets to the queue, then flush - antixray hooks there already

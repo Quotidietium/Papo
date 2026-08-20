@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 20 Aug 2026 08:34:51 +0800
+Subject: [PATCH] Papo: pre-size addPairing packet list
+
+
+diff --git a/net/minecraft/server/level/ServerEntity.java b/net/minecraft/server/level/ServerEntity.java
+index fc0a13e0c1e9f3dc9bebb93598cc7a0792f22342..289639e38e4f2f713e1e55ed6318ecbf11854507 100644
+--- a/net/minecraft/server/level/ServerEntity.java
++++ b/net/minecraft/server/level/ServerEntity.java
+@@ -311,10 +311,14 @@ public class ServerEntity {
+     }
+ 
+     public void addPairing(ServerPlayer player) {
+-        List<Packet<? super ClientGamePacketListener>> list = new ArrayList<>();
++        // Papo start - pre-size the pairing packet list: sendPairingData produces 2-4 packets for the
++        // common entity shapes (spawn/typed data/passengers/equipment), and the default capacity of 10
++        // wastes allocation on every tracked-entity pairing (chunk-load bursts).
++        List<Packet<? super ClientGamePacketListener>> list = new ArrayList<>(4);
+         this.sendPairingData(player, list::add);
+         player.connection.send(new ClientboundBundlePacket(list));
+         this.entity.startSeenByPlayer(player);
++        // Papo end - pre-size the pairing packet list
+     }
+ 
+     public void sendPairingData(ServerPlayer player, Consumer<Packet<ClientGamePacketListener>> consumer) {
