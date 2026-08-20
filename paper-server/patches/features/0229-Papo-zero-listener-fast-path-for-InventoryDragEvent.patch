@@ -1,0 +1,50 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 20 Aug 2026 10:00:32 +0800
+Subject: [PATCH] Papo: zero-listener fast path for InventoryDragEvent
+
+
+diff --git a/net/minecraft/world/inventory/AbstractContainerMenu.java b/net/minecraft/world/inventory/AbstractContainerMenu.java
+index 2ff471c3de358f7546e4580297a59859062c171f..24698fbd200120bb60614f8ef3bd7b2bacf84291 100644
+--- a/net/minecraft/world/inventory/AbstractContainerMenu.java
++++ b/net/minecraft/world/inventory/AbstractContainerMenu.java
+@@ -463,6 +463,31 @@ public abstract class AbstractContainerMenu {
+                     }
+ 
+                     // CraftBukkit start - InventoryDragEvent
++                    // Papo start - zero-listener fast path for InventoryDragEvent
++                    // InventoryDragEvent has its own HandlerList and no API subclasses (verified), so an
++                    // empty list means nobody can observe the drag. With zero listeners: result stays
++                    // DEFAULT (listener-only setter) so the DENY arm is dead; getCursor() returns the
++                    // constructor's newCarried reference (setCursor is listener-only), making the final
++                    // setCarried(asNMSCopy(event.getCursor())) a value-identical repeat of the pre-write
++                    // below. Both setCarried calls are kept (the pre-write is the anti-duplication
++                    // measure documented above; the final write is the original path's behavior), the
++                    // per-slot view.setItem loop is kept, and only the event-side machinery (eventMap
++                    // construction, event object, dispatch) is skipped.
++                    if (org.bukkit.event.inventory.InventoryDragEvent.getHandlerList().getRegisteredListeners().length == 0) {
++                        org.bukkit.inventory.InventoryView papoView = this.getBukkitView();
++                        org.bukkit.inventory.ItemStack papoNewCarried = org.bukkit.craftbukkit.inventory.CraftItemStack.asCraftMirror(itemStack);
++                        papoNewCarried.setAmount(count);
++
++                        // It's essential that we set the cursor to the new value here to prevent item duplication if a plugin closes the inventory.
++                        this.setCarried(org.bukkit.craftbukkit.inventory.CraftItemStack.asNMSCopy(papoNewCarried));
++
++                        for (final it.unimi.dsi.fastutil.ints.Int2ObjectMap.Entry<net.minecraft.world.item.ItemStack> entry : draggedSlots.int2ObjectEntrySet()) {
++                            papoView.setItem(entry.getIntKey(), org.bukkit.craftbukkit.inventory.CraftItemStack.asBukkitCopy(entry.getValue()));
++                        }
++                        this.setCarried(org.bukkit.craftbukkit.inventory.CraftItemStack.asNMSCopy(papoNewCarried));
++                    } else
++                    // Papo end - zero-listener fast path for InventoryDragEvent
++                    {
+                     org.bukkit.inventory.InventoryView view = this.getBukkitView();
+                     org.bukkit.inventory.ItemStack newCarried = org.bukkit.craftbukkit.inventory.CraftItemStack.asCraftMirror(itemStack);
+                     newCarried.setAmount(count);
+@@ -492,6 +517,7 @@ public abstract class AbstractContainerMenu {
+                     } else {
+                         this.setCarried(oldCarried);
+                     }
++                    }
+                     // CraftBukkit end
+                 }
+ 

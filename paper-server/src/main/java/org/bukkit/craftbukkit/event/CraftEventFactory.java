@@ -1848,6 +1848,23 @@ public class CraftEventFactory {
     }
 
     public static void callPrepareResultEvent(AbstractContainerMenu container, int resultSlot) {
+        // Papo start - zero-listener fast path for the PrepareResult event family
+        // The whole family (PrepareInventoryResultEvent + PrepareAnvil/Grindstone/Smithing/PrepareResult,
+        // Paper's destroystokyo variants) shares the single HandlerList on
+        // org.bukkit.event.inventory.PrepareInventoryResultEvent - no subclass declares its own list
+        // (paper-api verified per file), so an empty list means nobody can observe any variant and the
+        // instanceof chain only picks the event's shape. With zero listeners: result stays the
+        // constructor value (setResult is listener-only), so the setItem write-back is value-identical
+        // to the slot's current content (asCraftCopy -> setItem writes a copy of the same value; the
+        // ResultContainer.setChanged hook is an empty method; vanilla has no such write - the write is
+        // part of Paper's event shim), and every downstream consumer (broadcastChanges value compare,
+        // ResultSlot.onTake, callPreCraftEvent) reads by value. Skipping the write entirely is
+        // therefore unobservable; broadcastChanges (client sync) is kept unconditionally.
+        if (org.bukkit.event.inventory.PrepareInventoryResultEvent.getHandlerList().getRegisteredListeners().length == 0) {
+            container.broadcastChanges();
+            return;
+        }
+        // Papo end - zero-listener fast path for the PrepareResult event family
         final com.destroystokyo.paper.event.inventory.PrepareResultEvent event;
         InventoryView view = container.getBukkitView();
         org.bukkit.inventory.ItemStack origItem = view.getTopInventory().getItem(resultSlot);
