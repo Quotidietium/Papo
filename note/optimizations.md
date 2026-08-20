@@ -1844,3 +1844,28 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 - **出站带宽监控 handler**（survey1 候选7，纯观测）：BandwidthDebugMonitor 仅客户端入站；服务端出站计数 handler 可为后续带宽优化提供数据，留后续。
 - **CompositeByteBuf 免拷贝帧**：否决——native cipher DIRECT_REQUIRED，composite 会强制 cipher ensureCompatible 整包拷贝，加密连接下收益归零。
 - **压缩移出 event loop**：否决——0209 回退教训；大包 level-6 尖峰靠 0215 上界缓解。
+
+---
+
+## 批次 64（2026-08-20）：加入链路静态包缓存 + 双重读盘去重（0226/0227）
+
+加入链路（登录→配置→出生就绪）survey 定案三候选落地（缓存对 tags+注册表为一件补丁）。报告：[note/report/perf/2026-08-20-jmh-microbench-batch64.md](report/perf/2026-08-20-jmh-microbench-batch64.md)。
+
+### 0226 — join 静态配置包（tags + 注册表）按 reload 纪元缓存
+- **文件**：新增 `PapoJoinPacketCache.java` + `SynchronizeRegistriesTask.java` + `PlayerList.java`（reloadTagData）
+- **热点**：每 join 主线程重建 ClientboundUpdateTagsPacket（vanilla 实测 625 tag / 4377 条目 id 查找）+ 24 个 ClientboundRegistryDataPacket（371 条目；**known-packs 不匹配客户端（典型 ViaVersion）全量 NBT 编码数毫秒 + ~100KB wire**）。内容两次 reload 间逐字节恒定（失效收口唯一：reloadTagData）。
+- **改法**：静态缓存（tags 包 + 两分支注册表包列表）；reloadTagData 以新广播实例换缓存并清注册表缓存（免费兜底 worldgen 理论不可变）。
+- **等价性**：包对象跨玩家共享为 vanilla 既有行为（broadcastAll 同实例先例）；两包未覆写 Paper per-send 钩子（grep 实证默认 no-op）；时点不变。自检（构建一次/复用同实例/reload 失效重建）ALL OK。
+- **基准**：模型 210,270 → 0.96 ns/op（**~0.21ms/join 主线程消除**，survey 实测构建估 0.3-1ms；Via 分支另省数毫秒+100KB）。
+- **风险**：低（残留：插件运行期直改注册表 tag 内部结构——树内 API 无此能力）。
+
+### 0227 — PrepareSpawnTask 双重 loadPlayerData 去重
+- **文件**：`PrepareSpawnTask.java`
+- **热点**：start() 与 spawn() 同一 join 各一次 loadPlayerData（磁盘读+gzip+NBT 解析+datafix 全树，主线程 ×2；上游 vanilla 同病）。两处消费均只读。
+- **改法**：task 字段缓存首次结果（含 empty 情形——join 中途不会凭空出现 .dat）。
+- **基准**：gzip 模型 2.01×（6,061→3,008 ns）；真实场景含磁盘+datafix 节省更大（背包重玩家毫秒级）。
+- **风险**：低（非等价残余：join 中途 .dat 被外部改写——病态场景）。
+
+### 记录项（红线外，上游行为）
+- sendLevelInfo 双发（Paper 提前块+vanilla 保留处）→ 2 份 border/time/spawn/天气包；initInventoryMenu 双发（46 槽全量 ×2，且 join-kit 可变不可去重）；VERIFYING tick 门（0-50ms）；maxJoinsPerTick=5；配置任务串行 RTT 前置（重叠可省 RTT 但提前 PlayerSpawnLocationEvent 时点，中风险不做）。
+- 排除项：recipe book（per-player）、UpdateRecipes（上游已预建）、命令树（已异步池）、出生点搜索（已异步）、编码层跨玩家字节缓存（与 0217 headroom 机制冲突且对象级缓存已拿走收益）。
