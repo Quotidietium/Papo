@@ -1825,6 +1825,19 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 - `/paper netstat [topN|all]`（默认 top 10 按出站 B/s 降序）：全服 out/in B/s + totals + 每玩家 out/in B/s、pkt/s（复用 averageSentPackets）、累计。权限 `bukkit.command.paper.netstat`（Paper 既有自动注册，OP 默认）。
 - **价值**：带宽主题的度量基础——服主可直接看到每玩家真实线上字节（压缩后），为后续带宽优化（如压缩级别调优、异常流量定位）提供数据。
 
+---
+
+## 批次 63（2026-08-20）：压缩级别选型指南（带宽主题运营收尾，无代码变更）
+
+主题五批代码闭合后的运营闭环：netstat（测）→ compression-level（调）→ 本指南（怎么调）。报告：[note/report/perf/2026-08-20-compression-level-guide.md](report/perf/2026-08-20-compression-level-guide.md)。
+
+### 核心数据（CompressionLevelBench，三类代表性载荷 × level 1/3/6/9）
+- **区块型载荷（出站大头）level 6→9 压缩比零增益（4.90×→4.88×）而 CPU 2.5×**——调高级别是纯 CPU 浪费。
+- **level 3 是 CPU 高效前沿**：省 66% 压缩 CPU，仅 +9% 字节（4.43× vs 4.90×）。
+- 光照/低熵载荷对 level 完全不敏感（1.69-1.72× 持平）。
+- 诚实边界：JDK 回退后端绝对时间不可套用 libdeflate（快约一个量级）；相对趋势两后端间可迁移。
+- roundtrip 完整性自检 ALL OK。
+
 ### 暂缓（批次 58 survey 产出，留批次 59）
 - **帧头合并免拷贝**（survey1 候选2，结构性大头）：CompressionEncoder 预留 3 字节头 + 帧长回填，prepender 对已帧化 buffer 直通——需管线结构改动与 marker 机制（channel attr 或包装类），config 门控，留批次 59 专项。
 - **主线程每包 eventLoop().execute → 按 tick 批量提交**（survey3 B1，高价值）：与已回退的 0209 同区域（跨线程 write 语义），但 drain task 在 event loop 内执行 → voidPromise 安全；需 config 门控 + 逐包 promise/listener 语义保持，留批次 59 专项。
