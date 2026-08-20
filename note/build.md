@@ -273,6 +273,10 @@ git add paper-server/patches/features/0203-*.patch paper-server/patches/features
 
 `misc.compression-level` 配 10-12 在无 native 平台（Windows）`new Deflater(10)` 抛 IAE → **该连接登录即断连**（libdeflate 接受 1-12，JDK 只接受 -1..9，同一配置两平台行为分裂）。0216 已修（IAE 回退 clamp [1,9]）。排障时注意：症状是玩家连不上（配置阶段断连），日志有 IllegalArgumentException 栈。
 
+### benchmark javac 注解处理需显式 -proc:full（JDK 21+）
+
+批次 59 踩坑：`benchmark/run.sh` 的 javac 在 JDK 21+ 下**不运行 classpath 上的 JMH 注解处理器**（JDK-8306819：需显式 `-proc:full`/`-processor`），症状是 BenchmarkList 0 字节、无 `*_jmhTest` 桩类、JMH 报 "No matching benchmarks"。已给 run.sh 的 javac 加 `-proc:full`。另：netty 4.2 的 `MessageToByteEncoder` 在 **netty-codec-base**（非 netty-codec）；EmbeddedChannel 在 netty-transport——run.sh 依赖清单已补两 jar。**EmbeddedChannel 构造参数序 = head→tail，出站遍历 tail→head，装配序须与真实管线 list 序一致**（[prepender, compress, encoder]），装反时 compress/prepender 对非 ByteBuf 消息直通、出站字节=裸载荷，自检立刻抓包失败。
+
 ## 2026-08-02 补充：批次 51 踩坑记录
 
 ### Paper 配置 @Comment 是单 String，不是 String[]

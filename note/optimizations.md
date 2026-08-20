@@ -1720,6 +1720,28 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 ### 附：0163-0180 垃圾重命名第 4 次复发 → 根除（工程项）
 本批 rebuildPatches 再次触发 0163-0180（实际 0055-0180 共 127 个）中文 Subject 头 → 垃圾重命名。按 build.md 恢复法恢复后，本轮**执行了留置两批的根除项**：[note/fix_patch_subjects.py](fix_patch_subjects.py) 把 127 个补丁的 RFC2047 编码 Subject 头改写为与文件名 slug 往返闭合的干净英文（字节级只动头部 Subject 区）→ applyPatches 重建内部仓库（干净 subject 流入内部提交）→ rebuildPatches 验证文件名稳定。此后全量 rebuildPatches 不再复发（验证记录见 build.md 2026-08-20 条目）。
 
+---
+
+## 批次 59（2026-08-20）：零拷贝出站帧化（0217）
+
+主题延续：网络带宽 + 延时。批次 58 暂缓清单中 survey1 候选 2（帧头合并免拷贝）的结构性落地。compileJava BUILD SUCCESSFUL、EmbeddedChannel 自检 ALL OK（字节级矩阵 + varint 全档位 + 万次引用计数）、applyPatches 干净应用（217 feature 补丁）、全量 test BUILD SUCCESSFUL。JMH 报告：[note/report/perf/2026-08-20-jmh-microbench-batch59.md](report/perf/2026-08-20-jmh-microbench-batch59.md)。
+
+### 0217 — 零拷贝出站帧化：headroom 前缀 + 身份标记直通
+- **文件**：新增 `net/minecraft/network/PapoOutboundFraming.java` + `PacketEncoder.java` + `CompressionEncoder.java` + `Varint21LengthFieldPrepender.java`
+- **热点**：出站三阶段每包的整包拷贝——① PacketEncoder 产出（0214 已预分配）；② CompressionEncoder 低于阈值路径把整包拷入新 direct buffer（VarInt(0)+payload）；③ prepender 再把整包拷入帧 buffer（帧长 varint + payload）+ 一次池化分配。threshold=256 默认下，绝大多数小包（实体移动/音效/心跳）走 ②+③ **双拷贝双分配**；大包（区块）走 ③ 一拷贝。
+- **改法**：
+  1. `PapoOutboundFraming.HEADROOM = 6`（帧长 varint ≤3 + 数据长 varint ≤3）；PacketEncoder 的 allocateBuffer 预留 headroom（`setIndex(6,6)`，readableBytes 仍等于内容尺寸——finally 的 PacketTooLarge 检查与一切下游消费者均从 readerIndex 读），encode 成功后经 channel attr 发布 buffer 身份（仅当 prepender 是 Varint21LengthFieldPrepender，防 memory 连接的 LocalFrameEncoder 侧滞留引用）。
+  2. CompressionEncoder 覆写 `write`：身份匹配 → 低于阈值路径**原地写 1 字节数据长 varint（0）进 headroom 并直通**（0 拷贝 0 额外分配）；≥阈值路径产出带 headroom 的压缩输出（VarInt(i)+压缩数据从 6 起写）再发布直通。身份不匹配（插件注入的外来 buffer/陈旧标记）→ 清标记走原版拷贝 encode。
+  3. prepender 覆写 `write`：身份匹配 → 帧长 varint **右对齐回填进 headroom**（`writeVarIntBackwards`，字节发射与 VarInt.write 逐位一致）+ readerIndex 回拨直通（0 拷贝 0 分配）；不匹配 → 原版拷贝 encode（0213 的精确预分配仍在）。
+- **等价性（逐项）**：线上字节 = [帧长 varint][数据长 varint(0 或 i)][载荷]，两路径逐字节一致（EmbeddedChannel 真实 netty write 管线自检：尺寸 {1,100,255,256,257,1K,4K,16K,100K} × {随机,全零} 矩阵全等 + 帧结构可解析）；三阶段均在 channel 单 event loop 的同一次 write 遍历内执行，attr 无并发（顺序：encoder→compress→prepender，Connection.configureSerialization:698-699 + setupCompression addAfter("prepender","compress") 的装配序实证）；CipherEncoder 的 `NativeVelocityCipher.process` 以 `memoryAddress()+readerIndex()` 起算原地加密 readable 区（javap 实证），headroom 前缀不参与加密 ✓；无 cipher（离线模式）时 socket write 从 readerIndex 起 ✓；引用计数：直通=所有权转移（netty invokeWrite0 对同步下游异常自行 release 传递中的 msg，javap/netty 源码语义），异常路径 finally 恰好一次 release（初版有双重释放缺陷，引用计数审计后重写为所有权内聚结构）。
+- **回退面**：身份不匹配全量回退旧拷贝路径——插件注入中间 handler 换 buffer、协议切换瞬态、任何未预期形态都退回 vanilla 行为。
+- **基准**：OutboundFrameBench（EmbeddedChannel 真实 netty write 管线）belowThreshold（100B）469.7 ± 5.1 → 285.7 ± 10.3 ns/op（**1.64×**，CI 不重叠——每包省 2 次全量拷贝 + 2 次池化分配，绝大多数游戏包走此路径）；aboveThreshold（16KB 随机）均值正向 1.07× 但 CI 重叠（压缩 ~116µs 主导，拷贝节省在噪声内，如实记录；大包主收益已在 0214/0215）。
+- **风险**：低-中（管线结构改动但回退面完备、字节等价有真实 netty 管线自检实证；引用计数经万次压力自检）。
+
+### 踩坑（已记 build.md）
+- EmbeddedChannel 构造参数序 = head→tail，出站遍历为 tail→head——**装配顺序必须与真实管线 list 序一致**（[prepender, compress, encoder]），首版装反导致 compress/prepender 全部直通、自检立刻抓包失败。
+- netty 4.2 的 MessageToByteEncoder 在 **netty-codec-base**（非 netty-codec）；benchmark 依赖与 run.sh 已补 netty-transport + netty-codec-base。
+
 ### 暂缓（批次 58 survey 产出，留批次 59）
 - **帧头合并免拷贝**（survey1 候选2，结构性大头）：CompressionEncoder 预留 3 字节头 + 帧长回填，prepender 对已帧化 buffer 直通——需管线结构改动与 marker 机制（channel attr 或包装类），config 门控，留批次 59 专项。
 - **主线程每包 eventLoop().execute → 按 tick 批量提交**（survey3 B1，高价值）：与已回退的 0209 同区域（跨线程 write 语义），但 drain task 在 event loop 内执行 → voidPromise 安全；需 config 门控 + 逐包 promise/listener 语义保持，留批次 59 专项。
