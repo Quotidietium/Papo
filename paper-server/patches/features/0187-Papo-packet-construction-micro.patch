@@ -1,12 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Zurker <91011862+hershate@users.noreply.github.com>
 Date: Sat, 1 Aug 2026 13:56:09 +0800
-Subject: [PATCH] =?UTF-8?q?Papo:=20packet=20construction=20micro=20?=
- =?UTF-8?q?=E2=80=94=20attributes=20presize=20+=20scoreboard=20Optional.em?=
- =?UTF-8?q?pty?=
-MIME-Version: 1.0
-Content-Type: text/plain; charset=UTF-8
-Content-Transfer-Encoding: 8bit
+Subject: [PATCH] Papo packet construction micro
 
 - ClientboundUpdateAttributesPacket: pre-size the snapshot list to the incoming
   attribute count (capacity is not observable through the List API); avoids the

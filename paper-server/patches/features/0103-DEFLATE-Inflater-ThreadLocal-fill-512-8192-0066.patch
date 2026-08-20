@@ -1,14 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Zurker <91011862+hershate@users.noreply.github.com>
 Date: Fri, 31 Jul 2026 01:57:23 +0800
-Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=E5=8C=BA=E5=9D=97=E8=AF=BB?=
- =?UTF-8?q?=E7=9B=98=EF=BC=9ADEFLATE=20=E8=AF=BB=E4=BE=A7=20Inflater=20Thr?=
- =?UTF-8?q?eadLocal=20=E6=B1=A0=E5=8C=96=20+=20fill=20=E7=BC=93=E5=86=B2?=
- =?UTF-8?q?=20512=E2=86=928192=EF=BC=880066=20=E5=86=99=E4=BE=A7=E9=95=9C?=
- =?UTF-8?q?=E5=83=8F=EF=BC=89?=
-MIME-Version: 1.0
-Content-Type: text/plain; charset=UTF-8
-Content-Transfer-Encoding: 8bit
+Subject: [PATCH] DEFLATE Inflater ThreadLocal fill 512 8192 0066
 
 
 diff --git a/net/minecraft/world/level/chunk/storage/RegionFileVersion.java b/net/minecraft/world/level/chunk/storage/RegionFileVersion.java

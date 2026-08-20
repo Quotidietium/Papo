@@ -1,19 +1,11 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Zurker <91011862+hershate@users.noreply.github.com>
 Date: Fri, 31 Jul 2026 06:16:51 +0800
-Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=E7=89=A9=E5=93=81=E6=8B=BE?=
- =?UTF-8?q?=E5=8F=96=EF=BC=9APlayerPickupItemEvent/EntityPickupItemEvent?=
- =?UTF-8?q?=20=E5=8F=8C=E4=BA=8B=E4=BB=B6=E6=97=A0=E7=9B=91=E5=90=AC?=
- =?UTF-8?q?=E5=99=A8=E9=97=A8=E6=8E=A7=EF=BC=88=E5=A4=8D=E7=8E=B0=E9=BB=98?=
- =?UTF-8?q?=E8=AE=A4=E5=8F=96=E6=B6=88=E8=A7=84=E5=88=99=20!getCanPickupIt?=
- =?UTF-8?q?ems=EF=BC=89?=
-MIME-Version: 1.0
-Content-Type: text/plain; charset=UTF-8
-Content-Transfer-Encoding: 8bit
+Subject: [PATCH] PlayerPickupItemEvent EntityPickupItemEvent getCanPi
 
 
 diff --git a/net/minecraft/world/entity/item/ItemEntity.java b/net/minecraft/world/entity/item/ItemEntity.java
-index 5692a9b4473c07f2d70d8d6f1248ed242832d57e..b8297f79edd421da46e900b2ebbdd240d798fc28 100644
+index d327ffc2e4ccf03961be6df3546e3a3491637875..a125be5969e937467adf2b0c474512f810bfd2ae 100644
 --- a/net/minecraft/world/entity/item/ItemEntity.java
 +++ b/net/minecraft/world/entity/item/ItemEntity.java
 @@ -429,6 +429,20 @@ public class ItemEntity extends Entity implements TraceableEntity {

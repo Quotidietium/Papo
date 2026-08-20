@@ -1,9 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Zurker <91011862+hershate@users.noreply.github.com>
 Date: Thu, 30 Jul 2026 15:43:30 +0800
-Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=20NBT=20int/long=20=E6=95=B0?=
- =?UTF-8?q?=E7=BB=84=E8=AF=BB=E5=8F=96=EF=BC=9A=E6=89=B9=E9=87=8F=E8=AF=BB?=
- =?UTF-8?q?=20+=20=E5=A4=A7=E7=AB=AF=E8=A7=A3=E7=A0=81?=
+Subject: [PATCH] NBT int long
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -34,7 +32,7 @@ index 5472fb36c04a4553f7574d05cd3321f899ddc644..cf33772961011bca0f1eca8ce335d450
              return ints;
          }
 diff --git a/net/minecraft/nbt/LongArrayTag.java b/net/minecraft/nbt/LongArrayTag.java
-index 4e7de76b8acfdf6108ddb3bceabb3feb8e0cc623..d2bca367383b37aadcd29d4b047c6c097c93c55f 100644
+index 4e7de76b8acfdf6108ddb3bceabb3feb8e0cc623..07e55dc0c57d12b28b8491aefb8aafdfd2228d8c 100644
 --- a/net/minecraft/nbt/LongArrayTag.java
 +++ b/net/minecraft/nbt/LongArrayTag.java
 @@ -26,9 +26,18 @@ public final class LongArrayTag implements CollectionTag {

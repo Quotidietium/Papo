@@ -1,16 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Zurker <91011862+hershate@users.noreply.github.com>
 Date: Thu, 30 Jul 2026 20:55:39 +0800
-Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=20=E6=B8=B8=E6=88=8F?=
- =?UTF-8?q?=E4=BA=8B=E4=BB=B6=E7=9B=91=E5=90=AC=E5=99=A8=E4=BD=8D=E7=BD=AE?=
- =?UTF-8?q?=E6=A3=80=E6=9F=A5=EF=BC=9AOptional<Vec3>=20=E6=94=B9=20@Nullab?=
- =?UTF-8?q?le=EF=BC=8CBlockPos.containing(a).distSqr(containing(b))=20?=
- =?UTF-8?q?=E5=86=85=E8=81=94=E4=B8=BA=20floor=20=E5=90=8E=E6=95=B4?=
- =?UTF-8?q?=E6=95=B0=E5=B7=AE=E5=B9=B3=E6=96=B9=E5=92=8C=EF=BC=88=E6=95=B0?=
- =?UTF-8?q?=E5=80=BC=E5=AE=8C=E5=85=A8=E4=B8=80=E8=87=B4=EF=BC=89?=
-MIME-Version: 1.0
-Content-Type: text/plain; charset=UTF-8
-Content-Transfer-Encoding: 8bit
+Subject: [PATCH] Optional Vec3 Nullable BlockPos.containing a .distSq
 
 
 diff --git a/net/minecraft/world/level/gameevent/EuclideanGameEventListenerRegistry.java b/net/minecraft/world/level/gameevent/EuclideanGameEventListenerRegistry.java

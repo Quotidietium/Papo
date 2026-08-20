@@ -1,24 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Zurker <91011862+hershate@users.noreply.github.com>
 Date: Fri, 31 Jul 2026 22:13:46 +0800
-Subject: [PATCH] =?UTF-8?q?=E4=BC=98=E5=8C=96=E7=A7=BB=E5=8A=A8=E4=BA=8B?=
- =?UTF-8?q?=E4=BB=B6=EF=BC=9APlayerMoveEvent=20from/to=20Location=20?=
- =?UTF-8?q?=E9=98=88=E5=80=BC=E5=90=8E=E5=BB=B6=E8=BF=9F=E6=9E=84=E9=80=A0?=
- =?UTF-8?q?=EF=BC=88handleMovePlayer/handleMoveVehicle=20=E4=B8=A4?=
- =?UTF-8?q?=E5=A4=84=E3=80=82=E9=9D=9E=E5=8C=85=E5=80=BC=E5=88=86=E9=87=8F?=
- =?UTF-8?q?=E9=80=90=E4=BD=8D=E5=A4=8D=E5=88=BB=20absSnapTo=20=E5=AD=98?=
- =?UTF-8?q?=E5=82=A8=E8=AF=AD=E4=B9=89=EF=BC=9Ax/z=20clamp=20=C2=B13e7?=
- =?UTF-8?q?=E3=80=81yaw=20%360=E3=80=81pitch=20clamp=C2=B190=20=E5=90=8E?=
- =?UTF-8?q?=20%360=EF=BC=9BgetWorld=20=E4=B8=8E=20getLocation=20=E5=90=8C?=
- =?UTF-8?q?=E4=B8=80=E5=BC=95=E7=94=A8=EF=BC=9Bfrom/to=20=E4=BB=85?=
- =?UTF-8?q?=E5=9C=A8=E9=98=88=E5=80=BC=E9=80=9A=E8=BF=87=E5=88=86=E6=94=AF?=
- =?UTF-8?q?=E5=86=85=E4=BD=BF=E7=94=A8=E5=AE=9E=E8=AF=81=EF=BC=9B=E5=A4=9A?=
- =?UTF-8?q?=E6=95=B0=E7=A7=BB=E5=8A=A8=E5=8C=85=E8=A2=AB=201/256=20?=
- =?UTF-8?q?=E9=98=88=E5=80=BC=E8=BF=87=E6=BB=A4=EF=BC=8C=E6=AF=8F=E5=8C=85?=
- =?UTF-8?q?=E7=9C=81=203=20=E4=B8=AA=20Location=EF=BC=89?=
-MIME-Version: 1.0
-Content-Type: text/plain; charset=UTF-8
-Content-Transfer-Encoding: 8bit
+Subject: [PATCH] PlayerMoveEvent from to Location handleMovePlayer ha
 
 
 diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
