@@ -1,0 +1,21 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 20 Aug 2026 12:57:29 +0800
+Subject: [PATCH] Papo: flatten despawnRanges by category ordinal
+
+
+diff --git a/net/minecraft/world/entity/Mob.java b/net/minecraft/world/entity/Mob.java
+index 90d34bdd4a64e926a4938278d59689c2b99971b4..25fdae0e3d9bbce3a59a8380adfdd91aabd14d51 100644
+--- a/net/minecraft/world/entity/Mob.java
++++ b/net/minecraft/world/entity/Mob.java
+@@ -808,7 +808,9 @@ public abstract class Mob extends LivingEntity implements EquipmentUser, Leashab
+             Entity nearestPlayer = this.level().findNearbyPlayer(this, -1.0, EntitySelector.PLAYER_AFFECTS_SPAWNING); // Paper - Affects Spawning API
+             if (nearestPlayer != null) {
+                 // Paper start - Configurable despawn distances
+-                final io.papermc.paper.configuration.WorldConfiguration.Entities.Spawning.DespawnRangePair despawnRangePair = this.level().paperConfig().entities.spawning.despawnRanges.get(this.getType().getCategory());
++                // Papo - flattened ordinal lookup (rebuilt at the config @PostProcess that finalizes
++                // the map; the map itself stays authoritative for config serialization)
++                final io.papermc.paper.configuration.WorldConfiguration.Entities.Spawning.DespawnRangePair despawnRangePair = this.level().paperConfig().entities.spawning.papoDespawnRangesByOrdinal[this.getType().getCategory().ordinal()];
+                 final io.papermc.paper.configuration.type.DespawnRange.Shape shape = this.level().paperConfig().entities.spawning.despawnRangeShape;
+                 final double dy = Math.abs(nearestPlayer.getY() - this.getY());
+                 final double dySqr = Mth.square(dy);

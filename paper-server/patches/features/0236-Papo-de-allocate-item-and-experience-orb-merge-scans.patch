@@ -1,0 +1,107 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 20 Aug 2026 12:57:28 +0800
+Subject: [PATCH] Papo: de-allocate item and experience orb merge scans
+
+
+diff --git a/net/minecraft/world/entity/ExperienceOrb.java b/net/minecraft/world/entity/ExperienceOrb.java
+index 01a0cbb5718cc0b8f45bf116787a00754bfa24d3..40abef00f6eb94b744e2b3a0e0822953ba6e0bd8 100644
+--- a/net/minecraft/world/entity/ExperienceOrb.java
++++ b/net/minecraft/world/entity/ExperienceOrb.java
+@@ -247,14 +247,29 @@ public class ExperienceOrb extends Entity {
+         return this.getOnPos(0.999999F);
+     }
+ 
++    // Papo start - de-allocate the merge scan (same shape as ItemEntity.mergeWithNeighbours):
++    // static EntityTypeTest singleton + lazily reused scratch list and predicate (this::canMerge was
++    // a fresh method-reference allocation per scan). Fill-then-iterate is the previous semantics;
++    // merge() never re-scans, so no reentrancy.
++    private static final EntityTypeTest<net.minecraft.world.entity.Entity, ExperienceOrb> PAPO_ORB_TEST =
++        EntityTypeTest.forClass(ExperienceOrb.class);
++    private java.util.ArrayList<ExperienceOrb> papoMergeScratch;
++    private java.util.function.Predicate<? super ExperienceOrb> papoMergePredicate;
++
+     private void scanForMerges() {
+         if (this.level() instanceof ServerLevel) {
+-            for (ExperienceOrb experienceOrb : this.level()
+-                .getEntities(EntityTypeTest.forClass(ExperienceOrb.class), this.getBoundingBox().inflate(0.5), this::canMerge)) {
++            if (this.papoMergeScratch == null) {
++                this.papoMergeScratch = new java.util.ArrayList<>();
++                this.papoMergePredicate = this::canMerge;
++            }
++            this.papoMergeScratch.clear();
++            this.level().getEntities(PAPO_ORB_TEST, this.getBoundingBox().inflate(0.5), this.papoMergePredicate, this.papoMergeScratch);
++            for (ExperienceOrb experienceOrb : this.papoMergeScratch) {
+                 this.merge(experienceOrb);
+             }
+         }
+     }
++    // Papo end - de-allocate the merge scan
+ 
+     public static void award(ServerLevel level, Vec3 pos, int amount) {
+         awardWithDirection(level, pos, Vec3.ZERO, amount);
+diff --git a/net/minecraft/world/entity/item/ItemEntity.java b/net/minecraft/world/entity/item/ItemEntity.java
+index a125be5969e937467adf2b0c474512f810bfd2ae..c6979d10ee2fd215ea55624ee158e912bb2652e4 100644
+--- a/net/minecraft/world/entity/item/ItemEntity.java
++++ b/net/minecraft/world/entity/item/ItemEntity.java
+@@ -242,28 +242,46 @@ public class ItemEntity extends Entity implements TraceableEntity {
+         this.setDeltaMovement(deltaMovement.x * multiplier, deltaMovement.y + (deltaMovement.y < 0.06F ? 5.0E-4F : 0.0F), deltaMovement.z * multiplier);
+     }
+ 
++    // Papo start - de-allocate the merge scan
++    // The old scan allocated per pass: EntityTypeTest.forClass (anonymous instance per call), a fresh
++    // result ArrayList, and a capturing predicate lambda. The type test is stateless -> static
++    // singleton; the list and predicate are lazily created per item and reused (fill-then-iterate is
++    // exactly the previous semantics; no reentrancy - tryToMerge never re-scans). The loop-body
++    // isMergable() re-check was a pure duplicate of the predicate filter (neighbour states cannot
++    // change between the fill and the loop: tryToMerge only touches `this` and the current element).
++    private static final net.minecraft.world.level.entity.EntityTypeTest<net.minecraft.world.entity.Entity, ItemEntity> PAPO_ITEM_ENTITY_TEST =
++        net.minecraft.world.level.entity.EntityTypeTest.forClass(ItemEntity.class);
++    private java.util.ArrayList<ItemEntity> papoMergeScratch;
++    private java.util.function.Predicate<? super ItemEntity> papoMergePredicate;
++
+     private void mergeWithNeighbours() {
+         if (this.isMergable()) {
++            if (this.papoMergeScratch == null) {
++                this.papoMergeScratch = new java.util.ArrayList<>();
++                this.papoMergePredicate = neighbour -> neighbour != ItemEntity.this && neighbour.isMergable();
++            }
+             double radius = this.level().spigotConfig.itemMerge; // Spigot
+-            for (ItemEntity itemEntity : this.level()
+-                .getEntitiesOfClass(ItemEntity.class, this.getBoundingBox().inflate(radius, this.level().paperConfig().entities.behavior.onlyMergeItemsHorizontally ? 0 : radius - 0.5D, radius), neighbour -> neighbour != this && neighbour.isMergable())) { // Spigot // Paper - configuration to only merge items horizontally
+-                if (itemEntity.isMergable()) {
+-                    // Paper start - Fix items merging through walls
+-                    if (this.level().paperConfig().fixes.fixItemsMergingThroughWalls) {
+-                        if (this.level().clipDirect(this.position(), itemEntity.position(),
+-                            net.minecraft.world.phys.shapes.CollisionContext.of(this)) == net.minecraft.world.phys.HitResult.Type.BLOCK) {
+-                            continue;
+-                        }
+-                    }
+-                    // Paper end - Fix items merging through walls
+-                    this.tryToMerge(itemEntity);
+-                    if (this.isRemoved()) {
+-                        break;
++            this.papoMergeScratch.clear();
++            this.level().getEntities(PAPO_ITEM_ENTITY_TEST,
++                this.getBoundingBox().inflate(radius, this.level().paperConfig().entities.behavior.onlyMergeItemsHorizontally ? 0 : radius - 0.5D, radius), // Spigot // Paper - configuration to only merge items horizontally
++                this.papoMergePredicate, this.papoMergeScratch);
++            for (ItemEntity itemEntity : this.papoMergeScratch) {
++                // Paper start - Fix items merging through walls
++                if (this.level().paperConfig().fixes.fixItemsMergingThroughWalls) {
++                    if (this.level().clipDirect(this.position(), itemEntity.position(),
++                        net.minecraft.world.phys.shapes.CollisionContext.of(this)) == net.minecraft.world.phys.HitResult.Type.BLOCK) {
++                        continue;
+                     }
+                 }
++                // Paper end - Fix items merging through walls
++                this.tryToMerge(itemEntity);
++                if (this.isRemoved()) {
++                    break;
++                }
+             }
+         }
+     }
++    // Papo end - de-allocate the merge scan
+ 
+     private boolean isMergable() {
+         ItemStack item = this.getItem();

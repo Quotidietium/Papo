@@ -208,7 +208,20 @@ public class WorldConfiguration extends ConfigurationPart {
                     range.hard().preComputed(category.getDespawnDistance(), category.getSerializedName());
                     range.soft().preComputed(category.getNoDespawnDistance(), category.getSerializedName());
                 }
+                // Papo start - flatten despawnRanges by category ordinal: Mob.checkDespawn runs per
+                // mob per tick and the HashMap.get(enum) was pure lookup overhead. The map is seeded
+                // with every MobCategory (Arrays.stream(MobCategory.values()) above) and @MergeMap
+                // merges preserves keys, so every ordinal has an entry; this array is rebuilt at the
+                // same @PostProcess point (config load/reload) that the map is finalized.
+                this.papoDespawnRangesByOrdinal = new DespawnRangePair[MobCategory.values().length];
+                for (final Map.Entry<MobCategory, DespawnRangePair> entry : this.despawnRanges.entrySet()) {
+                    this.papoDespawnRangesByOrdinal[entry.getKey().ordinal()] = entry.getValue();
+                }
+                // Papo end
             }
+
+            // Papo - flattened despawnRanges lookup for Mob.checkDespawn (see precomputeDespawnDistances)
+            public transient DespawnRangePair[] papoDespawnRangesByOrdinal = new DespawnRangePair[MobCategory.values().length];
 
             public WaterAnimalSpawnHeight wateranimalSpawnHeight;
 

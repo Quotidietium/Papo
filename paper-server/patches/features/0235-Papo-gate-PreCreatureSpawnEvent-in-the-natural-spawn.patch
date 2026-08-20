@@ -1,0 +1,32 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 20 Aug 2026 12:57:28 +0800
+Subject: [PATCH] Papo: gate PreCreatureSpawnEvent in the natural spawn loop
+
+
+diff --git a/net/minecraft/world/level/NaturalSpawner.java b/net/minecraft/world/level/NaturalSpawner.java
+index 393646775863ee1baaf747b1a90f132d8a77deab..8d4684f0df9c6106b6dbc1625aa6c46a0a8898ee 100644
+--- a/net/minecraft/world/level/NaturalSpawner.java
++++ b/net/minecraft/world/level/NaturalSpawner.java
+@@ -376,6 +376,12 @@ public final class NaturalSpawner {
+     ) {
+         EntityType<?> entityType = data.type();
+         // Paper start - PreCreatureSpawnEvent
++        // Papo start - zero-listener fast path (same HandlerList and shape as the BaseSpawner site):
++        // with no listeners callEvent() always returns true - and shouldAbortSpawn() is only read on
++        // the false path - so the CraftLocation + event construction and empty dispatch are skipped.
++        // This is the natural-spawn loop's per-candidate event (MONSTER category attempts every tick
++        // per spawning chunk), the highest-frequency CreatureSpawnEvent-family site in the game.
++        if (com.destroystokyo.paper.event.entity.PreCreatureSpawnEvent.getHandlerList().getRegisteredListeners().length != 0) {
+         com.destroystokyo.paper.event.entity.PreCreatureSpawnEvent event = new com.destroystokyo.paper.event.entity.PreCreatureSpawnEvent(
+                 org.bukkit.craftbukkit.util.CraftLocation.toBukkit(pos, level),
+                 org.bukkit.craftbukkit.entity.CraftEntityType.minecraftToBukkit(entityType), org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason.NATURAL
+@@ -386,6 +392,8 @@ public final class NaturalSpawner {
+             }
+             return PreSpawnStatus.CANCELLED;
+         }
++        }
++        // Papo end - zero-listener fast path
+         final boolean success = entityType.getCategory() != MobCategory.MISC
+         // Paper end - PreCreatureSpawnEvent
+             && (
