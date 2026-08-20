@@ -49,6 +49,8 @@ cd benchmark
 | `OutboundFrameBench` | 0217 | 出站三阶段拷贝链 vs headroom 直通（EmbeddedChannel 真实 netty 管线；含自检 main：9 尺寸×2 可压性字节级全等 + 阈值边界 + varint 反向写全档位 + 万次引用计数） |
 | `BatchedDispatchBench` | 批次60否决 | 逐包 execute(lambda) vs MPSC 批量排水（真实 NioEventLoopGroup；两轮实测否决证据：CLQ 4.8× 回退、MPSC 1.49× 劣化；含并发顺序/排水边界竞态自检） |
 | `SendFastPathBench` | 0218 | 立即发送判定 instanceof 链先 vs 主线程廉价臂先（@State 字段输入防常量折叠；含布尔等价矩阵自检） |
+| `InboundFrameBench` | 0222 | 入站帧提取 readBytes 拷贝 vs retainedSlice（EmbeddedChannel 真实 BTMD/cumulation 语义；含帧内容/半帧累积/万帧引用计数自检；gc 探针 9.6× 分配消除） |
+| `DeadInstrumentationBench` | 0221/0224 | 每包 watchdog 簿记（CLD push/pop + AtomicLong）vs 门控移除 |
 
 ## 依赖
 
