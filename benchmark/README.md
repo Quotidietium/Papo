@@ -53,6 +53,7 @@ cd benchmark
 | `DeadInstrumentationBench` | 0221/0224 | 每包 watchdog 簿记（CLD push/pop + AtomicLong）vs 门控移除 |
 | `NetstatCounterSelfCheck` | 0225 | 非性能——/paper netstat 字节计数正确性自检（出站/入站计数==wire 字节、半帧不计数、每秒窗口清零守恒） |
 | `CompressionLevelBench` | 批次63指南 | 压缩级别选型矩阵（chunk/text/light × level 1/3/6/9 的压缩比与编码时间；roundtrip 自检；结论：6 以上无带宽收益、3 是 CPU 高效前沿） |
+| `JoinPacketCacheBench` | 0226/0227 | join 静态包每 join 全量重建 vs reload 纪元缓存（625 tag/4377 条目模型）；双重 gzip 读 vs 单次复用（含缓存身份/失效/roundtrip 自检） |
 
 ## 依赖
 
