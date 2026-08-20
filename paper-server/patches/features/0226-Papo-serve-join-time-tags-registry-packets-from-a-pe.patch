@@ -1,0 +1,140 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 20 Aug 2026 09:34:31 +0800
+Subject: [PATCH] Papo: serve join-time tags/registry packets from a per-reload
+ cache
+
+
+diff --git a/net/minecraft/server/network/config/PapoJoinPacketCache.java b/net/minecraft/server/network/config/PapoJoinPacketCache.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..a3cec1eeea907bbe944415cb9ee083b81fa92508
+--- /dev/null
++++ b/net/minecraft/server/network/config/PapoJoinPacketCache.java
+@@ -0,0 +1,45 @@
++package net.minecraft.server.network.config;
++
++import java.util.List;
++import net.minecraft.network.protocol.common.ClientboundUpdateTagsPacket;
++import net.minecraft.network.protocol.configuration.ClientboundRegistryDataPacket;
++
++/**
++ * Papo - per-reload cache of join-time static configuration packets.
++ *
++ * The tags packet (vanilla 1.21.11 data: 625 tags / 4377 entries rebuilt from the registries on
++ * every join) and the 24 registry-data packets (371 entries; full NBT encoding per entry when the
++ * client's known-packs do not match the server's, e.g. ViaVersion-translated clients) are
++ * byte-identical for every join between resource reloads. They are built once and served from this
++ * cache instead.
++ *
++ * Invalidation: {@code PlayerList.reloadTagData()} is the single point where tag content can change
++ * (MinecraftServer.reloadResources -> loadTagsForExistingRegistries -> PlayerList.reloadResources)
++ * and it swaps in the freshly broadcast tags packet while dropping both registry caches. Worldgen-
++ * layer registries only change across restarts, so dropping them alongside tags is a free backstop
++ * against any datapack-driven static-layer drift.
++ *
++ * Sharing packet instances across players is established vanilla behavior: reloadTagData
++ * broadcastAll reuses one ClientboundUpdateTagsPacket, reloadRecipes reuses one
++ * ClientboundUpdateRecipesPacket. Neither packet overrides Paper's per-send hooks
++ * (onPacketDispatch/onPacketDispatchFinish default to no-ops), and encoding is read-only.
++ *
++ * Built and read exclusively on the server thread (configuration tasks run via
++ * PacketUtils.ensureRunningOnSameThread; reloadTagData runs from the reload chain), so plain fields
++ * suffice.
++ */
++public final class PapoJoinPacketCache {
++    static ClientboundUpdateTagsPacket tags;
++    static List<ClientboundRegistryDataPacket> registryMatched; // client known-packs == server's
++    static List<ClientboundRegistryDataPacket> registryMismatched; // client needs full payloads
++
++    private PapoJoinPacketCache() {
++    }
++
++    /** Drops the registry caches and installs the freshly built tags packet as the new cache. */
++    public static void reload(final ClientboundUpdateTagsPacket newTags) {
++        tags = newTags;
++        registryMatched = null;
++        registryMismatched = null;
++    }
++}
+diff --git a/net/minecraft/server/network/config/SynchronizeRegistriesTask.java b/net/minecraft/server/network/config/SynchronizeRegistriesTask.java
+index 01b43f67c4f27e7e23332a0101cedfeac13b3c58..e6fbc00f309caee72e9168b67e502647bd180f9e 100644
+--- a/net/minecraft/server/network/config/SynchronizeRegistriesTask.java
++++ b/net/minecraft/server/network/config/SynchronizeRegistriesTask.java
+@@ -32,24 +32,48 @@ public class SynchronizeRegistriesTask implements ConfigurationTask {
+         task.accept(new ClientboundSelectKnownPacks(this.requestedPacks));
+     }
+ 
+-    private void sendRegistries(Consumer<Packet<?>> packetSender, Set<KnownPack> packs) {
+-        DynamicOps<Tag> dynamicOps = this.registries.compositeAccess().createSerializationContext(NbtOps.INSTANCE);
+-        RegistrySynchronization.packRegistries(
+-            dynamicOps,
+-            this.registries.getAccessFrom(RegistryLayer.WORLDGEN),
+-            packs,
+-            (resourceKey, list) -> packetSender.accept(new ClientboundRegistryDataPacket(resourceKey, list))
+-        );
+-        packetSender.accept(new ClientboundUpdateTagsPacket(TagNetworkSerialization.serializeTagsToNetwork(this.registries)));
++    // Papo start - serve join-time registry/tag packets from the per-reload cache
++    // (see PapoJoinPacketCache). The payloads are identical for every join between resource
++    // reloads; building them per join cost the main thread the full tag walk (625 tags / 4377
++    // entries) plus, for non-matching clients, full NBT encoding of 24 registries / 371 entries.
++    private void sendRegistries(Consumer<Packet<?>> packetSender, Set<KnownPack> packs, boolean papoMatched) {
++        List<ClientboundRegistryDataPacket> papoCached = papoMatched ? PapoJoinPacketCache.registryMatched : PapoJoinPacketCache.registryMismatched;
++        if (papoCached == null) {
++            final List<ClientboundRegistryDataPacket> papoBuilt = new java.util.ArrayList<>();
++            DynamicOps<Tag> dynamicOps = this.registries.compositeAccess().createSerializationContext(NbtOps.INSTANCE);
++            RegistrySynchronization.packRegistries(
++                dynamicOps,
++                this.registries.getAccessFrom(RegistryLayer.WORLDGEN),
++                packs,
++                (resourceKey, list) -> papoBuilt.add(new ClientboundRegistryDataPacket(resourceKey, list))
++            );
++            papoCached = List.copyOf(papoBuilt);
++            if (papoMatched) {
++                PapoJoinPacketCache.registryMatched = papoCached;
++            } else {
++                PapoJoinPacketCache.registryMismatched = papoCached;
++            }
++        }
++        for (ClientboundRegistryDataPacket papoPacket : papoCached) {
++            packetSender.accept(papoPacket);
++        }
++
++        ClientboundUpdateTagsPacket papoTags = PapoJoinPacketCache.tags;
++        if (papoTags == null) {
++            papoTags = new ClientboundUpdateTagsPacket(TagNetworkSerialization.serializeTagsToNetwork(this.registries));
++            PapoJoinPacketCache.tags = papoTags;
++        }
++        packetSender.accept(papoTags);
+     }
+ 
+     public void handleResponse(List<KnownPack> packs, Consumer<Packet<?>> packetSender) {
+         if (packs.equals(this.requestedPacks)) {
+-            this.sendRegistries(packetSender, Set.copyOf(this.requestedPacks));
++            this.sendRegistries(packetSender, Set.copyOf(this.requestedPacks), true); // Papo - cache key
+         } else {
+-            this.sendRegistries(packetSender, Set.of());
++            this.sendRegistries(packetSender, Set.of(), false); // Papo - cache key
+         }
+     }
++    // Papo end - serve join-time registry/tag packets from the per-reload cache
+ 
+     @Override
+     public ConfigurationTask.Type type() {
+diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
+index 989ac565c47a70c7947cb7315d0f5c2cfecd0363..b34a39f6760b468fac6190fd88c7b5089c10cb35 100644
+--- a/net/minecraft/server/players/PlayerList.java
++++ b/net/minecraft/server/players/PlayerList.java
+@@ -1269,7 +1269,12 @@ public abstract class PlayerList {
+         // Paper start - API for updating recipes on clients
+     }
+     public void reloadTagData() {
+-        this.broadcastAll(new ClientboundUpdateTagsPacket(TagNetworkSerialization.serializeTagsToNetwork(this.registries)));
++        // Papo start - install the freshly built tags packet as the join-time cache (single point
++        // where tag content changes; also drops the registry-packet caches as a free backstop)
++        ClientboundUpdateTagsPacket papoTagsPacket = new ClientboundUpdateTagsPacket(TagNetworkSerialization.serializeTagsToNetwork(this.registries));
++        this.broadcastAll(papoTagsPacket);
++        net.minecraft.server.network.config.PapoJoinPacketCache.reload(papoTagsPacket);
++        // Papo end
+         // CraftBukkit start
+         // this.reloadRecipes(); // Paper - do not reload recipes just because tag data was reloaded
+         // Paper end - API for updating recipes on clients

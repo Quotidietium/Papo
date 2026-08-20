@@ -1,0 +1,56 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 20 Aug 2026 09:34:32 +0800
+Subject: [PATCH] Papo: dedupe the double loadPlayerData in PrepareSpawnTask
+
+
+diff --git a/net/minecraft/server/network/config/PrepareSpawnTask.java b/net/minecraft/server/network/config/PrepareSpawnTask.java
+index 5014840bf5d7ef53a4fea8aa6f3b25eb4033ff96..ea0c1fafd1ed7cb3fd05ddbfc41184067a131fd6 100644
+--- a/net/minecraft/server/network/config/PrepareSpawnTask.java
++++ b/net/minecraft/server/network/config/PrepareSpawnTask.java
+@@ -40,6 +40,23 @@ public class PrepareSpawnTask implements ConfigurationTask {
+     private final com.mojang.authlib.GameProfile profile;
+     private final net.minecraft.server.network.ServerConfigurationPacketListenerImpl listener;
+     private boolean newPlayer;
++    // Papo start - dedupe the double loadPlayerData
++    // start() and spawn() each called loadPlayerData (disk read + gzip + full NBT parse + datafix,
++    // main thread) within the same join. The first result is cached and reused; between the two
++    // call sites nothing writes the player .dat (both consume the tag read-only: start() reads the
++    // bukkit world refs / saved position, spawn() feeds serverPlayer.load). The empty case is
++    // cached too - the file cannot appear mid-join under default behavior.
++    private java.util.Optional<net.minecraft.nbt.CompoundTag> papoCachedPlayerData;
++    private boolean papoPlayerDataLoaded;
++
++    private java.util.Optional<net.minecraft.nbt.CompoundTag> papoLoadPlayerDataOnce() {
++        if (!this.papoPlayerDataLoaded) {
++            this.papoCachedPlayerData = this.server.getPlayerList().loadPlayerData(this.nameAndId);
++            this.papoPlayerDataLoaded = true;
++        }
++        return this.papoCachedPlayerData;
++    }
++    // Papo end - dedupe the double loadPlayerData
+     public PrepareSpawnTask(MinecraftServer server, com.mojang.authlib.GameProfile profile, net.minecraft.server.network.ServerConfigurationPacketListenerImpl listener) {
+         this.profile = profile;
+         this.listener = listener;
+@@ -52,9 +69,7 @@ public class PrepareSpawnTask implements ConfigurationTask {
+     @Override
+     public void start(Consumer<Packet<?>> task) {
+         try (ProblemReporter.ScopedCollector scopedCollector = new ProblemReporter.ScopedCollector(LOGGER)) {
+-            Optional<ValueInput> optional = this.server
+-                .getPlayerList()
+-                .loadPlayerData(this.nameAndId)
++            Optional<ValueInput> optional = this.papoLoadPlayerDataOnce() // Papo - dedupe the double loadPlayerData
+                 .map(compoundTag -> TagValueInput.create(scopedCollector, this.server.registryAccess(), compoundTag));
+             // Paper start - move logic in Entity to here, to use bukkit supplied world UUID & reset to main world spawn if no valid world is found
+             this.newPlayer = optional.isEmpty(); // New players don't have saved data!
+@@ -280,9 +295,7 @@ public class PrepareSpawnTask implements ConfigurationTask {
+ 
+             ServerPlayer var7;
+             try (ProblemReporter.ScopedCollector scopedCollector = new ProblemReporter.ScopedCollector(serverPlayer.problemPath(), PrepareSpawnTask.LOGGER)) {
+-                Optional<ValueInput> optional = PrepareSpawnTask.this.server
+-                    .getPlayerList()
+-                    .loadPlayerData(PrepareSpawnTask.this.nameAndId)
++                Optional<ValueInput> optional = PrepareSpawnTask.this.papoLoadPlayerDataOnce() // Papo - dedupe the double loadPlayerData
+                     // CraftBukkit start
+                     .map(tag -> {
+                         org.bukkit.craftbukkit.entity.CraftPlayer craftPlayer = serverPlayer.getBukkitEntity();
