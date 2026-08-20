@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 20 Aug 2026 13:19:27 +0800
+Subject: [PATCH] Papo: gate PlayerAttackEntityCooldownResetEvent
+
+
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index 1b6afde1a743a4b05d47380fda91dac1324b0952..98371c7797c9153ffbbc82b541e8d3c189cb2cef 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -2507,9 +2507,14 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+                 //((net.minecraft.world.entity.player.Player) damagesource.getEntity()).resetOnlyAttackStrengthTicker(); // Moved from Player in order to make the cooldown reset get called after the damage event is fired
+                 if (!attackingPlayer.isUsingItem() || !attackingPlayer.getUseItem().has(DataComponents.KINETIC_WEAPON)) { // Paper - Preserve vanilla spear charge cooldown
+                     if (attackingPlayer instanceof ServerPlayer player) {
+-                        if (new com.destroystokyo.paper.event.player.PlayerAttackEntityCooldownResetEvent(player.getBukkitEntity(), this.getBukkitEntity(), player.getAttackStrengthScale(0F)).callEvent()) {
++                        // Papo start - zero-listener fast path: own HandlerList, no subclasses; with no
++                        // listeners callEvent() always returns true (and getAttackStrengthScale is a
++                        // pure computation whose evaluation is only needed for the event field)
++                        if (com.destroystokyo.paper.event.player.PlayerAttackEntityCooldownResetEvent.getHandlerList().getRegisteredListeners().length == 0
++                            || new com.destroystokyo.paper.event.player.PlayerAttackEntityCooldownResetEvent(player.getBukkitEntity(), this.getBukkitEntity(), player.getAttackStrengthScale(0F)).callEvent()) {
+                             player.resetOnlyAttackStrengthTicker();
+                         }
++                        // Papo end
+                     } else {
+                         attackingPlayer.resetOnlyAttackStrengthTicker();
+                     }

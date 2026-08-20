@@ -1,0 +1,100 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 20 Aug 2026 13:19:27 +0800
+Subject: [PATCH] Papo: gate PrePlayerAttackEntityEvent (attack/stab) and
+ second PlayerVelocityEvent site; hoist sweep DamageSource copy
+
+
+diff --git a/net/minecraft/world/entity/player/Player.java b/net/minecraft/world/entity/player/Player.java
+index ffff9a5c658700c5956252f2e452646d0f36becc..575aad5cbd96b6bb29a76d9c57d554ce86a05cf2 100644
+--- a/net/minecraft/world/entity/player/Player.java
++++ b/net/minecraft/world/entity/player/Player.java
+@@ -1023,13 +1023,16 @@ public abstract class Player extends Avatar implements ContainerUser {
+     public void attack(Entity target) {
+         // Paper start - PlayerAttackEntityEvent
+         boolean willAttack = !this.cannotAttack(target); // Vanilla logic
+-        io.papermc.paper.event.player.PrePlayerAttackEntityEvent playerAttackEntityEvent = new io.papermc.paper.event.player.PrePlayerAttackEntityEvent(
+-            (org.bukkit.entity.Player) this.getBukkitEntity(),
+-            target.getBukkitEntity(),
+-            willAttack
+-        );
+-
+-        if (playerAttackEntityEvent.callEvent() && willAttack) { // Logic moved to willAttack local variable.
++        // Papo start - zero-listener fast path: own HandlerList, no subclasses; with no listeners
++        // callEvent() always returns true, reducing the gate to willAttack alone
++        boolean papoAttackAllowed = io.papermc.paper.event.player.PrePlayerAttackEntityEvent.getHandlerList().getRegisteredListeners().length == 0
++            || new io.papermc.paper.event.player.PrePlayerAttackEntityEvent(
++                (org.bukkit.entity.Player) this.getBukkitEntity(),
++                target.getBukkitEntity(),
++                willAttack
++            ).callEvent();
++
++        if (papoAttackAllowed && willAttack) { // Logic moved to willAttack local variable.
+         // Paper end - PlayerAttackEntityEvent
+             float f = this.isAutoSpinAttack() ? this.autoSpinAttackDmg : (float)this.getAttributeValue(Attributes.ATTACK_DAMAGE);
+             ItemStack weaponItem = this.getWeaponItem();
+@@ -1217,6 +1220,10 @@ public abstract class Player extends Avatar implements ContainerUser {
+         if (target instanceof ServerPlayer && target.hurtMarked) {
+             // CraftBukkit start - Add Velocity Event
+             boolean cancelled = false;
++            // Papo start - zero-listener fast path (0100 second site, same shape): with no listeners
++            // the event is never cancelled and getVelocity() returns the constructed clone which
++            // equals `velocity` by value, so the whole event block is a no-op
++            if (org.bukkit.event.player.PlayerVelocityEvent.getHandlerList().getRegisteredListeners().length != 0) {
+             org.bukkit.entity.Player player = (org.bukkit.entity.Player) target.getBukkitEntity();
+             org.bukkit.util.Vector velocity = org.bukkit.craftbukkit.util.CraftVector.toBukkit(currentMovement);
+ 
+@@ -1228,6 +1235,8 @@ public abstract class Player extends Avatar implements ContainerUser {
+             } else if (!velocity.equals(event.getVelocity())) {
+                 player.setVelocity(event.getVelocity());
+             }
++            }
++            // Papo end - zero-listener fast path
+ 
+             if (!cancelled) {
+             ((ServerPlayer)target).connection.send(new ClientboundSetEntityMotionPacket(target));
+@@ -1248,6 +1257,11 @@ public abstract class Player extends Avatar implements ContainerUser {
+         if (this.level() instanceof ServerLevel serverLevel) {
+             float var12 = 1.0F + (float)this.getAttributeValue(Attributes.SWEEPING_DAMAGE_RATIO) * damageAmount;
+ 
++            // Papo start - hoist the per-target DamageSource copy out of the sweep loop (constant
++            // arguments produce value-identical immutable copies; one shared instance is read-only
++            // downstream in hurtServer)
++            final DamageSource papoSweepSource = damageSource.knownCause(org.bukkit.event.entity.EntityDamageEvent.DamageCause.ENTITY_SWEEP_ATTACK);
++            // Papo end
+             for (LivingEntity livingEntity : this.level().getEntitiesOfClass(LivingEntity.class, entity.getBoundingBox().inflate(1.0, 0.25, 1.0))) {
+                 if (livingEntity != this
+                     && livingEntity != entity
+@@ -1257,7 +1271,7 @@ public abstract class Player extends Avatar implements ContainerUser {
+                     float f1 = this.getEnchantedDamage(livingEntity, var12, damageSource) * strengthScale;
+                     // Paper start - Only apply knockback if the event is not canceled
+                     livingEntity.lastDamageCancelled = false;
+-                    if (livingEntity.hurtServer(serverLevel, damageSource.knownCause(org.bukkit.event.entity.EntityDamageEvent.DamageCause.ENTITY_SWEEP_ATTACK), f1) && !livingEntity.lastDamageCancelled) {
++                    if (livingEntity.hurtServer(serverLevel, papoSweepSource, f1) && !livingEntity.lastDamageCancelled) {
+                         // Paper end - Only apply knockback if the event is not canceled
+                         livingEntity.knockback(0.4F, Mth.sin(this.getYRot() * (float) (Math.PI / 180.0)), -Mth.cos(this.getYRot() * (float) (Math.PI / 180.0)), this, io.papermc.paper.event.entity.EntityKnockbackEvent.Cause.SWEEP_ATTACK); // Paper - knockback events
+                         EnchantmentHelper.doPostAttackEffects(serverLevel, livingEntity, damageSource);
+@@ -1292,13 +1306,16 @@ public abstract class Player extends Avatar implements ContainerUser {
+     public boolean stabAttack(EquipmentSlot slot, Entity target, float damageAmount, boolean damage, boolean knockback, boolean dismount) {
+         // Paper start - PlayerAttackEntityEvent
+         boolean cannotAttack = this.cannotAttack(target); // Vanilla logic
+-        io.papermc.paper.event.player.PrePlayerAttackEntityEvent playerAttackEntityEvent = new io.papermc.paper.event.player.PrePlayerAttackEntityEvent(
+-            (org.bukkit.entity.Player) this.getBukkitEntity(),
+-            target.getBukkitEntity(),
+-            !cannotAttack
+-        );
+-
+-        if (!playerAttackEntityEvent.callEvent() || cannotAttack) { // Logic moved to cannotAttack local variable.
++        // Papo start - zero-listener fast path: with no listeners callEvent() always returns true,
++        // so the early-return condition reduces to cannotAttack alone
++        boolean papoAttackDenied = io.papermc.paper.event.player.PrePlayerAttackEntityEvent.getHandlerList().getRegisteredListeners().length != 0
++            && !new io.papermc.paper.event.player.PrePlayerAttackEntityEvent(
++                (org.bukkit.entity.Player) this.getBukkitEntity(),
++                target.getBukkitEntity(),
++                !cannotAttack
++            ).callEvent();
++
++        if (papoAttackDenied || cannotAttack) { // Logic moved to cannotAttack local variable.
+         // Paper end - PlayerAttackEntityEvent
+             return false;
+         } else {

@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 20 Aug 2026 13:19:28 +0800
+Subject: [PATCH] Papo: gate PlayerItemDamageEvent and EntityDamageItemEvent
+
+
+diff --git a/net/minecraft/world/item/ItemStack.java b/net/minecraft/world/item/ItemStack.java
+index 71c28ff04e77e94cbe23d48e225438fb088e3f5f..9b328f55fb108b64c9c5d111e05aa2f03e68907b 100644
+--- a/net/minecraft/world/item/ItemStack.java
++++ b/net/minecraft/world/item/ItemStack.java
+@@ -634,7 +634,11 @@ public final class ItemStack implements DataComponentHolder {
+         final int originalDamage = damage; // Paper - Expand PlayerItemDamageEvent
+         int i = this.processDurabilityChange(damage, level, player, force); // Paper
+         // CraftBukkit start
++        // Papo start - zero-listener fast paths: PlayerItemDamageEvent and EntityDamageItemEvent each
++        // have their own HandlerList with no subclasses; with no listeners neither is ever cancelled
++        // and getDamage() returns the constructed i - both blocks reduce to no-ops
+         if (i > 0 && player instanceof final ServerPlayer serverPlayer) { // Paper - Add EntityDamageItemEvent - limit to positive damage and run for player
++            if (org.bukkit.event.player.PlayerItemDamageEvent.getHandlerList().getRegisteredListeners().length != 0) {
+             org.bukkit.event.player.PlayerItemDamageEvent event = new org.bukkit.event.player.PlayerItemDamageEvent(serverPlayer.getBukkitEntity(), org.bukkit.craftbukkit.inventory.CraftItemStack.asCraftMirror(this), i, originalDamage); // Paper - Add EntityDamageItemEvent
+             event.getPlayer().getServer().getPluginManager().callEvent(event);
+             if (event.isCancelled()) {
+@@ -642,15 +646,19 @@ public final class ItemStack implements DataComponentHolder {
+             }
+ 
+             i = event.getDamage();
++            }
+             // Paper start - Add EntityDamageItemEvent
+         } else if (i > 0 && player != null) {
++            if (io.papermc.paper.event.entity.EntityDamageItemEvent.getHandlerList().getRegisteredListeners().length != 0) {
+             io.papermc.paper.event.entity.EntityDamageItemEvent event = new io.papermc.paper.event.entity.EntityDamageItemEvent(player.getBukkitLivingEntity(), org.bukkit.craftbukkit.inventory.CraftItemStack.asCraftMirror(this), i);
+             if (!event.callEvent()) {
+                 return;
+             }
+             i = event.getDamage();
++            }
+             // Paper end - Add EntityDamageItemEvent
+         }
++        // Papo end - zero-listener fast paths
+         // CraftBukkit end
+         if (i != 0) { // Paper - Add EntityDamageItemEvent - diff on change for above event ifs.
+             this.applyDamage(this.getDamageValue() + i, player, onBreak);

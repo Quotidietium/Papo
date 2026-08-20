@@ -57,9 +57,17 @@ public class EntityDamageEvent extends EntityEvent implements Cancellable {
         super(damagee);
         Preconditions.checkArgument(modifiers.containsKey(DamageModifier.BASE), "BASE DamageModifier missing");
         Preconditions.checkArgument(!modifiers.containsKey(null), "Cannot have null DamageModifier");
-        Preconditions.checkArgument(modifiers.values().stream().allMatch(Objects::nonNull), "Cannot have null modifier values");
+        // Papo start - constructor fast path: the two stream pipelines below ran on every damage
+        // instance (the hottest event family in the server); plain loops are semantically identical
+        // (allMatch(nonNull) == no null element) with the same exception type and message.
+        for (final Double papoValue : modifiers.values()) {
+            Preconditions.checkArgument(papoValue != null, "Cannot have null modifier values");
+        }
         Preconditions.checkArgument(modifiers.keySet().equals(modifierFunctions.keySet()), "Must have a modifier function for each DamageModifier");
-        Preconditions.checkArgument(modifierFunctions.values().stream().allMatch(Objects::nonNull), "Cannot have null modifier function");
+        for (final Function<? super Double, Double> papoFunction : modifierFunctions.values()) {
+            Preconditions.checkArgument(papoFunction != null, "Cannot have null modifier function");
+        }
+        // Papo end - constructor fast path
         this.originals = new EnumMap<>(modifiers);
         this.cause = cause;
         this.modifiers = modifiers;
