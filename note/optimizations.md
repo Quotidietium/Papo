@@ -1805,9 +1805,25 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 - **风险**：低-中（池化内存共享语义变化对注入管线的外部插件不可见；LTFBD 工业先例）。
 
 ### 暂缓/否决（批次 61 survey）
-- **出站带宽监控**（/paper netstat 子命令 + prepender 出站计数 + tickSecond 每秒窗 + 每连接 AtomicLong）：survey 完整最小设计已留档（~150-180 行、5 文件、纯观测零风险），**留批次 62 独立交付**。
+- ~~**出站带宽监控**~~ **批次 62 已交付（0225 + /paper netstat 直提交）**。
 - RegistryFriendlyByteBuf 复用（~130 codec 逃逸审计）、ListenerAndPacket 池化（jctools 依赖+队列语义保持）：低价值高风险，不做。
 - 零写入跳过 flush 任务（插件直写 channel 的延迟边界）：中风险暂缓。
+
+---
+
+## 批次 62（2026-08-20）：/paper netstat 出站/入站带宽监控（0225，纯观测）
+
+批次 61 survey 预定的独立交付。报告：[note/report/perf/2026-08-20-jmh-microbench-batch62.md](report/perf/2026-08-20-jmh-microbench-batch62.md)。
+
+### 0225 — 每连接 wire 字节计数 + 帧编解码接线（补丁）
+- **文件**：`Connection.java`（计数器字段 + tickSecond 快照 + getter + configureSerialization 穿线）+ `Varint21LengthFieldPrepender`（两条帧化路径计数）+ `Varint21FrameDecoder`（入站对称计数）+ `ServerConnectionListener`（连接创建上移传计数器）
+- **机制**：出站计 `载荷+帧长 varint`（压缩后/加密前 = 精确 wire 字节）；入站同式对称；每连接 AtomicLong（eventLoop 无竞争 add）+ tickSecond 每秒 getAndSet 快照（与 averageSentPackets 同相位）+ 累计总量。
+- **等价性**：纯观测（计数器无行为耦合）；configureSerialization 三调用点全更新（服务端/客户端接入、内存连接不计）；连接创建上移 inert。自检（NetstatCounterSelfCheck）：出站 7 尺寸计数==wire 字节、入站多帧+半帧、窗口清零守恒 ALL OK。
+- **风险**：零-低。
+
+### 直接提交 — NetstatCommand + PaperCommand 注册
+- `/paper netstat [topN|all]`（默认 top 10 按出站 B/s 降序）：全服 out/in B/s + totals + 每玩家 out/in B/s、pkt/s（复用 averageSentPackets）、累计。权限 `bukkit.command.paper.netstat`（Paper 既有自动注册，OP 默认）。
+- **价值**：带宽主题的度量基础——服主可直接看到每玩家真实线上字节（压缩后），为后续带宽优化（如压缩级别调优、异常流量定位）提供数据。
 
 ### 暂缓（批次 58 survey 产出，留批次 59）
 - **帧头合并免拷贝**（survey1 候选2，结构性大头）：CompressionEncoder 预留 3 字节头 + 帧长回填，prepender 对已帧化 buffer 直通——需管线结构改动与 marker 机制（channel attr 或包装类），config 门控，留批次 59 专项。
