@@ -1,0 +1,117 @@
+# JMH version: 1.37
+# VM version: JDK 25.0.4, Java HotSpot(TM) 64-Bit Server VM, 25.0.4+7-LTS-189
+# VM invoker: F:\Java\25\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.WireSetOrderBench.after_bucketOrder
+
+# Run progress: 0.00% complete, ETA 00:00:32
+# Fork: 1 of 2
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/F:/Github/repo/Papo/benchmark/lib/jmh-core-1.37.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 47.808 ns/op
+# Warmup Iteration   2: 45.203 ns/op
+# Warmup Iteration   3: 46.549 ns/op
+Iteration   1: 45.360 ns/op
+Iteration   2: 60.409 ns/op
+Iteration   3: 69.620 ns/op
+Iteration   4: 64.277 ns/op
+Iteration   5: 58.031 ns/op
+
+# Run progress: 25.00% complete, ETA 00:00:25
+# Fork: 2 of 2
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/F:/Github/repo/Papo/benchmark/lib/jmh-core-1.37.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 47.731 ns/op
+# Warmup Iteration   2: 46.215 ns/op
+# Warmup Iteration   3: 46.670 ns/op
+Iteration   1: 57.137 ns/op
+Iteration   2: 50.509 ns/op
+Iteration   3: 56.112 ns/op
+Iteration   4: 50.364 ns/op
+Iteration   5: 48.295 ns/op
+
+
+Result "papo.bench.WireSetOrderBench.after_bucketOrder":
+  56.011 ±(99.9%) 11.419 ns/op [Average]
+  (min, avg, max) = (45.360, 56.011, 69.620), stdev = 7.553
+  CI (99.9%): [44.593, 67.430] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 25.0.4, Java HotSpot(TM) 64-Bit Server VM, 25.0.4+7-LTS-189
+# VM invoker: F:\Java\25\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.WireSetOrderBench.before_hashSet
+
+# Run progress: 50.00% complete, ETA 00:00:16
+# Fork: 1 of 2
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/F:/Github/repo/Papo/benchmark/lib/jmh-core-1.37.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 87.515 ns/op
+# Warmup Iteration   2: 80.396 ns/op
+# Warmup Iteration   3: 85.701 ns/op
+Iteration   1: 86.649 ns/op
+Iteration   2: 98.172 ns/op
+Iteration   3: 89.209 ns/op
+Iteration   4: 110.611 ns/op
+Iteration   5: 94.982 ns/op
+
+# Run progress: 75.00% complete, ETA 00:00:08
+# Fork: 2 of 2
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/F:/Github/repo/Papo/benchmark/lib/jmh-core-1.37.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 88.657 ns/op
+# Warmup Iteration   2: 81.591 ns/op
+# Warmup Iteration   3: 82.853 ns/op
+Iteration   1: 88.802 ns/op
+Iteration   2: 87.827 ns/op
+Iteration   3: 103.947 ns/op
+Iteration   4: 90.961 ns/op
+Iteration   5: 87.789 ns/op
+
+
+Result "papo.bench.WireSetOrderBench.before_hashSet":
+  93.895 ±(99.9%) 12.169 ns/op [Average]
+  (min, avg, max) = (86.649, 93.895, 110.611), stdev = 8.049
+  CI (99.9%): [81.726, 106.064] (assumes normal distribution)
+
+
+# Run complete. Total time: 00:00:33
+
+REMEMBER: The numbers below are just data. To gain reusable insights, you need to follow up on
+why the numbers are the way they are. Use profilers (see -prof, -lprof), design factorial
+experiments, perform baseline and negative tests that provide experimental control, make sure
+the benchmarking environment is safe on JVM/OS/HW level, ask for reviews from the domain experts.
+Do not assume the numbers tell you what you want them to tell.
+
+NOTE: Current JVM experimentally supports Compiler Blackholes, and they are in use. Please exercise
+extra caution when trusting the results, look into the generated code to check the benchmark still
+works, and factor in a small probability of new VM bugs. Additionally, while comparisons between
+different JVMs are already problematic, the performance difference caused by different Blackhole
+modes can be very significant. Please make sure you use the consistent Blackhole mode for comparisons.
+
+Benchmark                            Mode  Cnt   Score    Error  Units
+WireSetOrderBench.after_bucketOrder  avgt   10  56.011 ± 11.419  ns/op
+WireSetOrderBench.before_hashSet     avgt   10  93.895 ± 12.169  ns/op
+
+Benchmark result is saved to results/bench-20260820-123506.json
