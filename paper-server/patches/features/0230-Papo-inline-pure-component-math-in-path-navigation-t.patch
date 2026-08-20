@@ -1,0 +1,197 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 20 Aug 2026 10:47:40 +0800
+Subject: [PATCH] Papo: inline pure-component math in path navigation tick
+ (node-direct reads + getGroundY mutable)
+
+
+diff --git a/net/minecraft/world/entity/ai/navigation/FlyingPathNavigation.java b/net/minecraft/world/entity/ai/navigation/FlyingPathNavigation.java
+index c20d10250e2fdd563d0fcfac47de1e276393b529..de8e89bf52617341622a9b5e7ee791c51a389c17 100644
+--- a/net/minecraft/world/entity/ai/navigation/FlyingPathNavigation.java
++++ b/net/minecraft/world/entity/ai/navigation/FlyingPathNavigation.java
+@@ -6,6 +6,7 @@ import net.minecraft.world.entity.Entity;
+ import net.minecraft.world.entity.Mob;
+ import net.minecraft.world.level.Level;
+ import net.minecraft.world.level.pathfinder.FlyNodeEvaluator;
++import net.minecraft.world.level.pathfinder.Node; // Papo - direct node reads in tick()
+ import net.minecraft.world.level.pathfinder.Path;
+ import net.minecraft.world.level.pathfinder.PathFinder;
+ import net.minecraft.world.phys.Vec3;
+@@ -52,17 +53,24 @@ public class FlyingPathNavigation extends PathNavigation {
+             if (this.canUpdatePath()) {
+                 this.followThePath();
+             } else if (this.path != null && !this.path.isDone()) {
+-                Vec3 nextEntityPos = this.path.getNextEntityPos(this.mob);
+-                if (this.mob.getBlockX() == Mth.floor(nextEntityPos.x)
+-                    && this.mob.getBlockY() == Mth.floor(nextEntityPos.y)
+-                    && this.mob.getBlockZ() == Mth.floor(nextEntityPos.z)) {
++                // Papo start - inline getNextEntityPos (Path is final; formula copied verbatim from
++                // getEntityPosAtNode: node.x + (int)(bbWidth + 1.0F) * 0.5). Pure component reads.
++                Node papoNode = this.path.getNextNode();
++                int papoOff = (int)(this.mob.getBbWidth() + 1.0F);
++                if (this.mob.getBlockX() == Mth.floor(papoNode.x + papoOff * 0.5)
++                    && this.mob.getBlockY() == papoNode.y
++                    && this.mob.getBlockZ() == Mth.floor(papoNode.z + papoOff * 0.5)) {
+                     this.path.advance();
+                 }
++                // Papo end
+             }
+ 
+             if (!this.isDone()) {
+-                Vec3 nextEntityPos = this.path.getNextEntityPos(this.mob);
+-                this.mob.getMoveControl().setWantedPosition(nextEntityPos.x, nextEntityPos.y, nextEntityPos.z, this.speedModifier);
++                // Papo start - inline getNextEntityPos (pure component reads feed setWantedPosition)
++                Node papoNode = this.path.getNextNode();
++                int papoOff = (int)(this.mob.getBbWidth() + 1.0F);
++                this.mob.getMoveControl().setWantedPosition(papoNode.x + papoOff * 0.5, papoNode.y, papoNode.z + papoOff * 0.5, this.speedModifier);
++                // Papo end
+             }
+         }
+     }
+diff --git a/net/minecraft/world/entity/ai/navigation/PathNavigation.java b/net/minecraft/world/entity/ai/navigation/PathNavigation.java
+index b38fcabedc5b6f3c25e6623a530bee7f1e585b04..f649faddf14fe3f94de591dd40a8f70ceaa77497 100644
+--- a/net/minecraft/world/entity/ai/navigation/PathNavigation.java
++++ b/net/minecraft/world/entity/ai/navigation/PathNavigation.java
+@@ -5,6 +5,7 @@ import java.util.Set;
+ import java.util.stream.Collectors;
+ import java.util.stream.Stream;
+ import net.minecraft.core.BlockPos;
++import net.minecraft.core.Direction;
+ import net.minecraft.core.Vec3i;
+ import net.minecraft.server.level.ServerLevel;
+ import net.minecraft.tags.BlockTags;
+@@ -277,13 +278,18 @@ public abstract class PathNavigation {
+                 this.followThePath();
+             } else if (this.path != null && !this.path.isDone()) {
+                 Vec3 tempMobPos = this.getTempMobPos();
+-                Vec3 nextEntityPos = this.path.getNextEntityPos(this.mob);
+-                if (tempMobPos.y > nextEntityPos.y
++                // Papo start - inline getNextEntityPos (Path is final; getEntityPosAtNode formula
++                // copied verbatim: node.x + (int)(bbWidth + 1.0F) * 0.5 - the int cast happens before
++                // the * 0.5). Pure component reads below.
++                Node papoNode = this.path.getNextNode();
++                int papoOff = (int)(this.mob.getBbWidth() + 1.0F);
++                if (tempMobPos.y > papoNode.y
+                     && !this.mob.onGround()
+-                    && Mth.floor(tempMobPos.x) == Mth.floor(nextEntityPos.x)
+-                    && Mth.floor(tempMobPos.z) == Mth.floor(nextEntityPos.z)) {
++                    && Mth.floor(tempMobPos.x) == Mth.floor(papoNode.x + papoOff * 0.5)
++                    && Mth.floor(tempMobPos.z) == Mth.floor(papoNode.z + papoOff * 0.5)) {
+                     this.path.advance();
+                 }
++                // Papo end
+             }
+ 
+             if (!this.isDone()) {
+@@ -293,9 +299,20 @@ public abstract class PathNavigation {
+         }
+     }
+ 
++    // Papo start - mutable scratch for getGroundY's block lookups (containing(pos) + below() both
++    // only feed read-only lookups; move(DOWN)/move(UP) avoids even the below() allocation). tick is
++    // single-threaded per mob (0190 scratch-list precedent).
++    private final BlockPos.MutableBlockPos papoGroundYPos = new BlockPos.MutableBlockPos();
++    // Papo end
++
+     protected double getGroundY(Vec3 pos) {
+-        BlockPos blockPos = BlockPos.containing(pos);
+-        return this.level.getBlockState(blockPos.below()).isAir() ? pos.y : WalkNodeEvaluator.getFloorLevel(this.level, blockPos);
++        // Papo start - mutable block-lookup scratch
++        BlockPos.MutableBlockPos papoPos = this.papoGroundYPos.set(Mth.floor(pos.x), Mth.floor(pos.y), Mth.floor(pos.z));
++        papoPos.move(Direction.DOWN);
++        boolean papoAir = this.level.getBlockState(papoPos).isAir();
++        papoPos.move(Direction.UP);
++        return papoAir ? pos.y : WalkNodeEvaluator.getFloorLevel(this.level, papoPos);
++        // Papo end - mutable block-lookup scratch
+     }
+ 
+     protected void followThePath() {
+@@ -321,27 +338,51 @@ public abstract class PathNavigation {
+         if (this.path.getNextNodeIndex() + 1 >= this.path.getNodeCount()) {
+             return false;
+         } else {
+-            Vec3 vec3 = Vec3.atBottomCenterOf(this.path.getNextNodePos());
+-            if (!pos.closerThan(vec3, 2.0)) {
++            // Papo start - inline the pure-component math over the Node fields
++            // Formulas copied verbatim preserving FP order (0173-0180 style):
++            // atBottomCenterOf(Vec3i) = (x + 0.5, y + 0.0, z + 0.5); closerThan(pos, 2.0) =
++            // distanceToSqr(arg - this) < 2.0 * 2.0; subtract = add(-x, -y, -z); normalize keeps the
++            // 1.0E-5F guard (below-guard -> ZERO components -> dot 0.0 -> 0.0 < 0.0 false; NaN inputs
++            // flow through NaN comparisons unchanged). canMoveDirectly is a protected virtual method,
++            // so its Vec3 argument must still materialize (batch 31 red line).
++            Node papoCur = this.path.getNextNode();
++            double papoCurX = papoCur.x + 0.5;
++            double papoCurY = papoCur.y;
++            double papoCurZ = papoCur.z + 0.5;
++            double papoDx = papoCurX - pos.x;
++            double papoDy = papoCurY - pos.y;
++            double papoDz = papoCurZ - pos.z;
++            if (papoDx * papoDx + papoDy * papoDy + papoDz * papoDz >= 2.0 * 2.0) {
+                 return false;
+-            } else if (this.canMoveDirectly(pos, this.path.getNextEntityPos(this.mob))) {
++            }
++            if (this.canMoveDirectly(pos, this.path.getNextEntityPos(this.mob))) {
+                 return true;
+-            } else {
+-                Vec3 vec31 = Vec3.atBottomCenterOf(this.path.getNodePos(this.path.getNextNodeIndex() + 1));
+-                Vec3 vec32 = vec3.subtract(pos);
+-                Vec3 vec33 = vec31.subtract(pos);
+-                double d = vec32.lengthSqr();
+-                double d1 = vec33.lengthSqr();
+-                boolean flag = d1 < d;
+-                boolean flag1 = d < 0.5;
+-                if (!flag && !flag1) {
+-                    return false;
+-                } else {
+-                    Vec3 vec34 = vec32.normalize();
+-                    Vec3 vec35 = vec33.normalize();
+-                    return vec35.dot(vec34) < 0.0;
+-                }
+             }
++            Node papoNext = this.path.papoGetNode(this.path.getNextNodeIndex() + 1);
++            double papoNextX = papoNext.x + 0.5;
++            double papoNextY = papoNext.y;
++            double papoNextZ = papoNext.z + 0.5;
++            double papo32X = papoCurX + (-pos.x);
++            double papo32Y = papoCurY + (-pos.y);
++            double papo32Z = papoCurZ + (-pos.z);
++            double papo33X = papoNextX + (-pos.x);
++            double papo33Y = papoNextY + (-pos.y);
++            double papo33Z = papoNextZ + (-pos.z);
++            double d = papo32X * papo32X + papo32Y * papo32Y + papo32Z * papo32Z;
++            double d1 = papo33X * papo33X + papo33Y * papo33Y + papo33Z * papo33Z;
++            if (!(d1 < d) && !(d < 0.5)) {
++                return false;
++            }
++            double papoS32 = Math.sqrt(d);
++            double papoS33 = Math.sqrt(d1);
++            double papo34X = papoS32 < 1.0E-5F ? 0.0 : papo32X / papoS32;
++            double papo34Y = papoS32 < 1.0E-5F ? 0.0 : papo32Y / papoS32;
++            double papo34Z = papoS32 < 1.0E-5F ? 0.0 : papo32Z / papoS32;
++            double papo35X = papoS33 < 1.0E-5F ? 0.0 : papo33X / papoS33;
++            double papo35Y = papoS33 < 1.0E-5F ? 0.0 : papo33Y / papoS33;
++            double papo35Z = papoS33 < 1.0E-5F ? 0.0 : papo33Z / papoS33;
++            return papo35X * papo34X + papo35Y * papo34Y + papo35Z * papo34Z < 0.0;
++            // Papo end - inline the pure-component math over the Node fields
+         }
+     }
+ 
+diff --git a/net/minecraft/world/level/pathfinder/Path.java b/net/minecraft/world/level/pathfinder/Path.java
+index 5959e1b1772ffbdfb108365171fe37cbf56ef825..0278fb4e0cc7740bb38ce6c00debbec87d9419ed 100644
+--- a/net/minecraft/world/level/pathfinder/Path.java
++++ b/net/minecraft/world/level/pathfinder/Path.java
+@@ -93,6 +93,14 @@ public final class Path {
+         return this.nodes.get(this.nextNodeIndex);
+     }
+ 
++    // Papo start - direct node access by index for call-site inlining (PathNavigation's
++    // shouldTargetNextNodeInDirection reads the node after the current one; getNodePos would
++    // materialize a BlockPos just to read three ints back). Additive accessor; Path is final.
++    public Node papoGetNode(int index) {
++        return this.nodes.get(index);
++    }
++    // Papo end
++
+     public @Nullable Node getPreviousNode() {
+         return this.nextNodeIndex > 0 ? this.nodes.get(this.nextNodeIndex - 1) : null;
+     }

@@ -1,0 +1,38 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 20 Aug 2026 10:47:41 +0800
+Subject: [PATCH] Papo: read Present-condition memories raw (no result
+ Optional) in PureMemory tryTrigger
+
+
+diff --git a/net/minecraft/world/entity/ai/behavior/declarative/BehaviorBuilder.java b/net/minecraft/world/entity/ai/behavior/declarative/BehaviorBuilder.java
+index 295133fdfc1697060f911948eaf90229aca048af..a3685b51f194c695b5c130b5a67663c3dd7eb3a5 100644
+--- a/net/minecraft/world/entity/ai/behavior/declarative/BehaviorBuilder.java
++++ b/net/minecraft/world/entity/ai/behavior/declarative/BehaviorBuilder.java
+@@ -361,6 +361,26 @@ public class BehaviorBuilder<E extends LivingEntity, M> implements App<BehaviorB
+                 @Override
+                 public @Nullable MemoryAccessor<F, Value> tryTrigger(ServerLevel level, E entity, long gameTime) {
+                     Brain<?> brain = entity.getBrain();
++                    // Papo start - Present conditions read the memory raw (no result Optional)
++                    // Present.createAccessor treats unregistered (null) and absent (empty) identically
++                    // - both yield a null accessor - so collapsing them into a single null raw read is
++                    // exactly equivalent (MemoryCondition implementations are final records; no
++                    // third-party condition exists). Absent and Registered keep the original path:
++                    // Absent allocates nothing on present reads anyway, and Registered's Optional is
++                    // the accessor's value body. Measured (batch 66 gc probe): the present-read
++                    // Optional is a real allocation (8 B/op) that survives the megamorphic-ish
++                    // condition dispatch, so this saves one Optional per present read per behavior
++                    // per tick (villager trading-hall scenarios: ~5-10 present reads/tick/villager).
++                    if (trigger instanceof MemoryCondition.Present<?> papoPresentRaw) {
++                        @SuppressWarnings("unchecked") final MemoryCondition.Present<Value> papoPresent = (MemoryCondition.Present<Value>) papoPresentRaw;
++                        final Value papoRaw = brain.papoGetMemoryInternalRaw(papoPresent.memory());
++                        if (papoRaw == null) {
++                            return null;
++                        }
++                        @SuppressWarnings("unchecked") final MemoryAccessor<F, Value> papoAccessor = (MemoryAccessor<F, Value>) (MemoryAccessor<?, ?>) new MemoryAccessor<>(brain, papoPresent.memory(), com.mojang.datafixers.kinds.IdF.create(papoRaw));
++                        return papoAccessor;
++                    }
++                    // Papo end
+                     Optional<Value> memoryInternal = brain.getMemoryInternal(trigger.memory());
+                     return memoryInternal == null ? null : trigger.createAccessor(brain, memoryInternal);
+                 }
