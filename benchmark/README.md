@@ -55,6 +55,8 @@ cd benchmark
 | `CompressionLevelBench` | 批次63指南 | 压缩级别选型矩阵（chunk/text/light × level 1/3/6/9 的压缩比与编码时间；roundtrip 自检；结论：6 以上无带宽收益、3 是 CPU 高效前沿） |
 | `JoinPacketCacheBench` | 0226/0227 | join 静态包每 join 全量重建 vs reload 纪元缓存（625 tag/4377 条目模型）；双重 gzip 读 vs 单次复用（含缓存身份/失效/roundtrip 自检） |
 | `ContainerGateBench` | 0228/0229+直提交 | 拖拽/创造/PrepareResult 事件门控 before/after（模型）+ Optional 双包 vs 单包（含终状态一致性自检；gc 探针否决 nullable 核的证据留档） |
+| `MemoryOptionalProbe` | 0231 | 声明式记忆链 Present 读 Optional vs raw（gc 探针一票裁决：8 B/op 真分配差 + 1.8×） |
+| `PathNavBench` | 0230 | 寻路 shouldTargetNextNodeInDirection Vec3 链 vs Node 直读分量（含布尔等价矩阵自检；模型 EA 中性按 0175 先例机制保留） |
 
 ## 依赖
 
