@@ -1768,6 +1768,47 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 - **改法**：`new ArrayList<>()`（容量 10）→ `new ArrayList<>(4)`——sendPairingData 常态产出 2-4 个包，区块加载突发期每次实体配对省超额分配。容量不经 List API 可观察。
 - **风险**：零。
 
+---
+
+## 批次 61（2026-08-20）：入站零拷贝帧提取 + 死仪表门控 + tick 尾微项（0220-0224，编号以补丁文件为准）
+
+两路新 survey（入站包处理路径 / tick 尾 flush 窗口 + 带宽监控接线）驱动。JMH 报告：[note/report/perf/2026-08-20-jmh-microbench-batch61.md](report/perf/2026-08-20-jmh-microbench-batch61.md)。
+
+### survey 关键否定结论（勿重复勘察）
+- **入站主线程投递已摊销**：Paper `scheduleIfPossible` 直接传 packet+listener（无逐包 Runnable/execute 任务），`pollTask` 集成（tick 间等待循环/tick 首双段排空）+ unpark 投机唤醒使处理连续化——不存在批次 60 型批量化机会。
+- **RunningOnDifferentThreadException 零成本**：单例 + 构造时 setStackTrace(空) + fillInStackTrace 覆写返回 this——与 JIT OmitStackTraceInFastThrow 无关。
+- **tick 尾窗口在 58-60 后分配维度基本干净**：flushChannel 正常路径无 WrappedConsumer（垂死连接才走）；PlayerList.broadcast 热路径索引循环零分配；bundle 方向已闭合。
+
+### 0220 — PlayerChunkSender k-近邻 scratch 数组字段化
+- **文件**：`net/minecraft/server/network/PlayerChunkSender.java`（collectChunksToSend 突发分支）
+- **改法**：0203 引入的原语 k-近邻每次调用 `new long[floor]`/`new int[floor]` → 实例字段 + grow-on-demand（每 player 单实例、单主线程调用点、无重入；仅 [0, sel) 被读且每次全量重写，stale 数据不可达）。
+- **等价性**：选择/排序逻辑逐行不动，仅缓冲复用；跑图/登录突发期每 player-tick 省 2 个 ≤64 长数组。
+- **风险**：零。
+
+### 0223 — Connection flush 任务缓存
+- **文件**：`net/minecraft/network/Connection.java`（flush）
+- **改法**：非 eventLoop 分支每 tick 每 player 捕获 `() -> this.channel.flush()` → 每连接一个 `Runnable` 字段。执行时读 channel（channelActive 早于任何 flush 设置）与原 lambda 逐字一致；任务在 event loop 上重入 flush() 的 inEventLoop 快路。
+- **风险**：零。
+
+### 0221/0224 — 死仪表门控（0221 PacketProcessor 主体 + 0224 Connection.tick 伴随半部）
+- **文件**：`net/minecraft/network/PacketProcessor.java`（0221）+ `Connection.java`（tick，0224）
+- **热点**：Paper "detailed watchdog information" 簿记——**主线程每入站包** 2 个 ConcurrentLinkedDeque Node 分配 + 3 次 CAS；全仓库零读取方（getCurrentPacketProcessors/getTotalProcessedPackets 无任何调用，watchdog 线程不读包状态）。
+- **改法**：`static final boolean PAPO_TRACK_PACKET_PROCESSING = false` 包住三处写入，JIT 移除；字段/getter 保留形状。
+- **基准**：15.701 → 0.258 ns/op（**~15ns/包**，主线程直接减负）。
+- **风险**：低（唯一理论面是外部插件反射读内部字段——非 API 无兼容承诺）。
+
+### 0222 — Varint21FrameDecoder 帧提取 readBytes → retainedSlice（入站零拷贝）
+- **文件**：`net/minecraft/network/Varint21FrameDecoder.java`
+- **热点**：原版对每一入站帧分配新 buffer + memcpy 全部载荷——全部入站流量在 splitter 处完整拷贝一次。
+- **改法**：`retainedSlice + skipBytes`（netty LTFBD.extractFrame 同型）。下游只读已核（CompressionDecoder 仅索引/释放、PacketDecoder codec 只读）；父 cumulation 引用计数存活至同链最后 slice 释放；协议切换窗口 FlowControlHandler 排队至多钉住一个读批次（LTFBD 同语义）。
+- **基准**：gc.alloc.rate.norm **6774.8 → 704.0 B/op（9.6× 分配消除）**；紧密循环时间 93× 为 GC 摊销放大（诚实定位：每帧省 1 分配 + 1 memcpy，真实收益为与入站流量成正比的 GC 压力削减）。自检（帧内容一致/半帧累积/万帧引用计数）ALL OK。
+- **风险**：低-中（池化内存共享语义变化对注入管线的外部插件不可见；LTFBD 工业先例）。
+
+### 暂缓/否决（批次 61 survey）
+- **出站带宽监控**（/paper netstat 子命令 + prepender 出站计数 + tickSecond 每秒窗 + 每连接 AtomicLong）：survey 完整最小设计已留档（~150-180 行、5 文件、纯观测零风险），**留批次 62 独立交付**。
+- RegistryFriendlyByteBuf 复用（~130 codec 逃逸审计）、ListenerAndPacket 池化（jctools 依赖+队列语义保持）：低价值高风险，不做。
+- 零写入跳过 flush 任务（插件直写 channel 的延迟边界）：中风险暂缓。
+
 ### 暂缓（批次 58 survey 产出，留批次 59）
 - **帧头合并免拷贝**（survey1 候选2，结构性大头）：CompressionEncoder 预留 3 字节头 + 帧长回填，prepender 对已帧化 buffer 直通——需管线结构改动与 marker 机制（channel attr 或包装类），config 门控，留批次 59 专项。
 - **主线程每包 eventLoop().execute → 按 tick 批量提交**（survey3 B1，高价值）：与已回退的 0209 同区域（跨线程 write 语义），但 drain task 在 event loop 内执行 → voidPromise 安全；需 config 门控 + 逐包 promise/listener 语义保持，留批次 59 专项。
