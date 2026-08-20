@@ -1966,3 +1966,26 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 - 留档：D 首候选 canSpawnMobAt 跳过（pos 相等守卫）；E spawn-cost biome 记忆化（收益打折需实测）；F getNearestPlayer→NearbyPlayers 空间查询（高价值中高风险，需 NO_SPECTATORS/半径/平局三重论证——checkDespawn 侧同思路**不可证等价**已否决）。
 - 红线图：level.random 全消耗点 + SHARED_RANDOM（Mob.nextInt(800)）+ 到达控制流——任何检查相对 checkSpawnRules 移动改变消耗面。
 - 默认配置事实：perPlayerMobSpawns=true → LocalMobCapCalculator 死路径（G 不做）。
+
+---
+
+## 批次 69（2026-08-20）：伤害/战斗管线域（0238-0240）
+
+伤害域 survey 定案：**本 fork 事件门控未覆盖的最大高频集群**（EntityDamageEvent 族从未门控；CooldownReset/PreAttack/ItemDamage/Velocity 第二站点/双 Knockback 全裸奔）。报告：[note/report/perf/2026-08-20-jmh-microbench-batch69.md](report/perf/2026-08-20-jmh-microbench-batch69.md)。
+
+### 0238 — 四组战斗事件零监听器门控（本批主项）
+- PlayerAttackEntityCooldownResetEvent（LivingEntity:2510，每次玩家近战命中）+ PrePlayerAttackEntityEvent ×2（Player.attack/stabAttack）+ PlayerVelocityEvent 第二站点（Player:1223，0100 遗漏补齐）+ PlayerItemDamageEvent/EntityDamageItemEvent（ItemStack.hurtAndBreak，每击最多 4-5 发）。
+- 各事件自有表无子类（paper-api 逐文件实证）；零监听分支逐字复刻（0100/0165 同型）；getAttackStrengthScale 等构造参数为纯计算。
+- **每击最多 8 个事件构造 + Craft 包装归零**（PvE 战斗服）。
+
+### 0239 — 横扫 DamageSource 副本提出循环
+- doSweepAttack 循环内逐目标 knownCause copy → 循环外共享一份（常量实参值恒等不可变副本，hurtServer 只读）。getEnchantedDamage 仍用原 damageSource。
+
+### 0240 — EntityDamageEvent 构造器 Preconditions stream→循环（paper-api 直提交）
+- 全族最高频事件构造器的两条 stream 校验管线改循环；异常类型+消息逐字保持（自检对拍）。JMH 2.74×（CI 不重叠）。
+
+### 留档（单独立项）
+- **EntityDamageEvent 族全量快路**（每伤害实例 ~40-50 对象）：需 ①8 lambda 体抽私有方法的传值通道重构 + ②lastDamageCause 惰性物化（插件可从无关事件读 getLastDamageCause 观察差异——严格等价方案保留 nms DamageSource+9 double 载体）。侵入 LivingEntity 主链+CraftEntity，单独立项评审。
+- EntityKnockbackEvent 双事件门控：需逐分量复刻 (cv+kb)-cv FP 往返 + 双表同空判据（层级已实证）。
+- 非生物伤害事件门控（ArmorStand/ItemFrame/ItemEntity 燃烧等 9 站点）：与族级快路共用方案。
+- 否决：仅门控 callEvent 派发（零监听已是空数组遍历）；CombatRules 标量；Pair 内联（虚签名红线）；totem/Resurrect（低频）。
