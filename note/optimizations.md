@@ -1899,3 +1899,26 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 ### 否决二 — TransientCraftingContainer → CraftingInput 缓存（失效信号不可闭合）
 - 三实证漏洞：vanilla `ServerPlaceRecipe.java:184` 的 `grow()` 原位变异网格活栈（不经 setItem）；插件经 CraftInventory 镜像/`getContents()` 活 list 原位改；缓存键别名同批栈 → equals 校验恒真。
 - 对照：熔炉 SingleRecipeInput 引用键缓存（0144）可行恰因纯包裹无预计算。**不做**。
+
+---
+
+## 批次 66（2026-08-20）：寻路 tick 内联 + Present 记忆 raw 读（0230/0231）
+
+批次 49 AI 域两项 + 批次 50 聚集域一项实证后落地两补丁一否决。报告：[note/report/perf/2026-08-20-jmh-microbench-batch66.md](report/perf/2026-08-20-jmh-microbench-batch66.md)。
+
+### 0230 — PathNavigation tick 纯分量内联（+ FlyingPathNavigation + Path.papoGetNode）
+- **文件**：`PathNavigation.java` + `FlyingPathNavigation.java` + `Path.java`（加法式访问器）
+- **改法**：shouldTargetNextNodeInDirection 全内联（Node 直读 + 逐分量，FP 序/1.0E-5F 守卫/NaN 流穿照抄，0173-0180 模式）；基类 else-if 分支与飞行 tick 的 getNextEntityPos 调用点内联（getEntityPosAtNode 公式逐字：`node.x + (int)(bbWidth+1.0F)*0.5`，int 强转在乘 0.5 前）；getGroundY 体内 MutableBlockPos + move(DOWN)/move(UP)（连 below() 分配也省）。
+- **红线保持**：getTempMobPos（abstract+逃逸字段）、canMoveDirectly/getGroundY 虚实参（批次 31 判定）不动。
+- **基准**：模型 EA 中性（两路径 ≈10⁻⁴ B/op）——按 0175/0176/0180 先例机制保留（严格少工作 + 布尔矩阵自检 ALL OK）；每移动中 mob 每 tick 稳态省 1-4 Vec3 + 2-4 BlockPos，飞行另 2 Vec3。残余 getFloorLevel 内 below() 留二期。
+- **风险**：低。
+
+### 0231 — PureMemory Present 记忆 raw 读（gc 探针一票裁决通过）
+- **文件**：`BehaviorBuilder.java`（PureMemory.tryTrigger 一处，~20 行）
+- **热点**：声明式行为链 Present 条件 present 读每 tick 分配结果 Optional（村民交易所 5-10 次/tick/村民）。
+- **裁决**：MemoryOptionalProbe 复刻（map 查找+3 实现轮换虚分发+逃逸 Accessor）实测 **28→20 B/op（8 B 真分配差）+ 1.8×**——Optional 未被 EA 消除，过批次 65 硬门。
+- **等价性**：三态塌缩恰好等价（Present.createAccessor 对 unregistered/absent 均返 null；MemoryCondition 三实现为 final record 无第三方）；Absent/Registered 原路。
+- **风险**：低。明确不做：MemoryAccessor/IdF 系统性消除（63 声明点，越红线）。
+
+### 正式否决 — getEffectiveRange ridden 缓存（批次 50 暂缓 → 否决）
+- 失效链测绘完成（addPassenger/removePassenger 双写点 + vehicle 链 + sendChanges diff 兜底）可闭合，但 0147 后非 ridden 实体（>99%）已 O(1) 快路，ridden 实体全服个位数——中风险换边际收益，不做。设计留档（载具农场场景可启用）。
