@@ -47,6 +47,8 @@ cd benchmark
 | `DeflateBoundBench` | 0215 | 压缩输出 n+1 起步扩容续压 vs DEFLATE 实测上界一次到位（JDK 回退路径建模；自检 main：上界充分性 + before 重试触发面 + 两路径压缩流逐字节一致——首版公式被此自检证伪后据实测修正） |
 | `ScoreboardGateSelfCheck` | 0210-0212 | 非性能——记分板冗余广播门控行为自检（等值跳过/真变更广播/同实例 vanilla 奇偶性/双发去重恰少一个逐字节相同的包，全场景对比 vanilla/papo 模型） |
 | `OutboundFrameBench` | 0217 | 出站三阶段拷贝链 vs headroom 直通（EmbeddedChannel 真实 netty 管线；含自检 main：9 尺寸×2 可压性字节级全等 + 阈值边界 + varint 反向写全档位 + 万次引用计数） |
+| `BatchedDispatchBench` | 批次60否决 | 逐包 execute(lambda) vs MPSC 批量排水（真实 NioEventLoopGroup；两轮实测否决证据：CLQ 4.8× 回退、MPSC 1.49× 劣化；含并发顺序/排水边界竞态自检） |
+| `SendFastPathBench` | 0218 | 立即发送判定 instanceof 链先 vs 主线程廉价臂先（@State 字段输入防常量折叠；含布尔等价矩阵自检） |
 
 ## 依赖
 
