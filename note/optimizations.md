@@ -1946,3 +1946,23 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 - probe record 消除（LevelChunkTicks probe，两次暂缓）：probe 不逃逸 contains（EA 大概率消除），结构改法误判会抑制 scheduleTick → 红石破坏。结案不做。
 - LevelTicks.collect 结构改造：紧 long 循环微秒级，刻序等价难证。否决。
 - 刻容器层/BE ticker/ tickBlockEntities：已封闭无候选。
+
+---
+
+## 批次 68（2026-08-20）：自然刷怪与 despawn/merge 域（0235-0237）
+
+刷怪/despawn 域 survey 定案（随机序列红线全图测绘 + 默认配置事实核实），落地三项，D/E/F 留档。报告：[note/report/perf/2026-08-20-jmh-microbench-batch68.md](report/perf/2026-08-20-jmh-microbench-batch68.md)。
+
+### 0235 — NaturalSpawner PreCreatureSpawnEvent 零监听器门控
+- 自然刷怪循环最高频事件站点（每通过距离检查的候选 × MONSTER 每 tick）；BaseSpawner 0165 同型；事件块不消耗随机（门控不影响序列）。
+
+### 0236 — ItemEntity/ExperienceOrb merge 扫描去分配
+- 静态 EntityTypeTest 单例 + 惰性 scratch/谓词 + 删重复 isMergable（邻体状态在 fill→loop 间不可变：tryToMerge 只触碰 this 与当前元素）。**gc 实证 280 B/op/次扫描真分配消除**（虚分发下 EA 未消除）；时间中性为浅栈伪影，收益为密集农场 GC 压力。
+
+### 0237 — despawnRanges 按 ordinal 扁平化
+- Mob.checkDespawn 每 mob 每 tick 的 HashMap.get（EAR 之前不受豁免）→ @PostProcess 建数组直索引（map 全类别播种 + @MergeMap 保键 → 每 ordinal 必有项；同点重建 reload 语义一致）。JMH 3.75×（CI 不重叠）。
+
+### 留档与红线
+- 留档：D 首候选 canSpawnMobAt 跳过（pos 相等守卫）；E spawn-cost biome 记忆化（收益打折需实测）；F getNearestPlayer→NearbyPlayers 空间查询（高价值中高风险，需 NO_SPECTATORS/半径/平局三重论证——checkDespawn 侧同思路**不可证等价**已否决）。
+- 红线图：level.random 全消耗点 + SHARED_RANDOM（Mob.nextInt(800)）+ 到达控制流——任何检查相对 checkSpawnRules 移动改变消耗面。
+- 默认配置事实：perPlayerMobSpawns=true → LocalMobCapCalculator 死路径（G 不做）。
