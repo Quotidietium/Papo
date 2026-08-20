@@ -1,0 +1,45 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 20 Aug 2026 08:54:38 +0800
+Subject: [PATCH] Papo: reuse k-nearest selection scratch arrays in
+ PlayerChunkSender
+
+
+diff --git a/net/minecraft/server/network/PlayerChunkSender.java b/net/minecraft/server/network/PlayerChunkSender.java
+index e7bb96b027a85d57413ef0b2081bd77d660fabc1..54d007e2f8c29b887a6de3465f0eda2d262c87e1 100644
+--- a/net/minecraft/server/network/PlayerChunkSender.java
++++ b/net/minecraft/server/network/PlayerChunkSender.java
+@@ -94,6 +94,16 @@ public class PlayerChunkSender {
+         level.debugSynchronizers().startTrackingChunk(packetListener.player, chunk.getPos());
+     }
+ 
++    // Papo start - reusable k-nearest scratch arrays
++    // The selection below allocated fresh long[floor]/int[floor] on every call during chunk-send
++    // bursts (floor <= 64). This sender is per-player and collectChunksToSend has a single
++    // main-thread call site (sendNextChunks, once per tick), so instance-level scratch with
++    // grow-on-demand is safe; only [0, papoSel) is ever read and that range is fully rewritten
++    // each call.
++    private long[] papoSelKeyScratch = new long[0];
++    private int[] papoSelDistScratch = new int[0];
++    // Papo end - reusable k-nearest scratch arrays
++
+     private List<LevelChunk> collectChunksToSend(ChunkMap chunkMap, ChunkPos chunkPos) {
+         int floor = Mth.floor(this.batchQuota);
+         List<LevelChunk> list;
+@@ -110,8 +120,14 @@ public class PlayerChunkSender {
+             // chunks are batch-sent this tick; unselected ones remain in pendingChunks and are sent
+             // on a later tick — the client cannot distinguish which tied chunk arrives first).
+             // distanceSquared is ChunkPos's own int-returning primitive overload, so no boxing.
+-            final long[] papoSelKey = new long[floor];
+-            final int[] papoSelDist = new int[floor];
++            final long[] papoSelKey;
++            final int[] papoSelDist;
++            if (this.papoSelKeyScratch.length < floor) { // Papo - reusable scratch (batchQuota may grow)
++                this.papoSelKeyScratch = new long[floor];
++                this.papoSelDistScratch = new int[floor];
++            }
++            papoSelKey = this.papoSelKeyScratch;
++            papoSelDist = this.papoSelDistScratch;
+             int papoSel = 0;
+             int papoMaxIdx = 0;
+             for (it.unimi.dsi.fastutil.longs.LongIterator papoIt = this.pendingChunks.longIterator(); papoIt.hasNext();) {

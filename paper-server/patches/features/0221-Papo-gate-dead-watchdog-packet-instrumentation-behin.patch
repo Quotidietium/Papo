@@ -1,0 +1,51 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 20 Aug 2026 08:55:05 +0800
+Subject: [PATCH] Papo: gate dead watchdog packet instrumentation behind static
+ final false (PacketProcessor)
+
+
+diff --git a/net/minecraft/network/PacketProcessor.java b/net/minecraft/network/PacketProcessor.java
+index d501168e40f951ee37efcbc464c3ab1307051060..e6b0005a9dbc758b5c9ce2cf98790dccac1676fe 100644
+--- a/net/minecraft/network/PacketProcessor.java
++++ b/net/minecraft/network/PacketProcessor.java
+@@ -75,6 +75,17 @@ public class PacketProcessor implements AutoCloseable {
+     public static final java.util.concurrent.ConcurrentLinkedDeque<PacketListener> packetProcessing = new java.util.concurrent.ConcurrentLinkedDeque<>();
+     static final java.util.concurrent.atomic.AtomicLong totalMainThreadPacketsProcessed = new java.util.concurrent.atomic.AtomicLong();
+ 
++    // Papo start - dead-instrumentation gate
++    // The push/pop/getAndIncrement bookkeeping below (and the matching pair in Connection.tick) has
++    // zero readers anywhere in this tree: getCurrentPacketProcessors/getTotalProcessedPackets are
++    // never called (repo-wide grep), and the watchdog thread does not touch packet state. Every
++    // inbound packet paid 2 ConcurrentLinkedDeque node allocations + 3 CAS on the MAIN thread for
++    // it. Gate it behind a static final false flag so the JIT removes it entirely; fields and
++    // getters keep their shape for any reflective/external inspection (returning empty/0, exactly
++    // what they effectively returned - the deque was always pushed and popped around the same call).
++    static final boolean PAPO_TRACK_PACKET_PROCESSING = false;
++    // Papo end - dead-instrumentation gate
++
+     public static long getTotalProcessedPackets() {
+         return totalMainThreadPacketsProcessed.get();
+     }
+@@ -91,7 +102,7 @@ public class PacketProcessor implements AutoCloseable {
+ 
+     record ListenerAndPacket<T extends PacketListener>(T listener, Packet<T> packet) {
+         public void handle() {
+-            packetProcessing.push(this.listener); // Paper - detailed watchdog information
++            if (PAPO_TRACK_PACKET_PROCESSING) packetProcessing.push(this.listener); // Paper - detailed watchdog information // Papo - dead-instrumentation gate
+             try { // Paper - detailed watchdog information
+             if (this.listener instanceof net.minecraft.server.network.ServerCommonPacketListenerImpl serverCommonPacketListener && serverCommonPacketListener.processedDisconnect) return; // Paper - Don't handle sync packets for kicked players
+             if (this.listener.shouldHandleMessage(this.packet)) {
+@@ -109,8 +120,10 @@ public class PacketProcessor implements AutoCloseable {
+             }
+             // Paper start - detailed watchdog information
+             } finally {
+-                totalMainThreadPacketsProcessed.getAndIncrement();
+-                packetProcessing.pop();
++                if (PAPO_TRACK_PACKET_PROCESSING) { // Papo - dead-instrumentation gate
++                    totalMainThreadPacketsProcessed.getAndIncrement();
++                    packetProcessing.pop();
++                }
+             }
+             // Paper end - detailed watchdog information
+         }

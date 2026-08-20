@@ -1,0 +1,32 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 20 Aug 2026 08:55:48 +0800
+Subject: [PATCH] Papo: cache the per-connection flush task
+
+
+diff --git a/net/minecraft/network/Connection.java b/net/minecraft/network/Connection.java
+index 4925bb96feb0a30f74463ad1ec61b5d9e507115e..b012498104b0859522b9b8f7dd98fadd71f8e0af 100644
+--- a/net/minecraft/network/Connection.java
++++ b/net/minecraft/network/Connection.java
+@@ -499,11 +499,20 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
+         }
+     }
+ 
++    // Papo start - cache the flush task
++    // resumeFlushing reaches flush() once per tick per player; the off-loop branch used to capture a
++    // fresh `() -> this.channel.flush()` lambda every time. A single per-connection Runnable is
++    // behaviorally identical: it reads this.channel at execution time (channel is set in
++    // channelActive long before any flush can run), re-dispatches through flush()'s own
++    // inEventLoop check when executed on the loop, and netty's task FIFO preserves ordering.
++    private final Runnable papoFlushTask = this::flush;
++    // Papo end - cache the flush task
++
+     private void flush() {
+         if (this.channel.eventLoop().inEventLoop()) {
+             this.channel.flush();
+         } else {
+-            this.channel.eventLoop().execute(() -> this.channel.flush());
++            this.channel.eventLoop().execute(this.papoFlushTask);
+         }
+     }
+ 

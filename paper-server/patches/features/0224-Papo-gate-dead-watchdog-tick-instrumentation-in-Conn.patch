@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 20 Aug 2026 08:55:49 +0800
+Subject: [PATCH] Papo: gate dead watchdog tick instrumentation in
+ Connection.tick (companion to PacketProcessor gate)
+
+
+diff --git a/net/minecraft/network/Connection.java b/net/minecraft/network/Connection.java
+index b012498104b0859522b9b8f7dd98fadd71f8e0af..b42ae2eb993b887f7d54d86984ba4438f832c5f5 100644
+--- a/net/minecraft/network/Connection.java
++++ b/net/minecraft/network/Connection.java
+@@ -585,12 +585,16 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
+                 || loginPacketListener.state != net.minecraft.server.network.ServerLoginPacketListenerImpl.State.VERIFYING
+                 || Connection.joinAttemptsThisTick++ < MAX_PER_TICK) {
+             // Paper start - detailed watchdog information
++            if (net.minecraft.network.PacketProcessor.PAPO_TRACK_PACKET_PROCESSING) { // Papo - dead-instrumentation gate (zero readers repo-wide; per-tick-per-connection CLD alloc otherwise)
+             net.minecraft.network.PacketProcessor.packetProcessing.push(this.packetListener);
+             try {
+             tickablePacketListener.tick();
+             } finally {
+                 net.minecraft.network.PacketProcessor.packetProcessing.pop();
+             } // Paper end - detailed watchdog information
++            } else {
++                tickablePacketListener.tick();
++            }
+             } // Paper end - Buffer joins to world
+         }
+ 

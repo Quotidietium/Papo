@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 20 Aug 2026 08:55:05 +0800
+Subject: [PATCH] Papo: extract inbound frames with retainedSlice instead of
+ readBytes
+
+
+diff --git a/net/minecraft/network/Varint21FrameDecoder.java b/net/minecraft/network/Varint21FrameDecoder.java
+index f88f245edceeac12d7220ce4e27b568acec096ec..e682696b4688875538a8efb155170ab367dcbd31 100644
+--- a/net/minecraft/network/Varint21FrameDecoder.java
++++ b/net/minecraft/network/Varint21FrameDecoder.java
+@@ -51,7 +51,18 @@ public class Varint21FrameDecoder extends ByteToMessageDecoder {
+                         this.monitor.onReceive(i + VarInt.getByteSize(i));
+                     }
+ 
+-                    out.add(in.readBytes(i));
++                    // Papo start - extract frames with retainedSlice instead of readBytes
++                    // readBytes(i) allocated a fresh buffer and memcpy'd the ENTIRE inbound payload
++                    // of every frame (all inbound traffic, once). retainedSlice hands downstream the
++                    // same pooled memory with a refcount hold - the exact pattern of netty's own
++                    // LengthFieldBasedFrameDecoder.extractFrame. Downstream is read-only over the
++                    // frame buffer (CompressionDecoder indexes/releases only; PacketDecoder's codecs
++                    // read), so sharing memory is invisible; the parent cumulation stays alive via
++                    // refcounting until the last slice is released in the same channelRead chain
++                    // (FlowControlHandler may briefly queue slices across a protocol swap, pinning at
++                    // most one read batch - identical to LTFBD semantics).
++                    out.add(in.retainedSlice(in.readerIndex(), i));
++                    in.skipBytes(i);
+                     return;
+                 }
+             }
