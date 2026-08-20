@@ -1869,3 +1869,33 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 ### 记录项（红线外，上游行为）
 - sendLevelInfo 双发（Paper 提前块+vanilla 保留处）→ 2 份 border/time/spawn/天气包；initInventoryMenu 双发（46 槽全量 ×2，且 join-kit 可变不可去重）；VERIFYING tick 门（0-50ms）；maxJoinsPerTick=5；配置任务串行 RTT 前置（重叠可省 RTT 但提前 PlayerSpawnLocationEvent 时点，中风险不做）。
 - 排除项：recipe book（per-player）、UpdateRecipes（上游已预建）、命令树（已异步池）、出生点搜索（已异步）、编码层跨玩家字节缓存（与 0217 headroom 机制冲突且对象级缓存已拿走收益）。
+
+---
+
+## 批次 65（2026-08-20）：容器/菜单域暂缓清单回头攻克（0228/0229 + 直提交 + 两项否决）
+
+批次 49 暂缓清单五项经专项 survey 逐句实证后**三落地两否决**。报告：[note/report/perf/2026-08-20-jmh-microbench-batch65.md](report/perf/2026-08-20-jmh-microbench-batch65.md)。
+
+### 直提交 — callPrepareResultEvent 零监听器快路（PrepareResult 全族）
+- **文件**：`CraftEventFactory.java`（直提交）
+- **门控键**：`PrepareInventoryResultEvent.getHandlerList()`——全族唯一表（Anvil/Grindstone/Smithing 与 Paper 变体均不声明自己的表，paper-api 逐文件实证；PrepareItemCraftEvent 独立表已门控）。覆盖 7 个调用点。
+- **快路**：零监听器 → broadcastChanges + return。跳过 setItem 回写三点论证：值恒等 + ResultContainer.setChanged 空方法 + vanilla 本无此写。铁砧改名每击键 + 各结果菜单每次输入变化省 ~3 分配。
+- **风险**：低。
+
+### 0228 — InventoryCreativeEvent 零监听器快路
+- **文件**：`ServerGamePacketListenerImpl.java`（handleSetCreativeModeSlot）
+- **门控键**：InventoryClickEvent 父表（子类无自有表，与 0154 同键）。快路 `itemStack = packet.itemStack().copy()`（asNMSCopy(asBukkitCopy(x)) ≡ x.copy() 逐例恒等）。
+- **基准**：模型 2.41×（真实含派发+switch 更优）。**风险**：低。
+
+### 0229 — InventoryDragEvent 零监听器快路（doClick QUICK_CRAFT）
+- **文件**：`AbstractContainerMenu.java`
+- **门控键**：自有表无子类。快路逐句保留两段 setCarried（预写=防复制机制、末写=原路径行为，值恒等）与 view.setItem 循环；仅省 eventMap+事件+派发。
+- **基准**：9 槽模型 1.88×（CI 极窄；快路保留必需赋值，差值即事件侧机制成本）。**风险**：低。
+
+### 否决一 — RecipeManager nullable 内部核（实测中性即撤，新判例）
+- gc 探针实证 before/after 同为 16.000 B/op——**中间 Optional 跨方法但被内联，EA 直接消除**，手工拆包零收益。
+- **判例**：跨方法但被内联的 Optional 包装链不值得手工拆（0187 同判）。已实现后撤回，基准留档。
+
+### 否决二 — TransientCraftingContainer → CraftingInput 缓存（失效信号不可闭合）
+- 三实证漏洞：vanilla `ServerPlaceRecipe.java:184` 的 `grow()` 原位变异网格活栈（不经 setItem）；插件经 CraftInventory 镜像/`getContents()` 活 list 原位改；缓存键别名同批栈 → equals 校验恒真。
+- 对照：熔炉 SingleRecipeInput 引用键缓存（0144）可行恰因纯包裹无预计算。**不做**。
