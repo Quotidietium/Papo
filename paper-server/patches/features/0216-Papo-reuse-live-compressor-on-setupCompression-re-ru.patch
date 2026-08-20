@@ -1,0 +1,60 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 20 Aug 2026 07:46:47 +0800
+Subject: [PATCH] Papo: reuse live compressor on setupCompression re-run and
+ clamp invalid compression levels
+
+
+diff --git a/net/minecraft/network/CompressionDecoder.java b/net/minecraft/network/CompressionDecoder.java
+index 624c5d3d30282cf0d54faabc88d81ca0a9a8c785..1e204154227dc187af6de7f9a82fede5aa48f887 100644
+--- a/net/minecraft/network/CompressionDecoder.java
++++ b/net/minecraft/network/CompressionDecoder.java
+@@ -125,4 +125,14 @@ public class CompressionDecoder extends ByteToMessageDecoder {
+         this.threshold = threshold;
+         this.validateDecompressed = validateDecompressed;
+     }
++
++    // Papo start - reuse existing compressor when setupCompression re-runs
++    // setThreshold above only adopts a compressor when this decoder has none, and the encoder's
++    // setThreshold never takes one - so a freshly created compressor would be orphaned (leaking
++    // native deflate/inflate contexts). Expose the live instance (same package) so Connection can
++    // reuse it instead of creating a duplicate.
++    com.velocitypowered.natives.compression.VelocityCompressor papoCompressor() {
++        return this.compressor;
++    }
++    // Papo end
+ }
+diff --git a/net/minecraft/network/Connection.java b/net/minecraft/network/Connection.java
+index 90bcd40d182ccf5465a3c6913f13dd5fb2b51907..2966c2e2b197b0ccda75a051375f339ac84f1340 100644
+--- a/net/minecraft/network/Connection.java
++++ b/net/minecraft/network/Connection.java
+@@ -780,7 +780,28 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
+     // Paper end - add proper async disconnect
+     public void setupCompression(int threshold, boolean validateDecompressed) {
+         if (threshold >= 0) {
+-            com.velocitypowered.natives.compression.VelocityCompressor compressor = com.velocitypowered.natives.util.Natives.compress.get().create(io.papermc.paper.configuration.GlobalConfiguration.get().misc.compressionLevel.or(-1)); // Paper - Use Velocity cipher
++            // Papo start - reuse the live compressor when re-configuring; clamp invalid compression levels
++            com.velocitypowered.natives.compression.VelocityCompressor compressor;
++            if (this.channel.pipeline().get("decompress") instanceof CompressionDecoder papoDecoder
++                && (compressor = papoDecoder.papoCompressor()) != null) {
++                // Handlers already installed (re-configuration): CompressionDecoder.setThreshold only
++                // adopts a compressor when it has none and the encoder's setThreshold never takes one,
++                // so creating a fresh instance here would orphan it - leaking the native deflate/inflate
++                // contexts per call. Reuse the live instance instead.
++            } else {
++                int papoLevel = io.papermc.paper.configuration.GlobalConfiguration.get().misc.compressionLevel.or(-1); // Paper - Use Velocity cipher
++                try {
++                    compressor = com.velocitypowered.natives.util.Natives.compress.get().create(papoLevel); // Paper - Use Velocity cipher
++                } catch (IllegalArgumentException papoBadLevel) {
++                    // libdeflate (native) accepts -1 and 1..12; the JDK fallback used on platforms
++                    // without bundled natives (e.g. Windows) only accepts -1..9 via new Deflater(int).
++                    // A config of 0 or 10..12 used to throw here and disconnect the connection during
++                    // setup on fallback platforms; retry with the level clamped into the JDK range.
++                    // Valid configs (any backend) are untouched - only the crashing path changes.
++                    compressor = com.velocitypowered.natives.util.Natives.compress.get().create(Math.min(9, Math.max(1, papoLevel)));
++                }
++            }
++            // Papo end
+             if (this.channel.pipeline().get("decompress") instanceof CompressionDecoder compressionDecoder) {
+                 compressionDecoder.setThreshold(compressor, threshold, validateDecompressed); // Paper - Use Velocity cipher
+             } else {
