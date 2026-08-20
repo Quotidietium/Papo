@@ -249,6 +249,30 @@ git add paper-server/patches/features/0203-*.patch paper-server/patches/features
 
 本批 rebuildPatches 运行期间，系统曾报告 `PlayerChunkSender.java` 显示为 vanilla（无任何 Papo 改动，连 0053/0141 都没有）。**这是 rebuildPatches 内部 applySourcePatches 的瞬态**：任务完成后内部仓库工作树 == HEAD（含全部补丁+本次新提交），源码恢复正常（grep `papoSelKey`/`papoAlreadyTracked` 命中、`git diff HEAD` 无差异、compileJava SUCCESSFUL）。教训：rebuildPatches 期间看到的源码状态不可信，以**任务完成后的内部仓库 HEAD + compileJava 结果**为准。
 
+## 2026-08-20 补充：批次 58 踩坑记录
+
+### 0163-0180 垃圾重命名第 4 次复发 → 已根除（重要）
+
+批次 58 的 rebuildPatches 再次触发中文 Subject 头垃圾重命名（本次波及 0055-0180 共 127 个）。按恢复法恢复后，**本轮执行了留置两批的根除项**：
+
+1. [note/fix_patch_subjects.py](fix_patch_subjects.py)：把 127 个补丁的 RFC2047 编码 Subject 头（含多行续行）改写为"文件名体（'-'→空格）"——slug 往返闭合（subject "deflate 6" ↔ 0066-deflate-6.patch）。字节级只动头部 Subject 区，正文/行尾不动。
+2. 完整 `applyPatches`：内部仓库重建，干净 subject 流入内部提交（`git log --format=%s | grep -cP 中文` = 0）。
+3. `rebuildPatches` 验证：**216 个补丁零垃圾名**；14 个历史尾杠文件名（旧 subject 截断产物）一次性归一为终态（R066-R100 相似度重命名，语义等价）。
+
+**此后全量 rebuildPatches 不再需要恢复法。** 新增补丁的内部提交 subject 保持英文（照旧），其补丁文件 Subject 头自动干净。
+
+### 恢复法补充：Windows 文件锁连 rm -rf 都会挂
+
+本次恢复法执行时 `rm -rf paper-server/patches/features` 报 "Device or resource busy"（目录句柄被残留进程占用，重试 3 次 + sleep 20s 无效）。**变通**：rm 已把目录内容删空、仅目录本身删不掉——`git checkout HEAD -- paper-server/patches/features/` 可直接向占用目录写入恢复内容，跳过删目录步骤。
+
+### DEFLATE 上界判例：理论推导必须过实测校验
+
+压缩输出缓冲上界首版按"5B/65535B 存储块"理论最坏推导 `n + n/4096 + 16`，被基准自检在 256KiB 随机数据上证伪（实测膨胀 +86 > 界 +80）。实测规律：**JDK zlib（level 6，随机输入）膨胀 = 5B/16384B 窗口 + 6B**（lit_bufsize=16384 决定块节奏；64KiB/256KiB/1MiB/4MiB 四点分别 +26/+86/+326/+1286 全吻合），修正为 `n + n/2048 + 32`（~1.6× 裕量）。教训：**上界类公式推导完成后，必须构造"最坏输入"实测打满再落地**——纸面最坏（65535 存储块）与引擎实际行为（16384 窗口）可以差 4 倍。
+
+### Paper 的 misc.compression-level 在 JDK 回退平台是枚配置炸弹
+
+`misc.compression-level` 配 10-12 在无 native 平台（Windows）`new Deflater(10)` 抛 IAE → **该连接登录即断连**（libdeflate 接受 1-12，JDK 只接受 -1..9，同一配置两平台行为分裂）。0216 已修（IAE 回退 clamp [1,9]）。排障时注意：症状是玩家连不上（配置阶段断连），日志有 IllegalArgumentException 栈。
+
 ## 2026-08-02 补充：批次 51 踩坑记录
 
 ### Paper 配置 @Comment 是单 String，不是 String[]

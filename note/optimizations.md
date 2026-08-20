@@ -1653,3 +1653,76 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 
 ### 回退原 0209（send-lambda 消除）— voidPromise 跨线程缺陷
 原 0209 把 `doSendPacket` 从 event-loop 移到调用方线程，而 `doSendPacket` 用 `this.channel.voidPromise()`（[Connection.java:483/485](../paper-server/src/minecraft/java/net/minecraft/network/Connection.java)）——netty 要求 `voidPromise()` 仅 event-loop 线程使用（无同步保护），0209 破坏此前提，构成跨线程并发缺陷。0.32.0 release note 自标"未做 live 压测；单补丁可 revert"。本批回退，恢复 `sendPacket` 的 `inEventLoop()` 判定，`voidPromise` 回到 event-loop 安全使用。无功能损失（仅恢复一个 per-outbound-packet lambda 分配）。**注**：该缺陷症状为 netty 异常/断连，不匹配本次"主线程静默卡死"——本次卡死根因是实体爆炸（新 0209 防护），回退原 0209 是顺带消除一个确凿隐患。
+
+---
+
+## 批次 58（2026-08-20）：网络带宽 + 出站编码延时（三路 survey 交叉印证）
+
+主题：**带宽（更少冗余出站字节）+ 延时（出站编码路径 CPU/分配/尾延迟）**。三路 survey（压缩管线 / 出站包量冗余 / flush 调度延时）交叉印证后落地 7 个补丁（0210-0216）。全部 compileJava BUILD SUCCESSFUL、三个自检 main 全部 ALL OK、applyPatches 干净应用（216 feature 补丁）。JMH 报告：[note/report/perf/2026-08-20-jmh-microbench-batch58.md](report/perf/2026-08-20-jmh-microbench-batch58.md)。
+
+### survey 关键否定结论（先记录，避免重复勘察）
+- **压缩层"带宽优化"在字节等价约束下不存在**：线上字节由内容 + level（paper-global `misc.compression-level`）+ threshold（server.properties）完全决定，后两者已是既有配置旋钮。压缩层可动的只有 CPU/分配/正确性（D1-D3 即此）。
+- **TCP_NODELAY 已设**（ServerConnectionListener.java:92）；**每玩家每 tick 恰一次 flush**（vanilla suspend/resume 语义，tickChildren:1755/1858）；FlushConsolidationHandler 默认参数已最优（256/true，netty 4.2.7 字节码核实）；`paper.explicit-flush` 默认关。**实体追踪序列 bundle 化否决**（协议可观察插入 delimiter，且 tick 尾单 flush 已 writev 合并，无 syscall 收益）。
+- **实体同步/光照/区块/容器/粒子/BossBar 主干全部已有变更门控或位掩码压缩**（survey 逐文件核实），无"整类大流量重复发送"级目标；可做的等价带宽项集中在记分板域（C1-C3）。
+- ensureCompatible 在服务端正常路径（direct buffer）全程 retain 零拷贝；解码侧精确分配——**不存在想当然的 heap→direct 转拷**（netty 4.2 preferDirect 默认已翻转，javap 实证）。
+
+### 0210 — PlayerTeam 九个 setter 等值门控（C1，带宽）
+- **文件**：`net/minecraft/world/scores/PlayerTeam.java`（setDisplayName/setPlayerPrefix/setPlayerSuffix/setAllowFriendlyFire/setSeeFriendlyInvisibles/setNameTagVisibility/setDeathMessageVisibility/setCollisionRule/setColor）
+- **热点**：TAB/记分板类插件常周期性重设 prefix/suffix/displayName——原实现九个 setter 全部**先赋值、无条件** `scoreboard.onTeamChanged(this)`，下游 `ServerScoreboard.onTeamChanged` → `broadcastAll(METHOD_CHANGE 参数包)` 发给记分板全体玩家 + `updateTeamWaypoints` + setDirty。等值重设的包对客户端是幂等重放，纯浪费带宽。
+- **改法**：每个 setter 开头等值短路。布尔/枚举直接 `==`；Component 用**实例守卫 + 内容相等**双条件：`name != this.displayName && name.equals(this.displayName)` 才跳过——**同实例重设保持广播**（NMS MutableComponent 原位变异后靠重设刷新的手段保持 vanilla 奇偶性；adventure/bukkit API 每次构造新实例，等值新实例被跳过时客户端已持有相等内容，可证状态等价）。prefix/suffix 的 null→EMPTY 归一化在等值判定内完成。
+- **等价性**：`Scoreboard.onTeamChanged` 基类空实现；值相同 → 客户端 team 状态逐字节不变；跳过的 setDirty 不改变存档内容（值没变）；`unpackOptions` 加载期连调两个 setter 的 0 广播在无接收者时点无观察面。自检（ScoreboardGateSelfCheck）：等值新实例 0 广播/真变更一致/同实例仍广播/null 归一化/unpackOptions 默认 flags 全场景 ALL OK。
+- **风险**：低（唯一可观察差异是抓包插件看到更少的幂等包；Bukkit API 不承诺"set 即发包"）。
+- **价值**：中（TAB 插件重设周期 × 全体玩家 × 50-150B/包）。
+
+### 0211 — Objective 四 setter + Scoreboard.numberFormatOverride 等值门控（C2，带宽）
+- **文件**：`net/minecraft/world/scores/Objective.java`（setDisplayName/setRenderType/setDisplayAutoUpdate/setNumberFormat）+ `net/minecraft/world/scores/Scoreboard.java`（numberFormatOverride）
+- **改法**：同 0210 同款门控（Component 实例守卫 + equals；枚举/布尔 ==；NumberFormat 为 record 实现 Objects.equals）。setDisplayName 等值时**同时跳过 formattedDisplayName 重算**。numberFormatOverride 采用同文件 display() setter 的 CraftBukkit 既有门控形态（`mutableBoolean.isTrue() || !Objects.equals(...)`，新建 score 仍必发）。
+- **等价性**：`Scoreboard.onObjectiveChanged` 基类空实现；仅 trackedObjectives（挂显示槽）时广播；值相同 → 客户端侧边栏状态不变。自检全场景 ALL OK。
+- **风险**：低。
+
+### 0212 — ServerScoreboard.setDisplayObjective 同包双发去重（C3，带宽）
+- **文件**：`net/minecraft/server/ServerScoreboard.java`
+- **热点**：旧 objective 仍显示于其他槽（`getObjectiveDisplaySlotCount > 0`）且新 objective 已 tracked 时，原实现把**同一个** `ClientboundSetDisplayObjectivePacket(slot, objective)` 连发两次（L97 与 L105，同 slot 同 objective，逐字节相同）。
+- **改法**：布尔 `papoBroadcastDisplay` 记录本次调用是否已发过 `(slot, objective)`，第二处跳过。其余路径（未追踪新 objective 的 startTracking / 旧 objective 不再显示的 stopTracking / 同值重设刷新）包数与 vanilla 完全一致。
+- **等价性**：两包逐字节相同、同 tick 相邻应用，客户端"设置槽位显示"幂等——发一次终态相同。自检：双发路径恰少 1 包且内容相同、末状态全场景一致。
+- **风险**：极低。
+
+### 0213 — Varint21LengthFieldPrepender 精确预分配（A1，延时）
+- **文件**：`net/minecraft/network/Varint21LengthFieldPrepender.java`
+- **热点**：每出站包（压缩与未压缩路径都是）帧编码。原版未覆写 allocateBuffer → `ioBuffer()` 256B 起步 + 首个 `ensureWritable(3+n)` 触发一次池化重分配（跳 2 的幂，超额）。
+- **改法**：覆写 `allocateBuffer` → `ioBuffer(3 + msg.readableBytes())`（@Sharable 无状态覆写，只读 msg）。帧字节逐字节不变（自检 ALL OK）。
+- **基准**：1526 ± 1251 → 670 ± 5 ns/op（均值 2.28×；**方差崩缩 ±1251→±5 是主价值**——池化重分配双峰消失，每包成本确定化，尾延迟收益大于均值收益）。
+- **风险**：零。
+
+### 0214 — PacketEncoder 按包类尺寸提示（A2，延时）
+- **文件**：`net/minecraft/network/PacketEncoder.java`
+- **热点**：每出站包序列化。原版 256B 起步，codec 渐进写入触发增长链（每次增长 = 池化 reallocate + 已写前缀整体拷贝）；区块/光照包（压缩前 30-90KB）跑图/登录突发期每包 ~8 次增长拷贝（累计额外 memcpy ≈ 包大小）。
+- **改法**：per-handler `Object2IntOpenHashMap<Class<?>>`（每连接每协议新建，单 event loop 无并发）缓存"上次编码尺寸 ≥8KB 的包类"，allocateBuffer 命中提示即分配到位；编码完成记录。不淘汰（只有结构性大包类会进表；同类小包后续超额分配是池化 size-class miss，绝不拷贝）。
+- **等价性**：容量不上线、编码字节不变（自检 ALL OK）；JVM 退出前表尺寸受大包类数约束（几十个）。
+- **基准**：2329 ± 51 → 1592 ± 5 ns/op（**1.46×**，32KB 包模型，CI 不重叠；真实区块包更大收益更高）。
+- **风险**：零。
+
+### 0215 — CompressionEncoder 输出按 DEFLATE 实测上界分配（D1，延时/尾延迟）
+- **文件**：`net/minecraft/network/CompressionEncoder.java`
+- **热点**：压缩路径输出缓冲原版 `n + 1`——对不可压缩 payload（DEFLATE 转存储块）放不下：native libdeflate（生产 Linux）`deflate` 返回 0 → 容量翻倍 + **整个输入重新压缩一遍**（LibdeflateVelocityCompressor.deflate 字节码实证 resize-retry 循环）；JDK 回退（Windows）ensureWritable(8192) 续压。
+- **改法**：初始容量 `n + n/2048 + 32`。
+- **判例（首版公式被自检证伪）**：首版按"5B/65535B 存储块"理论推导 `n + n/4096 + 16`——DeflateBoundBench 自检在 256KiB 随机数据实测膨胀 +86 > 界 +80，**BOUND INSUFFICIENT**。实测规律（JDK zlib level 6，随机输入 64KiB-4MiB 四点）：膨胀 = **5B/16384B 窗口 + 6B**（`n + 5*ceil(n/16384) + 6`，zlib 头 2 + adler 4；zlib 的 lit_bufsize=16384 决定块节奏）。修正版以 ~1.6× 裕量覆盖两后端。**教训：理论上界推导必须过实测校验。**
+- **等价性**：容量仅分配策略，线上字节与帧格式逐字节不变；重试路径保留为兜底。自检（修正后 ALL OK）：1KiB-1MiB 全尺寸 after 零扩容、before 每尺寸都触发重试（触发面实证）。
+- **基准**：本机（JDK 回退）持平 1.004×（预期——收益在 native 重压缩尖峰消除，本机无 native 测不到）。
+- **风险**：零。
+
+### 0216 — setupCompression 重跑复用 + compression level clamp（D2+D3，正确性）
+- **文件**：`net/minecraft/network/Connection.java` + `CompressionDecoder.java`（新增 package-private `papoCompressor()`，同包直取）
+- **D2 泄漏修复**：重复 `setupCompression(threshold≥0)` 时，新建的 VelocityCompressor 被 decoder 的 setThreshold（仅在自身 compressor 为 null 时收新）与 encoder 的 setThreshold（从不收新）**双双拒收** → 原生 deflate/inflate 上下文孤儿泄漏。修复：decoder 已持有活实例时直接复用（不再创建新的）。默认路径（每连接一次）行为不变。
+- **D3 clamp**：`misc.compression-level` 配 10-12 在 JDK 回退平台（无 native，如 Windows）`new Deflater(10)` 抛 IAE → **登录即断连**。修复：create 抛 IAE 时以 clamp 到 [1,9] 的级别重试。合法配置（native [1,12] / 回退 [-1,9]）逐字不变，仅原本崩溃路径改变。
+- **风险**：零-低。
+
+### 附：0163-0180 垃圾重命名第 4 次复发 → 根除（工程项）
+本批 rebuildPatches 再次触发 0163-0180（实际 0055-0180 共 127 个）中文 Subject 头 → 垃圾重命名。按 build.md 恢复法恢复后，本轮**执行了留置两批的根除项**：[note/fix_patch_subjects.py](fix_patch_subjects.py) 把 127 个补丁的 RFC2047 编码 Subject 头改写为与文件名 slug 往返闭合的干净英文（字节级只动头部 Subject 区）→ applyPatches 重建内部仓库（干净 subject 流入内部提交）→ rebuildPatches 验证文件名稳定。此后全量 rebuildPatches 不再复发（验证记录见 build.md 2026-08-20 条目）。
+
+### 暂缓（批次 58 survey 产出，留批次 59）
+- **帧头合并免拷贝**（survey1 候选2，结构性大头）：CompressionEncoder 预留 3 字节头 + 帧长回填，prepender 对已帧化 buffer 直通——需管线结构改动与 marker 机制（channel attr 或包装类），config 门控，留批次 59 专项。
+- **主线程每包 eventLoop().execute → 按 tick 批量提交**（survey3 B1，高价值）：与已回退的 0209 同区域（跨线程 write 语义），但 drain task 在 event loop 内执行 → voidPromise 安全；需 config 门控 + 逐包 promise/listener 语义保持，留批次 59 专项。
+- **出站带宽监控 handler**（survey1 候选7，纯观测）：BandwidthDebugMonitor 仅客户端入站；服务端出站计数 handler 可为后续带宽优化提供数据，留后续。
+- **CompositeByteBuf 免拷贝帧**：否决——native cipher DIRECT_REQUIRED，composite 会强制 cipher ensureCompatible 整包拷贝，加密连接下收益归零。
+- **压缩移出 event loop**：否决——0209 回退教训；大包 level-6 尖峰靠 0215 上界缓解。
