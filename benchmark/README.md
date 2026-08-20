@@ -51,6 +51,7 @@ cd benchmark
 | `SendFastPathBench` | 0218 | 立即发送判定 instanceof 链先 vs 主线程廉价臂先（@State 字段输入防常量折叠；含布尔等价矩阵自检） |
 | `InboundFrameBench` | 0222 | 入站帧提取 readBytes 拷贝 vs retainedSlice（EmbeddedChannel 真实 BTMD/cumulation 语义；含帧内容/半帧累积/万帧引用计数自检；gc 探针 9.6× 分配消除） |
 | `DeadInstrumentationBench` | 0221/0224 | 每包 watchdog 簿记（CLD push/pop + AtomicLong）vs 门控移除 |
+| `NetstatCounterSelfCheck` | 0225 | 非性能——/paper netstat 字节计数正确性自检（出站/入站计数==wire 字节、半帧不计数、每秒窗口清零守恒） |
 
 ## 依赖
 
