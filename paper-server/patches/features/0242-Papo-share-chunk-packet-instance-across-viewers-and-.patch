@@ -1,0 +1,417 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 22 Aug 2026 01:16:01 +0800
+Subject: [PATCH] Papo: share chunk packet instance across viewers and memoize
+ its wire compression
+
+
+diff --git a/net/minecraft/network/CompressionEncoder.java b/net/minecraft/network/CompressionEncoder.java
+index 6e483c22bee8a05e993df603ccd407fedfbbf380..34082c285d418d0e959ad47d555700c18080dadf 100644
+--- a/net/minecraft/network/CompressionEncoder.java
++++ b/net/minecraft/network/CompressionEncoder.java
+@@ -46,14 +46,18 @@ public class CompressionEncoder extends MessageToByteEncoder<ByteBuf> {
+     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+         if (msg instanceof ByteBuf papoBuf && papoBuf == ctx.channel().attr(PapoOutboundFraming.HEADROOM_BUF).get()) {
+             ctx.channel().attr(PapoOutboundFraming.HEADROOM_BUF).set(null);
+-            this.papoEncodeHeadroom(ctx, papoBuf, promise);
++            // Papo - shared wire-compression memo: only valid for the identity-matched buffer of the
++            // same write traversal; always consumed here (hit, miss or foreign) so nothing stale lingers.
++            final PapoSharedWireMemo papoMemo = ctx.channel().attr(PapoSharedWireMemo.ATTR).getAndSet(null);
++            this.papoEncodeHeadroom(ctx, papoBuf, promise, papoMemo);
+             return;
+         }
+         ctx.channel().attr(PapoOutboundFraming.HEADROOM_BUF).set(null); // foreign buffer: drop any stale marker
++        ctx.channel().attr(PapoSharedWireMemo.ATTR).set(null); // Papo - and any stale memo marker
+         super.write(ctx, msg, promise);
+     }
+ 
+-    private void papoEncodeHeadroom(ChannelHandlerContext ctx, ByteBuf in, ChannelPromise promise) throws Exception {
++    private void papoEncodeHeadroom(ChannelHandlerContext ctx, ByteBuf in, ChannelPromise promise, @javax.annotation.Nullable PapoSharedWireMemo papoMemo) throws Exception {
+         boolean papoConsumed = false; // input ownership left this method (or is dead) - skip the finally release
+         try {
+             int i = in.readableBytes();
+@@ -69,6 +73,24 @@ public class CompressionEncoder extends MessageToByteEncoder<ByteBuf> {
+                 return;
+             }
+ 
++            // Papo start - shared wire-compression memo hit: another connection already compressed
++            // this exact packet instance; the segment [data-length varint][compressed payload] is
++            // self-describing and byte-identical to what the deflate below produces for the same
++            // input, so replaying it skips the dominant per-viewer cost of multi-viewer chunk sends.
++            final byte[] papoCachedSegment = papoMemo != null ? papoMemo.papoSegmentFor(this.threshold) : null;
++            if (papoCachedSegment != null) {
++                final ByteBuf out = com.velocitypowered.natives.util.MoreByteBufUtils.preferredBuffer(
++                    ctx.alloc(), this.compressor, PapoOutboundFraming.HEADROOM + papoCachedSegment.length);
++                out.setIndex(PapoOutboundFraming.HEADROOM, PapoOutboundFraming.HEADROOM);
++                out.writeBytes(papoCachedSegment);
++                in.release(); // consumed; neither release below can throw from here on
++                papoConsumed = true;
++                ctx.channel().attr(PapoOutboundFraming.HEADROOM_BUF).set(out); // publish for the prepender
++                ctx.write(out, promise);
++                return;
++            }
++            // Papo end - shared wire-compression memo hit
++
+             final ByteBuf out = com.velocitypowered.natives.util.MoreByteBufUtils.preferredBuffer(
+                 ctx.alloc(), this.compressor, PapoOutboundFraming.HEADROOM + i + (i >>> 11) + 32);
+             try {
+@@ -80,6 +102,15 @@ public class CompressionEncoder extends MessageToByteEncoder<ByteBuf> {
+                 } finally {
+                     compatibleIn.release();
+                 }
++                // Papo start - shared wire-compression memo fill: snapshot the freshly compressed
++                // segment for this packet instance so later connections replay it instead of
++                // re-deflating identical bytes. First writer for a (threshold, level epoch) stamp wins.
++                if (papoMemo != null) {
++                    byte[] papoSegment = new byte[out.writerIndex() - PapoOutboundFraming.HEADROOM];
++                    out.getBytes(PapoOutboundFraming.HEADROOM, papoSegment);
++                    papoMemo.papoStore(this.threshold, papoSegment);
++                }
++                // Papo end - shared wire-compression memo fill
+             } catch (Exception e) {
+                 out.release(); // not yet published - release on failure (outer finally still releases `in`)
+                 throw e;
+diff --git a/net/minecraft/network/Connection.java b/net/minecraft/network/Connection.java
+index 05af3554118f0db85b3f1a58ad2b6d16cd2e7083..d13dbacd28ff007a3c8d615735831c710f8f1353 100644
+--- a/net/minecraft/network/Connection.java
++++ b/net/minecraft/network/Connection.java
+@@ -875,6 +875,7 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
+                     // Valid configs (any backend) are untouched - only the crashing path changes.
+                     compressor = com.velocitypowered.natives.util.Natives.compress.get().create(Math.min(9, Math.max(1, papoLevel)));
+                 }
++                PapoSharedWireMemo.papoStampLevel(papoLevel); // Papo - track compression-level identity for the shared wire memo epoch
+             }
+             // Papo end
+             if (this.channel.pipeline().get("decompress") instanceof CompressionDecoder compressionDecoder) {
+diff --git a/net/minecraft/network/PacketEncoder.java b/net/minecraft/network/PacketEncoder.java
+index 7ffc3490ec16731c1db98b16b35836c26b14342d..901b6b4aae4e0fd1f86ce93f32d12f9f00644a83 100644
+--- a/net/minecraft/network/PacketEncoder.java
++++ b/net/minecraft/network/PacketEncoder.java
+@@ -67,6 +67,15 @@ public class PacketEncoder<T extends PacketListener> extends MessageToByteEncode
+             // stale marker is cleared/overwritten by the next write - every consumer clears it first.
+             if (channelHandlerContext.pipeline().get("prepender") instanceof Varint21LengthFieldPrepender) {
+                 channelHandlerContext.channel().attr(PapoOutboundFraming.HEADROOM_BUF).set(byteBuf);
++                // Papo - shared wire-compression memo: publish alongside the headroom marker (same
++                // write traversal, consumed by CompressionEncoder only when the buffer identity
++                // matches; armed exclusively on shared multi-viewer packets, null otherwise).
++                if (packet instanceof PapoSharedWireMemo.Carrier papoCarrier) {
++                    PapoSharedWireMemo papoMemo = papoCarrier.papoWireMemo();
++                    if (papoMemo != null) {
++                        channelHandlerContext.channel().attr(PapoSharedWireMemo.ATTR).set(papoMemo);
++                    }
++                }
+             }
+             // Papo end
+             int i = byteBuf.readableBytes();
+diff --git a/net/minecraft/network/PapoSharedWireMemo.java b/net/minecraft/network/PapoSharedWireMemo.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..c54f090366c3bc695d2b6057ecee6a948a8640a9
+--- /dev/null
++++ b/net/minecraft/network/PapoSharedWireMemo.java
+@@ -0,0 +1,88 @@
++package net.minecraft.network;
++
++import io.netty.util.AttributeKey;
++import java.util.concurrent.atomic.AtomicInteger;
++import java.util.concurrent.atomic.AtomicLong;
++import org.jspecify.annotations.Nullable;
++
++/**
++ * Papo - shared wire-compression memo for multi-viewer packets.
++ *
++ * When the same immutable packet instance is sent to several connections (chunk sends to a group of
++ * players, see {@code ClientboundLevelChunkWithLightPacket.papoCreateCached}), every connection
++ * serialises identical bytes and then DEFLATE-compresses those identical bytes independently -
++ * for a chunk packet that is the dominant per-viewer cost. This memo lets the compression stage
++ * reuse the segment ([data-length varint][compressed payload]) produced by the first connection
++ * that compressed this packet instance.
++ *
++ * Correctness: the segment is self-describing (it carries the uncompressed length itself) and is
++ * produced by the very same deflate call the fallback path performs, so hit and miss paths emit
++ * identical bytes. The compression level is not part of the protocol (any zlib stream decodes
++ * regardless of the level that produced it); the level epoch still invalidates memos across level
++ * re-configurations so served bytes match what this configuration would produce. Racing fills can
++ * interleave stamps from different thresholds, but any resulting segment still frames the same
++ * uncompressed length (same packet content) and decodes to the same payload.
++ *
++ * Visibility: {@link #papoSegment} is volatile and written only after its contents are fully
++ * initialised; the stamp fields are written before the segment, so a reader that observes a
++ * non-null segment with a matching stamp observes a complete snapshot (JMM happens-before via the
++ * volatile segment store). Multiple event-loop threads may encode the same shared packet
++ * concurrently; every access is a read or a single reference store, so no locking is needed.
++ */
++public final class PapoSharedWireMemo {
++    /** Published by PacketEncoder alongside the headroom marker; consumed by CompressionEncoder. */
++    static final AttributeKey<PapoSharedWireMemo> ATTR = AttributeKey.valueOf("papo.sharedWireMemo");
++
++    /**
++     * Bumped by Connection.setupCompression whenever a compressor is created for a level different
++     * from the previous one (setup runs per connection; identical levels must not churn the epoch
++     * or memos would never hit).
++     */
++    private static final AtomicLong PAPO_LEVEL_EPOCH = new AtomicLong();
++    private static final AtomicInteger PAPO_LAST_LEVEL = new AtomicInteger(Integer.MIN_VALUE);
++
++    private volatile int papoThreshold = -1;
++    private volatile long papoLevelEpoch;
++    private volatile byte @Nullable [] papoSegment;
++
++    private PapoSharedWireMemo() {
++    }
++
++    public static PapoSharedWireMemo papoCreate() {
++        return new PapoSharedWireMemo();
++    }
++
++    static void papoStampLevel(int level) {
++        if (PAPO_LAST_LEVEL.getAndSet(level) != level) {
++            PAPO_LEVEL_EPOCH.incrementAndGet();
++        }
++    }
++
++    static long papoLevelEpoch() {
++        return PAPO_LEVEL_EPOCH.get();
++    }
++
++    /** Returns the memo'd segment when it was produced for the given threshold and current level epoch. */
++    public byte @Nullable [] papoSegmentFor(int threshold) {
++        if (this.papoThreshold != threshold || this.papoLevelEpoch != papoLevelEpoch()) {
++            return null;
++        }
++        return this.papoSegment;
++    }
++
++    /** Stores the segment produced for the given threshold; first writer for a stamp wins. */
++    public void papoStore(int threshold, byte[] segment) {
++        long epoch = papoLevelEpoch();
++        if (this.papoSegment == null || this.papoThreshold != threshold || this.papoLevelEpoch != epoch) {
++            this.papoThreshold = threshold;
++            this.papoLevelEpoch = epoch;
++            this.papoSegment = segment; // volatile store publishes the stamp + fully-initialised array
++        }
++    }
++
++    /** Implemented by packet instances that can carry a shared compression memo. */
++    public interface Carrier {
++        @Nullable
++        PapoSharedWireMemo papoWireMemo();
++    }
++}
+diff --git a/net/minecraft/network/Varint21LengthFieldPrepender.java b/net/minecraft/network/Varint21LengthFieldPrepender.java
+index e196e80b575dd022ba2460c39d7b702a905ade59..ead608f7520082fb52f4e0a188082b727a49055a 100644
+--- a/net/minecraft/network/Varint21LengthFieldPrepender.java
++++ b/net/minecraft/network/Varint21LengthFieldPrepender.java
+@@ -56,6 +56,7 @@ public class Varint21LengthFieldPrepender extends MessageToByteEncoder<ByteBuf>
+     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+         if (msg instanceof ByteBuf papoBuf && papoBuf == ctx.channel().attr(PapoOutboundFraming.HEADROOM_BUF).get()) {
+             ctx.channel().attr(PapoOutboundFraming.HEADROOM_BUF).set(null);
++            ctx.channel().attr(PapoSharedWireMemo.ATTR).set(null); // Papo - no compression handler ahead: drop any stale memo marker so it cannot pin a packet
+             int i = papoBuf.readableBytes();
+             if (VarInt.getByteSize(i) > MAX_VARINT21_BYTES) {
+                 papoBuf.release();
+@@ -67,6 +68,7 @@ public class Varint21LengthFieldPrepender extends MessageToByteEncoder<ByteBuf>
+             return;
+         }
+         ctx.channel().attr(PapoOutboundFraming.HEADROOM_BUF).set(null); // foreign buffer: drop any stale marker
++        ctx.channel().attr(PapoSharedWireMemo.ATTR).set(null); // Papo - drop any stale memo marker
+         super.write(ctx, msg, promise);
+     }
+     // Papo end
+diff --git a/net/minecraft/network/protocol/game/ClientboundLevelChunkPacketData.java b/net/minecraft/network/protocol/game/ClientboundLevelChunkPacketData.java
+index 5454c3ffc9d65751b046318254d189f39acf2141..389a6685187b9fab5979f0d52f99ac97511bcbeb 100644
+--- a/net/minecraft/network/protocol/game/ClientboundLevelChunkPacketData.java
++++ b/net/minecraft/network/protocol/game/ClientboundLevelChunkPacketData.java
+@@ -73,13 +73,13 @@ public class ClientboundLevelChunkPacketData {
+     // replaced while papoChunkDataVersion is unchanged) while block entity data is rebuilt fresh:
+     // block entity *content* changes do not bump any chunk-level mutation signal, so their
+     // getUpdateTag() values must be read at construction time like vanilla does.
+-    ClientboundLevelChunkPacketData(Map<Heightmap.Types, long[]> heightmaps, byte[] buffer, LevelChunk levelChunk) {
++    public ClientboundLevelChunkPacketData(Map<Heightmap.Types, long[]> heightmaps, byte[] buffer, LevelChunk levelChunk) {
+         this.heightmaps = heightmaps;
+         this.buffer = buffer;
+         this.blockEntitiesData = papoBuildBlockEntityData(levelChunk, this.extraPackets);
+     }
+ 
+-    byte[] papoSerializedBuffer() {
++    public byte[] papoSerializedBuffer() {
+         return this.buffer;
+     }
+ 
+diff --git a/net/minecraft/network/protocol/game/ClientboundLevelChunkWithLightPacket.java b/net/minecraft/network/protocol/game/ClientboundLevelChunkWithLightPacket.java
+index 9ffe238c03ab5a2151f89ae3ddea13f151bf4ac2..0a15338c7228ca994523540cd257be092a8c4f42 100644
+--- a/net/minecraft/network/protocol/game/ClientboundLevelChunkWithLightPacket.java
++++ b/net/minecraft/network/protocol/game/ClientboundLevelChunkWithLightPacket.java
+@@ -1,6 +1,7 @@
+ package net.minecraft.network.protocol.game;
+ 
+ import java.util.BitSet;
++import net.minecraft.network.PapoSharedWireMemo;
+ import net.minecraft.network.RegistryFriendlyByteBuf;
+ import net.minecraft.network.codec.StreamCodec;
+ import net.minecraft.network.protocol.Packet;
+@@ -10,7 +11,7 @@ import net.minecraft.world.level.chunk.LevelChunk;
+ import net.minecraft.world.level.lighting.LevelLightEngine;
+ import org.jspecify.annotations.Nullable;
+ 
+-public class ClientboundLevelChunkWithLightPacket implements Packet<ClientGamePacketListener> {
++public class ClientboundLevelChunkWithLightPacket implements Packet<ClientGamePacketListener>, PapoSharedWireMemo.Carrier {
+     public static final StreamCodec<RegistryFriendlyByteBuf, ClientboundLevelChunkWithLightPacket> STREAM_CODEC = Packet.codec(
+         ClientboundLevelChunkWithLightPacket::write, ClientboundLevelChunkWithLightPacket::new
+     );
+@@ -50,28 +51,40 @@ public class ClientboundLevelChunkWithLightPacket implements Packet<ClientGamePa
+     // constructor passes chunkPacketInfo == null, and modifyBlocks(packet, null) is exactly a
+     // setReady(true) for both controller implementations (checked ChunkPacketBlockController and
+     // ChunkPacketBlockControllerAntiXray), which this constructor replicates directly.
+-    private ClientboundLevelChunkWithLightPacket(int x, int z, ClientboundLevelChunkPacketData chunkData, LevelLightEngine lightEngine) {
++    public ClientboundLevelChunkWithLightPacket(int x, int z, ClientboundLevelChunkPacketData chunkData, ClientboundLightUpdatePacketData lightData) {
+         this.x = x;
+         this.z = z;
+         this.chunkData = chunkData;
+-        this.lightData = new ClientboundLightUpdatePacketData(new ChunkPos(x, z), lightEngine, null, null);
++        this.lightData = lightData;
+         this.ready = true;
+     }
+ 
+     public static ClientboundLevelChunkWithLightPacket papoCreateCached(LevelChunk chunk, LevelLightEngine lightEngine) {
+         ChunkPos pos = chunk.getPos();
+-        if (chunk.papoChunkPacketCacheValid()) {
+-            return new ClientboundLevelChunkWithLightPacket(
+-                pos.x,
+-                pos.z,
+-                new ClientboundLevelChunkPacketData(chunk.papoPacketHeightmapsCache(), chunk.papoPacketBufferCache(), chunk),
+-                lightEngine
+-            );
++        ca.spottedleaf.moonrise.patches.chunk_system.scheduling.NewChunkHolder papoMoonriseHolder = chunk.moonrise$getChunkHolder();
++        if (papoMoonriseHolder != null) {
++            // Shared-instance path: while the chunk is unchanged (block/biome/BE-set version) and
++            // its light is unchanged (holder light version), every viewer receives the SAME packet
++            // instance - see ChunkHolder.papoGetSharedChunkPacket for the freshness contract. The
++            // packet carries a wire-compression memo so identical viewer bytes are DEFLATE'd once.
++            return papoMoonriseHolder.vanillaChunkHolder.papoGetSharedChunkPacket(chunk, lightEngine);
+         }
+-        ClientboundLevelChunkWithLightPacket packet = new ClientboundLevelChunkWithLightPacket(chunk, lightEngine, null, null, false);
+-        ClientboundLevelChunkPacketData data = packet.getChunkData();
+-        chunk.papoStoreChunkPacketCache(data.getHeightmaps(), data.papoSerializedBuffer());
+-        return packet;
++        ClientboundLevelChunkPacketData papoData = new ClientboundLevelChunkPacketData(chunk, null);
++        chunk.papoStoreChunkPacketCache(papoData.getHeightmaps(), papoData.papoSerializedBuffer());
++        return new ClientboundLevelChunkWithLightPacket(pos.x, pos.z, papoData, new ClientboundLightUpdatePacketData(pos, lightEngine, null, null));
++    }
++
++    // Papo - shared wire-compression memo (armed only for packets published as the holder's shared
++    // instance; null for per-viewer constructions, so nothing else pays the attribute publish).
++    private volatile PapoSharedWireMemo papoWireMemo;
++
++    public void papoEnableWireMemo() {
++        this.papoWireMemo = PapoSharedWireMemo.papoCreate();
++    }
++
++    @Override
++    public @Nullable PapoSharedWireMemo papoWireMemo() {
++        return this.papoWireMemo;
+     }
+     // Papo end - multi-viewer chunk packet data cache
+ 
+diff --git a/net/minecraft/server/level/ChunkHolder.java b/net/minecraft/server/level/ChunkHolder.java
+index ca0f36cd52b44c52ec216a7b0eadca72252b39d9..3c728b845ca0c5c671be23f22b11c76f179f2f83 100644
+--- a/net/minecraft/server/level/ChunkHolder.java
++++ b/net/minecraft/server/level/ChunkHolder.java
+@@ -13,6 +13,7 @@ import net.minecraft.core.BlockPos;
+ import net.minecraft.core.SectionPos;
+ import net.minecraft.network.protocol.Packet;
+ import net.minecraft.network.protocol.game.ClientboundBlockUpdatePacket;
++import net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket;
+ import net.minecraft.network.protocol.game.ClientboundLightUpdatePacket;
+ import net.minecraft.network.protocol.game.ClientboundSectionBlocksUpdatePacket;
+ import net.minecraft.util.Util;
+@@ -246,6 +247,7 @@ public class ChunkHolder extends GenerationChunkHolder implements ca.spottedleaf
+             return false;
+         } else {
+             chunkIfPresent.markUnsaved();
++            this.papoBumpLightVersion(); // Papo - invalidate the cached chunk-send light data (below); bumped before the untracked-chunk early return so counts never skip changes
+             LevelChunk tickingChunk = this.playersSentChunkTo.size() == 0 ? null : this.getChunkToSend(); // Paper - rewrite chunk system
+             if (tickingChunk == null) {
+                 return false;
+@@ -272,6 +274,67 @@ public class ChunkHolder extends GenerationChunkHolder implements ca.spottedleaf
+         return this.hasChangedSections || !this.skyChangedLightSectionFilter.isEmpty() || !this.blockChangedLightSectionFilter.isEmpty();
+     }
+ 
++    // Papo start - shared chunk packet for multi-viewer sends
++    // papoLightVersion counts light-section change notifications (sectionLightChanged, fed by the
++    // light engine's onLightUpdate which is the same signal vanilla's incremental light broadcast
++    // depends on - both the vanilla LayerLightSectionStorage and moonrise's StarLightEngine route
++    // every changed section through ServerChunkCache.onLightUpdate onto the main thread).
++    //
++    // While (chunk data version, light version) are unchanged and the chunk has no block entities,
++    // the full chunk-with-light packet is a pure function of that state: the SAME packet instance
++    // is returned to every viewer (FeatureHooks.sendChunkRefreshPackets established packet-instance
++    // sharing across players). Block entity presence is pinned by the chunk data version (BE
++    // add/remove bumps it) - empty-at-publish stays empty until invalidation, and BE-free chunks
++    // have no per-viewer content to go stale. Light staleness window: a light write on a scheduler
++    // thread whose notification is still queued means a shared packet can embed slightly older
++    // light than a fresh construction would read; the pending notification marks this holder's
++    // broadcast filters and the incremental ClientboundLightUpdatePacket corrects the new viewer
++    // within the same tick (vanilla's own mechanism), so no persistent desync is possible.
++    //
++    // The shared packet carries a wire-compression memo (see PapoSharedWireMemo): identical
++    // per-viewer bytes need only be DEFLATE-compressed once per packet instance.
++    // All reads/writes happen on the main thread (chunk sends are main-thread driven).
++    private long papoLightVersion;
++    private ClientboundLevelChunkWithLightPacket papoSharedChunkPacket;
++    private long papoSharedChunkPacketDataVersion = Long.MIN_VALUE;
++    private long papoSharedChunkPacketLightVersion = Long.MIN_VALUE;
++
++    void papoBumpLightVersion() {
++        this.papoLightVersion++;
++    }
++
++    public ClientboundLevelChunkWithLightPacket papoGetSharedChunkPacket(LevelChunk chunk, LevelLightEngine lightEngine) {
++        ClientboundLevelChunkWithLightPacket cached = this.papoSharedChunkPacket;
++        long chunkDataVersion = chunk.papoChunkDataVersion();
++        if (cached != null
++            && this.papoSharedChunkPacketDataVersion == chunkDataVersion
++            && this.papoSharedChunkPacketLightVersion == this.papoLightVersion) {
++            return cached;
++        }
++
++        ChunkPos pos = chunk.getPos();
++        net.minecraft.network.protocol.game.ClientboundLevelChunkPacketData data;
++        if (chunk.papoChunkPacketCacheValid()) {
++            data = new net.minecraft.network.protocol.game.ClientboundLevelChunkPacketData(
++                chunk.papoPacketHeightmapsCache(), chunk.papoPacketBufferCache(), chunk);
++        } else {
++            data = new net.minecraft.network.protocol.game.ClientboundLevelChunkPacketData(chunk, null);
++            chunk.papoStoreChunkPacketCache(data.getHeightmaps(), data.papoSerializedBuffer());
++        }
++
++        ClientboundLevelChunkWithLightPacket packet = new ClientboundLevelChunkWithLightPacket(
++            pos.x, pos.z, data,
++            new net.minecraft.network.protocol.game.ClientboundLightUpdatePacketData(pos, lightEngine, null, null));
++        if (chunk.getBlockEntities().isEmpty()) {
++            packet.papoEnableWireMemo();
++            this.papoSharedChunkPacket = packet;
++            this.papoSharedChunkPacketDataVersion = chunkDataVersion;
++            this.papoSharedChunkPacketLightVersion = this.papoLightVersion;
++        }
++        return packet;
++    }
++    // Papo end - shared chunk packet for multi-viewer sends
++
+     public void broadcastChanges(LevelChunk chunk) {
+         if (this.hasChangesToBroadcast()) {
+             Level level = chunk.getLevel();
+diff --git a/net/minecraft/world/level/chunk/LevelChunk.java b/net/minecraft/world/level/chunk/LevelChunk.java
+index be9b929c792d04c867b41b9d79236b1ca80f0452..722bbb41c38070bfb0b69b4f39c096ab08cc2b88 100644
+--- a/net/minecraft/world/level/chunk/LevelChunk.java
++++ b/net/minecraft/world/level/chunk/LevelChunk.java
+@@ -127,6 +127,10 @@ public class LevelChunk extends ChunkAccess implements DebugValueSource, ca.spot
+         return this.papoPacketBufferCache != null && this.papoChunkPacketCacheVersion == this.papoChunkDataVersion.get();
+     }
+ 
++    public long papoChunkDataVersion() {
++        return this.papoChunkDataVersion.get();
++    }
++
+     public void papoStoreChunkPacketCache(Map<Heightmap.Types, long[]> heightmaps, byte[] buffer) {
+         this.papoPacketHeightmapsCache = heightmaps;
+         this.papoPacketBufferCache = buffer;
