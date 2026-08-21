@@ -2080,3 +2080,16 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 - **基准**：EntitySyncNoViewerBench：A 无观众包构造 76.295 ± 1.840 → **12.215 ± 0.465 ns/op（6.2×，CI 分离）**；B 双探测 3.563 ± 0.207 → **1.916 ± 0.114（1.86×，CI 分离）**；C 矿车 Vec3 CI 重叠（EA 伪影判例——复刻内 Vec3 被标量替换，真实深栈分配真实发生，机制保留）。外推：500 追踪范围外实体 ~64µs/tick 纯垃圾消除 + 10k pair ~16µs/tick。
 - **风险**：低（机械守卫 + 状态机逐行保留；全量 test 绿）。
 - **survey 否定留档**：实体稳态包全部 <256B 阈值（memo 不适用）；空闲实体无每 tick 分配；broadcast 迭代器换 forEach 无净收益；per-pair 辅助调用全字段读；火球 bundle 去 delimiter 改 wire 字节否决——**实体同步域封闭**。
+
+---
+
+## 批次 77（2026-08-22）：同序列 pairing 包共享（0248）
+
+主题：**多玩家网络稳定（实体配对域）**——多观众冗余链在 pairing 侧的最后一块。新实体注册（`addEntity → TrackedEntity.updatePlayers(全体玩家)`）在单线程连续循环中对多个玩家 addPairing：`sendPairingData` 全部内容仅依赖实体状态，窗口内不变 ⇒ 每观众重复构造逐字节相同的 2-6 个包。报告：[note/report/perf/2026-08-22-jmh-microbench-batch77.md](report/perf/2026-08-22-jmh-microbench-batch77.md)。
+
+### 0248 — updatePlayers sweep 内 pairing 包共享
+- **文件**：`ServerEntity.java`（papoPairingShareDepth/Cache + begin/end + addPairing 复用路径）+ `ChunkMap.java`（updatePlayers try/finally 括起）。
+- **等价性**：窗口=单次 updatePlayers 方法内连续循环（无实体 tick 交错，局部可证）；sendPairingData 的 per-player scaled-health 分支在 pairing 路径不可达（updatePlayer 首行 player != entity 守卫；另一调用方 resendPossiblyDesyncedEntityData 不在窗口）；updateDataBeforeSync/detectEquipmentUpdates 幂等；窗口外一切 addPairing 独立构造照旧（缓存 null）；end 时 finally 清缓存；attributes live 集合引用是 vanilla 每观众包本就共享的同一集合，不新增并发面。
+- **基准**：PairingShareBench（五段构造模型 × 4 观众）：sweep 692.413 ± 11.853 → 0.564 ± 0.184 ns/op（模型复用为纯引用读，1227× 为模型夸张上界；真实收益=每观众省 (K-1)/K 的 pairing 构造，getNonDefaultValues 扫描+equipment copy+5 包对象 µs 级）。满负荷刷怪 30 新实体/tick × 2-4 观众 → 每 tick 数十次重复构造消除。
+- **风险**：低（窗口纪律 try/finally + 深度钳制；自检 4 观众包序列逐项一致；全量 test 绿）。
+- **留档**：玩家移动进入范围场景不共享（sweep 段间可能夹实体 tick，tick 内顺序无局部可证性，保守排除）——**配对域封闭**。
