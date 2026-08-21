@@ -1,0 +1,292 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 22 Aug 2026 01:49:37 +0800
+Subject: [PATCH] Papo: cache the join recipes packet and arm wire memos on
+ join-static packets
+
+
+diff --git a/net/minecraft/network/protocol/common/ClientboundUpdateTagsPacket.java b/net/minecraft/network/protocol/common/ClientboundUpdateTagsPacket.java
+index 3f22a4f612f0a9d582ad2da3f2be794a4913d08f..f17c53fe02e5fbb730f8774444a912f062554280 100644
+--- a/net/minecraft/network/protocol/common/ClientboundUpdateTagsPacket.java
++++ b/net/minecraft/network/protocol/common/ClientboundUpdateTagsPacket.java
+@@ -3,13 +3,15 @@ package net.minecraft.network.protocol.common;
+ import java.util.Map;
+ import net.minecraft.core.Registry;
+ import net.minecraft.network.FriendlyByteBuf;
++import net.minecraft.network.PapoSharedWireMemo;
+ import net.minecraft.network.codec.StreamCodec;
+ import net.minecraft.network.protocol.Packet;
+ import net.minecraft.network.protocol.PacketType;
+ import net.minecraft.resources.ResourceKey;
+ import net.minecraft.tags.TagNetworkSerialization;
++import org.jspecify.annotations.Nullable;
+ 
+-public class ClientboundUpdateTagsPacket implements Packet<ClientCommonPacketListener> {
++public class ClientboundUpdateTagsPacket implements Packet<ClientCommonPacketListener>, net.minecraft.network.PapoSharedWireMemo.Carrier {
+     public static final StreamCodec<FriendlyByteBuf, ClientboundUpdateTagsPacket> STREAM_CODEC = Packet.codec(
+         ClientboundUpdateTagsPacket::write, ClientboundUpdateTagsPacket::new
+     );
+@@ -40,4 +42,23 @@ public class ClientboundUpdateTagsPacket implements Packet<ClientCommonPacketLis
+     public Map<ResourceKey<? extends Registry<?>>, TagNetworkSerialization.NetworkPayload> getTags() {
+         return this.tags;
+     }
++
++    // Papo start - shared wire memos for the join-static tags packet
++    // The 0226 join cache sends this same instance to every joining player between reloads; the
++    // memo lets each connection replay the first encode + DEFLATE instead of re-walking the codec
++    // and re-compressing identical bytes (tens of KiB per join). Armed only by the cache builder
++    // (PapoJoinPacketCache/SynchronizeRegistriesTask) on long-lived shared instances; per-player
++    // constructions elsewhere keep a null memo and are untouched. The packet is immutable and its
++    // codec is a deterministic, locale-independent map walk.
++    private PapoSharedWireMemo papoWireMemo;
++
++    public void papoEnableWireMemo() {
++        this.papoWireMemo = PapoSharedWireMemo.papoCreateEncodeArmed();
++    }
++
++    @Override
++    public @Nullable PapoSharedWireMemo papoWireMemo() {
++        return this.papoWireMemo;
++    }
++    // Papo end - shared wire memos for the join-static tags packet
+ }
+diff --git a/net/minecraft/network/protocol/configuration/ClientboundRegistryDataPacket.java b/net/minecraft/network/protocol/configuration/ClientboundRegistryDataPacket.java
+index 9e499069316faa4699af3d46138a3292a0ccec5f..7325611899ee82a9d9719939f416f75b17ce71be 100644
+--- a/net/minecraft/network/protocol/configuration/ClientboundRegistryDataPacket.java
++++ b/net/minecraft/network/protocol/configuration/ClientboundRegistryDataPacket.java
+@@ -5,15 +5,24 @@ import java.util.List;
+ import net.minecraft.core.Registry;
+ import net.minecraft.core.RegistrySynchronization;
+ import net.minecraft.network.FriendlyByteBuf;
++import net.minecraft.network.PapoSharedWireMemo;
+ import net.minecraft.network.codec.ByteBufCodecs;
+ import net.minecraft.network.codec.StreamCodec;
+ import net.minecraft.network.protocol.Packet;
+ import net.minecraft.network.protocol.PacketType;
+ import net.minecraft.resources.Identifier;
+ import net.minecraft.resources.ResourceKey;
++import org.jspecify.annotations.Nullable;
+ 
+-public record ClientboundRegistryDataPacket(ResourceKey<? extends Registry<?>> registry, List<RegistrySynchronization.PackedRegistryEntry> entries)
+-    implements Packet<ClientConfigurationPacketListener> {
++// Papo start - record -> final class with the same component accessors
++// The 0226 join cache shares one instance of each registry packet across every joining player
++// between reloads; carrying a wire memo (see PapoSharedWireMemo) on the packet lets each
++// connection replay the first encode + DEFLATE instead of re-compressing identical bytes. Records
++// cannot declare instance fields, so this becomes an immutable final class with the same
++// constructor shape and accessor names the codec references (no equals/hashCode consumers of
++// this type exist in the tree - verified by grep before the change).
++// Papo end - record -> final class with the same component accessors
++public final class ClientboundRegistryDataPacket implements Packet<ClientConfigurationPacketListener>, PapoSharedWireMemo.Carrier {
+     private static final StreamCodec<ByteBuf, ResourceKey<? extends Registry<?>>> REGISTRY_KEY_STREAM_CODEC = Identifier.STREAM_CODEC
+         .map(ResourceKey::createRegistryKey, ResourceKey::identifier);
+     public static final StreamCodec<FriendlyByteBuf, ClientboundRegistryDataPacket> STREAM_CODEC = StreamCodec.composite(
+@@ -24,6 +33,22 @@ public record ClientboundRegistryDataPacket(ResourceKey<? extends Registry<?>> r
+         ClientboundRegistryDataPacket::new
+     );
+ 
++    private final ResourceKey<? extends Registry<?>> registry;
++    private final List<RegistrySynchronization.PackedRegistryEntry> entries;
++
++    public ClientboundRegistryDataPacket(ResourceKey<? extends Registry<?>> registry, List<RegistrySynchronization.PackedRegistryEntry> entries) {
++        this.registry = registry;
++        this.entries = entries;
++    }
++
++    public ResourceKey<? extends Registry<?>> registry() {
++        return this.registry;
++    }
++
++    public List<RegistrySynchronization.PackedRegistryEntry> entries() {
++        return this.entries;
++    }
++
+     @Override
+     public PacketType<ClientboundRegistryDataPacket> type() {
+         return ConfigurationPacketTypes.CLIENTBOUND_REGISTRY_DATA;
+@@ -33,4 +58,17 @@ public record ClientboundRegistryDataPacket(ResourceKey<? extends Registry<?>> r
+     public void handle(ClientConfigurationPacketListener handler) {
+         handler.handleRegistryData(this);
+     }
++
++    // Papo start - shared wire memos (armed only on the 0226 join-cache instances)
++    private PapoSharedWireMemo papoWireMemo;
++
++    public void papoEnableWireMemo() {
++        this.papoWireMemo = PapoSharedWireMemo.papoCreateEncodeArmed();
++    }
++
++    @Override
++    public @Nullable PapoSharedWireMemo papoWireMemo() {
++        return this.papoWireMemo;
++    }
++    // Papo end - shared wire memos (armed only on the 0226 join-cache instances)
+ }
+diff --git a/net/minecraft/network/protocol/game/ClientboundUpdateRecipesPacket.java b/net/minecraft/network/protocol/game/ClientboundUpdateRecipesPacket.java
+index 6e0c7461ebbc596ff599c9f09b8f4e148753c673..9f1bdae5eed44a72b449a9b30840f5b36f35bd9b 100644
+--- a/net/minecraft/network/protocol/game/ClientboundUpdateRecipesPacket.java
++++ b/net/minecraft/network/protocol/game/ClientboundUpdateRecipesPacket.java
+@@ -2,6 +2,7 @@ package net.minecraft.network.protocol.game;
+ 
+ import java.util.HashMap;
+ import java.util.Map;
++import net.minecraft.network.PapoSharedWireMemo;
+ import net.minecraft.network.RegistryFriendlyByteBuf;
+ import net.minecraft.network.codec.ByteBufCodecs;
+ import net.minecraft.network.codec.StreamCodec;
+@@ -11,10 +12,18 @@ import net.minecraft.resources.ResourceKey;
+ import net.minecraft.world.item.crafting.RecipePropertySet;
+ import net.minecraft.world.item.crafting.SelectableRecipe;
+ import net.minecraft.world.item.crafting.StonecutterRecipe;
++import org.jspecify.annotations.Nullable;
+ 
+-public record ClientboundUpdateRecipesPacket(
+-    Map<ResourceKey<RecipePropertySet>, RecipePropertySet> itemSets, SelectableRecipe.SingleInputSet<StonecutterRecipe> stonecutterRecipes
+-) implements Packet<ClientGamePacketListener> {
++// Papo start - record -> final class with the same component accessors
++// PlayerList caches one instance across joins (recipe sync data only changes through
++// RecipeManager.finalizeRecipeLoading, whose downstream PlayerList.reloadResources rebuilds the
++// cache); carrying a wire memo (see PapoSharedWireMemo) on the packet lets every join replay the
++// first encode + DEFLATE instead of re-compressing ~100-300 KiB of identical bytes. Records
++// cannot declare instance fields, so this becomes an immutable final class with the same
++// constructor shape and accessor names the codec references (no equals/hashCode consumers of
++// this type exist in the tree - verified by grep before the change).
++// Papo end - record -> final class with the same component accessors
++public final class ClientboundUpdateRecipesPacket implements Packet<ClientGamePacketListener>, PapoSharedWireMemo.Carrier {
+     public static final StreamCodec<RegistryFriendlyByteBuf, ClientboundUpdateRecipesPacket> STREAM_CODEC = StreamCodec.composite(
+         ByteBufCodecs.map(HashMap::new, ResourceKey.streamCodec(RecipePropertySet.TYPE_KEY), RecipePropertySet.STREAM_CODEC),
+         ClientboundUpdateRecipesPacket::itemSets,
+@@ -23,6 +32,24 @@ public record ClientboundUpdateRecipesPacket(
+         ClientboundUpdateRecipesPacket::new
+     );
+ 
++    private final Map<ResourceKey<RecipePropertySet>, RecipePropertySet> itemSets;
++    private final SelectableRecipe.SingleInputSet<StonecutterRecipe> stonecutterRecipes;
++
++    public ClientboundUpdateRecipesPacket(
++        Map<ResourceKey<RecipePropertySet>, RecipePropertySet> itemSets, SelectableRecipe.SingleInputSet<StonecutterRecipe> stonecutterRecipes
++    ) {
++        this.itemSets = itemSets;
++        this.stonecutterRecipes = stonecutterRecipes;
++    }
++
++    public Map<ResourceKey<RecipePropertySet>, RecipePropertySet> itemSets() {
++        return this.itemSets;
++    }
++
++    public SelectableRecipe.SingleInputSet<StonecutterRecipe> stonecutterRecipes() {
++        return this.stonecutterRecipes;
++    }
++
+     @Override
+     public PacketType<ClientboundUpdateRecipesPacket> type() {
+         return GamePacketTypes.CLIENTBOUND_UPDATE_RECIPES;
+@@ -32,4 +59,17 @@ public record ClientboundUpdateRecipesPacket(
+     public void handle(ClientGamePacketListener handler) {
+         handler.handleUpdateRecipes(this);
+     }
++
++    // Papo start - shared wire memo (armed on the PlayerList join-cached instance)
++    private PapoSharedWireMemo papoWireMemo;
++
++    public void papoEnableWireMemo() {
++        this.papoWireMemo = PapoSharedWireMemo.papoCreateEncodeArmed();
++    }
++
++    @Override
++    public @Nullable PapoSharedWireMemo papoWireMemo() {
++        return this.papoWireMemo;
++    }
++    // Papo end - shared wire memo (armed on the PlayerList join-cached instance)
+ }
+diff --git a/net/minecraft/server/network/config/SynchronizeRegistriesTask.java b/net/minecraft/server/network/config/SynchronizeRegistriesTask.java
+index e6fbc00f309caee72e9168b67e502647bd180f9e..3e73ccd49ce493f40055799a7469e199b5e10edd 100644
+--- a/net/minecraft/server/network/config/SynchronizeRegistriesTask.java
++++ b/net/minecraft/server/network/config/SynchronizeRegistriesTask.java
+@@ -45,7 +45,13 @@ public class SynchronizeRegistriesTask implements ConfigurationTask {
+                 dynamicOps,
+                 this.registries.getAccessFrom(RegistryLayer.WORLDGEN),
+                 packs,
+-                (resourceKey, list) -> papoBuilt.add(new ClientboundRegistryDataPacket(resourceKey, list))
++                (resourceKey, list) -> {
++                    // Papo - arm the shared wire memo: these cached instances go to every joining
++                    // player; the memo replays the first connection's encode + DEFLATE
++                    ClientboundRegistryDataPacket papoPacket = new ClientboundRegistryDataPacket(resourceKey, list);
++                    papoPacket.papoEnableWireMemo();
++                    papoBuilt.add(papoPacket);
++                }
+             );
+             papoCached = List.copyOf(papoBuilt);
+             if (papoMatched) {
+@@ -61,6 +67,7 @@ public class SynchronizeRegistriesTask implements ConfigurationTask {
+         ClientboundUpdateTagsPacket papoTags = PapoJoinPacketCache.tags;
+         if (papoTags == null) {
+             papoTags = new ClientboundUpdateTagsPacket(TagNetworkSerialization.serializeTagsToNetwork(this.registries));
++            papoTags.papoEnableWireMemo(); // Papo - shared wire memo for the join-static tags packet
+             PapoJoinPacketCache.tags = papoTags;
+         }
+         packetSender.accept(papoTags);
+diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
+index b34a39f6760b468fac6190fd88c7b5089c10cb35..63de3100619844133675c559452556666b0bad43 100644
+--- a/net/minecraft/server/players/PlayerList.java
++++ b/net/minecraft/server/players/PlayerList.java
+@@ -195,9 +195,7 @@ public abstract class PlayerList {
+         serverGamePacketListenerImpl.send(new ClientboundPlayerAbilitiesPacket(player.getAbilities()));
+         serverGamePacketListenerImpl.send(new ClientboundSetHeldSlotPacket(player.getInventory().getSelectedSlot()));
+         RecipeManager recipeManager = this.server.getRecipeManager();
+-        serverGamePacketListenerImpl.send(
+-            new ClientboundUpdateRecipesPacket(recipeManager.getSynchronizedItemProperties(), recipeManager.getSynchronizedStonecutterRecipes())
+-        );
++        serverGamePacketListenerImpl.send(this.papoRecipesPacket(recipeManager)); // Papo - join-static cached instance with shared wire memo
+         this.sendPlayerPermissionLevel(player);
+         player.getStats().markAllDirty();
+         player.getRecipeBook().sendInitialRecipeBook(player);
+@@ -1272,6 +1270,7 @@ public abstract class PlayerList {
+         // Papo start - install the freshly built tags packet as the join-time cache (single point
+         // where tag content changes; also drops the registry-packet caches as a free backstop)
+         ClientboundUpdateTagsPacket papoTagsPacket = new ClientboundUpdateTagsPacket(TagNetworkSerialization.serializeTagsToNetwork(this.registries));
++        papoTagsPacket.papoEnableWireMemo(); // Papo - shared wire memo for the join-static tags packet
+         this.broadcastAll(papoTagsPacket);
+         net.minecraft.server.network.config.PapoJoinPacketCache.reload(papoTagsPacket);
+         // Papo end
+@@ -1283,9 +1282,8 @@ public abstract class PlayerList {
+     public void reloadRecipes() {
+         // CraftBukkit end
+         RecipeManager recipeManager = this.server.getRecipeManager();
+-        ClientboundUpdateRecipesPacket clientboundUpdateRecipesPacket = new ClientboundUpdateRecipesPacket(
+-            recipeManager.getSynchronizedItemProperties(), recipeManager.getSynchronizedStonecutterRecipes()
+-        );
++        this.papoCachedRecipesPacket = null; // Papo - synchronized data was rebuilt upstream (finalizeRecipeLoading); drop the cached instance
++        ClientboundUpdateRecipesPacket clientboundUpdateRecipesPacket = this.papoRecipesPacket(recipeManager);
+ 
+         for (ServerPlayer serverPlayer : this.players) {
+             serverPlayer.connection.send(clientboundUpdateRecipesPacket);
+@@ -1293,6 +1291,28 @@ public abstract class PlayerList {
+         }
+     }
+ 
++    // Papo start - join-static recipes packet cache with shared wire memo
++    // The synchronized recipe data (propertySets / stonecutterRecipes) is assigned exclusively in
++    // RecipeManager.finalizeRecipeLoading, whose no-arg overload routes through
++    // PlayerList.reloadResources -> reloadRecipes, which drops this cache - so a cached instance
++    // always reflects current data, and every join reuses one instance (vanilla broadcastAll /
++    // 0226 join-cache precedent for sharing packet instances). The wire memo lets each joining
++    // connection replay the first encode + DEFLATE of ~100-300 KiB of identical bytes.
++    private ClientboundUpdateRecipesPacket papoCachedRecipesPacket;
++
++    private ClientboundUpdateRecipesPacket papoRecipesPacket(RecipeManager recipeManager) {
++        ClientboundUpdateRecipesPacket papoCached = this.papoCachedRecipesPacket;
++        if (papoCached == null) {
++            papoCached = new ClientboundUpdateRecipesPacket(
++                recipeManager.getSynchronizedItemProperties(), recipeManager.getSynchronizedStonecutterRecipes()
++            );
++            papoCached.papoEnableWireMemo();
++            this.papoCachedRecipesPacket = papoCached;
++        }
++        return papoCached;
++    }
++    // Papo end - join-static recipes packet cache with shared wire memo
++
+     public boolean isAllowCommandsForAllPlayers() {
+         return this.allowCommandsForAllPlayers;
+     }

@@ -1,0 +1,167 @@
+# JMH version: 1.37
+# VM version: JDK 25.0.4, Java HotSpot(TM) 64-Bit Server VM, 25.0.4+7-LTS-189
+# VM invoker: F:\Java\25\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.JoinPacketMemoBench.afterFill
+
+# Run progress: 0.00% complete, ETA 00:00:48
+# Fork: 1 of 2
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/F:/Github/repo/Papo/benchmark/lib/jmh-core-1.37.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 7268369.565 ns/op
+# Warmup Iteration   2: 7004786.713 ns/op
+# Warmup Iteration   3: 7223761.151 ns/op
+Iteration   1: 6911883.448 ns/op
+Iteration   2: 6945649.655 ns/op
+Iteration   3: 6877230.137 ns/op
+Iteration   4: 6908543.448 ns/op
+Iteration   5: 6844510.204 ns/op
+
+# Run progress: 16.67% complete, ETA 00:00:41
+# Fork: 2 of 2
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/F:/Github/repo/Papo/benchmark/lib/jmh-core-1.37.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 6953290.972 ns/op
+# Warmup Iteration   2: 6720604.027 ns/op
+# Warmup Iteration   3: 6963413.889 ns/op
+Iteration   1: 6492612.903 ns/op
+Iteration   2: 6696379.470 ns/op
+Iteration   3: 7475617.037 ns/op
+Iteration   4: 7128859.574 ns/op
+Iteration   5: 6957221.918 ns/op
+
+
+Result "papo.bench.JoinPacketMemoBench.afterFill":
+  6923850.780 ±(99.9%) 388605.392 ns/op [Average]
+  (min, avg, max) = (6492612.903, 6923850.780, 7475617.037), stdev = 257038.406
+  CI (99.9%): [6535245.388, 7312456.171] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 25.0.4, Java HotSpot(TM) 64-Bit Server VM, 25.0.4+7-LTS-189
+# VM invoker: F:\Java\25\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.JoinPacketMemoBench.afterHit
+
+# Run progress: 33.33% complete, ETA 00:00:33
+# Fork: 1 of 2
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/F:/Github/repo/Papo/benchmark/lib/jmh-core-1.37.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 182709.074 ns/op
+# Warmup Iteration   2: 158997.823 ns/op
+# Warmup Iteration   3: 164563.057 ns/op
+Iteration   1: 160843.341 ns/op
+Iteration   2: 154703.367 ns/op
+Iteration   3: 165448.454 ns/op
+Iteration   4: 172266.004 ns/op
+Iteration   5: 171345.565 ns/op
+
+# Run progress: 50.00% complete, ETA 00:00:25
+# Fork: 2 of 2
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/F:/Github/repo/Papo/benchmark/lib/jmh-core-1.37.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 163416.832 ns/op
+# Warmup Iteration   2: 137738.040 ns/op
+# Warmup Iteration   3: 144983.302 ns/op
+Iteration   1: 170696.274 ns/op
+Iteration   2: 169112.080 ns/op
+Iteration   3: 166922.414 ns/op
+Iteration   4: 170252.875 ns/op
+Iteration   5: 176789.488 ns/op
+
+
+Result "papo.bench.JoinPacketMemoBench.afterHit":
+  167837.986 ±(99.9%) 9503.961 ns/op [Average]
+  (min, avg, max) = (154703.367, 167837.986, 176789.488), stdev = 6286.282
+  CI (99.9%): [158334.025, 177341.948] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 25.0.4, Java HotSpot(TM) 64-Bit Server VM, 25.0.4+7-LTS-189
+# VM invoker: F:\Java\25\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: papo.bench.JoinPacketMemoBench.before
+
+# Run progress: 66.67% complete, ETA 00:00:16
+# Fork: 1 of 2
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/F:/Github/repo/Papo/benchmark/lib/jmh-core-1.37.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 6922524.138 ns/op
+# Warmup Iteration   2: 6854077.397 ns/op
+# Warmup Iteration   3: 7024591.608 ns/op
+Iteration   1: 7094358.042 ns/op
+Iteration   2: 6267055.000 ns/op
+Iteration   3: 6546393.506 ns/op
+Iteration   4: 7171624.823 ns/op
+Iteration   5: 7015533.333 ns/op
+
+# Run progress: 83.33% complete, ETA 00:00:08
+# Fork: 2 of 2
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/F:/Github/repo/Papo/benchmark/lib/jmh-core-1.37.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: 7203942.446 ns/op
+# Warmup Iteration   2: 6776368.243 ns/op
+# Warmup Iteration   3: 7264731.655 ns/op
+Iteration   1: 7720033.333 ns/op
+Iteration   2: 7589060.902 ns/op
+Iteration   3: 7604930.597 ns/op
+Iteration   4: 7588637.313 ns/op
+Iteration   5: 7698609.160 ns/op
+
+
+Result "papo.bench.JoinPacketMemoBench.before":
+  7229623.601 ±(99.9%) 767635.110 ns/op [Average]
+  (min, avg, max) = (6267055.000, 7229623.601, 7720033.333), stdev = 507743.096
+  CI (99.9%): [6461988.491, 7997258.711] (assumes normal distribution)
+
+
+# Run complete. Total time: 00:00:50
+
+REMEMBER: The numbers below are just data. To gain reusable insights, you need to follow up on
+why the numbers are the way they are. Use profilers (see -prof, -lprof), design factorial
+experiments, perform baseline and negative tests that provide experimental control, make sure
+the benchmarking environment is safe on JVM/OS/HW level, ask for reviews from the domain experts.
+Do not assume the numbers tell you what you want them to tell.
+
+NOTE: Current JVM experimentally supports Compiler Blackholes, and they are in use. Please exercise
+extra caution when trusting the results, look into the generated code to check the benchmark still
+works, and factor in a small probability of new VM bugs. Additionally, while comparisons between
+different JVMs are already problematic, the performance difference caused by different Blackhole
+modes can be very significant. Please make sure you use the consistent Blackhole mode for comparisons.
+
+Benchmark                      Mode  Cnt        Score        Error  Units
+JoinPacketMemoBench.afterFill  avgt   10  6923850.780 ± 388605.392  ns/op
+JoinPacketMemoBench.afterHit   avgt   10   167837.986 ±   9503.961  ns/op
+JoinPacketMemoBench.before     avgt   10  7229623.601 ± 767635.110  ns/op
+
+Benchmark result is saved to results/bench-20260822-014838.json
