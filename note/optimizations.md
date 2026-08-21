@@ -2041,3 +2041,16 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 - **基准**：SectionBroadcastBench（480 变更小调色板+聚簇模型，编码 1,924B/压缩比 1.58）：before 34,364.342 ± 1,093 → afterHit **4,530.736 ± 802 ns/op（≈7.6×/观众，CI 分离）**；afterFill 与 before CI 重叠。首轮全随机模型 ratio=0.99 被自检证伪（真实批量更新方块 id 来自小调色板）——载荷模型经真实形态修正。
 - **风险**：低（编码路径分支局部、双 memo 机制 0242 已验；自检 20 观众字节全等）。
 - **留档**：chunk 共享实例编码 memo（+40KB/chunk 驻留内存权衡，未做）；explode（per-player 向量否决）——**多观众出站冗余面至此封闭**。
+
+---
+
+## 批次 74（2026-08-22）：join 静态大包构造缓存 + 双 memo（0245）
+
+主题：**多玩家网络稳定（join 突发域）**。0226 缓存了 tags/registry 包构造但编码+压缩仍逐 join；`ClientboundUpdateRecipesPacket` 每 join 重新构造（PlayerList:199）~100-300KB。本批：①recipes 包 join 静态构造缓存（0226 模式，失效信号=RecipeManager.finalizeRecipeLoading 唯一赋值点→reloadResources→reloadRecipes 清缓存，addRecipe/removeRecipe/datapack reload 全经此链）；②tags/registry/recipes 三族 join 静态包 arm 双 memo（静态实例驻留，快照一次性 ~200-500KB）；③两个 record 包类改同形态 final class（record 不能声明实例字段；grep 实证无 equals/hashCode 消费者）。报告：[note/report/perf/2026-08-22-jmh-microbench-batch74.md](report/perf/2026-08-22-jmh-microbench-batch74.md)。
+
+### 0245 — recipes 构造缓存 + 三族 join 静态包双 memo
+- **文件**：`ClientboundUpdateRecipesPacket.java`/`ClientboundRegistryDataPacket.java`（record→final class + Carrier）+ `ClientboundUpdateTagsPacket.java`（class + Carrier）+ `PlayerList.java`（papoRecipesPacket 缓存 + join/reloadRecipes 路由 + reloadTagData arm）+ `SynchronizeRegistriesTask.java`（缓存构建处 arm）。
+- **等价性**：包内容两次 finalizeRecipeLoading 间恒定（唯一赋值点实证，reload 整体替换字段）；跨玩家共享单实例为 vanilla 既有行为（reloadRecipes 本就单实例广播）；三类 codec 确定性 locale 无关（registryAccess 全连接同源）；memo 沿用 0242/0244 全部论证（threshold 戳/level 纪元/自描述段/配置阶段压缩已启用）；record→class 同构造形状同访问器名。
+- **基准**：JoinPacketMemoBench（1200 配方×3 栈×8 组件词模型，91.7KB/ratio 2.02；首轮纯 varint 模型被自检带外证伪后按 ItemStack 组件形态修正）：before 7,229,623.601 ± 767,635（**~7.2ms/join**）→ afterHit **167,837.986 ± 9,504 ns/op（≈43×/join，CI 分离）**；afterFill 与 before CI 重叠。50 玩家 join 突发外推 ≈ 355ms CPU 消除。
+- **风险**：低（构造缓存失效链完备实证；memo 机制三代同源；自检 10 join 字节全等）。
+- **留档**：sendLevelInfo/initInventoryMenu 双发（批次 64 红线外维持）；recipe book/advancement 初始包（per-player 状态不可共享）。
