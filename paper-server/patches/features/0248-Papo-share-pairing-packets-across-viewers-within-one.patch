@@ -1,0 +1,92 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 22 Aug 2026 02:34:48 +0800
+Subject: [PATCH] Papo: share pairing packets across viewers within one
+ updatePlayers sweep
+
+
+diff --git a/net/minecraft/server/level/ChunkMap.java b/net/minecraft/server/level/ChunkMap.java
+index 1076ff789e673a43ec30e9224cd275105571211f..1d0a89b70d2603c8bcc19bba5f055a3ca5ea3231 100644
+--- a/net/minecraft/server/level/ChunkMap.java
++++ b/net/minecraft/server/level/ChunkMap.java
+@@ -1476,9 +1476,19 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
+         public void updatePlayers(List<ServerPlayer> playersList) {
+             // Papo - hoist the sweep-invariant getEffectiveRange() (see moonrise$tick)
+             int papoEffectiveRange = this.getEffectiveRange();
+-            for (ServerPlayer serverPlayer : playersList) {
+-                this.updatePlayer(serverPlayer, papoEffectiveRange); // Papo - hoisted range
++            // Papo start - pairing packet sharing across this one continuous sweep: new-entity
++            // registration runs addPairing for several players back-to-back with no entity state
++            // change in between, so viewers receive byte-identical pairing packets (see
++            // ServerEntity.addPairing)
++            this.serverEntity.papoBeginPairingShare();
++            try {
++                for (ServerPlayer serverPlayer : playersList) {
++                    this.updatePlayer(serverPlayer, papoEffectiveRange); // Papo - hoisted range
++                }
++            } finally {
++                this.serverEntity.papoEndPairingShare();
+             }
++            // Papo end - pairing packet sharing across this one continuous sweep
+         }
+     }
+ }
+diff --git a/net/minecraft/server/level/ServerEntity.java b/net/minecraft/server/level/ServerEntity.java
+index c622d07f8fa13216132fff5021273e89c67b89c3..a80b8394b01d0d29fce7bf3d2511af805725d791 100644
+--- a/net/minecraft/server/level/ServerEntity.java
++++ b/net/minecraft/server/level/ServerEntity.java
+@@ -357,13 +357,52 @@ public class ServerEntity {
+         // Papo start - pre-size the pairing packet list: sendPairingData produces 2-4 packets for the
+         // common entity shapes (spawn/typed data/passengers/equipment), and the default capacity of 10
+         // wastes allocation on every tracked-entity pairing (chunk-load bursts).
+-        List<Packet<? super ClientGamePacketListener>> list = new ArrayList<>(4);
+-        this.sendPairingData(player, list::add);
++        List<Packet<? super ClientGamePacketListener>> list;
++        // Papo start - share pairing packets across viewers within one continuous sweep
++        // Inside a single TrackedEntity.updatePlayers(List) sweep (new-entity registration), several
++        // players pair back-to-back with no entity state change in between (single-threaded loop,
++        // no callback into entity ticking; sendPairingData reads entity state only - the
++        // entity.getId()==player.getId() attributes branch is unreachable on this path because
++        // updatePlayer guards player != entity), so every viewer receives byte-identical packets.
++        // Build them once per sweep and replay the same instances (packet sharing across players is
++        // established vanilla behavior). The window is ONLY the sweep - bracketed by
++        // papoBeginPairingShare/papoEndPairingShare, and every addPairing outside it (player
++        // walking into range etc.) builds fresh as before. updateDataBeforeSync and
++        // detectEquipmentUpdates are idempotent checks, so running them once per sweep instead of
++        // once per viewer is unobservable.
++        if (this.papoPairingShareDepth > 0 && this.papoPairingShareCache != null) {
++            list = this.papoPairingShareCache;
++        } else {
++            list = new ArrayList<>(4);
++            this.sendPairingData(player, list::add);
++            if (this.papoPairingShareDepth > 0) {
++                this.papoPairingShareCache = list;
++            }
++        }
++        // Papo end - share pairing packets across viewers within one continuous sweep
+         player.connection.send(new ClientboundBundlePacket(list));
+         this.entity.startSeenByPlayer(player);
+         // Papo end - pre-size the pairing packet list
+     }
+ 
++    // Papo start - share pairing packets across viewers within one continuous sweep
++    private int papoPairingShareDepth;
++    private List<Packet<? super ClientGamePacketListener>> papoPairingShareCache;
++
++    public void papoBeginPairingShare() {
++        this.papoPairingShareDepth++;
++    }
++
++    public void papoEndPairingShare() {
++        if (this.papoPairingShareDepth > 0) {
++            this.papoPairingShareDepth--;
++        }
++        if (this.papoPairingShareDepth == 0) {
++            this.papoPairingShareCache = null; // sweep over: later pairings build fresh
++        }
++    }
++    // Papo end - share pairing packets across viewers within one continuous sweep
++
+     public void sendPairingData(ServerPlayer player, Consumer<Packet<ClientGamePacketListener>> consumer) {
+         this.entity.updateDataBeforeSync();
+         if (this.entity.isRemoved()) {
