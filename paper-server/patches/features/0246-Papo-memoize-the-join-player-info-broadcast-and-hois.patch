@@ -1,0 +1,87 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 22 Aug 2026 01:57:55 +0800
+Subject: [PATCH] Papo: memoize the join player-info broadcast and hoist the
+ unlisted variant
+
+
+diff --git a/net/minecraft/network/protocol/game/ClientboundPlayerInfoUpdatePacket.java b/net/minecraft/network/protocol/game/ClientboundPlayerInfoUpdatePacket.java
+index 8212337ab7c30491926f50a9a9fa1f0451c06b47..793341e8c9f4ea8f4f9ae32af36fa9124333bcc2 100644
+--- a/net/minecraft/network/protocol/game/ClientboundPlayerInfoUpdatePacket.java
++++ b/net/minecraft/network/protocol/game/ClientboundPlayerInfoUpdatePacket.java
+@@ -10,12 +10,14 @@ import java.util.Objects;
+ import java.util.UUID;
+ import net.minecraft.Optionull;
+ import net.minecraft.network.FriendlyByteBuf;
++import net.minecraft.network.PapoSharedWireMemo;
+ import net.minecraft.network.RegistryFriendlyByteBuf;
+ import net.minecraft.network.chat.Component;
+ import net.minecraft.network.chat.ComponentSerialization;
+ import net.minecraft.network.chat.RemoteChatSession;
+ import net.minecraft.network.codec.ByteBufCodecs;
+ import net.minecraft.network.codec.StreamCodec;
++import org.jspecify.annotations.Nullable;
+ import net.minecraft.network.protocol.Packet;
+ import net.minecraft.network.protocol.PacketType;
+ import net.minecraft.server.level.ServerPlayer;
+@@ -23,7 +25,7 @@ import net.minecraft.world.entity.player.PlayerModelPart;
+ import net.minecraft.world.level.GameType;
+ import org.jspecify.annotations.Nullable;
+ 
+-public class ClientboundPlayerInfoUpdatePacket implements Packet<ClientGamePacketListener> {
++public class ClientboundPlayerInfoUpdatePacket implements Packet<ClientGamePacketListener>, net.minecraft.network.PapoSharedWireMemo.Carrier {
+     public static final StreamCodec<RegistryFriendlyByteBuf, ClientboundPlayerInfoUpdatePacket> STREAM_CODEC = Packet.codec(
+         ClientboundPlayerInfoUpdatePacket::write, ClientboundPlayerInfoUpdatePacket::new
+     );
+@@ -265,4 +267,23 @@ public class ClientboundPlayerInfoUpdatePacket implements Packet<ClientGamePacke
+             );
+         }
+     }
++
++    // Papo start - shared wire memo for the join player-info broadcast
++    // PlayerList sends one createPlayerInitializing instance to every online player on join
++    // (profile entries with skin properties are ~0.5-1.5 KiB, above the compression threshold);
++    // the memo replays the first connection's encode + DEFLATE - see PapoSharedWireMemo. The
++    // packet is immutable and its codec is deterministic and locale-independent. Armed only at
++    // the join broadcast sites; every other construction keeps a null memo.
++    private PapoSharedWireMemo papoWireMemo;
++
++    public void papoEnableWireMemo() {
++        this.papoWireMemo = PapoSharedWireMemo.papoCreateEncodeArmed();
++    }
++
++    @Override
++    public @Nullable PapoSharedWireMemo papoWireMemo() {
++        return this.papoWireMemo;
++    }
++    // Papo end - shared wire memo for the join player-info broadcast
++
+ }
+diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
+index 63de3100619844133675c559452556666b0bad43..b4ff1d617d0b8559fc91ccd81c423b80543298cf 100644
+--- a/net/minecraft/server/players/PlayerList.java
++++ b/net/minecraft/server/players/PlayerList.java
+@@ -252,6 +252,8 @@ public abstract class PlayerList {
+ 
+         // CraftBukkit start - sendAll above replaced with this loop
+         ClientboundPlayerInfoUpdatePacket packet = ClientboundPlayerInfoUpdatePacket.createPlayerInitializing(List.of(player)); // Paper - Add Listing API for Player
++        packet.papoEnableWireMemo(); // Papo - one instance goes to every online player; replay its encode + DEFLATE per connection (see PapoSharedWireMemo)
++        ClientboundPlayerInfoUpdatePacket papoUnlistedPacket = null; // Papo - hoist the unlisted variant: same construction for every receiver, built lazily
+ 
+         final List<ServerPlayer> onlinePlayers = Lists.newArrayListWithExpectedSize(this.players.size() - 1); // Paper - Use single player info update packet on join
+         for (int i = 0; i < this.players.size(); ++i) {
+@@ -264,7 +266,13 @@ public abstract class PlayerList {
+                     entityplayer1.connection.send(packet);
+                     // Paper start - Add Listing API for Player
+                 } else {
+-                    entityplayer1.connection.send(ClientboundPlayerInfoUpdatePacket.createSinglePlayerInitializing(player, false));
++                    // Papo start - hoist the unlisted variant out of the loop (identical construction for every receiver)
++                    if (papoUnlistedPacket == null) {
++                        papoUnlistedPacket = ClientboundPlayerInfoUpdatePacket.createSinglePlayerInitializing(player, false);
++                        papoUnlistedPacket.papoEnableWireMemo();
++                    }
++                    entityplayer1.connection.send(papoUnlistedPacket);
++                    // Papo end - hoist the unlisted variant out of the loop (identical construction for every receiver)
+                 }
+                 // Paper end - Add Listing API for Player
+             }
