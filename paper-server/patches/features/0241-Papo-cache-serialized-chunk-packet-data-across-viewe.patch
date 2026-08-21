@@ -1,0 +1,201 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 22 Aug 2026 00:49:29 +0800
+Subject: [PATCH] Papo: cache serialized chunk packet data across viewers
+
+
+diff --git a/net/minecraft/network/protocol/game/ClientboundLevelChunkPacketData.java b/net/minecraft/network/protocol/game/ClientboundLevelChunkPacketData.java
+index 597fc00ca8fc16b59c1d93745f5488a2a7880d8e..5454c3ffc9d65751b046318254d189f39acf2141 100644
+--- a/net/minecraft/network/protocol/game/ClientboundLevelChunkPacketData.java
++++ b/net/minecraft/network/protocol/game/ClientboundLevelChunkPacketData.java
+@@ -65,7 +65,26 @@ public class ClientboundLevelChunkPacketData {
+             chunkPacketInfo.setBuffer(this.buffer);
+         }
+         extractChunkData(new FriendlyByteBuf(this.getWriteBuffer()), levelChunk, chunkPacketInfo);
+-        this.blockEntitiesData = Lists.newArrayListWithExpectedSize(levelChunk.getBlockEntities().size()); // Papo - presize (only appended here, only iterated later)
++        this.blockEntitiesData = papoBuildBlockEntityData(levelChunk, this.extraPackets);
++    }
++
++    // Papo start - multi-viewer chunk packet data cache
++    // Reuses a previously serialized heightmaps/buffer pair (owned by LevelChunk's cache, only
++    // replaced while papoChunkDataVersion is unchanged) while block entity data is rebuilt fresh:
++    // block entity *content* changes do not bump any chunk-level mutation signal, so their
++    // getUpdateTag() values must be read at construction time like vanilla does.
++    ClientboundLevelChunkPacketData(Map<Heightmap.Types, long[]> heightmaps, byte[] buffer, LevelChunk levelChunk) {
++        this.heightmaps = heightmaps;
++        this.buffer = buffer;
++        this.blockEntitiesData = papoBuildBlockEntityData(levelChunk, this.extraPackets);
++    }
++
++    byte[] papoSerializedBuffer() {
++        return this.buffer;
++    }
++
++    private static List<ClientboundLevelChunkPacketData.BlockEntityInfo> papoBuildBlockEntityData(LevelChunk levelChunk, List<net.minecraft.network.protocol.Packet<?>> extraPackets) {
++        List<ClientboundLevelChunkPacketData.BlockEntityInfo> blockEntitiesData = Lists.newArrayListWithExpectedSize(levelChunk.getBlockEntities().size()); // Papo - presize (only appended here, only iterated later)
+         int totalTileEntities = 0; // Paper - Handle oversized block entities in chunks
+ 
+         for (Entry<BlockPos, BlockEntity> entry : levelChunk.getBlockEntities().entrySet()) {
+@@ -73,14 +92,16 @@ public class ClientboundLevelChunkPacketData {
+             if (++totalTileEntities > BLOCK_ENTITY_LIMIT) {
+                 net.minecraft.network.protocol.Packet<ClientGamePacketListener> packet = entry.getValue().getUpdatePacket();
+                 if (packet != null) {
+-                    this.extraPackets.add(packet);
++                    extraPackets.add(packet);
+                     continue;
+                 }
+             }
+             // Paper end - Handle oversized block entities in chunks
+-            this.blockEntitiesData.add(ClientboundLevelChunkPacketData.BlockEntityInfo.create(entry.getValue()));
++            blockEntitiesData.add(ClientboundLevelChunkPacketData.BlockEntityInfo.create(entry.getValue()));
+         }
++        return blockEntitiesData;
+     }
++    // Papo end - multi-viewer chunk packet data cache
+ 
+     public ClientboundLevelChunkPacketData(RegistryFriendlyByteBuf buffer, int x, int z) {
+         this.heightmaps = HEIGHTMAPS_STREAM_CODEC.decode(buffer);
+diff --git a/net/minecraft/network/protocol/game/ClientboundLevelChunkWithLightPacket.java b/net/minecraft/network/protocol/game/ClientboundLevelChunkWithLightPacket.java
+index 9f43cfbdd49df61de869fd65fb2cbea39a563260..9ffe238c03ab5a2151f89ae3ddea13f151bf4ac2 100644
+--- a/net/minecraft/network/protocol/game/ClientboundLevelChunkWithLightPacket.java
++++ b/net/minecraft/network/protocol/game/ClientboundLevelChunkWithLightPacket.java
+@@ -45,6 +45,36 @@ public class ClientboundLevelChunkWithLightPacket implements Packet<ClientGamePa
+         chunk.getLevel().chunkPacketBlockController.modifyBlocks(this, chunkPacketInfo); // Paper - Anti-Xray - Modify blocks
+     }
+ 
++    // Papo start - multi-viewer chunk packet data cache
++    // Only used when chunkPacketBlockController.shouldModify(...) == false: there the vanilla
++    // constructor passes chunkPacketInfo == null, and modifyBlocks(packet, null) is exactly a
++    // setReady(true) for both controller implementations (checked ChunkPacketBlockController and
++    // ChunkPacketBlockControllerAntiXray), which this constructor replicates directly.
++    private ClientboundLevelChunkWithLightPacket(int x, int z, ClientboundLevelChunkPacketData chunkData, LevelLightEngine lightEngine) {
++        this.x = x;
++        this.z = z;
++        this.chunkData = chunkData;
++        this.lightData = new ClientboundLightUpdatePacketData(new ChunkPos(x, z), lightEngine, null, null);
++        this.ready = true;
++    }
++
++    public static ClientboundLevelChunkWithLightPacket papoCreateCached(LevelChunk chunk, LevelLightEngine lightEngine) {
++        ChunkPos pos = chunk.getPos();
++        if (chunk.papoChunkPacketCacheValid()) {
++            return new ClientboundLevelChunkWithLightPacket(
++                pos.x,
++                pos.z,
++                new ClientboundLevelChunkPacketData(chunk.papoPacketHeightmapsCache(), chunk.papoPacketBufferCache(), chunk),
++                lightEngine
++            );
++        }
++        ClientboundLevelChunkWithLightPacket packet = new ClientboundLevelChunkWithLightPacket(chunk, lightEngine, null, null, false);
++        ClientboundLevelChunkPacketData data = packet.getChunkData();
++        chunk.papoStoreChunkPacketCache(data.getHeightmaps(), data.papoSerializedBuffer());
++        return packet;
++    }
++    // Papo end - multi-viewer chunk packet data cache
++
+     private ClientboundLevelChunkWithLightPacket(RegistryFriendlyByteBuf buffer) {
+         this.x = buffer.readInt();
+         this.z = buffer.readInt();
+diff --git a/net/minecraft/server/network/PlayerChunkSender.java b/net/minecraft/server/network/PlayerChunkSender.java
+index 54d007e2f8c29b887a6de3465f0eda2d262c87e1..ed6435f3ee6214e8a86451269b36ed0649e282ea 100644
+--- a/net/minecraft/server/network/PlayerChunkSender.java
++++ b/net/minecraft/server/network/PlayerChunkSender.java
+@@ -79,7 +79,15 @@ public class PlayerChunkSender {
+     public static void sendChunk(ServerGamePacketListenerImpl packetListener, ServerLevel level, LevelChunk chunk) { // Paper - rewrite chunk system - public
+         // Paper start - Anti-Xray
+         final boolean shouldModify = level.chunkPacketBlockController.shouldModify(packetListener.player, chunk);
+-        packetListener.send(new ClientboundLevelChunkWithLightPacket(chunk, level.getLightEngine(), null, null, shouldModify));
++        if (shouldModify) {
++            packetListener.send(new ClientboundLevelChunkWithLightPacket(chunk, level.getLightEngine(), null, null, shouldModify));
++        } else {
++            // Papo start - multi-viewer chunk packet data cache: reuse the serialized
++            // heightmaps/buffer across viewers while the chunk is unchanged (per-chunk version
++            // counter, see LevelChunk); block entity tags and light data stay fresh per packet.
++            packetListener.send(ClientboundLevelChunkWithLightPacket.papoCreateCached(chunk, level.getLightEngine()));
++            // Papo end - multi-viewer chunk packet data cache
++        }
+         // Paper end - Anti-Xray
+         // Paper start - PlayerChunkLoadEvent
+         if (io.papermc.paper.event.packet.PlayerChunkLoadEvent.getHandlerList().getRegisteredListeners().length > 0) {
+diff --git a/net/minecraft/world/level/chunk/LevelChunk.java b/net/minecraft/world/level/chunk/LevelChunk.java
+index 48a47c0fa42327305299591209cac8e717656995..be9b929c792d04c867b41b9d79236b1ca80f0452 100644
+--- a/net/minecraft/world/level/chunk/LevelChunk.java
++++ b/net/minecraft/world/level/chunk/LevelChunk.java
+@@ -106,6 +106,42 @@ public class LevelChunk extends ChunkAccess implements DebugValueSource, ca.spot
+     private boolean postProcessingDone;
+     private ca.spottedleaf.moonrise.patches.chunk_system.scheduling.NewChunkHolder chunkAndHolder;
+ 
++    // Papo start - multi-viewer chunk packet data cache (see ClientboundLevelChunkWithLightPacket.papoCreateCached)
++    // papoChunkDataVersion is bumped on every mutation that changes the serialized chunk packet
++    // payload: block states + heightmaps (setBlockState), the block entity set (setBlockEntity /
++    // removeBlockEntity) and biomes (setBiome). While the version is unchanged the serialized
++    // heightmaps/buffer are shared across viewers; block entity tags and light data are rebuilt
++    // fresh per packet (their content changes do not bump any chunk-level signal). Cache reads and
++    // writes only happen on the main thread (chunk sends are main-thread); the AtomicLong covers
++    // worldgen-thread setBlockState calls on an imposter-wrapped chunk before it becomes full.
++    private final java.util.concurrent.atomic.AtomicLong papoChunkDataVersion = new java.util.concurrent.atomic.AtomicLong();
++    private long papoChunkPacketCacheVersion = Long.MIN_VALUE;
++    private Map<Heightmap.Types, long[]> papoPacketHeightmapsCache;
++    private byte[] papoPacketBufferCache;
++
++    public void papoBumpChunkDataVersion() {
++        this.papoChunkDataVersion.getAndIncrement();
++    }
++
++    public boolean papoChunkPacketCacheValid() {
++        return this.papoPacketBufferCache != null && this.papoChunkPacketCacheVersion == this.papoChunkDataVersion.get();
++    }
++
++    public void papoStoreChunkPacketCache(Map<Heightmap.Types, long[]> heightmaps, byte[] buffer) {
++        this.papoPacketHeightmapsCache = heightmaps;
++        this.papoPacketBufferCache = buffer;
++        this.papoChunkPacketCacheVersion = this.papoChunkDataVersion.get();
++    }
++
++    public Map<Heightmap.Types, long[]> papoPacketHeightmapsCache() {
++        return this.papoPacketHeightmapsCache;
++    }
++
++    public byte[] papoPacketBufferCache() {
++        return this.papoPacketBufferCache;
++    }
++    // Papo end - multi-viewer chunk packet data cache
++
+     @Override
+     public final boolean moonrise$isPostProcessingDone() {
+         return this.postProcessingDone;
+@@ -392,6 +428,7 @@ public class LevelChunk extends ChunkAccess implements DebugValueSource, ca.spot
+             if (blockState == state) {
+                 return null;
+             } else {
++                this.papoBumpChunkDataVersion(); // Papo - serialized chunk payload changed (section + heightmaps below)
+                 Block block = state.getBlock();
+                 this.heightmaps.get(Heightmap.Types.MOTION_BLOCKING).update(i, y, i2, state);
+                 this.heightmaps.get(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES).update(i, y, i2, state);
+@@ -574,9 +611,18 @@ public class LevelChunk extends ChunkAccess implements DebugValueSource, ca.spot
+             if (blockEntity1 != null && blockEntity1 != blockEntity) {
+                 blockEntity1.setRemoved();
+             }
++            this.papoBumpChunkDataVersion(); // Papo - serialized chunk payload changed (block entity set)
+         }
+     }
+ 
++    // Papo start - biome writes change the serialized chunk packet payload
++    @Override
++    public void setBiome(int x, int y, int z, net.minecraft.core.Holder<net.minecraft.world.level.biome.Biome> biome) {
++        this.papoBumpChunkDataVersion();
++        super.setBiome(x, y, z, biome);
++    }
++    // Papo end
++
+     @Override
+     public @Nullable CompoundTag getBlockEntityNbtForSaving(BlockPos pos, HolderLookup.Provider registries) {
+         BlockEntity blockEntity = this.getBlockEntity(pos);
+@@ -597,6 +643,7 @@ public class LevelChunk extends ChunkAccess implements DebugValueSource, ca.spot
+ 
+     @Override
+     public void removeBlockEntity(BlockPos pos) {
++        this.papoBumpChunkDataVersion(); // Papo - serialized chunk payload changed (block entity set; over-bump is safe)
+         if (this.isInLevel()) {
+             BlockEntity blockEntity = this.blockEntities.remove(pos);
+             // CraftBukkit start - SPIGOT-5561: Also remove from pending map
