@@ -1,0 +1,141 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 22 Aug 2026 01:34:03 +0800
+Subject: [PATCH] Papo: encode-stage memo and section-blocks-update broadcast
+ sharing
+
+
+diff --git a/net/minecraft/network/PacketEncoder.java b/net/minecraft/network/PacketEncoder.java
+index 901b6b4aae4e0fd1f86ce93f32d12f9f00644a83..2118d08376a2d2dd5bd9288ec63c9190a22f164f 100644
+--- a/net/minecraft/network/PacketEncoder.java
++++ b/net/minecraft/network/PacketEncoder.java
+@@ -58,7 +58,27 @@ public class PacketEncoder<T extends PacketListener> extends MessageToByteEncode
+ 
+         try {
+             ADVENTURE_LOCALE.set(channelHandlerContext.channel().attr(io.papermc.paper.adventure.PaperAdventure.LOCALE_ATTRIBUTE).get()); // Paper - adventure; set player's locale
+-            this.protocolInfo.codec().encode(byteBuf, packet);
++            // Papo start - shared encode memo
++            // For a memo-armed packet sent to several connections (transient broadcast packets),
++            // replay the first encode's exact bytes instead of walking the codec again. The
++            // snapshot is taken from this very buffer right after the first codec encode, so hit
++            // and miss paths produce byte-identical output; the PacketTooLarge check below reads
++            // readableBytes() which is identical either way.
++            if (packet instanceof PapoSharedWireMemo.Carrier papoCarrier && papoCarrier.papoWireMemo() != null) {
++                PapoSharedWireMemo papoMemo = papoCarrier.papoWireMemo();
++                byte[] papoCachedEncode = papoMemo.papoEncoded();
++                if (papoCachedEncode != null) {
++                    byteBuf.writeBytes(papoCachedEncode);
++                } else {
++                    this.protocolInfo.codec().encode(byteBuf, packet);
++                    byte[] papoEncodeSnapshot = new byte[byteBuf.readableBytes()];
++                    byteBuf.getBytes(PapoOutboundFraming.HEADROOM, papoEncodeSnapshot);
++                    papoMemo.papoStoreEncoded(papoEncodeSnapshot);
++                }
++            } else {
++                this.protocolInfo.codec().encode(byteBuf, packet);
++            }
++            // Papo end - shared encode memo
+             // Papo start - zero-copy outbound framing
+             // Publish this buffer's identity for the next outbound stage (same event loop, next
+             // handler in the same write traversal). Only published when the real framing prepender is
+diff --git a/net/minecraft/network/PapoSharedWireMemo.java b/net/minecraft/network/PapoSharedWireMemo.java
+index c54f090366c3bc695d2b6057ecee6a948a8640a9..64f5257a5fa3be9c1f2f7e9d82e29e314f669d1e 100644
+--- a/net/minecraft/network/PapoSharedWireMemo.java
++++ b/net/minecraft/network/PapoSharedWireMemo.java
+@@ -52,6 +52,13 @@ public final class PapoSharedWireMemo {
+         return new PapoSharedWireMemo();
+     }
+ 
++    /** Creates a memo with the encoded-bytes stage armed (transient broadcast packets only). */
++    public static PapoSharedWireMemo papoCreateEncodeArmed() {
++        PapoSharedWireMemo memo = new PapoSharedWireMemo();
++        memo.papoArmEncodeMemo();
++        return memo;
++    }
++
+     static void papoStampLevel(int level) {
+         if (PAPO_LAST_LEVEL.getAndSet(level) != level) {
+             PAPO_LEVEL_EPOCH.incrementAndGet();
+@@ -85,4 +92,28 @@ public final class PapoSharedWireMemo {
+         @Nullable
+         PapoSharedWireMemo papoWireMemo();
+     }
++
++    /**
++     * Encoded-bytes memo: the exact bytes {@code PacketEncoder} produced for this packet instance
++     * on its first encode. Only armed for transient broadcast packets whose codecs are fully
++     * deterministic and locale-independent (the same instance is encoded once per receiving
++     * connection); long-lived shared packets (chunk sends held by ChunkHolder) do not arm it, as
++     * the ~40 KiB snapshot would be pinned for the chunk's lifetime.
++     */
++    private volatile boolean papoEncodeArmed;
++    private volatile byte @Nullable [] papoEncoded;
++
++    public void papoArmEncodeMemo() {
++        this.papoEncodeArmed = true;
++    }
++
++    public byte @Nullable [] papoEncoded() {
++        return this.papoEncoded;
++    }
++
++    void papoStoreEncoded(byte[] encoded) {
++        if (this.papoEncodeArmed && this.papoEncoded == null) {
++            this.papoEncoded = encoded; // volatile store publishes the fully-initialised array
++        }
++    }
+ }
+diff --git a/net/minecraft/network/protocol/game/ClientboundLightUpdatePacket.java b/net/minecraft/network/protocol/game/ClientboundLightUpdatePacket.java
+index d8a63f776618bbd1507dd93a4bdd869e21faa48d..12520ce77d08cf5b876e8bf18a8bc0ff0cd50cb9 100644
+--- a/net/minecraft/network/protocol/game/ClientboundLightUpdatePacket.java
++++ b/net/minecraft/network/protocol/game/ClientboundLightUpdatePacket.java
+@@ -66,7 +66,7 @@ public class ClientboundLightUpdatePacket implements Packet<ClientGamePacketList
+     // see PapoSharedWireMemo for the equivalence and visibility contract. The packet is
+     // immutable and its codec is locale-independent, so encoded bytes are identical across
+     // connections; the instance is per-broadcast-call (transient), so the memo dies with it.
+-    private final PapoSharedWireMemo papoWireMemo = PapoSharedWireMemo.papoCreate();
++    private final PapoSharedWireMemo papoWireMemo = PapoSharedWireMemo.papoCreateEncodeArmed();
+ 
+     @Override
+     public PapoSharedWireMemo papoWireMemo() {
+diff --git a/net/minecraft/network/protocol/game/ClientboundSectionBlocksUpdatePacket.java b/net/minecraft/network/protocol/game/ClientboundSectionBlocksUpdatePacket.java
+index cb0dd1aa58b8b5972cd8410e1e22fda64f329105..d02454d320890034acf0fb848720f617a2a4c035 100644
+--- a/net/minecraft/network/protocol/game/ClientboundSectionBlocksUpdatePacket.java
++++ b/net/minecraft/network/protocol/game/ClientboundSectionBlocksUpdatePacket.java
+@@ -5,6 +5,7 @@ import java.util.function.BiConsumer;
+ import net.minecraft.core.BlockPos;
+ import net.minecraft.core.SectionPos;
+ import net.minecraft.network.FriendlyByteBuf;
++import net.minecraft.network.PapoSharedWireMemo;
+ import net.minecraft.network.codec.StreamCodec;
+ import net.minecraft.network.protocol.Packet;
+ import net.minecraft.network.protocol.PacketType;
+@@ -12,7 +13,7 @@ import net.minecraft.world.level.block.Block;
+ import net.minecraft.world.level.block.state.BlockState;
+ import net.minecraft.world.level.chunk.LevelChunkSection;
+ 
+-public class ClientboundSectionBlocksUpdatePacket implements Packet<ClientGamePacketListener> {
++public class ClientboundSectionBlocksUpdatePacket implements Packet<ClientGamePacketListener>, PapoSharedWireMemo.Carrier {
+     public static final StreamCodec<FriendlyByteBuf, ClientboundSectionBlocksUpdatePacket> STREAM_CODEC = Packet.codec(
+         ClientboundSectionBlocksUpdatePacket::write, ClientboundSectionBlocksUpdatePacket::new
+     );
+@@ -91,4 +92,19 @@ public class ClientboundSectionBlocksUpdatePacket implements Packet<ClientGamePa
+             consumer.accept(mutableBlockPos, this.states[i]);
+         }
+     }
++
++    // Papo start - shared wire memos for multi-recipient broadcasts
++    // ChunkHolder.broadcastChanges sends this same instance to every player tracking the chunk
++    // (large redstone contraptions / explosions batch dozens-hundreds of block changes per section
++    // per tick); every connection would otherwise encode and DEFLATE identical bytes. The packet
++    // is immutable, its codec is a deterministic varint walk and locale-independent, and the
++    // instance is per-broadcast-call (transient) - see PapoSharedWireMemo for the equivalence and
++    // visibility contract. Below the compression threshold only the encode stage memo pays off.
++    private final PapoSharedWireMemo papoWireMemo = PapoSharedWireMemo.papoCreateEncodeArmed();
++
++    @Override
++    public PapoSharedWireMemo papoWireMemo() {
++        return this.papoWireMemo;
++    }
++    // Papo end - shared wire memos for multi-recipient broadcasts
+ }
