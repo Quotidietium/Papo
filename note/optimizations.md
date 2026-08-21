@@ -2054,3 +2054,16 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 - **基准**：JoinPacketMemoBench（1200 配方×3 栈×8 组件词模型，91.7KB/ratio 2.02；首轮纯 varint 模型被自检带外证伪后按 ItemStack 组件形态修正）：before 7,229,623.601 ± 767,635（**~7.2ms/join**）→ afterHit **167,837.986 ± 9,504 ns/op（≈43×/join，CI 分离）**；afterFill 与 before CI 重叠。50 玩家 join 突发外推 ≈ 355ms CPU 消除。
 - **风险**：低（构造缓存失效链完备实证；memo 机制三代同源；自检 10 join 字节全等）。
 - **留档**：sendLevelInfo/initInventoryMenu 双发（批次 64 红线外维持）；recipe book/advancement 初始包（per-player 状态不可共享）。
+
+---
+
+## 批次 75（2026-08-22）：join 玩家信息广播 memo（0246）
+
+主题：**多玩家网络稳定（join 突发域收尾）**。每次 join，同一 `ClientboundPlayerInfoUpdatePacket` 实例（新玩家条目 ~0.5-1.5KB 超阈值）发给每个在线玩家——每连接各自编码+DEFLATE；unlisted 变体更在循环内重复构造同参数包。本批：两站点 arm 双 memo + unlisted 构造惰性提出循环外。报告：[note/report/perf/2026-08-22-jmh-microbench-batch75.md](report/perf/2026-08-22-jmh-microbench-batch75.md)。
+
+### 0246 — PlayerInfoUpdate join 广播双 memo + unlisted 提出
+- **文件**：`ClientboundPlayerInfoUpdatePacket.java`（Carrier + memo）+ `PlayerList.java`（join 主包 arm / unlisted 惰性提出 + arm）。
+- **等价性**：主包 vanilla 本就单实例循环发送；unlisted 构造参数 (player,false) 与循环变量无关（逐行核验），提出后各接收者收同一实例（与主包同构），惰性构造保持零观众零构造语义；memo 机制沿用 0242/0244；其余构造点（latency/gamemode/hat）memo null 零影响。
+- **基准**：PlayerInfoBroadcastBench（单玩家条目 737B/ratio 1.20；首轮 126B 模型被自检带外证伪后按真实签名规模修正）：before 12,206 ± 1,963 → afterHit **1,412.870 ± 99.941 ns/op（≈8.6×/观众，CI 分离）**；30 观众 join ≈ 0.33ms + unlisted 构造归一。
+- **风险**：低（单类两站点；自检 30 观众字节全等）。
+- **同批否定结论（留档）**：入站解压域无优化点（两路径均按声明大小精确分配）；UPDATE_LATENCY 不可共享（canSee 视角 per-target）；UPDATE_HAT/GAME_MODE 小包不压缩不扩展；join 域剩余均 per-player 内容或红线外——**join 冗余面封闭**。
