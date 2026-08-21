@@ -2016,3 +2016,15 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 - **基准**：SharedChunkWireBench（41,189B chunk 型载荷，压缩比 3.99× 贴近实测 4.9×，JDK Deflater 真实压缩）：before 223,680.700 ± 4,933 → afterHit **3,509.720 ± 87 ns/op（≈63.7×/观众，CI 完全分离）**；afterFill 与 before CI 重叠（快照开销噪声级）。20 观众 × 64 chunk 突发 ≈ 282ms CPU 消除。
 - **风险**：低-中（触碰出站管线但机制挂接在 0217 已验证的身份通道上；字节等价有真实 Deflater 对拍实证；光照亚 tick 窗口自愈且与 vanilla 增量语义一致）。
 - **暂缓**：BE-containing chunk 共享（BE 内容无信号，红线否决——走批次 70 per-观众路径）；编码阶段 memo（次级 ~10-20µs，留档）。
+
+---
+
+## 批次 72（2026-08-22）：光照增量广播压缩 memo（0243）
+
+主题：**多玩家网络稳定**——0242 的压缩 memo 扩展到**光照增量广播域**。`ChunkHolder.broadcastChanges` 把同一个 `ClientboundLightUpdatePacket` 实例发给每 chunk 全部追踪玩家（黄昏/黎明光照传播期：每 tick 多 chunk × N 玩家），每连接对相同 10-40KB 各自 DEFLATE。本批单文件改动：`ClientboundLightUpdatePacket` 实现 `PapoSharedWireMemo.Carrier` 并构造时挂 memo（PacketEncoder/CompressionEncoder 的 0242 机制原样生效）。报告：[note/report/perf/2026-08-22-jmh-microbench-batch72.md](report/perf/2026-08-22-jmh-microbench-batch72.md)。
+
+### 0243 — ClientboundLightUpdatePacket 广播压缩 memo
+- **等价性**：同实例广播为 vanilla 既有行为（broadcast(players, packet)）；包不可变、codec locale 无关 ⇒ 各连接编码字节相同，memo 段可逐字节重放；包为每次 broadcast 新建（瞬态），memo 随包 GC 无长期内存面；threshold/level 纪元/竞态/0217 身份通道/外来 buffer 回退全部沿用 0242 已论证机制。单观众场景填充开销 ~3µs（相对其 deflate ~311µs 为 1%）。
+- **基准**：LightBroadcastBench（32,770B 光照型载荷，压缩比 1.98×——高熵，deflate 更贵）：before 311,336.888 ± 9,197 → afterHit **4,462.938 ± 256 ns/op（≈69.8×/观众，CI 完全分离）**；afterFill 与 before CI 重叠。黄昏传播期 50 chunk × 20 玩家外推 ≈ 292ms/s CPU 消除。
+- **风险**：低（纯 Carrier 接入，无新机制面；自检 20 观众字节全等）。
+- **暂缓**：编码阶段 memo（次级成本，light 瞬态无内存顾虑优先、chunk 驻留需内存权衡，留档）。
