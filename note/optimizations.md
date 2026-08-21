@@ -1989,3 +1989,17 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 - EntityKnockbackEvent 双事件门控：需逐分量复刻 (cv+kb)-cv FP 往返 + 双表同空判据（层级已实证）。
 - 非生物伤害事件门控（ArmorStand/ItemFrame/ItemEntity 燃烧等 9 站点）：与族级快路共用方案。
 - 否决：仅门控 callEvent 派发（零监听已是空数组遍历）；CombatRules 标量；Pair 内联（虚签名红线）；totem/Resurrect（低频）。
+
+---
+
+## 批次 70（2026-08-22）：多观众区块包构造缓存（0241）
+
+主题：**多玩家网络稳定**——区块发送主路径的每观众全量重序列化消除。勘察发现 `PlayerChunkSender.sendChunk` 对每个观众 `new ClientboundLevelChunkWithLightPacket(chunk, ...)` 完整重序列化（heightmaps clone + 24 section 调色板序列化 + buffer 分配 + BE 列表 + 光照 memcpy）：N 玩家同 chunk = N 次全量序列化，登录/跑图突发/群体迁移时主线程毫秒级放大。Paper 在 `FeatureHooks.sendChunkRefreshPackets`（同 tick 刷新路径）已按 `shouldModify` 缓存并跨玩家共享同一 packet 实例——共享语义有仓库先例，但该缓存不跨 tick、不覆盖主发送路径。报告：[note/report/perf/2026-08-22-jmh-microbench-batch70.md](report/perf/2026-08-22-jmh-microbench-batch70.md)。
+
+### 0241 — LevelChunk 序列化负载缓存（heightmaps + buffer 跨观众复用）
+- **文件**：`net/minecraft/world/level/chunk/LevelChunk.java`（版本计数 + 缓存字段 + 四 bump 位点）+ `net/minecraft/network/protocol/game/ClientboundLevelChunkWithLightPacket.java`（papoCreateCached 工厂 + 轻量构造器）+ `net/minecraft/network/protocol/game/ClientboundLevelChunkPacketData.java`（缓存复用构造器，BE 填充提取共用）+ `net/minecraft/server/network/PlayerChunkSender.java`（!shouldModify 路由）。
+- **改法**：缓存 chunk data 中只随 chunk 变更的两段（heightmaps Map + 序列化 byte[] buffer），以 `papoChunkDataVersion`（AtomicLong，四处 bump：setBlockState 变更分支 / setBlockEntity / removeBlockEntity / setBiome 覆写）失效；**BE 标签与光照数据逐包新鲜构造**（BE 内容与光照的变更无 chunk 级信号——vanilla 语义=构造时读取当前值，缓存会让后加入观众拿到永久陈旧数据，红线不可越）。仅 `shouldModify == false`（anti-xray 关闭，Paper 默认 `enabled=false`；或玩家有 bypass）走缓存，否则原路径逐字保留。
+- **等价性**：info=null 路径 `modifyBlocks(packet, null)` 对两种控制器实现均恰为 setReady(true)（逐源码实证），新构造器直接置 ready=true；heightmaps/buffer 构造后不可变（NO_OPERATION 路径 buffer 无人改写；anti-xray 实例化路径被 shouldModify 门排除）；packet 跨玩家共享为 vanilla 既有行为；线上字节逐字节相同（带宽中立）；缓存读写仅主线程（sendChunk 两调用点均主线程 tick），AtomicLong 防御 worldgen 线程经 ImposterProtoChunk 的未满 chunk 写入；缓存随 chunk 实例 GC，仅存在于被发送过的 chunk。
+- **基准**：ChunkPacketCacheBench 模型（8 非空 section/24、12 项调色板、6 高度图、4 BE）：before 2597.676 ± 271.850 → afterHit **24.623 ± 0.363 ns/op（≈105×，CI 完全分离）**；afterMiss 2776.583 ± 274.059（与 before CI 重叠）；`-prof gc` 分配 **43992 → 248 B/op（177×）**。N 观客同 chunk 的主线程序列化总量 N 次 → 1 次。
+- **风险**：低（失效信号四处审计闭合；BE/光照新鲜性硬约束满足；anti-xray 门控保守回退；内存面=被发送 chunk 的序列化负载，典型数 MB）。
+- **暂缓**：FeatureHooks 刷新路径接入（已有同 tick per-call 缓存，增量小）；EmptyLevelChunk 死亡玩家路径（单次空 chunk）；光照数据跨 tick 缓存（光照引擎无干净 per-chunk 失效信号——增量广播只达当时观众，不能作失效源）。
