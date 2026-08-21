@@ -1,0 +1,238 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 22 Aug 2026 02:20:05 +0800
+Subject: [PATCH] Papo: skip entity sync packet construction without viewers,
+ short-circuit the tracked-pair add, inline the minecart delta Vec3
+
+
+diff --git a/net/minecraft/server/level/ChunkMap.java b/net/minecraft/server/level/ChunkMap.java
+index 0da300148eea9003200b533d3b390250b511bb61..1076ff789e673a43ec30e9224cd275105571211f 100644
+--- a/net/minecraft/server/level/ChunkMap.java
++++ b/net/minecraft/server/level/ChunkMap.java
+@@ -1426,7 +1426,10 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
+                 // Papo end - skip redundant vanish check for already-tracked pairs
+                 // CraftBukkit end
+                 if (flag) {
+-                    if (this.seenBy.add(player.connection)) {
++                    // Papo - in the tracked steady state the add() below re-probes and is a provable
++                    // no-op (contains already returned true and nothing between mutates seenBy);
++                    // skip it on the (entity x player) sweep hot path
++                    if (!papoAlreadyTracked && this.seenBy.add(player.connection)) {
+                         // Paper start - entity tracking events
+                         if (io.papermc.paper.event.player.PlayerTrackEntityEvent.getHandlerList().getRegisteredListeners().length == 0 || new io.papermc.paper.event.player.PlayerTrackEntityEvent(player.getBukkitEntity(), this.entity.getBukkitEntity()).callEvent()) {
+                         this.serverEntity.addPairing(player);
+diff --git a/net/minecraft/server/level/ServerEntity.java b/net/minecraft/server/level/ServerEntity.java
+index 289639e38e4f2f713e1e55ed6318ecbf11854507..c622d07f8fa13216132fff5021273e89c67b89c3 100644
+--- a/net/minecraft/server/level/ServerEntity.java
++++ b/net/minecraft/server/level/ServerEntity.java
+@@ -101,14 +101,27 @@ public class ServerEntity {
+             this.teleportDelay = 9999;
+         }
+         // Paper end - optimise collisions
++        // Papo start - skip packet construction when no viewer tracks this entity
++        // trackedPlayers IS the TrackedEntity seenBy set (same reference). Broadcasting to an empty
++        // set sends nothing, so with no viewers every packet built below would be constructed and
++        // discarded; all ServerEntity-internal state updates (base/lastSent*/teleportDelay/dirty
++        // clearing/attributesToSync.clear) run exactly as before - only the constructions are
++        // skipped. AndSelf sites keep the ServerPlayer self-send (a player receives its own
++        // metadata/velocity even with an empty seenBy). Precedent: the ItemFrame path below already
++        // guards with this.trackedPlayers.isEmpty().
++        final boolean papoHasViewers = !this.trackedPlayers.isEmpty();
++        final boolean papoHasRecipients = papoHasViewers || this.entity instanceof ServerPlayer;
++        // Papo end - skip packet construction when no viewer tracks this entity
+         this.entity.updateDataBeforeSync();
+         List<Entity> passengers = this.entity.getPassengers();
+         if (!passengers.equals(this.lastPassengers)) {
++            if (papoHasViewers) { // Papo - skip packet construction when no viewer tracks this entity
+             this.synchronizer
+                 .sendToTrackingPlayersFiltered(
+                     new ClientboundSetPassengersPacket(this.entity),
+                     serverPlayer1 -> passengers.contains(serverPlayer1) == this.lastPassengers.contains(serverPlayer1)
+                 );
++            } // Papo - skip packet construction when no viewer tracks this entity
+             // Paper start - Allow riding players
+             if (this.entity instanceof ServerPlayer player) {
+                 player.connection.send(new ClientboundSetPassengersPacket(this.entity));
+@@ -143,7 +156,9 @@ public class ServerEntity {
+             boolean flag = Math.abs(b - this.lastSentYRot) >= 1 || Math.abs(b1 - this.lastSentXRot) >= 1;
+             if (this.entity.isPassenger()) {
+                 if (flag) {
+-                    this.synchronizer.sendToTrackingPlayers(new ClientboundMoveEntityPacket.Rot(this.entity.getId(), b, b1, this.entity.onGround()));
++                    if (papoHasViewers) { // Papo - skip packet construction when no viewer tracks this entity
++                        this.synchronizer.sendToTrackingPlayers(new ClientboundMoveEntityPacket.Rot(this.entity.getId(), b, b1, this.entity.onGround()));
++                    } // Papo - skip packet construction when no viewer tracks this entity
+                     this.lastSentYRot = b;
+                     this.lastSentXRot = b1;
+                 }
+@@ -179,19 +194,27 @@ public class ServerEntity {
+                     || this.wasOnGround != this.entity.onGround()) {
+                     this.wasOnGround = this.entity.onGround();
+                     this.teleportDelay = 0;
+-                    packet = ClientboundEntityPositionSyncPacket.of(this.entity);
++                    if (papoHasViewers) { // Papo - skip packet construction when no viewer tracks this entity (flag3/flag4 still update the send base below)
++                        packet = ClientboundEntityPositionSyncPacket.of(this.entity);
++                    } // Papo
+                     flag3 = true;
+                     flag4 = true;
+                 } else if ((!flag2 || !flag) && !(this.entity instanceof AbstractArrow)) {
+                     if (flag2) {
+-                        packet = new ClientboundMoveEntityPacket.Pos(this.entity.getId(), (short)l, (short)l1, (short)l2, this.entity.onGround());
++                        if (papoHasViewers) { // Papo
++                            packet = new ClientboundMoveEntityPacket.Pos(this.entity.getId(), (short)l, (short)l1, (short)l2, this.entity.onGround());
++                        } // Papo
+                         flag3 = true;
+                     } else if (flag) {
+-                        packet = new ClientboundMoveEntityPacket.Rot(this.entity.getId(), b, b1, this.entity.onGround());
++                        if (papoHasViewers) { // Papo
++                            packet = new ClientboundMoveEntityPacket.Rot(this.entity.getId(), b, b1, this.entity.onGround());
++                        } // Papo
+                         flag4 = true;
+                     }
+                 } else {
+-                    packet = new ClientboundMoveEntityPacket.PosRot(this.entity.getId(), (short)l, (short)l1, (short)l2, b, b1, this.entity.onGround());
++                    if (papoHasViewers) { // Papo
++                        packet = new ClientboundMoveEntityPacket.PosRot(this.entity.getId(), (short)l, (short)l1, (short)l2, b, b1, this.entity.onGround());
++                    } // Papo
+                     flag3 = true;
+                     flag4 = true;
+                 }
+@@ -201,19 +224,21 @@ public class ServerEntity {
+                     double d = deltaMovement.distanceToSqr(this.lastSentMovement);
+                     if (d > 1.0E-7 || d > 0.0 && deltaMovement.lengthSqr() == 0.0) {
+                         this.lastSentMovement = deltaMovement;
+-                        if (this.entity instanceof AbstractHurtingProjectile abstractHurtingProjectile) {
+-                            this.synchronizer
+-                                .sendToTrackingPlayers(
+-                                    new ClientboundBundlePacket(
+-                                        List.of(
+-                                            new ClientboundSetEntityMotionPacket(this.entity.getId(), this.lastSentMovement),
+-                                            new ClientboundProjectilePowerPacket(abstractHurtingProjectile.getId(), abstractHurtingProjectile.accelerationPower)
++                        if (papoHasViewers) { // Papo - skip packet construction when no viewer tracks this entity
++                            if (this.entity instanceof AbstractHurtingProjectile abstractHurtingProjectile) {
++                                this.synchronizer
++                                    .sendToTrackingPlayers(
++                                        new ClientboundBundlePacket(
++                                            List.of(
++                                                new ClientboundSetEntityMotionPacket(this.entity.getId(), this.lastSentMovement),
++                                                new ClientboundProjectilePowerPacket(abstractHurtingProjectile.getId(), abstractHurtingProjectile.accelerationPower)
++                                            )
+                                         )
+-                                    )
+-                                );
+-                        } else {
+-                            this.synchronizer.sendToTrackingPlayers(new ClientboundSetEntityMotionPacket(this.entity.getId(), this.lastSentMovement));
+-                        }
++                                    );
++                            } else {
++                                this.synchronizer.sendToTrackingPlayers(new ClientboundSetEntityMotionPacket(this.entity.getId(), this.lastSentMovement));
++                            }
++                        } // Papo - skip packet construction when no viewer tracks this entity
+                     }
+                 }
+ 
+@@ -236,7 +261,9 @@ public class ServerEntity {
+ 
+             byte b2 = Mth.packDegrees(this.entity.getYHeadRot());
+             if (Math.abs(b2 - this.lastSentYHeadRot) >= 1) {
+-                this.synchronizer.sendToTrackingPlayers(new ClientboundRotateHeadPacket(this.entity, b2));
++                if (papoHasViewers) { // Papo - skip packet construction when no viewer tracks this entity
++                    this.synchronizer.sendToTrackingPlayers(new ClientboundRotateHeadPacket(this.entity, b2));
++                } // Papo
+                 this.lastSentYHeadRot = b2;
+             }
+ 
+@@ -270,35 +297,51 @@ public class ServerEntity {
+             }
+             // CraftBukkit end
+             this.entity.hurtMarked = false;
+-            this.synchronizer.sendToTrackingPlayersAndSelf(new ClientboundSetEntityMotionPacket(this.entity));
++            if (papoHasRecipients) { // Papo - skip packet construction with no viewer and no self-send (AndSelf keeps the ServerPlayer self path)
++                this.synchronizer.sendToTrackingPlayersAndSelf(new ClientboundSetEntityMotionPacket(this.entity));
++            } // Papo
+         }
+     }
+ 
+     private void handleMinecartPosRot(NewMinecartBehavior behavior, byte yRot, byte xRot, boolean dirty) {
+         this.sendDirtyEntityData();
++        // Papo start - inline the delta Vec3 (same transform as the main path above: a - b is
++        // bit-identical to Vec3.subtract's a + (-b), and lengthSqr() is the same left-to-right
++        // expression tree) and skip packet construction when no viewer tracks this entity (the
++        // base/lastSent* updates below are unchanged)
++        final boolean papoHasViewers = !this.trackedPlayers.isEmpty();
+         if (behavior.lerpSteps.isEmpty()) {
+             Vec3 deltaMovement = this.entity.getDeltaMovement();
+             double d = deltaMovement.distanceToSqr(this.lastSentMovement);
+             Vec3 vec3 = this.entity.trackingPosition();
+-            boolean flag = this.positionCodec.delta(vec3).lengthSqr() >= 7.6293945E-6F;
++            Vec3 papoBase = this.positionCodec.base;
++            double papoDx = vec3.x - papoBase.x;
++            double papoDy = vec3.y - papoBase.y;
++            double papoDz = vec3.z - papoBase.z;
++            boolean flag = (papoDx * papoDx + papoDy * papoDy + papoDz * papoDz) >= 7.6293945E-6F;
+             boolean flag1 = flag || this.tickCount % 60 == 0;
+             if (flag1 || dirty || d > 1.0E-7) {
+-                this.synchronizer
+-                    .sendToTrackingPlayers(
+-                        new ClientboundMoveMinecartPacket(
+-                            this.entity.getId(),
+-                            List.of(
+-                                new NewMinecartBehavior.MinecartStep(
+-                                    this.entity.position(), this.entity.getDeltaMovement(), this.entity.getYRot(), this.entity.getXRot(), 1.0F
++                if (papoHasViewers) {
++                    this.synchronizer
++                        .sendToTrackingPlayers(
++                            new ClientboundMoveMinecartPacket(
++                                this.entity.getId(),
++                                List.of(
++                                    new NewMinecartBehavior.MinecartStep(
++                                        this.entity.position(), this.entity.getDeltaMovement(), this.entity.getYRot(), this.entity.getXRot(), 1.0F
++                                    )
+                                 )
+                             )
+-                        )
+-                    );
++                        );
++                }
+             }
+         } else {
+-            this.synchronizer.sendToTrackingPlayers(new ClientboundMoveMinecartPacket(this.entity.getId(), List.copyOf(behavior.lerpSteps)));
++            if (papoHasViewers) {
++                this.synchronizer.sendToTrackingPlayers(new ClientboundMoveMinecartPacket(this.entity.getId(), List.copyOf(behavior.lerpSteps)));
++            }
+             behavior.lerpSteps.clear();
+         }
++        // Papo end - inline the delta Vec3 and skip packet construction when no viewer tracks this entity
+ 
+         this.lastSentYRot = yRot;
+         this.lastSentXRot = xRot;
+@@ -408,12 +451,18 @@ public class ServerEntity {
+     }
+ 
+     private void sendDirtyEntityData() {
++        // Papo start - skip packet construction with no recipients (AndSelf keeps the ServerPlayer
++        // self-send); packDirty (dirty-flag clearing) and attributesToSync.clear() always run
++        final boolean papoHasRecipients = !this.trackedPlayers.isEmpty() || this.entity instanceof ServerPlayer;
++        // Papo end - skip packet construction with no recipients
+         SynchedEntityData entityData = this.entity.getEntityData();
+         List<SynchedEntityData.DataValue<?>> list = entityData.packDirty();
+         if (list != null) {
+             // Papo - trackedDataValues refresh removed; the full snapshot is computed fresh at pairing
+             // (sendPairingData). This dirty path only sends the delta.
+-            this.synchronizer.sendToTrackingPlayersAndSelf(new ClientboundSetEntityDataPacket(this.entity.getId(), list));
++            if (papoHasRecipients) { // Papo - skip packet construction with no recipients
++                this.synchronizer.sendToTrackingPlayersAndSelf(new ClientboundSetEntityDataPacket(this.entity.getId(), list));
++            } // Papo
+         }
+ 
+         if (this.entity instanceof LivingEntity) {
+@@ -424,7 +473,9 @@ public class ServerEntity {
+                     serverPlayer.getBukkitEntity().injectScaledMaxHealth(attributesToSync, false);
+                 }
+                 // CraftBukkit end
+-                this.synchronizer.sendToTrackingPlayersAndSelf(new ClientboundUpdateAttributesPacket(this.entity.getId(), attributesToSync));
++                if (papoHasRecipients) { // Papo - skip packet construction with no recipients
++                    this.synchronizer.sendToTrackingPlayersAndSelf(new ClientboundUpdateAttributesPacket(this.entity.getId(), attributesToSync));
++                } // Papo
+             }
+ 
+             attributesToSync.clear();
