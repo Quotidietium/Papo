@@ -2003,3 +2003,16 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 - **基准**：ChunkPacketCacheBench 模型（8 非空 section/24、12 项调色板、6 高度图、4 BE）：before 2597.676 ± 271.850 → afterHit **24.623 ± 0.363 ns/op（≈105×，CI 完全分离）**；afterMiss 2776.583 ± 274.059（与 before CI 重叠）；`-prof gc` 分配 **43992 → 248 B/op（177×）**。N 观客同 chunk 的主线程序列化总量 N 次 → 1 次。
 - **风险**：低（失效信号四处审计闭合；BE/光照新鲜性硬约束满足；anti-xray 门控保守回退；内存面=被发送 chunk 的序列化负载，典型数 MB）。
 - **暂缓**：FeatureHooks 刷新路径接入（已有同 tick per-call 缓存，增量小）；EmptyLevelChunk 死亡玩家路径（单次空 chunk）；光照数据跨 tick 缓存（光照引擎无干净 per-chunk 失效信号——增量广播只达当时观众，不能作失效源）。
+
+---
+
+## 批次 71（2026-08-22）：共享区块包实例 + 压缩输出 memo（0242，复合优化）
+
+主题：**多玩家网络稳定**——多观众区块发送的每观众**主导成本（DEFLATE）**消除。批次 70 勘察结论：对逐字节相同的 chunk 包，每连接各自压缩（0129 实测 64KB level-6 ≈ 1.3ms/次，Windows JDK 回退 ≈ 220µs/41KB）。本批以两件复合改造消除重复压缩：①BE-free 且 (chunk 数据版本, 光照版本) 未变时跨观众**共享同一 packet 实例**；②共享实例携带**压缩输出 memo**（首连接压缩后快照 `[数据长 varint][压缩负载]` 段，后续连接 memcpy 直放）。光照版本信号 = `ChunkHolder.sectionLightChanged` 递增计数（由光照引擎 `onLightUpdate` 驱动——vanilla LayerLightSectionStorage 与 moonrise StarLightEngine 每个变更 section 都经 `ServerChunkCache.onLightUpdate` 投递主线程，与 vanilla 增量光照广播同源同完备性；bump 在无观众早退之前）。报告：[note/report/perf/2026-08-22-jmh-microbench-batch71.md](report/perf/2026-08-22-jmh-microbench-batch71.md)。
+
+### 0242 — ChunkHolder 共享 chunk 包 + PapoSharedWireMemo 压缩 memo
+- **文件**：新增 `net/minecraft/network/PapoSharedWireMemo.java`（单槽 memo：threshold 戳 + level 纪元 + volatile 段发布）+ `ChunkHolder.java`（papoLightVersion + sectionLightChanged bump + 共享包条目 papoGetSharedChunkPacket）+ `ClientboundLevelChunkWithLightPacket.java`（共享工厂改走 holder；memo 字段 + Carrier 实现）+ `PacketEncoder.java`（memo attr 发布，0217 通道复用）+ `CompressionEncoder.java`（memo 咨询/填充，above-threshold 路径）+ `Connection.java`（setupCompression level 纪元登记）+ `Varint21LengthFieldPrepender.java`（无压缩 handler 连接的 memo attr 兜底清理）+ `ClientboundLevelChunkPacketData.java`/`LevelChunk.java`（跨包访问放宽/版本 getter）。
+- **等价性**：memo 段 = 同一 deflate 调用原样快照、自描述（内含未压缩长度），命中/未命中线上字节逐字节相同（基准 8 观众逐观众全等实证）；压缩级别不进协议（任意 zlib 流解码端无关级别），level 变更经纪元失效、threshold 戳不匹配不命中；BE-free 在 chunk 版本不变期间恒成立（BE 增删即 bump）；光照亚 tick 窗口（调度线程写入+通知排队）由排队通知的增量 ClientboundLightUpdatePacket 同 tick 自愈（通知必 mark 本 holder 广播过滤器并达新观众）；共享实例不可变、memo volatile 发布多 event loop 并发安全；0217 headroom/身份/引用计数结构逐行同构，外来 buffer 走原路径。
+- **基准**：SharedChunkWireBench（41,189B chunk 型载荷，压缩比 3.99× 贴近实测 4.9×，JDK Deflater 真实压缩）：before 223,680.700 ± 4,933 → afterHit **3,509.720 ± 87 ns/op（≈63.7×/观众，CI 完全分离）**；afterFill 与 before CI 重叠（快照开销噪声级）。20 观众 × 64 chunk 突发 ≈ 282ms CPU 消除。
+- **风险**：低-中（触碰出站管线但机制挂接在 0217 已验证的身份通道上；字节等价有真实 Deflater 对拍实证；光照亚 tick 窗口自愈且与 vanilla 增量语义一致）。
+- **暂缓**：BE-containing chunk 共享（BE 内容无信号，红线否决——走批次 70 per-观众路径）；编码阶段 memo（次级 ~10-20µs，留档）。
