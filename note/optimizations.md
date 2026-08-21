@@ -2067,3 +2067,16 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 - **基准**：PlayerInfoBroadcastBench（单玩家条目 737B/ratio 1.20；首轮 126B 模型被自检带外证伪后按真实签名规模修正）：before 12,206 ± 1,963 → afterHit **1,412.870 ± 99.941 ns/op（≈8.6×/观众，CI 分离）**；30 观众 join ≈ 0.33ms + unlisted 构造归一。
 - **风险**：低（单类两站点；自检 30 观众字节全等）。
 - **同批否定结论（留档）**：入站解压域无优化点（两路径均按声明大小精确分配）；UPDATE_LATENCY 不可共享（canSee 视角 per-target）；UPDATE_HAT/GAME_MODE 小包不压缩不扩展；join 域剩余均 per-player 内容或红线外——**join 冗余面封闭**。
+
+---
+
+## 批次 76（2026-08-22）：实体同步域三项（0247）
+
+主题：**多玩家网络稳定（实体同步域）**——稳态出站流量大头的 CPU/分配面。survey 子代理系统扫描（ServerEntity/TrackedEntity/ChunkMap 追踪路径）产出三候选落地。报告：[note/report/perf/2026-08-22-jmh-microbench-batch76.md](report/perf/2026-08-22-jmh-microbench-batch76.md)。
+
+### 0247 — 无观众跳过包构造 + seenBy 双探测短路 + 矿车 Vec3 内联
+- **文件**：`ServerEntity.java`（papoHasViewers/papoHasRecipients 守卫 11 构造站点 + 矿车内联）+ `ChunkMap.java`（`!papoAlreadyTracked && add` 短路）。
+- **改法/等价性**：①无观众（trackedPlayers 即 seenBy 同引用）时只跳 `new`——base/lastSent 系列/teleportDelay/flag3/flag4/packDirty 清 dirty/attributesToSync.clear/injectScaledMaxHealth 逐行保留；AndSelf 站点以 `papoHasViewers || entity instanceof ServerPlayer` 守卫（玩家自收保留）；空集广播零字节零事件零时序变化；ItemFrame 路径已有 isEmpty() 门控先例；forceStateResync 交互安全（仅 onPlayerAdd 置位）。②contains 与 add 之间无 seenBy 写入，稳态 add 可证 no-op，跳过不可观察。③`a-b` 与 subtract 的 `a+(-b)` 位级一致、lengthSqr 左结合表达式树相同（10 万点自检）。
+- **基准**：EntitySyncNoViewerBench：A 无观众包构造 76.295 ± 1.840 → **12.215 ± 0.465 ns/op（6.2×，CI 分离）**；B 双探测 3.563 ± 0.207 → **1.916 ± 0.114（1.86×，CI 分离）**；C 矿车 Vec3 CI 重叠（EA 伪影判例——复刻内 Vec3 被标量替换，真实深栈分配真实发生，机制保留）。外推：500 追踪范围外实体 ~64µs/tick 纯垃圾消除 + 10k pair ~16µs/tick。
+- **风险**：低（机械守卫 + 状态机逐行保留；全量 test 绿）。
+- **survey 否定留档**：实体稳态包全部 <256B 阈值（memo 不适用）；空闲实体无每 tick 分配；broadcast 迭代器换 forEach 无净收益；per-pair 辅助调用全字段读；火球 bundle 去 delimiter 改 wire 字节否决——**实体同步域封闭**。
