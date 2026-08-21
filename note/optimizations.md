@@ -2028,3 +2028,16 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 - **基准**：LightBroadcastBench（32,770B 光照型载荷，压缩比 1.98×——高熵，deflate 更贵）：before 311,336.888 ± 9,197 → afterHit **4,462.938 ± 256 ns/op（≈69.8×/观众，CI 完全分离）**；afterFill 与 before CI 重叠。黄昏传播期 50 chunk × 20 玩家外推 ≈ 292ms/s CPU 消除。
 - **风险**：低（纯 Carrier 接入，无新机制面；自检 20 观众字节全等）。
 - **暂缓**：编码阶段 memo（次级成本，light 瞬态无内存顾虑优先、chunk 驻留需内存权衡，留档）。
+
+---
+
+## 批次 73（2026-08-22）：编码阶段 memo + SectionBlocksUpdate 广播共享（0244）
+
+主题：**多玩家网络稳定**——多观众出站冗余全面清算（0242/0243 后把每观众出站成本打到 memcpy 地板）。两项：①`PapoSharedWireMemo` 增**编码字节槽**（首连接 codec 走查原样快照，后续连接 writeBytes 直放；仅瞬态广播包 arm——light/section 随包 GC，chunk 驻留实例不 arm 因 ~40KB 快照钉整个 chunk 生命周期）；②`ClientboundSectionBlocksUpdatePacket` 接入 Carrier（压缩+编码双 memo；broadcastChanges 同实例发给每 chunk 全部追踪玩家，大红石/TNT 批量更新域）。**否决**：Explode 包共享——构造参数含 per-player 击退向量（ServerLevel:1991 逐玩家构造），不可共享。报告：[note/report/perf/2026-08-22-jmh-microbench-batch73.md](report/perf/2026-08-22-jmh-microbench-batch73.md)。
+
+### 0244 — 编码 memo + SectionBlocksUpdate 双 memo
+- **文件**：`PapoSharedWireMemo.java`（papoEncoded 槽 + papoCreateEncodeArmed 工厂）+ `PacketEncoder.java`（编码路径 Carrier 分支：命中 writeBytes / 未命中 codec+快照）+ `ClientboundSectionBlocksUpdatePacket.java`（Carrier + 双 memo）+ `ClientboundLightUpdatePacket.java`（补 arm 编码 memo）。
+- **等价性**：快照取自首次编码同一 buffer 的 getBytes，命中路径 writeBytes 到同一 writerIndex 起点——逐字节相同；PacketTooLarge 检查两路径同 readableBytes；arm 门槛=codec 确定且 locale 无关（两包逐项核验）；volatile 单写发布 + 包不可变 ⇒ 竞态双填 benign；单观众填充损失 ~1-3µs（相对压缩 ~30µs 噪声）。
+- **基准**：SectionBroadcastBench（480 变更小调色板+聚簇模型，编码 1,924B/压缩比 1.58）：before 34,364.342 ± 1,093 → afterHit **4,530.736 ± 802 ns/op（≈7.6×/观众，CI 分离）**；afterFill 与 before CI 重叠。首轮全随机模型 ratio=0.99 被自检证伪（真实批量更新方块 id 来自小调色板）——载荷模型经真实形态修正。
+- **风险**：低（编码路径分支局部、双 memo 机制 0242 已验；自检 20 观众字节全等）。
+- **留档**：chunk 共享实例编码 memo（+40KB/chunk 驻留内存权衡，未做）；explode（per-player 向量否决）——**多观众出站冗余面至此封闭**。
