@@ -313,3 +313,11 @@ git add paper-server/patches/features/0203-*.patch paper-server/patches/features
 - 编译警告（`dep-ann`、`deprecation` 等）属上游正常现象，不影响构建。
 - 首次构建会向 `~/.gradle/caches/paperweight` 写入数 GB 的 mache/反编译缓存，注意磁盘空间。
 - 同步上游修复时：`git fetch upstream`，从 `upstream/main` cherry-pick 适用于 1.21.11 的提交；涉及补丁文件的冲突需人工解（补丁是文本 diff，冲突后通常要 `applyPatches` → 手工修复源码 → `rebuildPatches`）。
+
+## 2026-08-22 补充：发布产物完整构建验证（批次 70-76 后补）
+
+0.44.0-0.50.0 各 release note 声称的产物此前未逐版实构建（产物名由 `:paper-server:createPapoJar`
+从 createMojmapBundlerJar 产物复制重命名为 `Papo-<mcVersion>-<papoVersion>.jar`）。已补跑完整
+打包：`Papo-1.21.11-0.50.0.jar`（97.4MB）BUILD SUCCESSFUL，含批次 70-76 全部 7 个补丁
+（0241-0247，PapoSharedWireMemo 等新类入包）。后续每个 release 提交前应跑一次 createPapoJar
+验证产物可构建。
