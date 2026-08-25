@@ -1,13 +1,16 @@
 package io.papermc.paper.util;
 
 import ca.spottedleaf.concurrentutil.executor.thread.BalancedPrioritisedThreadPool;
+import ca.spottedleaf.concurrentutil.util.Priority;
 import ca.spottedleaf.moonrise.common.util.MoonriseCommon;
 import com.mojang.logging.LogUtils;
 import java.nio.file.Path;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 
 // Papo start - ordered off-thread file writes for player data (batch 79)
@@ -70,6 +73,46 @@ public final class PapoOrderedFileWrites {
             TAILS.remove(target, node); // keep the entry if a newer tail has since chained on
             decrementPending();
         });
+    }
+
+    /**
+     * Chains a read for {@code target} after any previously enqueued write for the same target
+     * (batch 82: join read-side prefetch). Ordering is structural via the same per-target
+     * chain - no thread ever blocks waiting for a predecessor, so this is deadlock-free even
+     * on a saturated single-thread IO pool (unlike awaiting {@link #awaitPending(Path)} from a
+     * pool thread). The task runs at {@link Priority#BLOCKING}: the main thread may join the
+     * returned future at the join consumption point, so the pool must schedule it ahead of
+     * queued region-file IO - exactly the priority vanilla's synchronous sync-load paths use.
+     *
+     * <p>Returns {@code null} when the pool is already halted: a read can simply fall back to
+     * the synchronous path (unlike writes, which degrade to synchronous execution for
+     * durability). The callable must be side-effect free apart from reading, because it runs
+     * on an IO thread.
+     */
+    public static <T> @Nullable CompletableFuture<T> enqueueRead(final Path target, final Callable<T> readTask) {
+        if (!QUEUE.isActive()) {
+            return null;
+        }
+        incrementPending();
+        // The result future is decoupled from the Void-typed per-target chain: the chain task
+        // completes the result future and always yields null so later writes keep chaining.
+        final CompletableFuture<T> node = new CompletableFuture<>();
+        final CompletableFuture<Void> chainNode = TAILS.compute(target, (path, prev) ->
+            (prev == null ? CompletableFuture.<Void>completedFuture(null) : prev)
+                .handle((result, throwable) -> null)
+                .thenApplyAsync(ignored -> {
+                    try {
+                        node.complete(readTask.call());
+                    } catch (final Exception e) {
+                        node.completeExceptionally(new java.util.concurrent.CompletionException(e));
+                    }
+                    return null;
+                }, task -> QUEUE.queueTask(task, Priority.BLOCKING)));
+        node.whenComplete((result, throwable) -> {
+            TAILS.remove(target, chainNode);
+            decrementPending();
+        });
+        return node;
     }
 
     /**
