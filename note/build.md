@@ -351,3 +351,7 @@ git add paper-server/patches/features/0203-*.patch paper-server/patches/features
 ### concurrentutil 判例：OrderedStreamGroup 内 BLOCKING 优先级可插队 + 异常不毒化流
 
 最小复现实证（OrderGroupRepro）：同一 OrderedStreamGroup 内，BLOCKING 优先级任务可越过已排队的 NORMAL 任务先执行（这正是批次 82 读预取的流畅度保证）；单任务抛异常后后续任务照常执行（流不毒化）。
+
+## 2026-08-26 补充：批次 83 基建（真实服务器 join 冒烟工具）
+
+[benchmark/src/papo/bot/OfflineJoinBot.java](../benchmark/src/papo/bot/OfflineJoinBot.java)：最小离线模式协议机器人（1.21.11 / protocol 774，纯 JDK socket）。**协议包 ID 全部从服务器源码注册序提取**（`LoginProtocols`/`ConfigurationProtocols` 的 `addPacket` 顺序 = packetId，`ProtocolInfoBuilder.listPackets` 实证 ID=列表下标）；不要凭记忆写包 ID——升级 MC 版本后须重新提取（含 version.json 的 protocol_version）。SmokeJoinVerify 跑四态矩阵（空数据/即时重连/稳态/关服）+ 产物校验 + 日志零异常门。服务器子进程日志必须重定向文件（Windows 管道 head 假挂判例）。

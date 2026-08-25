@@ -2180,3 +2180,12 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 ### 直提交 — PapoOrderedFileWrites.enqueueRead（BLOCKING 优先级读链）
 - **文件**：[PapoOrderedFileWrites.java](../paper-server/src/main/java/io/papermc/paper/util/PapoOrderedFileWrites.java)
 - 结果 future 与 Void 型 per-target 链解耦（chain 任务完成后 always-yield null 续链，读异常不断链）；读计入 pending 计数（awaitAll 排水有界覆盖）；池停时返回 null（读可回退同步，不同于写的同步降级——持久性语义只属于写）。
+
+## 批次 83（2026-08-26）：批次 82 真实服务器端到端冒烟验证（多核调度⑤，无代码变更）
+
+主题：**稳定性验证轮**。构建最小离线模式协议机器人（OfflineJoinBot，纯 JDK socket 零依赖，protocol 774，全部包 ID/字段编码源码实证）对真实专用服做 join 全生命周期对拍（0.55.0 vs 0.54.0）。报告：[note/report/perf/2026-08-26-smoke-verify-batch83.md](report/perf/2026-08-26-smoke-verify-batch83.md)。
+
+### 验证矩阵与结论
+- **全绿**：两 jar 各 10/10 join（首 join 空数据=回退路径 / 即时重连=读后写排序实战 / 稳态×8=预取命中路径）、stop exit 0、日志零 ERROR/Exception、playerdata/stats/advancements 产物全部合法（gzip+NBT magic 校验）。
+- 端到端稳态 join 墙钟持平（81.6 vs 80.4ms，新玩家文件 KB 级、读成本 µs 级，端到端由区块加载主导）——无回退；机制收益由模型基准量化（380×）。
+- **基建沉淀**：OfflineJoinBot + SmokeJoinVerify 为标准 join 路径验证工具（空数据/即时重连/稳态/关服四态矩阵），后续触碰 login/config/spawn/playerdata 的批次直接复用。
