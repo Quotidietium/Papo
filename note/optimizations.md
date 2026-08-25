@@ -2158,3 +2158,25 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 - 杂项池 sizing（DIMENSION_DATA_IO_POOL=4 / BACKGROUND cap8 可-D覆盖 / ioPool 冷路径 / ASYNC_EXECUTOR 仅版本检查）——运行时负载不足，不成批。
 - **并行世界保存（/save-all 与关服时三世界串行）**——技术上可行（世界间数据结构独立、moonrise 池本就多世界共享、WorldSaveEvent 可先串行触发），但 chunk system close/save 的跨世界共享面审计负担大，而失败模式=存档损坏（红线级灾难）。在"安全性稳定性不可赌"约束下否决，留档供未来有完整验证带宽时重启。
 - 宏观 worldgen 压测（真实服 forceload 对拍）——spawn 区块上游已移除、forceload 限 256 完成太快、无完成信号可测；机制级证据（批次80 真实池 1.48× + tick 探针 0 偏差）+ 集成实证（批次81）已构成该层面的完整证据链。
+
+## 批次 82（2026-08-26）：join 读侧下放——登录窗口预取 .dat/stats/advancements（多核调度④）
+
+主题：**多核调度——主线程阻塞读清算**。批次 79 下放了 join 写侧（.dat/stats/advancements 的 gzip+写盘）；读侧仍在主线程同步执行（`PrepareSpawnTask.start()` 的 loadPlayerData = 磁盘读+gzip+NBT 全树解析+datafix；`ServerPlayer` ctor 的 `getPlayerStats`/`getPlayerAdvancements` = JSON 读+解析，两者均主线程实证）。登录流程在 `startClientVerification`（全部认证模式汇合点，AsyncPlayerPreLoginEvent 之后）即拿到最终 GameProfile，距消费点至少一个客户端 RTT——本批把三类读在登录时刻挂到各自文件的 per-target 有序写链上，主线程消费点 join 通常已完成的 future。报告：[note/report/perf/2026-08-26-joinread-prefetch-batch82.md](report/perf/2026-08-26-joinread-prefetch-batch82.md)。
+
+### 0249 — join 读侧预取（登录 RTT 窗口）
+- **文件**：`PlayerDataStorage.java`（纯读/纯修复预取体 + 消费）、`PlayerList.java`（stats/adv JSON 预取缓存 + 触发/丢弃入口）、`ServerLoginPacketListenerImpl.java`（触发 + 断连丢弃）、`ServerConfigurationPacketListenerImpl.java`（断连丢弃）、`ServerStatsCounter.java`（ctor 消费）、`PlayerAdvancements.java`（load 消费）+ 直提交 `PapoOrderedFileWrites.enqueueRead`
+- **机制**：`enqueueRead(Path, Callable)` 把读任务挂在与写相同的 per-Path CompletableFuture 链（**结构性读后写排序**，快速重连语义保持；池线程内零阻塞等待——`awaitPending` 从池线程调用会在单线程 IO 池下死锁，本机制规避）；读任务 `Priority.BLOCKING`（vanilla 同步 sync-load 同款，`MoonriseRegionFileIO.getIOBlockingPriorityForCurrentThread` tick 线程档）——池饱和时主线程 join 的读在池层抢占排队中的 region IO。
+- **等价性（逐项）**：
+  - 副作用（`.offline-read` 重命名、`_corrupted_` 备份）**留在主线程消费点原逻辑位置**——登录中断窗口不提前留副作用（严格等价红线，区别于把整个 load 搬走的粗放方案）；
+  - 预取体 = readCompressed + MCDataConverter.convertTag，均纯函数且已被 moonrise worker 并发使用（chunk 加载），线程安全有既有实证；
+  - 预取体异常 → `fallbackToSync` → 消费点重跑原同步路径（vanilla 告警/异常行为逐字保持）；池停时 enqueueRead 返回 null 不缓存；
+  - 单人游戏主机（isSingleplayerOwner）跳过（数据来自内存 tag）；duplicate-login 场景（同 UUID 在线者可能写 .dat）在原版同样于配置阶段读盘、且该登录必被拒绝，无可观察差异；
+  - CraftOfflinePlayer.getStatistic 理论竞争窗口：consume-once 语义保证 future 只被一方消费，另一方走原同步读，数据等价；
+  - 登录/配置两阶段断连钩子丢弃未消费预取，无泄漏；`PlayerList.loadPlayerData` 无预取时原路径逐字保留（含 .dat_old 回退链）。
+- **基准**：JoinReadPrefetchBench（真实 concurrentutil 池 + 20 人突发）：主线程 **15.45ms → 0.04ms（≈380×）**；零 RTT 最坏情形 7.35ms（池并行度下恒不劣于同步串行）；饱和探针 BLOCKING 625µs vs NORMAL 234ms（**375×**，流畅度红线实证）。自检 5 组 ALL OK。
+- **风险**：低（结构性排序无死锁面；回退路径完备；副作用时点不变；consume-once + 丢弃钩子闭合）。
+- **留档**：datafix 未进基准模型（保守下界）；`getSpread` 等历史暂缓项不变。
+
+### 直提交 — PapoOrderedFileWrites.enqueueRead（BLOCKING 优先级读链）
+- **文件**：[PapoOrderedFileWrites.java](../paper-server/src/main/java/io/papermc/paper/util/PapoOrderedFileWrites.java)
+- 结果 future 与 Void 型 per-target 链解耦（chain 任务完成后 always-yield null 续链，读异常不断链）；读计入 pending 计数（awaitAll 排水有界覆盖）；池停时返回 null（读可回退同步，不同于写的同步降级——持久性语义只属于写）。

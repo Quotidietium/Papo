@@ -337,3 +337,17 @@ git add paper-server/patches/features/0203-*.patch paper-server/patches/features
 **修复**（批次 78 同批直提交）：`defaultFieldProcessors()` 返回类型放宽为与参数一致的 `List<Definition<?, ?, ? extends FieldProcessor.Factory<?, ?>>>`（私有静态方法，无 API/行为变化），两类型完全相同后陷阱永久解除。
 
 **通用教训**：遇到"增量编译报泛型错误但 `--rerun-tasks` 全量通过"，先怀疑这个源码/二进制签名解析不对称，而不是怀疑自己的改动；修复方向是让调用方声明类型与被调方参数类型**逐字相同**。
+
+## 2026-08-26 补充：批次 82 踩坑记录
+
+### Git Bash 下长输出经 `| head -N` 管道会假挂（Windows 管道语义）
+
+后台跑基准 `java ... | head -40`：head 读满退出后，java 进程继续写管道在 Windows 下**阻塞不退出**（Linux 是 SIGPIPE 即死），表现为进程"挂死"无输出。**规则：长输出一律重定向文件（`> /tmp/x.log 2>&1`），事后 cat/tail，不接 head 管道。**
+
+### 池任务里共享 ByteBuffer 的并发 rewind/read 会 BufferOverflowException
+
+多个池任务共享一个 `ByteBuffer` 做 `ch.read(buf.rewind(), pos)`：并发 rewind/read 竞态触发 `java.nio.BufferOverflowException`（RuntimeException），任务在计数递减前死亡 → 排水循环永卡。IoPoolScalingBench 原版就是每任务 `ByteBuffer.allocateDirect`——照抄时别"优化"成共享。规则：**NIO buffer 一任务一份；任务内清理逻辑放 finally**。
+
+### concurrentutil 判例：OrderedStreamGroup 内 BLOCKING 优先级可插队 + 异常不毒化流
+
+最小复现实证（OrderGroupRepro）：同一 OrderedStreamGroup 内，BLOCKING 优先级任务可越过已排队的 NORMAL 任务先执行（这正是批次 82 读预取的流畅度保证）；单任务抛异常后后续任务照常执行（流不毒化）。
