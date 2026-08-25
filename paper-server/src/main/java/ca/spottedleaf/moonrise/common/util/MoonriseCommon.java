@@ -50,7 +50,16 @@ public final class MoonriseCommon {
             workerThreads = defaultWorkerThreads;
         }
 
-        final int ioThreads = Math.max(1, configIoThreads);
+        // Papo start - core-aware auto I/O thread count
+        // configIoThreads <= 0 is the "auto" sentinel (the materialised paper-global
+        // default is -1). The historical auto value was a flat 1 regardless of host
+        // size, serialising every world's region files through one thread. The chunk
+        // system's AreaDependentQueue already serialises per-region-file access, so
+        // extra threads only parallelise distinct region files. Explicit positive
+        // config values still win.
+        final int ioThreads = configIoThreads > 0 ? configIoThreads
+            : io.papermc.paper.util.PapoParallelism.regionIoThreadCount();
+        // Papo end - core-aware auto I/O thread count
 
         WORKER_POOL.adjustThreadCount(workerThreads);
         IO_POOL.adjustThreadCount(ioThreads);

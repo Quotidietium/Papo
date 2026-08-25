@@ -196,9 +196,19 @@ public class SpigotConfig {
     }
 
     private static void nettyThreads() {
-        int count = SpigotConfig.getInt("settings.netty-threads", 4);
+        // Papo start - core-aware default instead of the fixed legacy 4
+        // Explicit spigot.yml values always win; only servers without the key
+        // (fresh installs) get the auto value materialised.
+        final int def = io.papermc.paper.util.PapoParallelism.nettyEventLoopCount();
+        int count = SpigotConfig.getInt("settings.netty-threads", def);
         System.setProperty("io.netty.eventLoopThreads", Integer.toString(count));
         Bukkit.getLogger().log(Level.INFO, "Using {0} threads for Netty based IO", count);
+        if (count == 4 && def > 4) {
+            Bukkit.getLogger().log(Level.INFO,
+                "Papo: netty-threads is pinned to the legacy default of 4; removing the key from spigot.yml lets Papo auto-size to {0} loops on this host",
+                def);
+        }
+        // Papo end - core-aware default instead of the fixed legacy 4
     }
 
     public static boolean disableStatSaving;

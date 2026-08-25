@@ -2093,3 +2093,17 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 - **基准**：PairingShareBench（五段构造模型 × 4 观众）：sweep 692.413 ± 11.853 → 0.564 ± 0.184 ns/op（模型复用为纯引用读，1227× 为模型夸张上界；真实收益=每观众省 (K-1)/K 的 pairing 构造，getNonDefaultValues 扫描+equipment copy+5 包对象 µs 级）。满负荷刷怪 30 新实体/tick × 2-4 观众 → 每 tick 数十次重复构造消除。
 - **风险**：低（窗口纪律 try/finally + 深度钳制；自检 4 观众包序列逐项一致；全量 test 绿）。
 - **留档**：玩家移动进入范围场景不共享（sweep 段间可能夹实体 tick，tick 内顺序无局部可证性，保守排除）——**配对域封闭**。
+
+---
+
+## 批次 78（2026-08-26）：核心感知线程池自动 sizing（Netty loops + region IO，多核调度系列①）
+
+主题：**多核调度**——固定线程数清算第一轮。spigot.yml netty-threads 默认平 4（大核主机事件循环不足）；paper-global chunk-system.io-threads 的 auto（-1）落到平 1（全部世界 region IO 串行单线程，一个冷读磁盘延迟卡住一切）。新增 `PapoParallelism` 集中 sizing（显式配置永远优先）：netty=cores/4 clamp[4,16]、regionIo=cores/8 clamp[1,4]。报告：[note/report/perf/2026-08-26-iopool-scaling-batch78.md](report/perf/2026-08-26-iopool-scaling-batch78.md)。
+
+### 批次78 — PapoParallelism 核心感知 sizing（直提交，无补丁编号）
+- **文件**：新增 `io/papermc/paper/util/PapoParallelism.java` + `MoonriseCommon.java`（ioThreads auto 路由）+ `SpigotConfig.java`（netty-threads 默认值 + 存量 4 提示）。
+- **安全性**：AreaDependentQueue 按点区域 (chunkX>>5, chunkZ>>5) 串行化同 region file 访问（ReentrantAreaLock，javap+源码实证）——多 IO 线程只并行化不同 region file，永不引入同文件并发；显式配置逐字优先；spigot.yml 已物化 4 的存量安装不变（INFO 提示）；OSNuma NoOp 回退=availableProcessors（javap 实证）+max(1,·) 防御；netty 空闲循环 park 零成本、下限 4=旧值（≤16 核行为不变）；worker 池 sizing 未触碰。
+- **基准**：IoPoolScalingBench（真实 concurrentutil 0.0.8 池+队列，8 region×16 任务，4KiB 真实读+模拟设备延迟）：1 线程 1992ms → 4 线程 450ms（**4.43×**）；自检全绿（per-region 并发≤1 / FIFO / 恰好一次 / 并行度实测兑现=4）。热页缓存变体 1 线程反快（µs 级任务池唤醒开销主导）——收益面=冷读/阻塞 IO 场景，热读无害。
+- **同批构建修复**：`PaperConfigurations.defaultFieldProcessors` 返回类型放宽（上游遗留窄类型触发 javac 增量编译的 class 文件签名解析陷阱；二分实验定位源码/二进制解析不对称；私有静态方法零 API 影响）。
+- **风险**：低（池数字来源集中化，池实现零改动；adjustThreadCount 为 moonrise 既有 API）。
+- **留档**：worker 池 auto 曲线维持 moonrise 既有；netty 规模属容量上限提升无热路径微基准；benchmark 新增 concurrentutil+slf4j 依赖。

@@ -6,7 +6,7 @@ cd "$(dirname "$0")"
 
 LIB=lib
 OUT=build/classes
-CP="$LIB/jmh-core-1.37.jar;$LIB/jmh-generator-annprocess-1.37.jar;$LIB/jopt-simple-5.0.4.jar;$LIB/commons-math3-3.6.1.jar;$LIB/fastutil-8.5.18.jar;$LIB/netty-buffer-4.2.7.Final.jar;$LIB/netty-common-4.2.7.Final.jar;$LIB/netty-transport-4.2.7.Final.jar;$LIB/netty-codec-base-4.2.7.Final.jar"
+CP="$LIB/jmh-core-1.37.jar;$LIB/jmh-generator-annprocess-1.37.jar;$LIB/jopt-simple-5.0.4.jar;$LIB/commons-math3-3.6.1.jar;$LIB/fastutil-8.5.18.jar;$LIB/netty-buffer-4.2.7.Final.jar;$LIB/netty-common-4.2.7.Final.jar;$LIB/netty-transport-4.2.7.Final.jar;$LIB/netty-codec-base-4.2.7.Final.jar;$LIB/concurrentutil-0.0.8.jar;$LIB/slf4j-api-2.0.1.jar"
 
 mkdir -p "$OUT" results "$LIB"
 
@@ -21,6 +21,8 @@ dl io/netty/netty-buffer/4.2.7.Final/netty-buffer-4.2.7.Final.jar netty-buffer-4
 dl io/netty/netty-common/4.2.7.Final/netty-common-4.2.7.Final.jar netty-common-4.2.7.Final.jar
 dl io/netty/netty-transport/4.2.7.Final/netty-transport-4.2.7.Final.jar netty-transport-4.2.7.Final.jar
 dl io/netty/netty-codec-base/4.2.7.Final/netty-codec-base-4.2.7.Final.jar netty-codec-base-4.2.7.Final.jar
+dl ca/spottedleaf/concurrentutil/0.0.8/concurrentutil-0.0.8.jar concurrentutil-0.0.8.jar
+dl org/slf4j/slf4j-api/2.0.1/slf4j-api-2.0.1.jar slf4j-api-2.0.1.jar
 
 echo "== 编译基准源码 =="
 find src -name '*.java' > build/sources.txt

@@ -65,7 +65,8 @@ cd benchmark
 
 `run.sh` 会自动下载缺失的 jar 到 `lib/`（不入库）：JMH 1.37
 （jmh-core / jmh-generator-annprocess / jopt-simple / commons-math3）、
-fastutil 8.5.18 与 netty-buffer/netty-common 4.2.7.Final（均与服务器运行时同版本）。
+fastutil 8.5.18 与 netty-buffer/netty-common 4.2.7.Final（均与服务器运行时同版本），
+concurrentutil 0.0.8 + slf4j-api 2.0.1（批次78 起池 sizing 基准用，与服务器依赖同版本）。
 
 ## 方法学说明
 

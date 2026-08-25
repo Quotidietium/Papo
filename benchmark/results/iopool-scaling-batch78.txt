@@ -1,0 +1,34 @@
+cores=32  regionIoThreadCount(auto)=4
+model: 8 region files x 16 chunk tasks, 4096B real file read each (distinct sectors)
+
+-- sizing curve (cores -> nettyLoops, regionIoThreads) --
+    1 cores -> netty= 4 regionIo=1
+    2 cores -> netty= 4 regionIo=1
+    4 cores -> netty= 4 regionIo=1
+    8 cores -> netty= 4 regionIo=1
+   16 cores -> netty= 4 regionIo=2
+   32 cores -> netty= 8 regionIo=4
+   64 cores -> netty=16 regionIo=4
+  128 cores -> netty=16 regionIo=4
+  256 cores -> netty=16 regionIo=4
+
+-- self-checks (threads=1 and threads=4) --
+SLF4J: No SLF4J providers were found.
+SLF4J: Defaulting to no-operation (NOP) logger implementation
+SLF4J: See https://www.slf4j.org/codes.html#noProviders for further details.
+  [threads=1] maxConcurrentTasks=1
+  [threads=4] maxConcurrentTasks=4
+  ALL OK (per-region concurrency<=1, per-region FIFO, exact-once completion)
+
+-- scaling (3 reps each, best/mean wall ms for 128 tasks) --
+threads   best(ms)   mean(ms)  
+  [threads=1] maxConcurrentTasks=1
+  [threads=1] maxConcurrentTasks=1
+  [threads=1] maxConcurrentTasks=1
+1         1992       2001      
+  [threads=4] maxConcurrentTasks=4
+  [threads=4] maxConcurrentTasks=4
+  [threads=4] maxConcurrentTasks=4
+4         450        499       
+
+before(1 thread) best=1992ms  after(auto=4) best=450ms  speedup=4.43x
