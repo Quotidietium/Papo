@@ -42,6 +42,19 @@ public final class PapoParallelism {
         return clamp(CORES / 8, 1, 4);
     }
 
+    /**
+     * Chunk system worker thread count (paper-global {@code chunk-system.worker-threads}
+     * auto value, overridable by the existing -D flag). The historical moonrise default is
+     * cores/4, sized to leave room for netty/IO/main on shared hosts. On dedicated hosts
+     * the worker pool (parallel gen/load/light/compression/save) is the throughput
+     * bottleneck during exploration bursts while cores idle; workers run at NORM priority
+     * under the NORM+2 main tick thread, so scaling them up does not steal tick time.
+     * Formula: cores/2, clamped to [2, 12].
+     */
+    public static int workerThreadCount() {
+        return clamp(CORES / 2, 2, 12);
+    }
+
     private static int clamp(final int value, final int min, final int max) {
         return Math.max(min, Math.min(max, value));
     }

@@ -1,0 +1,13 @@
+cores=32  oldDefault(moonrise cores/4)=8  newDefault(cores/2 clamp[2,12])=12
+task=512KiB parse+hash (~CPU-bound), tasks/round=96
+
+SLF4J: No SLF4J providers were found.
+SLF4J: Defaulting to no-operation (NOP) logger implementation
+SLF4J: See https://www.slf4j.org/codes.html#noProviders for further details.
+-- throughput + tick-smoothness probe (3 reps each) --
+workers   best(ms)     mean(ms)     tickP50ms   tickP99ms   tickMaxMs  
+8         46           47           0           0           0          
+12        31           32           0           0           0          
+
+期望：吞吐随线程数提升（CPU headroom 内）；tick 偏差两配置持平（优先级保护）。
+self-check ALL OK (exact-once completion, deterministic checksum)

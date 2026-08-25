@@ -76,3 +76,40 @@
          }
  
          private void checkLock() {
+@@ -491,7 +_,24 @@
+             CompoundTag compoundTag = serverConfiguration.createTag(registries, singlePlayerTag);
+             CompoundTag compoundTag1 = new CompoundTag();
+             compoundTag1.put("Data", compoundTag);
+-            this.saveLevelData(compoundTag1);
++            // Papo start - batch 80: snapshot on caller thread, gzip+file IO on IO pool (per-file ordered)
++            // Same mechanism as the batch 79 player data writes. Deep copy before handing to another
++            // thread so the delayed write can never observe later caller-thread mutations. The boot-time
++            // modifyLevelDataWithoutDatafix path keeps using the synchronous saveLevelData below.
++            final CompoundTag snapshot = compoundTag1.copy();
++            final Path dataFile = this.levelDirectory.dataFile();
++            final Path oldDataFile = this.levelDirectory.oldDataFile();
++            io.papermc.paper.util.PapoOrderedFileWrites.enqueue(dataFile, () -> {
++                try {
++                    Path path = this.levelDirectory.path();
++                    Path path1 = Files.createTempFile(path, "level", ".dat");
++                    NbtIo.writeCompressed(snapshot, path1);
++                    Util.safeReplaceFile(dataFile, path1, oldDataFile);
++                } catch (Exception var6) {
++                    LevelStorageSource.LOGGER.error("Failed to save level {}", this.levelDirectory.path(), var6);
++                }
++            });
++            // Papo end - batch 80: snapshot on caller thread, gzip+file IO on IO pool (per-file ordered)
+         }
+ 
+         private void saveLevelData(CompoundTag tag) {
+@@ -583,6 +_,10 @@
+ 
+         public long makeWorldBackup() throws IOException {
+             this.checkLock();
++            // Papo start - batch 80: the backup must observe the latest level.dat, wait for
++            // any pending off-thread write (fast path when the chain is empty)
++            io.papermc.paper.util.PapoOrderedFileWrites.awaitPending(this.levelDirectory.dataFile());
++            // Papo end - batch 80: the backup must observe the latest level.dat
+             String string = FileNameDateFormatter.FORMATTER.format(ZonedDateTime.now()) + "_" + this.levelId;
+             Path backupPath = LevelStorageSource.this.getBackupPath();
+ 

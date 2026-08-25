@@ -2120,3 +2120,16 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 - **基准**：PlayerSaveOffloadBench（50 玩家×4 save/tick 突发，96KiB 载荷）：主线程 89ms → 2ms（**44.5×**），总墙钟 87→56ms；自检全绿（per-key 串行/最后快照字节对拍/awaitPending 新鲜度/恰好一次）。payload 熵偏低已披露=保守下界；200 人 /save-all ≈ 370ms 主线程阻塞消除。
 - **风险**：低-中（写入异步化的全部时序面已闭合：per-key 序、读后写、全量等待、停机排水、拒绝兜底；载荷构建留主线程零语义变化）。
 - **留档**：level.dat（下批评估）；逐包 execute 批量化（批次60已否决同域）；实体/POI 卸载序列化（survey #3a，下批主候选）。
+
+---
+
+## 批次 80（2026-08-26）：worker 池默认曲线提升 + level.dat 写下放（多核调度③）
+
+主题：**多核调度**——worker 池（gen/load/light/compression/save 唯一执行池）auto 默认 cores/4 → **cores/2 clamp[2,12]**（探索突发吞吐瓶颈，主线程等区块 future 即 tick 卡顿；worker NORM 优先级在 NORM+2 主线程之下）；level.dat 写下放（批次79 机制复用，boot 路径保持同步）。报告：[note/report/perf/2026-08-26-workerpool-level-data-batch80.md](report/perf/2026-08-26-workerpool-level-data-batch80.md)。
+
+### 批次80 — worker 曲线（直提交）+ level.dat 下放（源补丁×2）
+- **文件**：`PapoParallelism.java`（workerThreadCount）+ `MoonriseCommon.java`（auto 来源替换，删未用 import）+ `LevelStorageSource.java`（saveDataTag 快照+入队；makeWorldBackup awaitPending；boot modifyLevelDataWithoutDatafix 保持同步）+ `MinecraftServer.java`（saveAllChunks flush 尾 awaitAll）。
+- **等价性**：显式配置与 -D 覆盖逐字优先；曲线 8核2→4/16核4→8/24核+→12（cap 防超订阅）；池实现零改动；level.dat 快照语义保持+深拷贝+per-路径链；备份读前等待；flush 语义 awaitAll+haltExecutors 双保险。
+- **基准**：WorkerPoolScalingBench（真实池，96×3.8ms CPU 任务，32核）：8→12 线程吞吐 46→31ms（**1.48×**）；NORM+2 tick 探针在两配置饱和期间 p50/p99/max 偏差全 0ms——**扩容不以流畅度换吞吐直接实证**。自检 ALL OK。
+- **同批否定（留档）**：实体 unload 存档序列化下放——`saveEntities` 在 `entityChunk.unload()`（卸载事件+setRemoved）之前同步执行，下放将捕获 post-event 状态≠vanilla 字节，红线否决（NewChunkHolder.java:899→901 证据链）；autosave 路径同理否决。POI 下放可行但收益小不成批。
+- **风险**：低（默认值来源替换+机制复用；否定项有源码证据链）。

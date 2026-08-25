@@ -1,7 +1,6 @@
 package ca.spottedleaf.moonrise.common.util;
 
 import ca.spottedleaf.concurrentutil.executor.thread.BalancedPrioritisedThreadPool;
-import ca.spottedleaf.concurrentutil.numa.OSNuma;
 import ca.spottedleaf.moonrise.common.PlatformHooks;
 import com.mojang.logging.LogUtils;
 import org.slf4j.Logger;
@@ -36,12 +35,14 @@ public final class MoonriseCommon {
     public static final BalancedPrioritisedThreadPool.OrderedStreamGroup SERVER_GROUP = MoonriseCommon.WORKER_POOL.createOrderedStreamGroup();
 
     public static void adjustWorkerThreads(final int configWorkerThreads, final int configIoThreads) {
-        int defaultWorkerThreads = OSNuma.getNativeInstance().getTotalCores()  / 2;
-        if (defaultWorkerThreads <= 4) {
-            defaultWorkerThreads = defaultWorkerThreads <= 3 ? 1 : 2;
-        } else {
-            defaultWorkerThreads = defaultWorkerThreads / 2;
-        }
+        // Papo start - core-aware auto worker thread count (batch 80)
+        // Historical moonrise curve is cores/4 (cores/2 halved again) to leave room for
+        // netty/IO/main on shared hosts. PapoParallelism.workerThreadCount raises the
+        // dedicated-host default to cores/2 clamp [2,12]; workers stay at NORM priority
+        // under the NORM+2 tick thread, so tick smoothness is not traded for throughput.
+        // Explicit config and the -D WorkerThreadCount override keep winning.
+        int defaultWorkerThreads = io.papermc.paper.util.PapoParallelism.workerThreadCount();
+        // Papo end - core-aware auto worker thread count (batch 80)
         defaultWorkerThreads = Integer.getInteger(PlatformHooks.get().getBrand() + ".WorkerThreadCount", Integer.valueOf(defaultWorkerThreads));
 
         int workerThreads = configWorkerThreads;

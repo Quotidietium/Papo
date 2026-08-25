@@ -12,10 +12,10 @@ Content-Transfer-Encoding: 8bit
 首次使用时构造产生完全相同的包。
 
 diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
-index fc40bf056f6e1f1738c57896b2020282dc24edfb..bc6f959e6536bece4c2756b861d6c3c4c5f3a3f8 100644
+index 199e188c487b29dd523d2915a39b1184d8c2bef0..79c2b63a1a0eb227a5e58e2d35155c87b39db9f7 100644
 --- a/net/minecraft/server/MinecraftServer.java
 +++ b/net/minecraft/server/MinecraftServer.java
-@@ -1783,7 +1783,11 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -1786,7 +1786,11 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
              final boolean doDaylight = level.getGameRules().get(GameRules.ADVANCE_TIME);
              final long dayTime = level.getDayTime();
              long worldTime = level.getGameTime();
@@ -28,7 +28,7 @@ index fc40bf056f6e1f1738c57896b2020282dc24edfb..bc6f959e6536bece4c2756b861d6c3c4
              for (Player entityhuman : level.players()) {
                  if (!(entityhuman instanceof ServerPlayer) || (tickCount + entityhuman.getId()) % 20 != 0) {
                      continue;
-@@ -1791,6 +1795,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+@@ -1794,6 +1798,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
                  ServerPlayer entityplayer = (ServerPlayer) entityhuman;
                  long playerTime = entityplayer.getPlayerTime();
                  boolean relativeTime = entityplayer.relativeTime;

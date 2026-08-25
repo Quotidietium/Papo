@@ -533,7 +533,7 @@
          boolean flag = false;
  
          for (ServerLevel serverLevel : this.getAllLevels()) {
-@@ -622,8 +_,10 @@
+@@ -622,14 +_,19 @@
              flag = true;
          }
  
@@ -546,6 +546,15 @@
          if (flush) {
              for (ServerLevel serverLevel : this.getAllLevels()) {
                  LOGGER.info("ThreadedAnvilChunkStorage ({}): All chunks are saved", serverLevel.getChunkSource().chunkMap.getStorageName());
+             }
+ 
+             LOGGER.info("ThreadedAnvilChunkStorage: All dimensions are saved");
++            // Papo start - batch 80: flush semantics cover the off-thread level.dat writes too
++            io.papermc.paper.util.PapoOrderedFileWrites.awaitAll(60_000L);
++            // Papo end - batch 80: flush semantics cover the off-thread level.dat writes too
+         }
+ 
+         return flag;
 @@ -653,19 +_,49 @@
          this.stopServer();
      }
