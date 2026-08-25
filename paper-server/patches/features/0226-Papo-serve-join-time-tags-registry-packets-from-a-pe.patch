@@ -121,10 +121,10 @@ index 01b43f67c4f27e7e23332a0101cedfeac13b3c58..e6fbc00f309caee72e9168b67e502647
      @Override
      public ConfigurationTask.Type type() {
 diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
-index 989ac565c47a70c7947cb7315d0f5c2cfecd0363..b34a39f6760b468fac6190fd88c7b5089c10cb35 100644
+index 2a52db911c0746d1bff690ec032723a399ad096f..0085f0f4409fa092df7850e0f63ed69d4d5c8dd0 100644
 --- a/net/minecraft/server/players/PlayerList.java
 +++ b/net/minecraft/server/players/PlayerList.java
-@@ -1269,7 +1269,12 @@ public abstract class PlayerList {
+@@ -1276,7 +1276,12 @@ public abstract class PlayerList {
          // Paper start - API for updating recipes on clients
      }
      public void reloadTagData() {

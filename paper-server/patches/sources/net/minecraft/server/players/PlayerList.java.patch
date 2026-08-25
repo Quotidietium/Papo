@@ -722,7 +722,7 @@
              if (serverPlayer != except && serverPlayer.level().dimension() == dimension) {
                  double d = x - serverPlayer.getX();
                  double d1 = y - serverPlayer.getY();
-@@ -616,9 +_,11 @@
+@@ -616,9 +_,18 @@
      }
  
      public void saveAll() {
@@ -730,6 +730,13 @@
          for (int i = 0; i < this.players.size(); i++) {
              this.save(this.players.get(i));
          }
++        // Papo start - batch 79: full saves (interval == -1) block until the off-thread
++        // player file writes complete, preserving the vanilla /save-all + shutdown contract;
++        // incremental autosave stays fire-and-forget.
++        if (interval == -1) {
++            io.papermc.paper.util.PapoOrderedFileWrites.awaitAll(60_000L);
++        }
++        // Papo end - batch 79: full saves block until off-thread writes complete
 +        return null; }); // Paper - ensure main
      }
  

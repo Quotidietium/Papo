@@ -33301,7 +33301,7 @@ index 0000000000000000000000000000000000000000..baea86388c798705418f4f1498dbf819
 +    }
 +}
 diff --git a/ca/spottedleaf/moonrise/paper/PaperHooks.java b/ca/spottedleaf/moonrise/paper/PaperHooks.java
-index bf051b6443edd32ecdbd177e02f40965477638de..ec35985da776bac8d1fc6f7a32164ab3bed24d32 100644
+index 4b2850ea5474f7a67a53e25e29acd0a8410b606c..31e34721f48a5d88379f50104abcf0fc63ebd194 100644
 --- a/ca/spottedleaf/moonrise/paper/PaperHooks.java
 +++ b/ca/spottedleaf/moonrise/paper/PaperHooks.java
 @@ -230,6 +230,43 @@ public final class PaperHooks extends BaseChunkSystemHooks implements PlatformHo
@@ -33362,7 +33362,7 @@ index c9bbf15b75ac4516c7d7fdfaf2390351702ca415..372030b78d25b4ff0b18575d151b0a63
          return structureTemplate.save(new CompoundTag());
      }
 diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
-index 8588b380f9b5375cdb2515a01e46a5731ad3ab33..b1ee66c671362cf99425d029045fe3f9c2713bd0 100644
+index 03eec8e5a4d1d94b7c523ecb23d854b9f99a8fa2..894313950547500ee0e8c23519c221c402075e03 100644
 --- a/net/minecraft/server/MinecraftServer.java
 +++ b/net/minecraft/server/MinecraftServer.java
 @@ -383,6 +383,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
@@ -33460,10 +33460,10 @@ index 2c5d0d02880c90b6bdaa3b2472327b277473130c..140630186c3b0324c248cc2a2f31d3b9
      }
  
 diff --git a/net/minecraft/world/level/storage/PlayerDataStorage.java b/net/minecraft/world/level/storage/PlayerDataStorage.java
-index 4ce07e194acc362da3cbcb62e5756bd48b5b3439..b8ef50bc3d07890c9da2c98d5f009a3adc52f4b0 100644
+index 364dbc3d200461444cdef737d5852973c70c8c8c..7e24ed5090f8e69b6e61cf5f9c9a250621c5dad0 100644
 --- a/net/minecraft/world/level/storage/PlayerDataStorage.java
 +++ b/net/minecraft/world/level/storage/PlayerDataStorage.java
-@@ -98,7 +98,7 @@ public class PlayerDataStorage {
+@@ -117,7 +117,7 @@ public class PlayerDataStorage {
  
          return optional.or(() -> this.load(nameAndId, ".dat_old")).map(compoundTag -> {
              int dataVersion = NbtUtils.getDataVersion(compoundTag);

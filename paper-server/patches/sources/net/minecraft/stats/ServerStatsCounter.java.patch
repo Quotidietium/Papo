@@ -1,6 +1,16 @@
 --- a/net/minecraft/stats/ServerStatsCounter.java
 +++ b/net/minecraft/stats/ServerStatsCounter.java
-@@ -75,9 +_,21 @@
+@@ -65,6 +_,9 @@
+ 
+     public ServerStatsCounter(MinecraftServer server, Path file) {
+         this.file = file;
++        // Papo start - batch 79: read-after-write visibility for the async stats write
++        io.papermc.paper.util.PapoOrderedFileWrites.awaitPending(file);
++        // Papo end - batch 79: read-after-write visibility for the async stats write
+         if (Files.isRegularFile(file)) {
+             try (Reader bufferedReader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+                 JsonElement jsonElement = StrictJsonParser.parse(bufferedReader);
+@@ -75,22 +_,45 @@
                  LOGGER.error("Couldn't parse statistics file {}", file, var9);
              }
          }
@@ -18,11 +28,33 @@
      }
  
      public void save() {
+-        try {
+-            FileUtil.createDirectoriesSafe(this.file.getParent());
 +        if (org.spigotmc.SpigotConfig.disableStatSaving) return; // Spigot
-         try {
-             FileUtil.createDirectoriesSafe(this.file.getParent());
++        // Papo start - batch 79: json tree snapshot on caller thread, file write on IO pool
++        // toJson() builds a fresh detached JsonObject from the live stats map; serialisation
++        // inside the task uses the same GSON.toJson(element, newJsonWriter) call so the file
++        // bytes are identical to the synchronous path.
++        final JsonElement jsonElement = this.toJson();
++        final Path file = this.file;
++        io.papermc.paper.util.PapoOrderedFileWrites.enqueue(file, () -> {
++            try {
++                FileUtil.createDirectoriesSafe(file.getParent());
  
-@@ -91,6 +_,8 @@
+-            try (Writer bufferedWriter = Files.newBufferedWriter(this.file, StandardCharsets.UTF_8)) {
+-                GSON.toJson(this.toJson(), GSON.newJsonWriter(bufferedWriter));
++                try (Writer bufferedWriter = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
++                    GSON.toJson(jsonElement, GSON.newJsonWriter(bufferedWriter));
++                }
++            } catch (JsonIOException | IOException var6) {
++                LOGGER.error("Couldn't save stats to {}", file, var6);
+             }
+-        } catch (JsonIOException | IOException var6) {
+-            LOGGER.error("Couldn't save stats to {}", this.file, var6);
+-        }
++        });
++        // Papo end - batch 79: json tree snapshot on caller thread, file write on IO pool
+     }
  
      @Override
      public void setValue(Player player, Stat<?> stat, int value) {

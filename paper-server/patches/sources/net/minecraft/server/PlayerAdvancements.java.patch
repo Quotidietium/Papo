@@ -17,15 +17,51 @@
  
      public PlayerAdvancements(DataFixer dataFixer, PlayerList playerList, ServerAdvancementManager manager, Path playerSavePath, ServerPlayer player) {
          this.playerList = playerList;
-@@ -126,6 +_,7 @@
+@@ -109,6 +_,9 @@
+     }
+ 
+     private void load(ServerAdvancementManager manager) {
++        // Papo start - batch 79: read-after-write visibility for the async advancements write
++        io.papermc.paper.util.PapoOrderedFileWrites.awaitPending(this.playerSavePath);
++        // Papo end - batch 79: read-after-write visibility for the async advancements write
+         if (Files.isRegularFile(this.playerSavePath)) {
+             try (Reader bufferedReader = Files.newBufferedReader(this.playerSavePath, StandardCharsets.UTF_8)) {
+                 JsonElement jsonElement = StrictJsonParser.parse(bufferedReader);
+@@ -126,23 +_,32 @@
      }
  
      public void save() {
 +        if (org.spigotmc.SpigotConfig.disableAdvancementSaving) return; // Spigot
++        // Papo start - batch 79: codec snapshot on caller thread (reads live progress state),
++        // file write on IO pool. The encoded JsonElement is freshly built and detached;
++        // serialisation inside the task is the same GSON call as before (identical bytes).
          JsonElement jsonElement = this.codec.encodeStart(JsonOps.INSTANCE, this.asData()).getOrThrow();
+-
+-        try {
+-            FileUtil.createDirectoriesSafe(this.playerSavePath.getParent());
+-
+-            try (Writer bufferedWriter = Files.newBufferedWriter(this.playerSavePath, StandardCharsets.UTF_8)) {
+-                GSON.toJson(jsonElement, GSON.newJsonWriter(bufferedWriter));
++        final Path savePath = this.playerSavePath;
++
++        io.papermc.paper.util.PapoOrderedFileWrites.enqueue(savePath, () -> {
++            try {
++                FileUtil.createDirectoriesSafe(savePath.getParent());
++
++                try (Writer bufferedWriter = Files.newBufferedWriter(savePath, StandardCharsets.UTF_8)) {
++                    GSON.toJson(jsonElement, GSON.newJsonWriter(bufferedWriter));
++                }
++            } catch (JsonIOException | IOException var7) {
++                LOGGER.error("Couldn't save player advancements to {}", savePath, var7);
+             }
+-        } catch (JsonIOException | IOException var7) {
+-            LOGGER.error("Couldn't save player advancements to {}", this.playerSavePath, var7);
+-        }
++        });
++        // Papo end - batch 79: codec snapshot on caller thread, file write on IO pool
+     }
  
-         try {
-@@ -143,6 +_,7 @@
+     private void applyFrom(ServerAdvancementManager advancementManager, PlayerAdvancements.Data data) {
          data.forEach((path, progress) -> {
              AdvancementHolder advancementHolder = advancementManager.get(path);
              if (advancementHolder == null) {

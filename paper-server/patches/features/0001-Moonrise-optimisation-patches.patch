@@ -297,7 +297,7 @@ index 0000000000000000000000000000000000000000..1b8193587814225c2ef2c5d9e667436e
 +    }
 +}
 diff --git a/ca/spottedleaf/moonrise/paper/PaperHooks.java b/ca/spottedleaf/moonrise/paper/PaperHooks.java
-index 2a5069d11f47d11726f08b597988f8a58546824b..bf051b6443edd32ecdbd177e02f40965477638de 100644
+index 73caad9ae863ef6f1a57bd9d8bad815d1e926626..4b2850ea5474f7a67a53e25e29acd0a8410b606c 100644
 --- a/ca/spottedleaf/moonrise/paper/PaperHooks.java
 +++ b/ca/spottedleaf/moonrise/paper/PaperHooks.java
 @@ -13,6 +13,7 @@ import net.minecraft.server.level.ChunkHolder;
@@ -23071,7 +23071,7 @@ index 3e8870cf4eade33894c6b2f7d3d42a5607645118..9216e85e74bb0121c72665f155b07cf9
                  thread1 -> {
                      DedicatedServer dedicatedServer1 = new DedicatedServer(
 diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
-index 97a6c426654fe2e103ed46bb295e098a9c9be526..8588b380f9b5375cdb2515a01e46a5731ad3ab33 100644
+index f7b88f4844a0a22ebf4757e6a1c6a74b17f131ed..03eec8e5a4d1d94b7c523ecb23d854b9f99a8fa2 100644
 --- a/net/minecraft/server/MinecraftServer.java
 +++ b/net/minecraft/server/MinecraftServer.java
 @@ -185,7 +185,7 @@ import net.minecraft.world.scores.ScoreboardSaveData;
@@ -26256,7 +26256,7 @@ index 182e7468a01e76a22c7af3c081469b4f84f87558..b7915685026e9a944f42440e4a95215f
          List<Entity> passengers = this.entity.getPassengers();
          if (!passengers.equals(this.lastPassengers)) {
 diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
-index 061bc47972d9c67375c0ff9461c506625c80108c..7656665352632fc718bea91dcfd3dd41fc436e1f 100644
+index 965db5a8b3abee3d8e529cdf01c7e5a6249b22ff..1e66b338e640a8bf17e23f861cd26b78971ab783 100644
 --- a/net/minecraft/server/level/ServerLevel.java
 +++ b/net/minecraft/server/level/ServerLevel.java
 @@ -181,7 +181,7 @@ import net.minecraft.world.waypoints.WaypointTransmitter;
@@ -27743,10 +27743,10 @@ index 4016d26304a0bf3894eed2bef72113b2ca2d7a6f..5014840bf5d7ef53a4fea8aa6f3b25eb
                      PrepareSpawnTask.this.loadListener.updateFocus(this.spawnLevel.dimension(), chunkPos);
                  }
 diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
-index e1a3af77d1566db9ad7a7976d6d69e08b2b32c99..38c30d98a200dd2a5c888cc080e9c77795f0e0c4 100644
+index fe55bbbe8a38bfda3ba939f8623116002695f74e..d7aaac4d83e23d672d916011e12659d5b129f6fb 100644
 --- a/net/minecraft/server/players/PlayerList.java
 +++ b/net/minecraft/server/players/PlayerList.java
-@@ -973,8 +973,8 @@ public abstract class PlayerList {
+@@ -980,8 +980,8 @@ public abstract class PlayerList {
          player.connection.send(new ClientboundSetTimePacket(level.getGameTime(), level.getDayTime(), level.getGameRules().get(GameRules.ADVANCE_TIME)));
          player.connection.send(new ClientboundSetDefaultSpawnPositionPacket(level.getRespawnData()));
          // Paper start - view distances
@@ -27757,7 +27757,7 @@ index e1a3af77d1566db9ad7a7976d6d69e08b2b32c99..38c30d98a200dd2a5c888cc080e9c777
          // Paper end - view distances
          if (level.isRaining()) {
              // CraftBukkit start - handle player weather
-@@ -1195,7 +1195,7 @@ public abstract class PlayerList {
+@@ -1202,7 +1202,7 @@ public abstract class PlayerList {
  
      public void setViewDistance(int viewDistance) {
          this.viewDistance = viewDistance;
@@ -27766,7 +27766,7 @@ index e1a3af77d1566db9ad7a7976d6d69e08b2b32c99..38c30d98a200dd2a5c888cc080e9c777
  
          for (ServerLevel serverLevel : this.server.getAllLevels()) {
              serverLevel.getChunkSource().setViewDistance(viewDistance);
-@@ -1204,7 +1204,7 @@ public abstract class PlayerList {
+@@ -1211,7 +1211,7 @@ public abstract class PlayerList {
  
      public void setSimulationDistance(int simulationDistance) {
          this.simulationDistance = simulationDistance;
@@ -36119,7 +36119,7 @@ index 5fa7b312bf3bdd1ea0900dc7c599f88542115329..0b13971259f58876b778c0d28ad20c35
  
              for (SavedTick<T> savedTick : this.pendingTicks) {
 diff --git a/net/minecraft/world/waypoints/WaypointTransmitter.java b/net/minecraft/world/waypoints/WaypointTransmitter.java
-index d66f7afa03790d54caac726063aff4a995002d8a..df85e70a7a2bb2591cab7879b9910f6aa60ad166 100644
+index 72ede9e58d0418e6f43bb89c055f370a6fa027cb..9c92ea2200cb754a1efd7fb94883706c3ec0720e 100644
 --- a/net/minecraft/world/waypoints/WaypointTransmitter.java
 +++ b/net/minecraft/world/waypoints/WaypointTransmitter.java
 @@ -32,7 +32,10 @@ public interface WaypointTransmitter extends Waypoint {

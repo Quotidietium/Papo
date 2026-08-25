@@ -1,0 +1,16 @@
+payload=98304B, gzipped=898B
+model: 50 players, 4 saves/tick x 12 ticks
+
+-- self-checks --
+  ALL OK (per-key serial, last-writer-wins content, awaitPending freshness, exact-once)
+
+-- main-thread cost (3 reps each) --
+mode       mainMs/rep     totalMs/rep   
+sync(r0)   92             92            
+async(r0)  4              58            
+sync(r1)   88             88            
+async(r1)  1              54            
+sync(r2)   87             87            
+async(r2)  1              56            
+
+before(sync) main=89ms  after(async) main=2ms  mainThreadReduction=44.50x

@@ -2107,3 +2107,16 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 - **同批构建修复**：`PaperConfigurations.defaultFieldProcessors` 返回类型放宽（上游遗留窄类型触发 javac 增量编译的 class 文件签名解析陷阱；二分实验定位源码/二进制解析不对称；私有静态方法零 API 影响）。
 - **风险**：低（池数字来源集中化，池实现零改动；adjustThreadCount 为 moonrise 既有 API）。
 - **留档**：worker 池 auto 曲线维持 moonrise 既有；netty 规模属容量上限提升无热路径微基准；benchmark 新增 concurrentutil+slf4j 依赖。
+
+---
+
+## 批次 79（2026-08-26）：玩家存档文件管线下放（多核调度②）
+
+主题：**多核调度——主线程阻塞 IO 清算**。玩家保存的 GZIP+三文件写在主线程（增量自动存档 maxPerTick 突发=多 ms tick 尖峰，/save-all 与关服全量阻塞）。新增 `PapoOrderedFileWrites`（src/main 直提交）：per-目标文件 CompletableFuture 有序链 + IO 池执行 + awaitPending/awaitAll。报告：[note/report/perf/2026-08-26-playersave-offload-batch79.md](report/perf/2026-08-26-playersave-offload-batch79.md)。
+
+### 批次79 — 玩家 .dat/stats/advancements 写下放（源补丁×4 + 直提交工具类）
+- **文件**：新增 `io/papermc/paper/util/PapoOrderedFileWrites.java` + `PlayerDataStorage.java`（save 快照深拷贝+入队；load awaitPending）+ `ServerStatsCounter.java`（save Json 快照+入队；ctor awaitPending）+ `PlayerAdvancements.java`（save codec 快照+入队；load awaitPending）+ `PlayerList.java`（saveAll(-1) awaitAll）。
+- **等价性**：主线程只构建载荷（NBT 树防御性深拷贝；Json 树 detached 新建，任务内同一 GSON 调用=字节逐字节相同）；per-目标链严格串行（旧快照永不覆盖新快照；链失败不阻断后续）；三个加载点读前等待（快速重连读最新，同步语义保持）；全量保存 awaitAll（vanilla 契约保持，增量 fire-and-forget）；池停时同步兜底；haltExecutors 60s 排水双保险。
+- **基准**：PlayerSaveOffloadBench（50 玩家×4 save/tick 突发，96KiB 载荷）：主线程 89ms → 2ms（**44.5×**），总墙钟 87→56ms；自检全绿（per-key 串行/最后快照字节对拍/awaitPending 新鲜度/恰好一次）。payload 熵偏低已披露=保守下界；200 人 /save-all ≈ 370ms 主线程阻塞消除。
+- **风险**：低-中（写入异步化的全部时序面已闭合：per-key 序、读后写、全量等待、停机排水、拒绝兜底；载荷构建留主线程零语义变化）。
+- **留档**：level.dat（下批评估）；逐包 execute 批量化（批次60已否决同域）；实体/POI 卸载序列化（survey #3a，下批主候选）。

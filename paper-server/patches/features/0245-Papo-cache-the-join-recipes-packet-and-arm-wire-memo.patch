@@ -227,7 +227,7 @@ index e6fbc00f309caee72e9168b67e502647bd180f9e..3e73ccd49ce493f40055799a7469e199
          }
          packetSender.accept(papoTags);
 diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
-index b34a39f6760b468fac6190fd88c7b5089c10cb35..63de3100619844133675c559452556666b0bad43 100644
+index 0085f0f4409fa092df7850e0f63ed69d4d5c8dd0..134b6248d78f0cc19c95a6bda783bdc376013b21 100644
 --- a/net/minecraft/server/players/PlayerList.java
 +++ b/net/minecraft/server/players/PlayerList.java
 @@ -195,9 +195,7 @@ public abstract class PlayerList {
@@ -241,7 +241,7 @@ index b34a39f6760b468fac6190fd88c7b5089c10cb35..63de3100619844133675c55945255666
          this.sendPlayerPermissionLevel(player);
          player.getStats().markAllDirty();
          player.getRecipeBook().sendInitialRecipeBook(player);
-@@ -1272,6 +1270,7 @@ public abstract class PlayerList {
+@@ -1279,6 +1277,7 @@ public abstract class PlayerList {
          // Papo start - install the freshly built tags packet as the join-time cache (single point
          // where tag content changes; also drops the registry-packet caches as a free backstop)
          ClientboundUpdateTagsPacket papoTagsPacket = new ClientboundUpdateTagsPacket(TagNetworkSerialization.serializeTagsToNetwork(this.registries));
@@ -249,7 +249,7 @@ index b34a39f6760b468fac6190fd88c7b5089c10cb35..63de3100619844133675c55945255666
          this.broadcastAll(papoTagsPacket);
          net.minecraft.server.network.config.PapoJoinPacketCache.reload(papoTagsPacket);
          // Papo end
-@@ -1283,9 +1282,8 @@ public abstract class PlayerList {
+@@ -1290,9 +1289,8 @@ public abstract class PlayerList {
      public void reloadRecipes() {
          // CraftBukkit end
          RecipeManager recipeManager = this.server.getRecipeManager();
@@ -261,7 +261,7 @@ index b34a39f6760b468fac6190fd88c7b5089c10cb35..63de3100619844133675c55945255666
  
          for (ServerPlayer serverPlayer : this.players) {
              serverPlayer.connection.send(clientboundUpdateRecipesPacket);
-@@ -1293,6 +1291,28 @@ public abstract class PlayerList {
+@@ -1300,6 +1298,28 @@ public abstract class PlayerList {
          }
      }
  
