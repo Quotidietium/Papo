@@ -321,3 +321,19 @@ git add paper-server/patches/features/0203-*.patch paper-server/patches/features
 打包：`Papo-1.21.11-0.50.0.jar`（97.4MB）BUILD SUCCESSFUL，含批次 70-76 全部 7 个补丁
 （0241-0247，PapoSharedWireMemo 等新类入包）。后续每个 release 提交前应跑一次 createPapoJar
 验证产物可构建。
+
+## 2026-08-26 补充：批次 78 踩坑记录
+
+### GRADLE_USER_HOME 已迁移
+
+本机 gradle 缓存（wrapper dists、模块缓存、daemon）已整体迁移到 **`F:\TEMP\.gradle`**（环境变量未持久化，调用时显式 `export GRADLE_USER_HOME=F:/TEMP/.gradle`）。旧的 `~/.gradle` 只剩 wrapper dists（gradle-9.4.1-bin），依赖缓存以 F: 为准。PATH 中的 java 已是 **25.0.4**（javapath 转发器），但编译工具链仍钉 21：真实 JDK 21.0.10 在 `C:\Program Files\Java\latest\jdk-21`（`latest` junction 同时挂 jdk-21/jdk-25）。
+
+### javac 增量编译的 class 文件签名解析陷阱（PaperConfigurations 泛型）
+
+**症状**：改 `SpigotConfig.java`（或任何触发 `PaperConfigurations.java` 单独重编译的改动）后 `:paper-server:compileJava` 报 2 个泛型错误——`List<Definition<? extends Annotation,?,? extends Factory<?,?>>>` 无法转换为 `List<Definition<?,?,? extends Factory<?,?>>>`（PaperConfigurations.java:204/240）。全量编译（`--rerun-tasks`）**同一份源码 BUILD SUCCESSFUL**。
+
+**根因**（二分实验逐变量定位）：上游遗留的 `defaultFieldProcessors()` 返回类型首参带 `? extends Annotation` 窄边界，与被调方 `InnerClassFieldDiscoverer.globalConfig/worldConfig` 的宽 `?` 参数构成仅靠通配包含（JLS 4.5.1 `?` contains `? extends X`）才成立的赋值。**javac 对"从源码解析的签名"接受该转换、对"从 class 文件 Signature 属性解析的签名"拒绝**（同调用方源码、同被调方源码文本，Mini 替身源码编译通过 / 二进制解析失败，反复对拍实证）。增量编译恰好把被调方留在 classpath 二进制里 → 陷阱只在"调用方重编译而被调方没有"时触发。8 月批次都能过纯属全量/同批编译运气。
+
+**修复**（批次 78 同批直提交）：`defaultFieldProcessors()` 返回类型放宽为与参数一致的 `List<Definition<?, ?, ? extends FieldProcessor.Factory<?, ?>>>`（私有静态方法，无 API/行为变化），两类型完全相同后陷阱永久解除。
+
+**通用教训**：遇到"增量编译报泛型错误但 `--rerun-tasks` 全量通过"，先怀疑这个源码/二进制签名解析不对称，而不是怀疑自己的改动；修复方向是让调用方声明类型与被调方参数类型**逐字相同**。

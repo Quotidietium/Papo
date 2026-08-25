@@ -349,11 +349,18 @@ public class PaperConfigurations extends Configurations<GlobalConfiguration, Wor
     public static volatile long PAPO_CONFIG_EPOCH = 0;
     // Papo end
 
-    private static List<Definition<? extends Annotation, ?, ? extends FieldProcessor.Factory<?, ?>>> defaultFieldProcessors() {
+    // Papo start - widen return type to match InnerClassFieldDiscoverer.globalConfig/worldConfig parameter
+    // The upstream `? extends Annotation` bound on the first argument leaves the List invariant-mismatched
+    // against the callee parameter type. javac ACCEPTS this conversion when the callee is compiled from
+    // source in the same invocation, but REJECTS it when the callee is resolved from a class file
+    // signature (incremental compilation) - a latent trap that only springs when exactly this file
+    // recompiles without its callee. Identical wide type disarms it; private static method, no API change.
+    private static List<Definition<?, ?, ? extends FieldProcessor.Factory<?, ?>>> defaultFieldProcessors() {
         return List.of(
             MergeMap.DEFINITION
         );
     }
+    // Papo end - widen return type to match InnerClassFieldDiscoverer.globalConfig/worldConfig parameter
 
     private static ContextMap createWorldContextMap(ServerLevel level) {
         return createWorldContextMap(level.levelStorageAccess.levelDirectory.path(), level.serverLevelData.getLevelName(), level.dimension().identifier(), level.spigotConfig, level.registryAccess(), level.getGameRules());
