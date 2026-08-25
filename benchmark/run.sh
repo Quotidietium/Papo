@@ -6,12 +6,13 @@ cd "$(dirname "$0")"
 
 LIB=lib
 OUT=build/classes
-CP="$LIB/jmh-core-1.37.jar;$LIB/jmh-generator-annprocess-1.37.jar;$LIB/jopt-simple-5.0.4.jar;$LIB/commons-math3-3.6.1.jar;$LIB/fastutil-8.5.18.jar;$LIB/netty-buffer-4.2.7.Final.jar;$LIB/netty-common-4.2.7.Final.jar;$LIB/netty-transport-4.2.7.Final.jar;$LIB/netty-codec-base-4.2.7.Final.jar;$LIB/concurrentutil-0.0.8.jar;$LIB/slf4j-api-2.0.1.jar"
+CP="$LIB/gson-2.11.0.jar;$LIB/jmh-core-1.37.jar;$LIB/jmh-generator-annprocess-1.37.jar;$LIB/jopt-simple-5.0.4.jar;$LIB/commons-math3-3.6.1.jar;$LIB/fastutil-8.5.18.jar;$LIB/netty-buffer-4.2.7.Final.jar;$LIB/netty-common-4.2.7.Final.jar;$LIB/netty-transport-4.2.7.Final.jar;$LIB/netty-codec-base-4.2.7.Final.jar;$LIB/concurrentutil-0.0.8.jar;$LIB/slf4j-api-2.0.1.jar"
 
 mkdir -p "$OUT" results "$LIB"
 
 # 依赖缺失时自动下载（lib/ 不入库）
 dl() { [ -f "$LIB/$2" ] || curl -sfL -o "$LIB/$2" "https://repo1.maven.org/maven2/$1" || { echo "下载失败: $2"; exit 1; }; }
+dl com/google/code/gson/gson/2.11.0/gson-2.11.0.jar gson-2.11.0.jar
 dl org/openjdk/jmh/jmh-core/1.37/jmh-core-1.37.jar jmh-core-1.37.jar
 dl org/openjdk/jmh/jmh-generator-annprocess/1.37/jmh-generator-annprocess-1.37.jar jmh-generator-annprocess-1.37.jar
 dl net/sf/jopt-simple/jopt-simple/5.0.4/jopt-simple-5.0.4.jar jopt-simple-5.0.4.jar
