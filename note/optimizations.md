@@ -2144,3 +2144,17 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 - **sizing 生效实证**：0.54.0 启动日志 8 netty / 12 worker / 4 IO（三批公式全部生效，fresh spigot.yml 物化 netty-threads:8）；0.51.0 对照 4/8/1（旧行为确认）。
 - **关服契约逐行核验**：stop → Saving players/worlds → 全部保存 → awaitAll（level.dat）→ RegionFile flush → 池排水 → exit 0；level.dat 产出合法 gzip+NBT；两轮全文零 ERROR/Exception。
 - **留档**：杂项池（DIMENSION_DATA_IO_POOL=4 / BACKGROUND cap8 / ioPool 冷路径）运行时负载不足不成批；boot 时间 15.41s vs 15.84s 仅同量级 sanity。多核调度池预算面集成验证封闭。
+
+---
+
+## 多核调度系列域封闭总结（2026-08-26，批次78-81）
+
+**已交付**：池预算集中化（78：netty cores/4[4,16] + regionIO cores/8[1,4]；80：worker cores/2[2,12]，显式配置永远优先）→ 主线程阻塞 IO 清算（79：玩家 .dat/stats/advancements；80：level.dat，per-目标有序链+读后写可见+全量等待）→ 集成验证（81：真实服务器全生命周期对拍，sizing 三值生效实证、零异常）。
+
+**评估后否决/留档**（证据链见各批次报告）：
+- 实体 unload 存档序列化下放——`unloadEntity`/`setRemoved` post-event 状态≠vanilla 字节（批次80 留档）。
+- 逐包 eventLoop execute 批量化——批次60 两轮实测否决（MPSC 1.49× 劣化），不重开。
+- 线程优先级层级——上游既有（main NORM+2 / worker NORM-1），无可为。
+- 杂项池 sizing（DIMENSION_DATA_IO_POOL=4 / BACKGROUND cap8 可-D覆盖 / ioPool 冷路径 / ASYNC_EXECUTOR 仅版本检查）——运行时负载不足，不成批。
+- **并行世界保存（/save-all 与关服时三世界串行）**——技术上可行（世界间数据结构独立、moonrise 池本就多世界共享、WorldSaveEvent 可先串行触发），但 chunk system close/save 的跨世界共享面审计负担大，而失败模式=存档损坏（红线级灾难）。在"安全性稳定性不可赌"约束下否决，留档供未来有完整验证带宽时重启。
+- 宏观 worldgen 压测（真实服 forceload 对拍）——spawn 区块上游已移除、forceload 限 256 完成太快、无完成信号可测；机制级证据（批次80 真实池 1.48× + tick 探针 0 偏差）+ 集成实证（批次81）已构成该层面的完整证据链。
