@@ -2133,3 +2133,14 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 - **基准**：WorkerPoolScalingBench（真实池，96×3.8ms CPU 任务，32核）：8→12 线程吞吐 46→31ms（**1.48×**）；NORM+2 tick 探针在两配置饱和期间 p50/p99/max 偏差全 0ms——**扩容不以流畅度换吞吐直接实证**。自检 ALL OK。
 - **同批否定（留档）**：实体 unload 存档序列化下放——`saveEntities` 在 `entityChunk.unload()`（卸载事件+setRemoved）之前同步执行，下放将捕获 post-event 状态≠vanilla 字节，红线否决（NewChunkHolder.java:899→901 证据链）；autosave 路径同理否决。POI 下放可行但收益小不成批。
 - **风险**：低（默认值来源替换+机制复用；否定项有源码证据链）。
+
+---
+
+## 批次 81（2026-08-26）：多核调度系列集成冒烟验证（批次78-80 真实服务器实证，无代码变更）
+
+主题：**稳定性验证轮**——发布 jar 真实 boot→worldgen→自动存档→干净关服全生命周期对拍（0.54.0 vs 0.51.0 基线）。报告：[note/report/perf/2026-08-26-smoke-verify-batch81.md](report/perf/2026-08-26-smoke-verify-batch81.md)。
+
+### 批次81 — 集成验证结论
+- **sizing 生效实证**：0.54.0 启动日志 8 netty / 12 worker / 4 IO（三批公式全部生效，fresh spigot.yml 物化 netty-threads:8）；0.51.0 对照 4/8/1（旧行为确认）。
+- **关服契约逐行核验**：stop → Saving players/worlds → 全部保存 → awaitAll（level.dat）→ RegionFile flush → 池排水 → exit 0；level.dat 产出合法 gzip+NBT；两轮全文零 ERROR/Exception。
+- **留档**：杂项池（DIMENSION_DATA_IO_POOL=4 / BACKGROUND cap8 / ioPool 冷路径）运行时负载不足不成批；boot 时间 15.41s vs 15.84s 仅同量级 sanity。多核调度池预算面集成验证封闭。
