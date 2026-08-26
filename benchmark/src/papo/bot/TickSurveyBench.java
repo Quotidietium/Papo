@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit;
  * 稳态负载（移动处理 + 区块发送 + 连接 tick）持续 45s；随后解析日志中的
  * PapoTickProfile 窗口输出相位占比。门：exit 0 + 零门错误。
  *
- * 用法：java papo.bot.TickSurveyBench <jar> [bots=10] [walkMs=45000]
+ * 用法：java papo.bot.TickSurveyBench <jar> [bots=10] [walkMs=45000] [seed=papo90]
  */
 public final class TickSurveyBench {
 
@@ -30,11 +30,13 @@ public final class TickSurveyBench {
         final Path jar = Path.of(args[0]);
         final int bots = args.length > 1 ? Integer.parseInt(args[1]) : 10;
         final long walkMs = args.length > 2 ? Long.parseLong(args[2]) : 45_000;
+        // 批次95：可选种子（默认 papo90 保持批次90 口径）；换种子走不同地形/结构生成路径
+        final String seed = args.length > 3 ? args[3] : "papo90";
         final Path dir = Files.createTempDirectory("papo-ticksurvey-");
         Files.copy(jar, dir.resolve("server.jar"));
         Files.writeString(dir.resolve("eula.txt"), "eula=true\n", StandardCharsets.UTF_8);
         Files.writeString(dir.resolve("server.properties"), String.join("\n",
-            "online-mode=false", "server-port=" + PORT, "level-seed=papo90",
+            "online-mode=false", "server-port=" + PORT, "level-seed=" + seed,
             "view-distance=6", "simulation-distance=6", "spawn-protection=0",
             "difficulty=peaceful", "spawn-monsters=false", "motd=papo-ticksurvey",
             "sync-chunk-writes=false", "enforce-secure-profile=false", ""), StandardCharsets.UTF_8);
