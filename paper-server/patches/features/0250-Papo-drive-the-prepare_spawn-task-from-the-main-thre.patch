@@ -1,0 +1,103 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <47176362+XIAO1287643931@users.noreply.github.com>
+Date: Wed, 26 Aug 2026 09:13:55 +0800
+Subject: [PATCH] Papo: drive the prepare_spawn task from the main-thread queue
+ as stages complete
+
+The configuration task state machine only advances on tick boundaries, so
+the chunk load ticket is not even scheduled until the first tick after
+start() and a completing future is not observed until the next tick -
+together up to two ticks of pure quantization wait per join (measured 46ms
+of the 80ms steady-state join). Start()/future completions now hop to the
+main-thread task queue (the same between-ticks window packet handlers and
+placeNewPlayer already run in) and advance the same tick() logic; the
+Preparing->Ready transition stays main-thread serialized and idempotent.
+
+diff --git a/net/minecraft/server/network/config/PrepareSpawnTask.java b/net/minecraft/server/network/config/PrepareSpawnTask.java
+index ea0c1fafd1ed7cb3fd05ddbfc41184067a131fd6..224f737a21cadb9ad12509a3b77b1be14ddeb3fb 100644
+--- a/net/minecraft/server/network/config/PrepareSpawnTask.java
++++ b/net/minecraft/server/network/config/PrepareSpawnTask.java
+@@ -35,6 +35,11 @@ public class PrepareSpawnTask implements ConfigurationTask {
+     final NameAndId nameAndId;
+     final LevelLoadListener loadListener;
+     private PrepareSpawnTask.@Nullable State state;
++    // Papo start - batch 87: single-shot Preparing->Ready transition. The event-driven finish
++    // can run REENTRANTLY inside Preparing.tick() itself (a whenComplete firing while the
++    // regular tick() call is mid-flight), which otherwise double-finishes the task.
++    private final java.util.concurrent.atomic.AtomicBoolean papoFinishClaim = new java.util.concurrent.atomic.AtomicBoolean();
++    // Papo end
+ 
+     // Paper start - passthrough profile and packet listener
+     private final com.mojang.authlib.GameProfile profile;
+@@ -127,16 +132,50 @@ public class PrepareSpawnTask implements ConfigurationTask {
+                 .orElseGet(() -> PlayerSpawnFinder.findSpawn(serverLevel, respawnData.pos()));
+             Vec2 vec2 = savedPosition.rotation().orElse(new Vec2(respawnData.yaw(), respawnData.pitch()));
+             this.state = new PrepareSpawnTask.Preparing(serverLevel, completableFuture, vec2);
++            // Papo start - batch 87: drive the prepare_spawn state machine as soon as its async
++            // stages complete instead of waiting for the next tickChildren. The task only
++            // advances on tick boundaries, so (a) the chunk load is not even SCHEDULED until
++            // the first tick after start(), and (b) a completing future is not observed until
++            // the next tick - together up to two ticks (~100ms) of pure quantization wait per
++            // join (measured: 46ms of the 80ms steady-state join). The callback hops to the
++            // main-thread task queue - the same between-ticks window packet handlers
++            // (incl. placeNewPlayer itself) already run in.
++            this.papoScheduleFinishCheck();
+         }
+     }
+ 
++    // Idempotent: races with the regular tick() are safe because both paths run on the main
++    // thread and the Preparing -> Ready transition happens exactly once (the loser observes
++    // a non-Preparing state and no-ops). The tick() body itself is re-entrant (guards on
++    // future completion before mutating anything).
++    private void papoScheduleFinishCheck() {
++        try {
++            this.server.execute(() -> {
++                if (this.state instanceof PrepareSpawnTask.Preparing preparing) {
++                    final PrepareSpawnTask.Ready ready = preparing.tick();
++                    if (ready != null && PrepareSpawnTask.this.papoFinishClaim.compareAndSet(false, true)) {
++                        this.state = ready;
++                        this.listener.finishCurrentTask(PrepareSpawnTask.TYPE);
++                    }
++                }
++            });
++        } catch (final Throwable ignored) {
++            // executor rejected (shutdown tail): the regular tick path still completes the task
++        }
++    }
++    // Papo end - batch 87: event-driven prepare_spawn completion
++
+     @Override
+     public boolean tick() {
+         return switch (this.state) {
+             case null -> false;
+             case PrepareSpawnTask.Preparing preparing -> {
+                 PrepareSpawnTask.Ready ready = preparing.tick();
+-                if (ready != null) {
++                // Papo start - batch 87: the event-driven path may have transitioned
++                // reentrantly during the tick() call above; losing the CAS means the
++                // task is already finished - report "not ready" so the listener idles.
++                if (ready != null && this.papoFinishClaim.compareAndSet(false, true)) {
++                    // Papo end
+                     this.state = ready;
+                     yield true;
+                 } else {
+@@ -231,6 +270,9 @@ public class PrepareSpawnTask implements ConfigurationTask {
+                             ev.callEvent();
+                             return ev.getSpawnLocation();
+                         }, io.papermc.paper.connection.PaperConfigurationTask.CONFIGURATION_POOL);
++                        // Papo start - batch 87: observe async completion without a tick wait
++                        this.eventFuture.whenComplete((result, throwable) -> PrepareSpawnTask.this.papoScheduleFinishCheck());
++                        // Papo end - batch 87
+                     }
+                     if (this.eventFuture != null) {
+                         if (!this.eventFuture.isDone()) {
+@@ -245,6 +287,9 @@ public class PrepareSpawnTask implements ConfigurationTask {
+                     // Paper end - PlayerSpawnLocationEvent
+                     ChunkPos chunkPos = new ChunkPos(BlockPos.containing(vec3));
+                     this.chunkLoadFuture = ((ca.spottedleaf.moonrise.patches.chunk_system.MoonriseChunkLoadCounter)this.chunkLoadCounter).trackLoadWithRadius(this.spawnLevel, chunkPos, 3, net.minecraft.world.level.chunk.status.ChunkStatus.FULL, ca.spottedleaf.concurrentutil.util.Priority.HIGH, () -> { Preparing.this.spawnLevel.getChunkSource().addTicketWithRadius(TicketType.PLAYER_SPAWN, chunkPos, 3); });
++                    // Papo start - batch 87: observe async completion without a tick wait
++                    this.chunkLoadFuture.whenComplete((result, throwable) -> PrepareSpawnTask.this.papoScheduleFinishCheck());
++                    // Papo end - batch 87
+                     PrepareSpawnTask.this.loadListener.start(LevelLoadListener.Stage.LOAD_PLAYER_CHUNKS, this.chunkLoadCounter.totalChunks());
+                     PrepareSpawnTask.this.loadListener.updateFocus(this.spawnLevel.dimension(), chunkPos);
+                 }
