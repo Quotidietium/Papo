@@ -2365,3 +2365,13 @@ sendChunks 0.4-1.5% 与批次 90 画像一致；绝对耗时无上漂（稳态 1
 反降）——批次 78-91 全部离线程管线长时稳定。ShutdownRaceVerify 0.59.0 累计 ×5 全 PASS。
 报告：[note/report/perf/2026-08-26-soak-regression-batch93.md](report/perf/2026-08-26-soak-regression-batch93.md)。
 无版本号变化（0.59.0 保持）；循环终止/继续仍待用户决断（批次 92 总收束已呈交）。
+
+## 批次 94（2026-08-26）：0.59.0 规模放大验证——20 bot 浸泡 + 竞态扩样（回归/验证轮，无代码变更）
+
+主题：去留问询第二次无应答，默认路径规模放大轮。20 bot × 10min（12,000 ticks）：零错误
+exit 0；bot 翻倍主线程各相位仅 +4~9%（次线性，worlds 1167→1273us / connection 120→125us /
+sendChunks 42→45us），主线程 ~1.3ms/tick（≈2.6% 利用率）——双倍负载增量被离线程管线吸收，
+扩展性如设计生效。停机竞态累计 ×7 全 PASS；本轮 0.59.0 首次抽样到上游 POI 内联触发（与
+0.58.1 的 1 次双版本对称），归属链最终闭环。报告：
+[note/report/perf/2026-08-26-scale-soak-batch94.md](report/perf/2026-08-26-scale-soak-batch94.md)。
+无版本号变化（0.59.0 保持）；循环去留仍待用户决断。
