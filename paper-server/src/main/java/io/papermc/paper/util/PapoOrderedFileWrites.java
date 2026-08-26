@@ -53,6 +53,35 @@ public final class PapoOrderedFileWrites {
 
     private PapoOrderedFileWrites() {}
 
+    // Papo start - shutdown-window resilient submission (batch 91)
+    /**
+     * Executor wrapper closing the check-then-act window between {@code QUEUE.isActive()}
+     * and the actual {@code queueTask} submission. Empirically (HaltSemanticsProbe /
+     * HaltRaceBench, concurrentutil 0.0.8): a graceful {@code shutdown(false)} keeps
+     * {@code isActive() == true} for the whole drain but makes {@code queueTask} throw
+     * {@link IllegalStateException}("Queue is shutdown"). CompletableFuture turns that
+     * into an exceptional completion, so pre-fix bookkeeping stayed consistent - but the
+     * submitted save itself was silently dropped (durability hole), and for reads the
+     * decoupled result future never completed, stranding the consumer on its full 60s
+     * bounded get. Inline degradation on the submitting/completing thread preserves the
+     * documented durability contract ("runs the task synchronously so durability never
+     * silently degrades").
+     *
+     * <p>Residual, accepted: a forced {@code halt(false)} (only reachable after the 60s
+     * graceful-shutdown timeout - i.e. pathological IO) keeps {@code isActive() == true}
+     * and returns a Task object that is never scheduled, which submission-side code cannot
+     * distinguish from a healthy queue. Writes lost in that window are equivalent-in-kind
+     * to a watchdog force-kill, which vanilla sync saves also cannot survive.
+     */
+    private static void executeOrRun(final Runnable action) {
+        try {
+            QUEUE.queueTask(action);
+        } catch (final IllegalStateException queueShutdown) {
+            action.run();
+        }
+    }
+    // Papo end - shutdown-window resilient submission (batch 91)
+
     /**
      * Chains {@code ioTask} after any previously enqueued task for {@code target} and runs
      * it on the IO pool. If the pool is already halted (shutdown tail-end), runs the task
@@ -69,7 +98,7 @@ public final class PapoOrderedFileWrites {
                 // A failed predecessor must not drop later saves for this file: tasks catch
                 // their own exceptions vanilla-style, this handle() is belt-and-braces.
                 .handle((result, throwable) -> null)
-                .thenRunAsync(ioTask, QUEUE::queueTask));
+                .thenRunAsync(ioTask, PapoOrderedFileWrites::executeOrRun));
         node.whenComplete((result, throwable) -> {
             TAILS.remove(target, node); // keep the entry if a newer tail has since chained on
             decrementPending();
@@ -133,7 +162,19 @@ public final class PapoOrderedFileWrites {
                         node.completeExceptionally(new java.util.concurrent.CompletionException(e));
                     }
                     return null;
-                }, task -> taskRef.set(QUEUE.queueTask(task, Priority.NORMAL))));
+                    // Papo start - shutdown-window resilient submission (batch 91):
+                    // without the catch, a shutdown(false) drain (isActive() still true)
+                    // completes the chain node exceptionally while the decoupled result
+                    // future never runs, stranding the consumer on its full 60s bounded
+                    // get. Inline fallback runs the read on the completing thread
+                    // instead - sync-path semantics.
+                }, task -> {
+                    try {
+                        taskRef.set(QUEUE.queueTask(task, Priority.NORMAL));
+                    } catch (final IllegalStateException queueShutdown) {
+                        task.run();
+                    }
+                }));
         node.whenComplete((result, throwable) -> {
             TAILS.remove(target, chainNode);
             decrementPending();
@@ -153,6 +194,12 @@ public final class PapoOrderedFileWrites {
                 tail.get(DEFAULT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
             } catch (final TimeoutException ignored) {
                 return; // give up reading rather than hang the main thread
+            } catch (final InterruptedException e) {
+                // Papo start - restore interrupt flag (batch 91): swallowing it without
+                // restoring would leave the main thread's shutdown-interrupt invisible.
+                Thread.currentThread().interrupt();
+                return;
+                // Papo end - restore interrupt flag (batch 91)
             } catch (final Exception ignored) {
                 return; // exceptional completion is already logged inside the task
             }
