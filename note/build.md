@@ -355,3 +355,21 @@ git add paper-server/patches/features/0203-*.patch paper-server/patches/features
 ## 2026-08-26 补充：批次 83 基建（真实服务器 join 冒烟工具）
 
 [benchmark/src/papo/bot/OfflineJoinBot.java](../benchmark/src/papo/bot/OfflineJoinBot.java)：最小离线模式协议机器人（1.21.11 / protocol 774，纯 JDK socket）。**协议包 ID 全部从服务器源码注册序提取**（`LoginProtocols`/`ConfigurationProtocols` 的 `addPacket` 顺序 = packetId，`ProtocolInfoBuilder.listPackets` 实证 ID=列表下标）；不要凭记忆写包 ID——升级 MC 版本后须重新提取（含 version.json 的 protocol_version）。SmokeJoinVerify 跑四态矩阵（空数据/即时重连/稳态/关服）+ 产物校验 + 日志零异常门。服务器子进程日志必须重定向文件（Windows 管道 head 假挂判例）。
+
+## 2026-08-26 补充：批次 84 踩坑记录
+
+### 服务器子进程日志编码（中文 Windows）
+
+JDK18+ 默认 charset=**UTF-8**（JEP 400），但中文 Windows 上 JVM 内某些 native IOException 消息仍按 GBK 产出——Java 端按 UTF-8 读子进程输出得到乱码 `??????`，无法匹配"远程主机强迫关闭"等良性过滤。**规则：起服务器子进程加 `-Dfile.encoding=UTF-8`，读取端按 UTF-8**（SmokeJoinVerify/BurstJoinVerify 已内置）。
+
+### 后台任务链路里 grep "BUILD" 对 FAILED 也返回真
+
+`./gradlew X > log; grep "BUILD" log && next`——grep 匹配到 "BUILD FAILED" 同样成功并继续执行后续步骤（曾把失败产物 amend 进内部提交）。**规则：判定必须 `grep -c "BUILD SUCCESSFUL"` 或存 `$?` 判退出码。**
+
+### bot 突断噪声三形态（真实服冒烟门）
+
+bot 直接 close socket 与服务端出站写入竞争，日志出现三种同源良性 ERROR：`StacklessClosedChannelException` / `IOException: Connection reset by peer` / 中文 reset 消息。两版本同现，冒烟门应过滤并单独计数披露，而非放宽到"允许 ERROR"。
+
+### 端口孤儿：失败路径必须收走服务器进程
+
+runner 异常抛出时若不 stop/destroy 服务器子进程，端口被占导致下一轮 boot 直接失败（"no Done"）。BurstJoinVerify 已用 try/catch destroyForcibly 兜底。

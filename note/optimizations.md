@@ -2165,7 +2165,7 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 
 ### 0249 — join 读侧预取（登录 RTT 窗口）
 - **文件**：`PlayerDataStorage.java`（纯读/纯修复预取体 + 消费）、`PlayerList.java`（stats/adv JSON 预取缓存 + 触发/丢弃入口）、`ServerLoginPacketListenerImpl.java`（触发 + 断连丢弃）、`ServerConfigurationPacketListenerImpl.java`（断连丢弃）、`ServerStatsCounter.java`（ctor 消费）、`PlayerAdvancements.java`（load 消费）+ 直提交 `PapoOrderedFileWrites.enqueueRead`
-- **机制**：`enqueueRead(Path, Callable)` 把读任务挂在与写相同的 per-Path CompletableFuture 链（**结构性读后写排序**，快速重连语义保持；池线程内零阻塞等待——`awaitPending` 从池线程调用会在单线程 IO 池下死锁，本机制规避）；读任务 `Priority.BLOCKING`（vanilla 同步 sync-load 同款，`MoonriseRegionFileIO.getIOBlockingPriorityForCurrentThread` tick 线程档）——池饱和时主线程 join 的读在池层抢占排队中的 region IO。
+- **机制（批次84 压测后终态）**：`enqueueRead(Path, Callable)` 把读任务挂在与写相同的 per-Path CompletableFuture 链（**结构性读后写排序**，快速重连语义保持；池线程内零阻塞等待——`awaitPending` 从池线程调用会在单线程 IO 池下死锁，本机制规避）。读任务入队 **NORMAL** 优先级、消费点未完成则 `raisePriority(BLOCKING)` 升级（moonrise `getIOBlockingPriorityForCurrentThread` 同款模式："有人真在等才给抢占权"）；**datafix 不下放**，留在主线程消费点与原版 map 逐字相同——v1 的"datafix 随读下放 + 入队即 BLOCKING"被批次84 的 20-bot 突发压测实测否决（datafix 在 IO/worker 池均与区块管线竞争、BLOCKING 读抢占区块读，端到端慢 250-450ms；终态双向序统计持平略优）。
 - **等价性（逐项）**：
   - 副作用（`.offline-read` 重命名、`_corrupted_` 备份）**留在主线程消费点原逻辑位置**——登录中断窗口不提前留副作用（严格等价红线，区别于把整个 load 搬走的粗放方案）；
   - 预取体 = readCompressed + MCDataConverter.convertTag，均纯函数且已被 moonrise worker 并发使用（chunk 加载），线程安全有既有实证；
@@ -2173,7 +2173,7 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
   - 单人游戏主机（isSingleplayerOwner）跳过（数据来自内存 tag）；duplicate-login 场景（同 UUID 在线者可能写 .dat）在原版同样于配置阶段读盘、且该登录必被拒绝，无可观察差异；
   - CraftOfflinePlayer.getStatistic 理论竞争窗口：consume-once 语义保证 future 只被一方消费，另一方走原同步读，数据等价；
   - 登录/配置两阶段断连钩子丢弃未消费预取，无泄漏；`PlayerList.loadPlayerData` 无预取时原路径逐字保留（含 .dat_old 回退链）。
-- **基准**：JoinReadPrefetchBench（真实 concurrentutil 池 + 20 人突发）：主线程 **15.45ms → 0.04ms（≈380×）**；零 RTT 最坏情形 7.35ms（池并行度下恒不劣于同步串行）；饱和探针 BLOCKING 625µs vs NORMAL 234ms（**375×**，流畅度红线实证）。自检 5 组 ALL OK。
+- **基准**：JoinReadPrefetchBench（真实 concurrentutil 池 + 20 人突发）：主线程 **15.45ms → 0.04ms（≈380×）**（读侧口径：file+gzip+parse；datafix 按终态留主线程）；零 RTT 最坏情形 7.35ms（池并行度下恒不劣于同步串行）；饱和探针 BLOCKING 704µs vs NORMAL 253ms（**≈358×**，构成消费点升级机制存在必要性的证据）。自检 5 组 ALL OK。批次84 追加：真实服务器 20-bot 并发 burst 双向序统计持平略优 + 240 join 零异常。
 - **风险**：低（结构性排序无死锁面；回退路径完备；副作用时点不变；consume-once + 丢弃钩子闭合）。
 - **留档**：datafix 未进基准模型（保守下界）；`getSpread` 等历史暂缓项不变。
 
@@ -2189,3 +2189,21 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 - **全绿**：两 jar 各 10/10 join（首 join 空数据=回退路径 / 即时重连=读后写排序实战 / 稳态×8=预取命中路径）、stop exit 0、日志零 ERROR/Exception、playerdata/stats/advancements 产物全部合法（gzip+NBT magic 校验）。
 - 端到端稳态 join 墙钟持平（81.6 vs 80.4ms，新玩家文件 KB 级、读成本 µs 级，端到端由区块加载主导）——无回退；机制收益由模型基准量化（380×）。
 - **基建沉淀**：OfflineJoinBot + SmokeJoinVerify 为标准 join 路径验证工具（空数据/即时重连/稳态/关服四态矩阵），后续触碰 login/config/spawn/playerdata 的批次直接复用。
+
+
+## 批次 84（2026-08-26）：join 突发压测——fat 老 .dat × 20 bot 并发，实测驱动批次 82 三轮设计修正（多核调度⑥）
+
+主题：**稳定性压测 + 实测迭代**。批次 83 顺序 join 未覆盖并发；本批 fat .dat 生成器（DataVersion 3700→真实 datafix 全链）+ 20 bot 屏障并发 burst 双向序对拍。**抓到真实并发 bug 并修正批次 82 两项设计**。报告：[note/report/perf/2026-08-26-burst-verify-batch84.md](report/perf/2026-08-26-burst-verify-batch84.md)。
+
+### 抓到的 bug（已修入 0249）
+- **getLevelPath HashMap CME**：并发登录时 authenticator 多线程触发 `LevelStorageAccess.getLevelPath` 的普通 HashMap computeIfAbsent → CME → bot 登录失败。修复：stats/adv 目录 PlayerList 构造期主线程一次解析为 final 字段。顺序 join 永不触发——**并发登录必须进验证矩阵**。
+
+### 三轮迭代（0249 内部三次修正，实测否决链）
+1. v1 datafix 在 IO 池读任务内 + 读 BLOCKING → 突发慢 250-450ms（IO 线程被 datafix 占住，region 读饿死）；
+2. v2/v3 datafix 移 worker 池（HIGHEST→NORMAL）→ 仍慢 270-450ms（与区块反序列化竞争）；现代文件对照（datafix 无步进）仍慢 → 元凶锁定 **BLOCKING 读抢占区块读**；
+3. **终态 v5**：datafix 回主线程消费点（与原版逐字相同）+ 读入队 NORMAL + 消费点未完成 `raisePriority(BLOCKING)`（ReadHandle）→ 双向序统计持平且均值均略优 30-50ms，12 轮 240 bot 零门错误。
+
+### 判例（新增）
+- 跨池移动 CPU 工作必须看它在和谁竞争（主线程串行=自然限流；移到 IO/worker 池=与区块管线竞争，突发端到端反慢）；主线程收益与端到端总布局两个口径都要看。
+- BLOCKING 优先级是"有人真在等"的资源，入队即 BLOCKING = 无人等待时预支抢占权；moonrise 的 raisePriority 等待时升级是正确形态。
+- JDK18+ 默认 charset=UTF-8：中文 Windows 下服务器子进程日志须 `-Dfile.encoding=UTF-8` 才可按 UTF-8 读；bot 突断噪声三形态（StacklessClosedChannelException / Connection reset by peer / 中文 reset）为两版本同现的良性项。
