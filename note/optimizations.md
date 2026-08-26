@@ -2241,3 +2241,14 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 - **等价性**：全路径主线程串行；转移单发；包/事件序列逐连接相同仅提前 ≤2 tick；断连/停机路径 no-op 或常规 tick 兜底。
 - **基准**：稳态重连 80→32-35ms（**−57%**，×3 稳定）；四态冒烟稳态 83.5→37.4ms（−55%，10/10 零异常）；fat-dat burst 持平偏好（−73ms 零门错误）；finish-config gap 46→0ms。报告：[note/report/perf/2026-08-27-prepare-spawn-event-driven-batch87.md](report/perf/2026-08-27-prepare-spawn-event-driven-batch87.md)。
 - **判例**：① 配置任务状态机 tick 量化是 join 延迟主导项（57%）；② whenComplete 可能在赋值表达式内同步触发——状态机完成转移必须 CAS 单发。
+
+## 批次 88（2026-08-27）：登录相位事件驱动完成——join 总 80→14ms（多核调度⑩）
+
+主题：批次 87 剩余串行面清算。`LoginListener.tick()` 的 VERIFYING→LoginSuccess 转移只在 tick 边界（auth 线程完成后量化等待 0-50ms；bot 回环与 20-tick 锁相致实测中位 21ms 低估随机相位期望 ~25ms）。
+
+### 0251 — 登录完成事件驱动
+- **机制**：startClientVerification（auth 线程）置 VERIFYING 后经 `server.execute` 推进 `verifyLoginAndFinishConnectionSetup`，守卫与常规 tick() 逐字相同（disconnecting/cookies/state）；单次执行=主线程串行化+守卫块内转移；停机尾部 executor 拒绝由常规 tick 兜底；dupe-disconnect 罕见路径维持 tick 轮询。
+- **等价性**：同方法同守卫仅提前；canPlayerLogin/PlayerLoginEvent 仍主线程；WAITING_FOR_DUPE 语义不变。
+- **基准**：登录相位 21→**4ms**；稳态 join **80→14/15ms（−82%）**；四态冒烟稳态 mean **19.0ms（vs 0.54.0 −76%）**；burst 568ms（−~120ms）；fat-dat burst 偏好（p50 −132ms）。全门绿（test/冒烟/相位×2/burst 120 bot）。报告：[note/report/perf/2026-08-27-login-event-driven-batch88.md](report/perf/2026-08-27-login-event-driven-batch88.md)。
+- **join 延迟 tick 量化面全部清零**（87+88 总账：登录 21→4、prepare_spawn 46→0、placeNewPlayer 9→8，剩 14ms 为真实工作）。
+- **判例**：①"状态机只在 tick 推进"是 join 延迟结构性来源，事件驱动+主线程串行化+守卫内转移=统一安全配方；②验证 bot 回环可能与 tick 锁相，量化等待测量需防相位偏差。
