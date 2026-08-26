@@ -2260,3 +2260,13 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 ### 判例
 - **join/quit 管线多核战役收束**：读侧（82-84）+ 量化面（87-88）清零后，剩余延迟全部是语义必需的主线程工作，进一步压缩需 Folia 级事件/实体模型重写——超出等价性红线。
 - 包到达形状测量（bot trace 已内置 12 包短读）是发送管线健康度的廉价验证手段。
+
+## 批次 90（2026-08-27）：稳态 tick 主线程串行面 survey + 相位剖析基建（多核调度⑪）
+
+主题：join/quit 之外的一般性主线程面。新增 **PapoTickProfile**（`-Dpapo.tickProfile=true|1`，默认关=每相位一次静态布尔检查；0252 探针入 tickChildren 六段 + ServerLevel 三段）+ **行走 bot**（MOVE_POS/KEEPALIVE/PING）+ TickSurveyBench（10 bot × 45s 稳态负载）。报告：[note/report/perf/2026-08-27-tick-survey-batch90.md](report/perf/2026-08-27-tick-survey-batch90.md)。
+
+### 稳态相位画像与结论
+- **主线程总利用率仅 3-9%**（4.43ms→1.42ms / 50ms tick，两窗口）——与批次 86 宏观校准互证：主线程在真实负载规模非瓶颈；大规模多核效率问题是 world/entity tick 区域化（Folia 级，超红线）。
+- worlds 37-39%（tickPending+misc 22-23% 为最大单项=空维度固定成本，上游已有 disable-world-ticking-when-empty 旋钮，运营建议）；connection 4-6%；sendChunks ≈1%（批次 58-77 网络+区块管线的真实负载验证）；functions/players ≈0。
+- **无新可安全消除的量化/阻塞面**（稳态各相位在 tick 内联连续执行，无边界等待）。
+- 踩坑三判例：Boolean.getBoolean 只认 "true"；多行 println 续行被日志吞（逐行）；bundler jar 类在嵌套 jar。

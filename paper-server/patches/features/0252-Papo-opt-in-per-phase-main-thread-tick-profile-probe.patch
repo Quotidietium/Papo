@@ -1,0 +1,116 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <47176362+XIAO1287643931@users.noreply.github.com>
+Date: Wed, 26 Aug 2026 10:17:14 +0800
+Subject: [PATCH] Papo: opt-in per-phase main-thread tick profile probes
+
+Property-gated (-Dpapo.tickProfile=true|1, default off = one static
+final check per phase boundary) wall-time aggregation of the tickChildren
+sections (functions/worlds/connection/players/sendChunks) and the
+per-level ServerLevel sections (tickPending+misc/chunkSource/entities),
+reported every 400 ticks. Diagnostic instrumentation for the batch 90
+steady-state serial-surface survey; zero behavior change when disabled.
+
+diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
+index 79c2b63a1a0eb227a5e58e2d35155c87b39db9f7..40793cec5e829d55402936bf29e31e53cf19240a 100644
+--- a/net/minecraft/server/MinecraftServer.java
++++ b/net/minecraft/server/MinecraftServer.java
+@@ -1571,6 +1571,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+     }
+ 
+     public void tickServer(BooleanSupplier hasTimeLeft) {
++        io.papermc.paper.util.PapoTickProfile.maybeReport(this.tickCount); // Papo - batch 90 tick profile
+         org.spigotmc.WatchdogThread.tick(); // Spigot
+         long nanos = Util.getNanos();
+         int i = this.pauseWhenEmptySeconds() * 20;
+@@ -1770,7 +1771,9 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+         io.papermc.paper.adventure.providers.ClickCallbackProviderImpl.ADVENTURE_CLICK_MANAGER.handleQueue(this.tickCount); // Paper
+         io.papermc.paper.adventure.providers.ClickCallbackProviderImpl.DIALOG_CLICK_MANAGER.handleQueue(this.tickCount); // Paper
+         profilerFiller.push("commandFunctions");
++        final long papoTFunctions = System.nanoTime(); // Papo - batch 90 tick profile
+         this.getFunctions().tick();
++        io.papermc.paper.util.PapoTickProfile.add("functions", papoTFunctions); // Papo - batch 90
+         profilerFiller.popPush("levels");
+         this.updateEffectiveRespawnData();
+ 
+@@ -1807,6 +1810,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+         }
+ 
+         this.isIteratingOverLevels = true; // Paper - Throw exception on world create while being ticked
++        final long papoTWorlds = System.nanoTime(); // Papo - batch 90 tick profile
+         for (ServerLevel serverLevel : this.getAllLevels()) {
+             serverLevel.hasPhysicsEvent = org.bukkit.event.block.BlockPhysicsEvent.getHandlerList().getRegisteredListeners().length > 0; // Paper - BlockPhysicsEvent
+             serverLevel.hasEntityMoveEvent = io.papermc.paper.event.entity.EntityMoveEvent.getHandlerList().getRegisteredListeners().length > 0; // Paper - Add EntityMoveEvent
+@@ -1836,11 +1840,16 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+             serverLevel.explosionDensityCache.clear(); // Paper - Optimize explosions
+         }
+         this.isIteratingOverLevels = false; // Paper - Throw exception on world create while being ticked
++        io.papermc.paper.util.PapoTickProfile.add("worlds", papoTWorlds); // Papo - batch 90
+ 
+         profilerFiller.popPush("connection");
++        final long papoTConn = System.nanoTime(); // Papo - batch 90 tick profile
+         this.tickConnection();
++        io.papermc.paper.util.PapoTickProfile.add("connection", papoTConn); // Papo - batch 90
+         profilerFiller.popPush("players");
++        final long papoTPlayers = System.nanoTime(); // Papo - batch 90 tick profile
+         this.playerList.tick();
++        io.papermc.paper.util.PapoTickProfile.add("players", papoTPlayers); // Papo - batch 90
+         profilerFiller.popPush("debugSubscribers");
+         this.debugSubscribers.tick();
+         if (this.tickRateManager.runsNormally()) {
+@@ -1855,12 +1864,14 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+         }
+ 
+         profilerFiller.popPush("send chunks");
++        final long papoTSendChunks = System.nanoTime(); // Papo - batch 90 tick profile
+ 
+         for (ServerPlayer serverPlayer : this.playerList.getPlayers()) {
+             serverPlayer.connection.chunkSender.sendNextChunks(serverPlayer);
+             serverPlayer.connection.resumeFlushing();
+         }
+ 
++        io.papermc.paper.util.PapoTickProfile.add("sendChunks", papoTSendChunks); // Papo - batch 90
+         profilerFiller.pop();
+         this.serverActivityMonitor.tick();
+     }
+diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
+index 18be6b1a287a9d70176b5ed1f5473d0c01285abb..2fc20049985d5ca83382c919ff14136b11276a63 100644
+--- a/net/minecraft/server/level/ServerLevel.java
++++ b/net/minecraft/server/level/ServerLevel.java
+@@ -790,6 +790,7 @@ public class ServerLevel extends Level implements ServerEntityGetter, WorldGenLe
+             this.tickTime();
+         }
+ 
++        final long papoTPending = System.nanoTime(); // Papo - batch 90 tick profile
+         profilerFiller.push("tickPending");
+         if (!this.isDebug() && runsNormally) {
+             long l = this.getGameTime();
+@@ -806,7 +807,9 @@ public class ServerLevel extends Level implements ServerEntityGetter, WorldGenLe
+         }
+ 
+         profilerFiller.popPush("chunkSource");
++        final long papoTChunkSource = System.nanoTime(); // Papo - batch 90 tick profile
+         this.getChunkSource().tick(hasTimeLeft, true);
++        io.papermc.paper.util.PapoTickProfile.add("level.chunkSource", papoTChunkSource); // Papo - batch 90
+         profilerFiller.popPush("blockEvents");
+         if (runsNormally) {
+             this.runBlockEvents();
+@@ -823,8 +826,10 @@ public class ServerLevel extends Level implements ServerEntityGetter, WorldGenLe
+             this.emptyTime++;
+         }
+ 
++        final long papoTEntities = System.nanoTime(); // Papo - batch 90 tick profile
+         if (this.emptyTime < 300) {
+-            profilerFiller.push("entities");
++            io.papermc.paper.util.PapoTickProfile.add("level.tickPending+misc", papoTPending); // Papo - batch 90
++        profilerFiller.push("entities");
+             if (this.dragonFight != null && runsNormally) {
+                 profilerFiller.push("dragonFight");
+                 this.dragonFight.tick();
+@@ -863,6 +868,7 @@ public class ServerLevel extends Level implements ServerEntityGetter, WorldGenLe
+             profilerFiller.pop();
+         }
+ 
++        io.papermc.paper.util.PapoTickProfile.add("level.entities", papoTEntities); // Papo - batch 90
+         profilerFiller.push("entityManagement");
+         // Paper - rewrite chunk system
+         profilerFiller.pop();
