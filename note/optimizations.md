@@ -2375,3 +2375,13 @@ sendChunks 42→45us），主线程 ~1.3ms/tick（≈2.6% 利用率）——双�
 0.58.1 的 1 次双版本对称），归属链最终闭环。报告：
 [note/report/perf/2026-08-26-scale-soak-batch94.md](report/perf/2026-08-26-scale-soak-batch94.md)。
 无版本号变化（0.59.0 保持）；循环去留仍待用户决断。
+
+## 批次 95（2026-08-26）：0.59.0 随机种子多世界抽样浸泡（回归/验证轮，无服务器代码变更）
+
+主题：去留问询第三次无应答，默认路径跨种子轮（TickSurveyBench 增可选 seed 参数，默认
+papo90 口径不变）。papo95seedB 20bot × 10min：零错误 exit 0；相位占比结构跨种子稳定
+（worlds 36.7-39.8% / connection 3.2-4.1% / sendChunks 0.4-1.1%），绝对值 worlds
+1672us（vs papo90 1273us，+31% 为地形生成方差，主线程利用率仍 ≈3.3%），无新热点。
+停机竞态累计 ×9 全 PASS。累计验证矩阵：长时+规模+种子+竞态全绿。报告：
+[note/report/perf/2026-08-26-seed-sampling-batch95.md](report/perf/2026-08-26-seed-sampling-batch95.md)。
+无版本号变化（0.59.0 保持）；循环去留仍待用户决断。
