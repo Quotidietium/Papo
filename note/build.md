@@ -413,3 +413,10 @@ Windows 中文 locale 下 socket 层 IOException 文案（"远程主机强迫关
 ### paperclip/bundler jar 的类在嵌套 jar 里
 
 `createPapoJar` 产物外层 listing 查不到服务器类——实际在 `META-INF/versions/<mc>/paper-<mc>.jar` 嵌套 jar。核对"改动是否进包"必须解嵌套 jar（本批曾因此误判探针未进包）。
+
+### 运营类配置旋钮的文档去向（批次 92）
+
+`disable-world-ticking-when-empty` 等运营 opt-in 配置的语义/建议不入 build.md（构建判例
+专用），统一放 [note/ops-empty-world-ticking.md](ops-empty-world-ticking.md)——含源码级
+"门内/门外"逐段核对（批次 90 的"22-23% 已有旋钮可消"口径在那里被修正为"旋钮只覆盖
+entities/blockEntities 段"）。改 ServerLevel tick 结构时记得同步该文档的行号锚点。

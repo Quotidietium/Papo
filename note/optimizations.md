@@ -2318,3 +2318,41 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 - CompletableFuture 会把 executor 异常转成 future 异常完成——任务体不运行但 future 有终态，
   "安静失败"只能靠对拍基准抓。
 - 停机窗口加固的正确形态是降级而非重试：与既有同步降级契约统一，不引入新调度假设。
+
+## 批次 92（2026-08-26）：空维度旋钮运营文档 + 系列总收束（documentation-only，无代码变更）
+
+主题：批次 90 遗留的 documentation-only 项收尾 + 多核调度系列（78-92）总收束供决断。
+
+### 交付：[note/ops-empty-world-ticking.md](ops-empty-world-ticking.md)
+- 源码级逐段核对 `disable-world-ticking-when-empty`（WorldConfiguration.java:501 /
+  ServerLevel.java:820-830）：门内=实体段+区块实体+dragonFight（emptyTime≥300 后跳过）；
+  门外=计划 tick/突袭/chunkSource 脚手架/时间天气——**旋钮管不到门外大头**。
+- **修正批次 90 口径**：22-23% tickPending+misc 的主要构成在门外，旋钮实测收益限于
+  entities/blockEntities 段（空维度实体稀少，收益有限）；剩余为上游结构性支出，
+  消除需上游重构（超等价红线）。
+- 运营建议（何时开/何时别开/unsupported 档位含义/-Dpapo.tickProfile 验证方法）+
+  build.md 交叉引用。
+
+### 系列总收束（批次 78-92）：红线内优化空间逐项证据链
+
+**交付面**（每项有报告+基准+验证矩阵）：
+- 池预算（78/80/81）与 worker 曲线探索（80）；
+- 主线程阻塞 IO 清算：玩家存档写（79）、level.dat（80）、join 读侧预取（82-84）；
+- join 管线 tick 量化清零：prepare_spawn 事件驱动（87，−57%）、登录事件驱动（88，
+  join 80→14ms，−82%）；
+- 稳态画像基建与验证：PapoTickProfile + 行走 bot（90，利用率 3-9%）、
+  ShutdownRaceVerify 停机竞态门（91）；
+- 停机窗口稳定性：提交竞态加固（91，0.59.0）。
+
+**否决面**（证据链见各批次报告，不再重开）：
+- 实体 unload 存档下放（80：post-event 状态≠vanilla 字节）；
+- 逐包 execute 批量化（60：1.49× 劣化）；线程优先级（上游已备）；杂项池 sizing
+  （负载不足）；专用 datafix 池（85：+380ms）；并行世界保存（跨世界共享面审计负担
+  vs 存档损坏红线）；宏观 worldgen 压测（批次 80/81 机制级+集成级证据已闭合）；
+- placeNewPlayer/quit 剩余构成（89：语义必需主线程工作）；
+- 稳态 tick 串行面（90：3-9% 利用率，无新可安全消除面）；
+- 上游既有关服 POI 内联 ERROR（91：A/B 归因上游，修上游停机语义超红线）；
+- 空维度固定成本全额消除（92：门外大头属上游结构，旋钮仅覆盖实体段）。
+
+**剩余空间判定**：进一步的多核效率提升需事件/实体模型区域化（Folia 级重写，超出
+"默认行为等价可证"红线）或运营 opt-in（已文档化）。红线内已识别面全部做完。
