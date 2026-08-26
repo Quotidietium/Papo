@@ -259,7 +259,7 @@ public final class BurstJoinVerify {
         return line.contains("ERROR") || line.contains("Exception");
     }
 
-    private static boolean isBenignCloseRace(final String l) {
+    static boolean isBenignCloseRace(final String l) {
         if (l.contains("StacklessClosedChannelException") || l.contains("Connection reset by peer")
             || l.contains("远程主机强迫关闭")) {
             return true;

@@ -9,6 +9,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.UUID;
 import java.util.zip.Inflater;
 
@@ -41,6 +42,17 @@ public final class OfflineJoinBot {
     private OutputStream out;
     private int compressionThreshold = -1;
 
+    // 批次87：分段计时——每个收到的包记录 (状态, packetId, 自 connect 起毫秒)
+    private final java.util.List<String> phaseTrace = new java.util.ArrayList<>();
+
+    public List<String> getPhaseTrace() {
+        return this.phaseTrace;
+    }
+
+    private void trace(final String state, final int packetId, final long t0) {
+        this.phaseTrace.add(state + ":0x" + Integer.toHexString(packetId) + ":" + (System.nanoTime() - t0) / 1_000_000 + "ms");
+    }
+
     public OfflineJoinBot(final String host, final int port, final String name) {
         this.host = host;
         this.port = port;
@@ -50,6 +62,17 @@ public final class OfflineJoinBot {
 
     /** 返回 [connectMs, loginAckMs, spawnMs]（自 connect 起累计毫秒）。 */
     public long[] joinAndDisconnect(final long postSpawnDwellMs) throws IOException {
+        this.phaseTrace.clear();
+        return this.doJoin(postSpawnDwellMs);
+    }
+
+    /** tracing 版：包级时间戳写入 {@link #getPhaseTrace()}。 */
+    public long[] joinAndDisconnect(final long postSpawnDwellMs, final boolean tracing) throws IOException {
+        this.phaseTrace.clear();
+        return this.doJoin(postSpawnDwellMs);
+    }
+
+    private long[] doJoin(final long postSpawnDwellMs) throws IOException {
         final long t0 = System.nanoTime();
         this.socket = new Socket(this.host, this.port);
         this.socket.setTcpNoDelay(true);
@@ -80,6 +103,7 @@ public final class OfflineJoinBot {
         boolean loggedIn = false;
         while (!loggedIn) {
             final Frame f = this.readFrame();
+            this.trace("LOGIN", f.packetId(), t0);
             switch (f.packetId) {
                 case 0x03 -> { // LoginCompression
                     this.compressionThreshold = readVarintBytes(f.payload, 0);
@@ -98,6 +122,7 @@ public final class OfflineJoinBot {
         boolean finished = false;
         while (!finished) {
             final Frame f = this.readFrame();
+            this.trace("CONFIG", f.packetId(), t0);
             switch (f.packetId) {
                 case 0x0E -> sendPacket(0x07, new byte[]{0x00}); // SelectKnownPacks: 空表（服务端发全量 NBT，bot 只跳读）
                 case 0x04 -> sendPacket(0x04, f.payload); // KeepAlive 回显 long
@@ -112,6 +137,7 @@ public final class OfflineJoinBot {
 
         // --- PLAY 状态：首个 play 包 = placeNewPlayer 完成 ---
         final Frame firstPlay = this.readFrame();
+        this.trace("PLAY", firstPlay.packetId(), t0);
         final long tSpawn = System.nanoTime();
         if (firstPlay == null) {
             throw new EOFException("no play packet after configuration");
