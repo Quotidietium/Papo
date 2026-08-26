@@ -393,3 +393,9 @@ Windows 中文 locale 下 socket 层 IOException 文案（"远程主机强迫关
 ### python -c 内联多行字符串拼接需显式括号（复发）
 
 `var = ('a' + chr(10) +\n 'b')` 跨行拼接必须开括号；漏括号报 SyntaxError 指向行尾 `+`。连同 heredoc 吃反斜杠判例：**复杂补丁一律 Write 工具写 .py 文件执行**。
+
+## 2026-08-27 补充：批次 87 踩坑记录
+
+### whenComplete 可能在 future 赋值表达式内同步触发（重入双 finish 判例）
+
+`this.chunkLoadFuture = trackLoadWithRadius(...)` 返回**已完成的 future** 时，紧随其后的 `whenComplete` 在赋值现场同步执行；若回调链推进状态机并 finishCurrentTask，而外层常规 tick() 尚在飞行中——内外双 finish → "Unexpected request for task finish" 断连（burst 才暴露，稳态不复现）。**规则：状态机完成转移必须单发（AtomicBoolean CAS 先到者胜），事件驱动与常规驱动共享同一 CAS。**

@@ -2230,3 +2230,14 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 ## 批次 86（2026-08-26）：多核调度系列宏观 worldgen 校准——端到端持平，瓶颈归位主线程（多核调度⑧）
 
 主题：补上批次 78/80 池预算改动的宏观端到端口径（fat .dat Pos 指向远方未生成区块 → 20 bot 并发 join 触发真实 worldgen 突发，现代 DV 隔离 datafix）。结果：**0.55.0（8/4/12 池）vs 0.52.0（4/1/8 池）10+9 轮统计持平（Δ=−27ms）**——join-gen 突发关键链是主线程串行面（20 bot config+placeNewPlayer ~3s 主导）而非 worker 面（49-chunk 生成 Δ~40ms 被淹没）。不否定批次78/80（持续区块需求场景收益成立，机制级证据在），但确立核心洞察：**多核利用率瓶颈常在主线程串行面，后续最高价值面是减少主线程工作而非调池**。报告：[note/report/perf/2026-08-26-worldgen-macro-batch86.md](report/perf/2026-08-26-worldgen-macro-batch86.md)。附带：MakeFatPlayerDat 远坐标覆盖（PAPO_FAT_POS_X/Z）+ BurstJoinVerify 良性门统一（isBenignCloseRace，本机 locale socket 乱码判例：sun.jnu.encoding 层，file.encoding 管不到）。
+
+## 批次 87（2026-08-27）：join 管线相位分解 + prepare_spawn 事件驱动完成（多核调度⑨，稳态 join −57%）
+
+主题：批次 86 判例执行——主线程串行面是瓶颈。包级相位计时（JoinPhaseBench）分解稳态 80ms join：登录 21 + 配置管道 4（批次74 memo 下 26 注册表包仅 ~1ms）+ **46ms 纯 tick 量化**（prepare_spawn 状态机只在 tick 边界推进：区块票据首 tick 才调度 + future 完成等下个 tick 观察，两级量化最坏 ~100ms）+ placeNewPlayer 9。
+
+### 0250 — prepare_spawn 事件驱动完成
+- **机制**：start() 末尾 + 三个 future 的 whenComplete 统一经 `server.execute`（主线程任务队列=包处理器与 placeNewPlayer 本就运行的 tick 间窗口）推进同一 tick() 逻辑；**CAS 单发转移**防重入双 finish。
+- **初版缺陷（burst 实测抓出后修复）**：whenComplete 在 Preparing.tick() 内联触发 → 内外双重 finishCurrentTask → "current task: join_world, requested: prepare_spawn" 断连；CAS 后 6 轮 burst 120 bot 零复现。
+- **等价性**：全路径主线程串行；转移单发；包/事件序列逐连接相同仅提前 ≤2 tick；断连/停机路径 no-op 或常规 tick 兜底。
+- **基准**：稳态重连 80→32-35ms（**−57%**，×3 稳定）；四态冒烟稳态 83.5→37.4ms（−55%，10/10 零异常）；fat-dat burst 持平偏好（−73ms 零门错误）；finish-config gap 46→0ms。报告：[note/report/perf/2026-08-27-prepare-spawn-event-driven-batch87.md](report/perf/2026-08-27-prepare-spawn-event-driven-batch87.md)。
+- **判例**：① 配置任务状态机 tick 量化是 join 延迟主导项（57%）；② whenComplete 可能在赋值表达式内同步触发——状态机完成转移必须 CAS 单发。
