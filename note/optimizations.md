@@ -2252,3 +2252,11 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 - **基准**：登录相位 21→**4ms**；稳态 join **80→14/15ms（−82%）**；四态冒烟稳态 mean **19.0ms（vs 0.54.0 −76%）**；burst 568ms（−~120ms）；fat-dat burst 偏好（p50 −132ms）。全门绿（test/冒烟/相位×2/burst 120 bot）。报告：[note/report/perf/2026-08-27-login-event-driven-batch88.md](report/perf/2026-08-27-login-event-driven-batch88.md)。
 - **join 延迟 tick 量化面全部清零**（87+88 总账：登录 21→4、prepare_spawn 46→0、placeNewPlayer 9→8，剩 14ms 为真实工作）。
 - **判例**：①"状态机只在 tick 推进"是 join 延迟结构性来源，事件驱动+主线程串行化+守卫内转移=统一安全配方；②验证 bot 回环可能与 tick 锁相，量化等待测量需防相位偏差。
+
+## 批次 89（2026-08-27）：placeNewPlayer 构成分解 + quit 管线 survey——join/quit 战役收束（勘察轮，无代码变更）
+
+主题：批次 88 后剩余 14ms 的最后两块。**placeNewPlayer 7ms 分解**（bot 追踪前 13 个 play 包）：finish-config 处理 + 协议切换 + ~8 初始包 + recipebook/scoreboard/levelInfo + 实体入世界 + PlayerJoinEvent + 广播，单次主线程执行；**join 突发 13 包同一毫秒到达**（suspendFlushing 原子刷新 + 批次74/75 memo 生效，发送侧零开销）——无残余量化、无可安全下放面（事件/实体入世界必须主线程）。**quit 管线 survey**：事件驱动无量化面，写侧已由批次 79 覆盖，NBT 构建留主线程是活状态一致性所系。报告：[note/report/perf/2026-08-27-placeplayer-quit-survey-batch89.md](report/perf/2026-08-27-placeplayer-quit-survey-batch89.md)。
+
+### 判例
+- **join/quit 管线多核战役收束**：读侧（82-84）+ 量化面（87-88）清零后，剩余延迟全部是语义必需的主线程工作，进一步压缩需 Folia 级事件/实体模型重写——超出等价性红线。
+- 包到达形状测量（bot trace 已内置 12 包短读）是发送管线健康度的廉价验证手段。
