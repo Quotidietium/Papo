@@ -2218,3 +2218,11 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 - 并发登录直调 getWorldPath——HashMap 缓存 CME（已修：构造期预解析）。
 
 **判例沉淀**：跨池移动 CPU 工作看竞争对象；BLOCKING=有人真在等；主线程收益与端到端两个口径都要看；并发登录必须进验证矩阵。join 存档管线（读写两侧）至此封闭。
+
+## 批次 85（2026-08-26）：专用登录 datafix 池假设检验——否决（第四形态，多核调度⑦）
+
+主题：批次 84 判例推论验证。实现 `PapoLoginDatafixPool`（cores/8 clamp[1,2]，NORM-1 daemon）+ 两阶段链（读 IO 池→fix 专用池）为 0250，burst 实测**比 v4 慢 ~380ms**（消费点在 2 线程修复队列排队 + 主线程失去自然限流导致区块需求扎堆）——四种 datafix 放置形态（IO 池/worker×2/专用池）全部实测劣于主线程，**v4 判例终局加固**；0250 rebase-drop 摘除（批次29 先例），池类删除，撤销后复确认持平偏好（mean −92ms）。报告：[note/report/perf/2026-08-26-dedicated-pool-batch85.md](report/perf/2026-08-26-dedicated-pool-batch85.md)。
+
+### 判例（新增）
+- **"自然限流"可能是隐式最优调度**：并行化串行工作后，下游（区块管线）瞬时需求扎堆可吃掉全部收益——判断并行化收益必须看下游吞吐是否弹性。
+- /mspt 度量基建勘察：BurstJoinVerify 已内置捕获，但 zh-CN Windows 管道控制台下 ◴ 数字行不输出（MsptProbe 实证）——平台限制留档，Linux/tty 可用。

@@ -373,3 +373,13 @@ bot 直接 close socket 与服务端出站写入竞争，日志出现三种同�
 ### 端口孤儿：失败路径必须收走服务器进程
 
 runner 异常抛出时若不 stop/destroy 服务器子进程，端口被占导致下一轮 boot 直接失败（"no Done"）。BurstJoinVerify 已用 try/catch destroyForcibly 兜底。
+
+## 2026-08-26 补充：批次 85 踩坑记录
+
+### 本会话 bash heredoc 持续吃反斜杠（复发×3）
+
+`python - <<'EOF'` 内的 `\n`/`\u25f4` 转义到 python 源码时被降级（`\n` 变真换行、`\u` 变实际字符），导致 Java 源出现跨行字符串字面量等损坏。**规则：含反斜杠转义的补丁一律用 Write 工具写 .py 临时文件再执行，不用 heredoc 内联。**
+
+### 管道控制台不输出 ◴ 数字行（/mspt 捕获限制）
+
+zh-CN Windows + 管道 stdout 下，`/mspt` 的表头行可见、⛁ 数字行缺失（MsptProbe 92 行日志实证）。jline 非 tty 编码/写入路径限制。后续需 MSPT 数据时改用 Linux/tty 或服务器侧改造。
