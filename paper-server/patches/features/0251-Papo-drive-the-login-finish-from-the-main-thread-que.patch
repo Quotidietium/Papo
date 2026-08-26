@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <47176362+XIAO1287643931@users.noreply.github.com>
+Date: Wed, 26 Aug 2026 09:32:01 +0800
+Subject: [PATCH] Papo: drive the login finish from the main-thread queue as
+ verification completes
+
+The VERIFYING -> LoginSuccess transition only happens in tick(), so the
+login waits for the next tick boundary after the authenticator thread
+finishes - up to 50ms of pure quantization per join. The completion now
+hops to the main-thread task queue with the identical guards to the
+regular tick() path (disconnecting / awaiting cookies / VERIFYING);
+single execution is guaranteed by main-thread serialization plus the
+state transition happening inside the guarded block.
+
+diff --git a/net/minecraft/server/network/ServerLoginPacketListenerImpl.java b/net/minecraft/server/network/ServerLoginPacketListenerImpl.java
+index 4d04bac8f898fe239849434f6ad1a4d15a2f7fc9..86092077d69e32c3b526b79a89b94f4f2d047a9f 100644
+--- a/net/minecraft/server/network/ServerLoginPacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerLoginPacketListenerImpl.java
+@@ -213,6 +213,23 @@ public class ServerLoginPacketListenerImpl implements ServerLoginPacketListener,
+         // write chains for their files and are consumed at the original load points.
+         this.server.getPlayerList().papoPrefetchJoinData(new net.minecraft.server.players.NameAndId(authenticatedProfile));
+         // Papo end - batch 82: join read-side prefetch
++        // Papo start - batch 88: drive the login finish from the main-thread task queue instead
++        // of waiting for the next tickChildren (up to 50ms of pure quantization per join).
++        // Same window packet handlers run in; identical guards to the regular tick() path
++        // (disconnect/cookie/VERIFYING) and single execution is guaranteed because both
++        // paths run serialized on the main thread and the state transition happens inside.
++        try {
++            this.server.execute(() -> {
++                if (!this.disconnecting
++                    && this.state == ServerLoginPacketListenerImpl.State.VERIFYING
++                    && !this.paperLoginConnection.isAwaitingCookies()) {
++                    this.verifyLoginAndFinishConnectionSetup(Objects.requireNonNull(this.authenticatedProfile));
++                }
++            });
++        } catch (final Throwable ignored) {
++            // executor rejected (shutdown tail): the regular tick path still completes the login
++        }
++        // Papo end - batch 88: event-driven login finish
+     }
+ 
+     private void verifyLoginAndFinishConnectionSetup(GameProfile profile) {
