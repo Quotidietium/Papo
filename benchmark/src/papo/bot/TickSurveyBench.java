@@ -8,7 +8,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -21,6 +20,9 @@ import java.util.concurrent.TimeUnit;
  * PapoTickProfile 窗口输出相位占比。门：exit 0 + 零门错误。
  *
  * 用法：java papo.bot.TickSurveyBench <jar> [bots=10] [walkMs=45000] [seed=papo90]
+ *
+ * 批次97：bot 启动改为每 bot 专用线程（原 commonPool 并行度 31，bot>31 欠启动）；
+ * bot≥80 服务器堆 -Xmx4G。
  */
 public final class TickSurveyBench {
 
@@ -42,8 +44,10 @@ public final class TickSurveyBench {
             "difficulty=peaceful", "spawn-monsters=false", "motd=papo-ticksurvey",
             "sync-chunk-writes=false", "enforce-secure-profile=false", ""), StandardCharsets.UTF_8);
 
+        // 批次97：bot≥80 时堆升 4G（160 bot 的玩家/区块/chunk packet 状态超 3G 稳态裕量）
+        final String heap = bots >= 80 ? "-Xmx4G" : "-Xmx3G";
         final Process server = new ProcessBuilder(
-            "F:/Java/21/bin/java", "-Xmx3G", "-Dfile.encoding=UTF-8", "-Dpapo.tickProfile=1",
+            "F:/Java/21/bin/java", heap, "-Dfile.encoding=UTF-8", "-Dpapo.tickProfile=1",
             "-jar", "server.jar", "nogui")
             .directory(dir.toFile()).redirectErrorStream(true).start();
         final List<String> logLines = new ArrayList<>();
@@ -71,24 +75,39 @@ public final class TickSurveyBench {
         Thread.sleep(2000);
 
         try {
+            // 批次97：真并发修复——原 CompletableFuture.runAsync 走 commonPool（并行度 31），
+            // bot>31 时超额 bot 要等前序任务结束才启动，批次96 的"40 bot"实际峰值并发 ≈31。
+            // 改为每 bot 一条专用线程（纯阻塞 IO，无共享锁），N bot = N 真并发。
             final CountDownLatch go = new CountDownLatch(1);
-            final List<CompletableFuture<Void>> futures = new ArrayList<>();
+            final List<Thread> botThreads = new ArrayList<>();
+            final List<RuntimeException> failures =
+                java.util.Collections.synchronizedList(new ArrayList<>());
             for (int i = 0; i < bots; i++) {
                 final String name = String.format("WalkB%02d", i);
-                futures.add(CompletableFuture.runAsync(() -> {
+                final Thread t = new Thread(() -> {
                     try {
                         go.await();
                         Thread.sleep((long) (Math.random() * 500)); // 错峰
                         final OfflineJoinBot bot = new OfflineJoinBot("127.0.0.1", PORT, name);
                         bot.joinWalkAndDisconnect(walkMs, 0, 0.25); // 5 blocks/s 北
-                    } catch (final Exception e) {
-                        throw new RuntimeException("bot " + name + " failed: " + e, e);
+                    } catch (final Throwable e) {
+                        failures.add(new RuntimeException("bot " + name + " failed: " + e, e));
                     }
-                }));
+                }, "bot-" + name);
+                t.setDaemon(true);
+                botThreads.add(t);
+                t.start();
             }
             go.countDown();
-            for (final CompletableFuture<Void> f : futures) {
-                f.get(walkMs + 120, TimeUnit.SECONDS);
+            for (final Thread t : botThreads) {
+                t.join(walkMs + 180_000); // 160 bot 登录风暴下 join 段可能拉长，给足余量
+                if (t.isAlive()) {
+                    failures.add(new RuntimeException("bot thread did not finish: " + t.getName()));
+                }
+            }
+            if (!failures.isEmpty()) {
+                failures.forEach(f -> System.out.println("BOT-FAIL " + f));
+                throw new IllegalStateException(failures.size() + " bot failures");
             }
             System.out.println("walk window done (" + bots + " bots x " + walkMs + "ms)");
             Thread.sleep(3000); // 让最后一个 profile 窗口打印

@@ -265,8 +265,11 @@ public final class BurstJoinVerify {
             return true;
         }
         // 本机 locale 的 socket 错误文案经 sun.jnu.encoding 层产出（-Dfile.encoding 管不到），
-        // UTF-8 读取后呈乱码问号串：裸 java.io.IOException + 5 连问号 = 同一突断竞争
-        return l.contains("java.io.IOException:") && l.contains("?????");
+        // UTF-8 读取后呈乱码：三种形态——5 连问号 / GBK↔UTF-8 双重乱码"锟斤拷"（终端渲染）/
+        // U+FFFD 替换符序列（Files.readAllLines 的 errors 行为）。批次97：160bot 退出风暴实证
+        // 第三形态漏过滤；真实异常（NPE 等）消息不含 U+FFFD，规则安全。
+        return l.contains("java.io.IOException:") && (l.contains("?????") || l.contains("锟斤拷")
+            || l.indexOf('\ufffd') >= 0);
     }
 
     private static String checkGzipNbt(final Path dat) {
