@@ -192,6 +192,28 @@ public final class BurstJoinVerify {
         final long p50 = sorted.get(sorted.size() / 2);
         final long p95 = sorted.get((int) (sorted.size() * 0.95) - 1);
 
+        // ---- /mspt 捕获（1m 窗覆盖 burst 期间的真实 tick 时间分布）----
+        Thread.sleep(2000); // 让 5s 窗口部分覆盖 burst 尾部 + 命令输出异步落日志
+        server.getOutputStream().write("mspt\n".getBytes(StandardCharsets.UTF_8));
+        server.getOutputStream().flush();
+        Thread.sleep(1500);
+        // 数字行（◴ 开头）在表头之后到达；轮询日志最多 6s，去 ANSI 转义后输出
+        String msptLine = null;
+        for (int attempt = 0; attempt < 6 && msptLine == null; attempt++) {
+            for (final String l : logLines) {
+                if (l.contains("◴")) {
+                    msptLine = l;
+                }
+            }
+            if (msptLine == null) {
+                Thread.sleep(1000);
+            }
+        }
+        if (msptLine != null) {
+            msptLine = msptLine.replaceAll("\u001b\\[0-9;]*m", "").trim();
+        }
+        System.out.println("  mspt: " + (msptLine != null ? msptLine : "<no output>"));
+
         // 关服 + 核验
         Thread.sleep(500); // 等 quit 存档入队
         server.getOutputStream().write("stop\n".getBytes(StandardCharsets.UTF_8));
