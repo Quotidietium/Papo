@@ -2207,3 +2207,14 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 - 跨池移动 CPU 工作必须看它在和谁竞争（主线程串行=自然限流；移到 IO/worker 池=与区块管线竞争，突发端到端反慢）；主线程收益与端到端总布局两个口径都要看。
 - BLOCKING 优先级是"有人真在等"的资源，入队即 BLOCKING = 无人等待时预支抢占权；moonrise 的 raisePriority 等待时升级是正确形态。
 - JDK18+ 默认 charset=UTF-8：中文 Windows 下服务器子进程日志须 `-Dfile.encoding=UTF-8` 才可按 UTF-8 读；bot 突断噪声三形态（StacklessClosedChannelException / Connection reset by peer / 中文 reset）为两版本同现的良性项。
+
+## join 存档管线系列封闭总结（2026-08-26，批次79/82-84）
+
+**已交付**：主线程 join 存档 IO 全清算——写侧（79：.dat/stats/advancements gzip+写盘下放，per-目标有序链+读后写可见+全量等待）→ 读侧（82-84 终态：登录窗口预取读+gzip+parse，NORMAL 入队+消费点 raiseToBlocking 升级，datafix 留主线程）→ 验证（83 顺序四态冒烟 + 84 并发突发双向序，协议机器人/四态矩阵/突发压测三件套沉淀为标准基建）。
+
+**实测否决面（证据链见批次84 报告）**：
+- datafix 下放（IO 池/worker 池两形态）——均与区块管线竞争，突发端到端慢 250-450ms；
+- 读任务入队即 BLOCKING——无人等待时预支抢占权，抢占 spawn 区块读；
+- 并发登录直调 getWorldPath——HashMap 缓存 CME（已修：构造期预解析）。
+
+**判例沉淀**：跨池移动 CPU 工作看竞争对象；BLOCKING=有人真在等；主线程收益与端到端两个口径都要看；并发登录必须进验证矩阵。join 存档管线（读写两侧）至此封闭。
