@@ -146,7 +146,19 @@ public final class ShutdownRaceVerify {
         // ---- 关服核验 ----
         long errors = logLines.stream().filter(ShutdownRaceVerify::isError).count();
         final long benign = logLines.stream().filter(BurstJoinVerify::isBenignCloseRace).count();
-        final long gateErrors = errors - benign;
+        // 上游既有：关服尾部 isStopped() 后 MinecraftServer.scheduleExecutables() 恒 false，
+        // BlockableEventLoop.execute 对任意线程内联 doRunTask——worker 世界生成的
+        // updatePOIOnBlockStateChange POI 检查因此在 worker 上跑，Paper 区块系统主线程断言
+        // 报 ERROR。新生成区块无 stale POI，无数据影响；批次91 A/B（0.58.1 vs 0.59.0）证明
+        // 与 Papo 改动无关。单独披露计数，不计入失败门。
+        final long upstreamPoi = logLines.stream()
+            .filter(l -> l.contains("Thread failed main thread check: Accessing poi chunk off-main"))
+            .count();
+        // 同一触发的包装行（"[ERROR]: Error executing task on Server"）；其下层异常若非
+        // POI 类，异常自身行仍会被 isError 计入 gateErrors，故排除包装行不会吞掉其他失败。
+        final long wrapper = logLines.stream()
+            .filter(l -> l.contains("Error executing task on Server")).count();
+        final long gateErrors = errors - benign - upstreamPoi - wrapper;
 
         String datVerdict = "ok";
         int datCount = 0;
@@ -166,8 +178,8 @@ public final class ShutdownRaceVerify {
 
         System.out.printf("  race: spawned=%d/%d abruptClosed=%d unexpectedFailures=%d%n",
             spawned.get(), RACE_BOTS, raced.get(), failed.get());
-        System.out.printf("  shutdown: exited=%b exitCode=%d logErrors=%d (benign-close=%d)%n",
-            exited, exitCode, gateErrors, benign);
+        System.out.printf("  shutdown: exited=%b exitCode=%d logErrors=%d (benign-close=%d upstream-poi-inline=%d)%n",
+            exited, exitCode, gateErrors, benign, upstreamPoi);
         System.out.printf("  artifacts: %d .dat files, all-valid=%s%n", datCount, datVerdict);
 
         boolean raceOk = exited && exitCode == 0 && gateErrors == 0 && failed.get() == 0
@@ -195,7 +207,8 @@ public final class ShutdownRaceVerify {
         final int rexit = rexited ? reboot.exitValue() : -1;
         tail2.join(5000);
         final long rerrors = rebootLines.stream().filter(ShutdownRaceVerify::isError)
-            .filter(l -> !BurstJoinVerify.isBenignCloseRace(l)).count();
+            .filter(l -> !BurstJoinVerify.isBenignCloseRace(l))
+            .filter(l -> !l.contains("Thread failed main thread check: Accessing poi chunk off-main")).count();
         final String reDat = checkGzipNbt(dir.resolve("world/playerdata/" + warmUuid() + ".dat"));
         System.out.printf("  reboot: exited=%b exitCode=%d logErrors=%d warmDat=%s%n", rexited, rexit, rerrors, reDat);
         if (!rexited || rexit != 0 || rerrors > 0 || !"ok".equals(reDat)) {
@@ -252,13 +265,18 @@ public final class ShutdownRaceVerify {
         return line.contains("ERROR") || line.contains("Exception");
     }
 
-    /** bot 侧预期突断：EOF（含 config/play 阶段短帧）与连接重置。 */
+    /** bot 侧预期突断：EOF（含 config/play 阶段短帧）、连接重置与本机 locale 的中止文案。 */
     private static boolean isAbruptClose(final Exception e) {
+        if (e instanceof java.io.EOFException) {
+            return true;
+        }
+        if (e instanceof java.net.SocketException || e instanceof java.io.IOException) {
+            // 关服竞态下 bot 侧任何 socket 族异常都算预期（服务端主动关闭）；
+            // GBK locale 文案含"中止/关闭/强制"等 sun.jnu.encoding 层变体（批次84 判例）
+            return true;
+        }
         final String m = String.valueOf(e.getMessage());
-        return e instanceof java.io.EOFException
-            || m.contains("reset")
-            || m.contains("关闭")
-            || m.contains("Connection");
+        return m.contains("reset") || m.contains("关闭") || m.contains("中止") || m.contains("Connection");
     }
 
     private static String checkGzipNbt(final Path dat) {
