@@ -2226,3 +2226,7 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 ### 判例（新增）
 - **"自然限流"可能是隐式最优调度**：并行化串行工作后，下游（区块管线）瞬时需求扎堆可吃掉全部收益——判断并行化收益必须看下游吞吐是否弹性。
 - /mspt 度量基建勘察：BurstJoinVerify 已内置捕获，但 zh-CN Windows 管道控制台下 ◴ 数字行不输出（MsptProbe 实证）——平台限制留档，Linux/tty 可用。
+
+## 批次 86（2026-08-26）：多核调度系列宏观 worldgen 校准——端到端持平，瓶颈归位主线程（多核调度⑧）
+
+主题：补上批次 78/80 池预算改动的宏观端到端口径（fat .dat Pos 指向远方未生成区块 → 20 bot 并发 join 触发真实 worldgen 突发，现代 DV 隔离 datafix）。结果：**0.55.0（8/4/12 池）vs 0.52.0（4/1/8 池）10+9 轮统计持平（Δ=−27ms）**——join-gen 突发关键链是主线程串行面（20 bot config+placeNewPlayer ~3s 主导）而非 worker 面（49-chunk 生成 Δ~40ms 被淹没）。不否定批次78/80（持续区块需求场景收益成立，机制级证据在），但确立核心洞察：**多核利用率瓶颈常在主线程串行面，后续最高价值面是减少主线程工作而非调池**。报告：[note/report/perf/2026-08-26-worldgen-macro-batch86.md](report/perf/2026-08-26-worldgen-macro-batch86.md)。附带：MakeFatPlayerDat 远坐标覆盖（PAPO_FAT_POS_X/Z）+ BurstJoinVerify 良性门统一（isBenignCloseRace，本机 locale socket 乱码判例：sun.jnu.encoding 层，file.encoding 管不到）。

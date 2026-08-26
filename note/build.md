@@ -383,3 +383,13 @@ runner 异常抛出时若不 stop/destroy 服务器子进程，端口被占导�
 ### 管道控制台不输出 ◴ 数字行（/mspt 捕获限制）
 
 zh-CN Windows + 管道 stdout 下，`/mspt` 的表头行可见、⛁ 数字行缺失（MsptProbe 92 行日志实证）。jline 非 tty 编码/写入路径限制。后续需 MSPT 数据时改用 Linux/tty 或服务器侧改造。
+
+## 2026-08-26 补充：批次 86 踩坑记录
+
+### 本机 locale socket 错误文案乱码：sun.jnu.encoding 层，`-Dfile.encoding=UTF-8` 管不到
+
+Windows 中文 locale 下 socket 层 IOException 文案（"远程主机强迫关闭..."）由 OS 按 GBK 产出、Java 经 native 层解码——给 JVM 加 `-Dfile.encoding=UTF-8` **不影响**该路径，UTF-8 读子进程输出仍得 5+ 连问号乱码。冒烟门的对策：`java.io.IOException:` + 连问号串按良性突断竞争过滤（BurstJoinVerify.isBenignCloseRace）。
+
+### python -c 内联多行字符串拼接需显式括号（复发）
+
+`var = ('a' + chr(10) +\n 'b')` 跨行拼接必须开括号；漏括号报 SyntaxError 指向行尾 `+`。连同 heredoc 吃反斜杠判例：**复杂补丁一律 Write 工具写 .py 文件执行**。
