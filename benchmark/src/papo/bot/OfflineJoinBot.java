@@ -142,6 +142,18 @@ public final class OfflineJoinBot {
         if (firstPlay == null) {
             throw new EOFException("no play packet after configuration");
         }
+        // 批次89：再追 12 个 play 包（5ms SO_TIMEOUT 短读非阻塞形状），看 join 突发的发送形状
+        try {
+            this.socket.setSoTimeout(5);
+            for (int i = 0; i < 12; i++) {
+                final Frame f = this.readFrame();
+                this.trace("PLAY", f.packetId(), t0);
+            }
+        } catch (final java.net.SocketTimeoutException expected) {
+            // 突发读完（或 5ms 无更多）——正常
+        } finally {
+            this.socket.setSoTimeout(0);
+        }
 
         // 停留（触发可能的 keepalive/区块发送），不回 play keepalive（停留远小于 30s 超时）
         try {
