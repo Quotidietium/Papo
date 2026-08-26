@@ -1,5 +1,6 @@
 package io.papermc.paper.util;
 
+import ca.spottedleaf.concurrentutil.executor.PrioritisedExecutor;
 import ca.spottedleaf.concurrentutil.executor.thread.BalancedPrioritisedThreadPool;
 import ca.spottedleaf.concurrentutil.util.Priority;
 import ca.spottedleaf.moonrise.common.util.MoonriseCommon;
@@ -76,20 +77,42 @@ public final class PapoOrderedFileWrites {
     }
 
     /**
+     * Handle over one enqueued read: the result future plus priority escalation. Reads start
+     * at {@link Priority#NORMAL} so they never preempt queued region-file IO while nobody
+     * waits on them; a consumer about to block on an unfinished read calls
+     * {@link #raiseToBlocking()} - exactly the moonrise pattern
+     * ({@code getIOBlockingPriorityForCurrentThread}: BLOCKING only once a tick thread waits).
+     */
+    public record ReadHandle<T>(CompletableFuture<T> future, java.util.concurrent.atomic.AtomicReference<PrioritisedExecutor.PrioritisedTask> task) {
+
+        /** Escalates a still-queued read to BLOCKING priority; no-op once running/done. */
+        public void raiseToBlocking() {
+            final PrioritisedExecutor.PrioritisedTask task = this.task.get();
+            if (task != null) {
+                task.raisePriority(Priority.BLOCKING);
+            }
+        }
+    }
+
+    /**
      * Chains a read for {@code target} after any previously enqueued write for the same target
      * (batch 82: join read-side prefetch). Ordering is structural via the same per-target
      * chain - no thread ever blocks waiting for a predecessor, so this is deadlock-free even
      * on a saturated single-thread IO pool (unlike awaiting {@link #awaitPending(Path)} from a
-     * pool thread). The task runs at {@link Priority#BLOCKING}: the main thread may join the
-     * returned future at the join consumption point, so the pool must schedule it ahead of
-     * queued region-file IO - exactly the priority vanilla's synchronous sync-load paths use.
+     * pool thread). The task runs at {@link Priority#NORMAL}: each read sits in its own
+     * position in the per-target chain (never FIFO-blocked behind other work), so it only
+     * ever waits for a pool thread. The burst verification round showed BLOCKING-priority
+     * reads preempt the queued region-file IO that concurrent joins' spawn chunk loads need,
+     * measurably delaying the whole join burst end-to-end - NORMAL keeps the prefetch
+     * strictly additive, with {@link ReadHandle#raiseToBlocking()} as the escape hatch for a
+     * consumer that is actually about to block.
      *
      * <p>Returns {@code null} when the pool is already halted: a read can simply fall back to
      * the synchronous path (unlike writes, which degrade to synchronous execution for
      * durability). The callable must be side-effect free apart from reading, because it runs
      * on an IO thread.
      */
-    public static <T> @Nullable CompletableFuture<T> enqueueRead(final Path target, final Callable<T> readTask) {
+    public static <T> @Nullable ReadHandle<T> enqueueRead(final Path target, final Callable<T> readTask) {
         if (!QUEUE.isActive()) {
             return null;
         }
@@ -97,6 +120,9 @@ public final class PapoOrderedFileWrites {
         // The result future is decoupled from the Void-typed per-target chain: the chain task
         // completes the result future and always yields null so later writes keep chaining.
         final CompletableFuture<T> node = new CompletableFuture<>();
+        // taskRef holds null until the pool task is queued (and again after it runs)
+        final java.util.concurrent.atomic.AtomicReference<PrioritisedExecutor.PrioritisedTask> taskRef =
+            new java.util.concurrent.atomic.AtomicReference<>();
         final CompletableFuture<Void> chainNode = TAILS.compute(target, (path, prev) ->
             (prev == null ? CompletableFuture.<Void>completedFuture(null) : prev)
                 .handle((result, throwable) -> null)
@@ -107,12 +133,12 @@ public final class PapoOrderedFileWrites {
                         node.completeExceptionally(new java.util.concurrent.CompletionException(e));
                     }
                     return null;
-                }, task -> QUEUE.queueTask(task, Priority.BLOCKING)));
+                }, task -> taskRef.set(QUEUE.queueTask(task, Priority.NORMAL))));
         node.whenComplete((result, throwable) -> {
             TAILS.remove(target, chainNode);
             decrementPending();
         });
-        return node;
+        return new ReadHandle<>(node, taskRef);
     }
 
     /**
