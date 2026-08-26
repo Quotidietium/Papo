@@ -37,6 +37,7 @@ public final class TickSurveyBench {
         Files.writeString(dir.resolve("eula.txt"), "eula=true\n", StandardCharsets.UTF_8);
         Files.writeString(dir.resolve("server.properties"), String.join("\n",
             "online-mode=false", "server-port=" + PORT, "level-seed=" + seed,
+            "max-players=" + Math.max(bots, 20), // 批次96：40bot 探测曾因默认上限 20 被拒（"The server is full!"）
             "view-distance=6", "simulation-distance=6", "spawn-protection=0",
             "difficulty=peaceful", "spawn-monsters=false", "motd=papo-ticksurvey",
             "sync-chunk-writes=false", "enforce-secure-profile=false", ""), StandardCharsets.UTF_8);
