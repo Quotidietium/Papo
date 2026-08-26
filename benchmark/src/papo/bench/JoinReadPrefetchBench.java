@@ -86,7 +86,7 @@ public final class JoinReadPrefetchBench {
                             node.completeExceptionally(new java.util.concurrent.CompletionException(e));
                         }
                         return null;
-                    }, task -> this.queue.queueTask(task, Priority.BLOCKING)));
+                    }, task -> this.queue.queueTask(task, Priority.NORMAL)));
             node.whenComplete((result, throwable) -> this.tails.remove(target, chainNode));
             return node;
         }
@@ -313,6 +313,8 @@ public final class JoinReadPrefetchBench {
     /**
      * IO 池被 region IO 型小任务填满时（IoPoolScalingBench 同载荷：4KiB 真实读 + 500µs
      * 设备延迟 × 64），主线程 join 一个读任务的等待时间：BLOCKING vs NORMAL 优先级。
+     * 读任务放独立 stream group（真实结构：per-target 链节点，非 region IO 组）——
+     * 度量池级调度差异，排除同组 FIFO 干扰（首版探针把读放同组导致 NORMAL 假性饿死）。
      */
     private static void saturationProbe(final BalancedPrioritisedThreadPool pool) throws Exception {
         final Path tmp = Files.createTempFile("papo-sat-", ".bin");
@@ -327,10 +329,10 @@ public final class JoinReadPrefetchBench {
             System.out.println("-- saturation probe (pool busy with region-IO-shaped tasks) --");
             for (final boolean blocking : new boolean[]{true, false}) {
                 // warmup 一轮
-                probeOnce(tmp, regionQueue, inflight, blocking, 16);
+                probeOnce(tmp, pool, regionQueue, inflight, blocking, 16);
                 long best = Long.MAX_VALUE;
                 for (int rep = 0; rep < 3; rep++) {
-                    best = Math.min(best, probeOnce(tmp, regionQueue, inflight, blocking, 64));
+                    best = Math.min(best, probeOnce(tmp, pool, regionQueue, inflight, blocking, 64));
                 }
                 System.out.printf("  read priority=%-8s main-thread wait(best of 3) = %,dus%n",
                     blocking ? "BLOCKING" : "NORMAL", best / 1000);
@@ -340,7 +342,8 @@ public final class JoinReadPrefetchBench {
         }
     }
 
-    private static long probeOnce(final Path file, final BalancedPrioritisedThreadPool.OrderedStreamGroup.Queue regionQueue,
+    private static long probeOnce(final Path file, final BalancedPrioritisedThreadPool pool,
+                                  final BalancedPrioritisedThreadPool.OrderedStreamGroup.Queue regionQueue,
                                   final AtomicInteger inflight, final boolean blocking, final int fillTasks) throws Exception {
         for (int i = 0; i < fillTasks; i++) {
             inflight.incrementAndGet();

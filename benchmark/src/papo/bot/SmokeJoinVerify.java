@@ -83,7 +83,7 @@ public final class SmokeJoinVerify {
         System.out.println();
         System.out.println("=== boot " + label + " (" + jar.getFileName() + ") ===");
         final Process server = new ProcessBuilder(
-            "F:/Java/21/bin/java", "-Xmx3G", "-jar", jar.getFileName().toString(), "nogui")
+            "F:/Java/21/bin/java", "-Xmx3G", "-Dfile.encoding=UTF-8", "-jar", jar.getFileName().toString(), "nogui")
             .directory(dir.toFile())
             .redirectErrorStream(true)
             .start();

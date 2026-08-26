@@ -24,10 +24,10 @@ Fallback: no prefetch / pool halted / body failure -> original synchronous
 path byte-for-byte unchanged.
 
 diff --git a/net/minecraft/server/PlayerAdvancements.java b/net/minecraft/server/PlayerAdvancements.java
-index e22a887e01e898d6101de2bc64c8a7eda327c540..83a978617c3eb28808607c5c9800757830064fe9 100644
+index e22a887e01e898d6101de2bc64c8a7eda327c540..dfcaf577ae66323ae8df4656d5607f129edf1eab 100644
 --- a/net/minecraft/server/PlayerAdvancements.java
 +++ b/net/minecraft/server/PlayerAdvancements.java
-@@ -110,25 +110,48 @@ public class PlayerAdvancements {
+@@ -110,19 +110,44 @@ public class PlayerAdvancements {
      }
  
      private void load(ServerAdvancementManager manager) {
@@ -41,9 +41,17 @@ index e22a887e01e898d6101de2bc64c8a7eda327c540..83a978617c3eb28808607c5c98007578
 +        // Papo start - batch 82: consume the login-window prefetch if one exists for this file.
 +        // The chained read already observes every pending write for the file, replacing
 +        // awaitPending; a null element falls through to the unchanged synchronous path.
-+        java.util.concurrent.CompletableFuture<JsonElement> papoPrefetched =
++        io.papermc.paper.util.PapoOrderedFileWrites.ReadHandle<JsonElement> papoPrefetched =
 +            this.playerList.papoTakePrefetchedAdvancements(this.playerSavePath);
-+        JsonElement papoJson = papoJoinPrefetched(papoPrefetched);
++        JsonElement papoJson;
++        if (papoPrefetched != null) {
++            if (!papoPrefetched.future().isDone()) {
++                papoPrefetched.raiseToBlocking(); // main thread is about to wait
++            }
++            papoJson = papoPrefetched.future().join();
++        } else {
++            papoJson = null;
++        }
 +        if (papoJson != null) {
 +            try {
 +                PlayerAdvancements.Data data = this.codec.parse(JsonOps.INSTANCE, papoJson).getOrThrow(JsonParseException::new);
@@ -73,18 +81,6 @@ index e22a887e01e898d6101de2bc64c8a7eda327c540..83a978617c3eb28808607c5c98007578
          }
  
          this.checkForAutomaticTriggers(manager);
-         this.registerListeners(manager);
-     }
- 
-+    // Papo start - batch 82: tiny join helper (null future = no prefetch)
-+    private static JsonElement papoJoinPrefetched(final java.util.concurrent.CompletableFuture<JsonElement> future) {
-+        return future != null ? future.join() : null;
-+    }
-+    // Papo end - batch 82
-+
-     public void save() {
-         if (org.spigotmc.SpigotConfig.disableAdvancementSaving) return; // Spigot
-         // Papo start - batch 79: codec snapshot on caller thread (reads live progress state),
 diff --git a/net/minecraft/server/network/ServerConfigurationPacketListenerImpl.java b/net/minecraft/server/network/ServerConfigurationPacketListenerImpl.java
 index 202bfa5c6e2196007c3c943c274582f205a59075..320789bb8b2d8288c96200704b81f7fe6a211e39 100644
 --- a/net/minecraft/server/network/ServerConfigurationPacketListenerImpl.java
@@ -130,18 +126,33 @@ index 51a29ab542136e67741be10bbc5c6377715a207c..4d04bac8f898fe239849434f6ad1a4d1
  
      private void verifyLoginAndFinishConnectionSetup(GameProfile profile) {
 diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
-index 22b886c14d5eb10ee8585b69e95fa9aaf5be6a22..0271bc85b3f7fa350d387660c7ad12c505b5396e 100644
+index 22b886c14d5eb10ee8585b69e95fa9aaf5be6a22..c40056e092ff3d8b84e6e17b1b0ae33fe3999b27 100644
 --- a/net/minecraft/server/players/PlayerList.java
 +++ b/net/minecraft/server/players/PlayerList.java
-@@ -412,10 +412,77 @@ public abstract class PlayerList {
+@@ -149,6 +149,14 @@ public abstract class PlayerList {
+         this.ops = new ServerOpList(OPLIST_FILE, notificationService);
+         this.bans = new UserBanList(USERBANLIST_FILE, notificationService);
+         this.ipBans = new IpBanList(IPBANLIST_FILE, notificationService);
++        // Papo start - batch 82 fix: resolve the join-prefetch directories once on the main
++        // thread. MinecraftServer.getWorldPath -> LevelStorageAccess.getLevelPath populates a
++        // plain HashMap cache which is NOT thread-safe; the prefetch trigger runs on the
++        // authenticator pool thread (concurrent logins -> ConcurrentModificationException,
++        // caught by the burst verification round).
++        this.papoStatsDir = server.getWorldPath(LevelResource.PLAYER_STATS_DIR);
++        this.papoAdvancementsDir = server.getWorldPath(LevelResource.PLAYER_ADVANCEMENTS_DIR);
++        // Papo end
+     }
+ 
+     abstract public void loadAndSaveFiles(); // Paper - fix converting txt to json file; moved from DedicatedPlayerList constructor
+@@ -412,9 +420,78 @@ public abstract class PlayerList {
              LOGGER.debug("loading single player");
              return Optional.of(loadedPlayerTag);
          } else {
 -            return this.playerIo.load(nameAndId);
 +            return this.playerIo.load(nameAndId); // Papo - batch 82: consumes the login-window prefetch inside
-         }
-     }
- 
++        }
++    }
++
 +    // Papo start - batch 82: join read-side prefetch during the login RTT window
 +    // The login flow resolves the final GameProfile (after AsyncPlayerPreLoginEvent) well before
 +    // the configuration phase reads playerdata/stats/advancements - at least one client RTT of
@@ -150,26 +161,28 @@ index 22b886c14d5eb10ee8585b69e95fa9aaf5be6a22..0271bc85b3f7fa350d387660c7ad12c5
 +    // for their files in that window, so the main-thread consumption point normally finds them
 +    // already complete. Caches are keyed by resolved path and consumed exactly once; unconsumed
 +    // entries are dropped from the login/configuration disconnect hooks.
-+    private final java.util.concurrent.ConcurrentHashMap<Path, java.util.concurrent.CompletableFuture<com.google.gson.JsonElement>> papoStatsPrefetches =
++    private final java.util.concurrent.ConcurrentHashMap<Path, io.papermc.paper.util.PapoOrderedFileWrites.ReadHandle<com.google.gson.JsonElement>> papoStatsPrefetches =
 +        new java.util.concurrent.ConcurrentHashMap<>();
-+    private final java.util.concurrent.ConcurrentHashMap<Path, java.util.concurrent.CompletableFuture<com.google.gson.JsonElement>> papoAdvancementsPrefetches =
++    private final java.util.concurrent.ConcurrentHashMap<Path, io.papermc.paper.util.PapoOrderedFileWrites.ReadHandle<com.google.gson.JsonElement>> papoAdvancementsPrefetches =
 +        new java.util.concurrent.ConcurrentHashMap<>();
++    private final Path papoStatsDir;
++    private final Path papoAdvancementsDir;
 +
 +    /** Called from the login listener once the final profile is known; safe from any thread. */
 +    public void papoPrefetchJoinData(final NameAndId nameAndId) {
 +        if (this.server.isSingleplayerOwner(nameAndId)) {
 +            return; // the singleplayer owner loads from the in-memory tag, never from these files
-+        }
+         }
 +        this.playerIo.papoPrefetch(nameAndId);
 +        final UUID uuid = nameAndId.id();
-+        final Path statsPath = this.server.getWorldPath(LevelResource.PLAYER_STATS_DIR).resolve(uuid + ".json");
-+        final java.util.concurrent.CompletableFuture<com.google.gson.JsonElement> statsFuture =
++        final Path statsPath = this.papoStatsDir.resolve(uuid + ".json");
++        final io.papermc.paper.util.PapoOrderedFileWrites.ReadHandle<com.google.gson.JsonElement> statsFuture =
 +            io.papermc.paper.util.PapoOrderedFileWrites.enqueueRead(statsPath, () -> papoReadJsonIfExists(statsPath));
 +        if (statsFuture != null) {
 +            this.papoStatsPrefetches.put(statsPath, statsFuture);
 +        }
-+        final Path advPath = this.server.getWorldPath(LevelResource.PLAYER_ADVANCEMENTS_DIR).resolve(uuid + ".json");
-+        final java.util.concurrent.CompletableFuture<com.google.gson.JsonElement> advFuture =
++        final Path advPath = this.papoAdvancementsDir.resolve(uuid + ".json");
++        final io.papermc.paper.util.PapoOrderedFileWrites.ReadHandle<com.google.gson.JsonElement> advFuture =
 +            io.papermc.paper.util.PapoOrderedFileWrites.enqueueRead(advPath, () -> papoReadJsonIfExists(advPath));
 +        if (advFuture != null) {
 +            this.papoAdvancementsPrefetches.put(advPath, advFuture);
@@ -192,31 +205,30 @@ index 22b886c14d5eb10ee8585b69e95fa9aaf5be6a22..0271bc85b3f7fa350d387660c7ad12c5
 +    }
 +
 +    /** Takes the prefetched stats JSON for this exact file, or null when none was prefetched. */
-+    public java.util.concurrent.@org.jspecify.annotations.Nullable CompletableFuture<com.google.gson.JsonElement> papoTakePrefetchedStats(final Path file) {
++    public io.papermc.paper.util.PapoOrderedFileWrites.@org.jspecify.annotations.Nullable ReadHandle<com.google.gson.JsonElement> papoTakePrefetchedStats(final Path file) {
 +        return this.papoStatsPrefetches.remove(file);
 +    }
 +
 +    /** Takes the prefetched advancements JSON for this exact file, or null when none was prefetched. */
-+    public java.util.concurrent.@org.jspecify.annotations.Nullable CompletableFuture<com.google.gson.JsonElement> papoTakePrefetchedAdvancements(final Path file) {
++    public io.papermc.paper.util.PapoOrderedFileWrites.@org.jspecify.annotations.Nullable ReadHandle<com.google.gson.JsonElement> papoTakePrefetchedAdvancements(final Path file) {
 +        return this.papoAdvancementsPrefetches.remove(file);
 +    }
 +
 +    /** Drops unconsumed prefetches (login aborted before the data was needed). */
 +    public void papoDiscardJoinPrefetches(final UUID uuid) {
 +        this.playerIo.papoDiscardPrefetch(uuid);
-+        this.papoStatsPrefetches.remove(this.server.getWorldPath(LevelResource.PLAYER_STATS_DIR).resolve(uuid + ".json"));
-+        this.papoAdvancementsPrefetches.remove(this.server.getWorldPath(LevelResource.PLAYER_ADVANCEMENTS_DIR).resolve(uuid + ".json"));
-+    }
++        this.papoStatsPrefetches.remove(this.papoStatsDir.resolve(uuid + ".json"));
++        this.papoAdvancementsPrefetches.remove(this.papoAdvancementsDir.resolve(uuid + ".json"));
+     }
 +    // Papo end - batch 82: join read-side prefetch during the login RTT window
-+
+ 
      protected void save(ServerPlayer player) {
          if (!player.getBukkitEntity().isPersistent()) return; // CraftBukkit
-         player.lastSave = MinecraftServer.currentTick; // Paper - Incremental chunk and player saving
 diff --git a/net/minecraft/stats/ServerStatsCounter.java b/net/minecraft/stats/ServerStatsCounter.java
-index 4942b5a16db53712716bcbb9c7a9e05791ce7b53..1d7deb091d2a16584262cf3189f4381fc43043e4 100644
+index 4942b5a16db53712716bcbb9c7a9e05791ce7b53..a5f0fd0c6bc619d7754bf92f2bd64318fa7b4840 100644
 --- a/net/minecraft/stats/ServerStatsCounter.java
 +++ b/net/minecraft/stats/ServerStatsCounter.java
-@@ -65,17 +65,30 @@ public class ServerStatsCounter extends StatsCounter {
+@@ -65,17 +65,38 @@ public class ServerStatsCounter extends StatsCounter {
  
      public ServerStatsCounter(MinecraftServer server, Path file) {
          this.file = file;
@@ -235,9 +247,17 @@ index 4942b5a16db53712716bcbb9c7a9e05791ce7b53..1d7deb091d2a16584262cf3189f4381f
 +        // The chained read already observes every pending write for the file, replacing
 +        // awaitPending; a null element (no prefetch / absent file / unreadable) falls through
 +        // to the unchanged synchronous path, which keeps the vanilla warn behaviour.
-+        java.util.concurrent.CompletableFuture<JsonElement> papoPrefetched =
++        io.papermc.paper.util.PapoOrderedFileWrites.ReadHandle<JsonElement> papoPrefetched =
 +            server.getPlayerList().papoTakePrefetchedStats(file);
-+        JsonElement papoJson = papoPrefetched != null ? papoPrefetched.join() : null;
++        JsonElement papoJson;
++        if (papoPrefetched != null) {
++            if (!papoPrefetched.future().isDone()) {
++                papoPrefetched.raiseToBlocking(); // main thread is about to wait
++            }
++            papoJson = papoPrefetched.future().join();
++        } else {
++            papoJson = null;
++        }
 +        if (papoJson != null) {
 +            this.parse(server.getFixerUpper(), papoJson);
 +        } else
@@ -259,7 +279,7 @@ index 4942b5a16db53712716bcbb9c7a9e05791ce7b53..1d7deb091d2a16584262cf3189f4381f
          }
          // Paper start - Moved after stat fetching for player state file
 diff --git a/net/minecraft/world/level/storage/PlayerDataStorage.java b/net/minecraft/world/level/storage/PlayerDataStorage.java
-index 7e24ed5090f8e69b6e61cf5f9c9a250621c5dad0..79b8b0d1c557c66d2b2eac920446b1171dc960df 100644
+index 7e24ed5090f8e69b6e61cf5f9c9a250621c5dad0..f4fd6fe4dd962414fd572c3b75d0b1647227c9ed 100644
 --- a/net/minecraft/world/level/storage/PlayerDataStorage.java
 +++ b/net/minecraft/world/level/storage/PlayerDataStorage.java
 @@ -8,6 +8,8 @@ import java.nio.file.Path;
@@ -279,7 +299,7 @@ index 7e24ed5090f8e69b6e61cf5f9c9a250621c5dad0..79b8b0d1c557c66d2b2eac920446b117
  import org.slf4j.Logger;
  
  public class PlayerDataStorage {
-@@ -73,6 +76,105 @@ public class PlayerDataStorage {
+@@ -73,6 +76,108 @@ public class PlayerDataStorage {
          }
      }
  
@@ -289,30 +309,52 @@ index 7e24ed5090f8e69b6e61cf5f9c9a250621c5dad0..79b8b0d1c557c66d2b2eac920446b117
 +    // behind - strictly the same side-effect timing as the synchronous path.
 +    private record PapoPlayerFileRead(Optional<CompoundTag> tag, @Nullable File offlineFallbackFile) {}
 +
-+    // Result of the async prefetch body. fallbackToSync=true re-runs the original synchronous
-+    // path at consume time (used when the body hit an unexpected exception, so the vanilla
-+    // warn/exception behaviour stays identical).
-+    public record PapoPrefetchedPlayerData(
-+        Optional<CompoundTag> tag,
-+        boolean datWasEmpty,
++    // Async prefetch result: the raw tags from disk, NOT yet datafixed. fallbackToSync=true
++    // re-runs the original synchronous path at consume time (unexpected read exception).
++    private record PapoRawPlayerRead(
++        Optional<CompoundTag> datTag,
++        Optional<CompoundTag> datOldTag,
 +        @Nullable File datOfflineFile,
 +        @Nullable File datOldOfflineFile,
 +        boolean fallbackToSync) {}
 +
-+    private final java.util.concurrent.ConcurrentHashMap<UUID, CompletableFuture<PapoPrefetchedPlayerData>> papoPrefetches =
++    private final java.util.concurrent.ConcurrentHashMap<UUID, io.papermc.paper.util.PapoOrderedFileWrites.ReadHandle<PapoRawPlayerRead>> papoPrefetches =
 +        new java.util.concurrent.ConcurrentHashMap<>();
 +
-+    /** Kicks off the async read+gzip+NBT-parse+datafix for a joining player; idempotent per UUID. */
++    /**
++     * Kicks off the async READ for a joining player; idempotent per UUID. Read side only
++     * (file read + gzip + NBT parse, IO pool, chained after pending writes, BLOCKING
++     * priority). The datafix deliberately stays on the main thread at the consume point,
++     * byte-identical to the synchronous path: the burst verification round showed that
++     * moving the CPU-heavy fix onto the IO pool starves region-file reads (spawn chunk
++     * loads) and onto the worker pool it contends with chunk deserialization - either way
++     * a 20-bot old-file join burst gets measurably slower end-to-end. Keeping it on main
++     * makes the prefetch a strictly additive read-side win.
++     */
 +    public void papoPrefetch(final NameAndId nameAndId) {
 +        final UUID uuid = nameAndId.id();
 +        if (this.papoPrefetches.containsKey(uuid)) {
 +            return;
 +        }
 +        final Path datPath = this.playerDir.toPath().resolve(uuid.toString() + ".dat");
-+        final CompletableFuture<PapoPrefetchedPlayerData> future =
-+            io.papermc.paper.util.PapoOrderedFileWrites.enqueueRead(datPath, () -> this.papoPrefetchBody(nameAndId));
-+        if (future != null) {
-+            this.papoPrefetches.putIfAbsent(uuid, future);
++        final io.papermc.paper.util.PapoOrderedFileWrites.ReadHandle<PapoRawPlayerRead> read =
++            io.papermc.paper.util.PapoOrderedFileWrites.enqueueRead(datPath, () -> this.papoReadRaw(nameAndId));
++        if (read != null) {
++            this.papoPrefetches.putIfAbsent(uuid, read);
++        }
++    }
++
++    /** Stage 1: the read side of the synchronous loadPlayerData body (no datafix, no renames). */
++    private PapoRawPlayerRead papoReadRaw(final NameAndId nameAndId) {
++        try {
++            final PapoPlayerFileRead datRead = this.papoReadPlayerFile(nameAndId, ".dat");
++            if (datRead.tag().isPresent()) {
++                return new PapoRawPlayerRead(datRead.tag(), Optional.empty(), datRead.offlineFallbackFile(), null, false);
++            }
++            final PapoPlayerFileRead oldRead = this.papoReadPlayerFile(nameAndId, ".dat_old");
++            return new PapoRawPlayerRead(Optional.empty(), oldRead.tag(), null, oldRead.offlineFallbackFile(), false);
++        } catch (final Throwable t) {
++            return new PapoRawPlayerRead(Optional.empty(), Optional.empty(), null, null, true);
 +        }
 +    }
 +
@@ -322,70 +364,51 @@ index 7e24ed5090f8e69b6e61cf5f9c9a250621c5dad0..79b8b0d1c557c66d2b2eac920446b117
 +    }
 +
 +    /**
-+     * Mirrors the synchronous loadPlayerData body minus the rename/backup side effects
-+     * (those run at consume time). The chained read already observes every pending write
-+     * for the .dat file, replacing the awaitPending of the synchronous path. Thread-safe:
-+     * readCompressed and MCDataConverter.convertTag are pure and already run concurrently
-+     * on moonrise worker threads for chunk loads.
-+     */
-+    private PapoPrefetchedPlayerData papoPrefetchBody(final NameAndId nameAndId) {
-+        try {
-+            final PapoPlayerFileRead datRead = this.papoReadPlayerFile(nameAndId, ".dat");
-+            if (datRead.tag().isPresent()) {
-+                return new PapoPrefetchedPlayerData(
-+                    Optional.of(papoFixPlayerTag(datRead.tag().get())), false, datRead.offlineFallbackFile(), null, false);
-+            }
-+            final PapoPlayerFileRead oldRead = this.papoReadPlayerFile(nameAndId, ".dat_old");
-+            final Optional<CompoundTag> fixed = oldRead.tag().map(PlayerDataStorage::papoFixPlayerTag);
-+            return new PapoPrefetchedPlayerData(fixed, true, null, oldRead.offlineFallbackFile(), false);
-+        } catch (final Throwable t) {
-+            return new PapoPrefetchedPlayerData(Optional.empty(), false, null, null, true);
-+        }
-+    }
-+
-+    private static CompoundTag papoFixPlayerTag(final CompoundTag compoundTag) {
-+        int dataVersion = NbtUtils.getDataVersion(compoundTag);
-+        return ca.spottedleaf.dataconverter.minecraft.MCDataConverter.convertTag(
-+            ca.spottedleaf.dataconverter.minecraft.datatypes.MCTypeRegistry.PLAYER,
-+            compoundTag,
-+            dataVersion,
-+            ca.spottedleaf.dataconverter.minecraft.util.Version.getCurrentVersion());
-+    }
-+
-+    /**
-+     * Takes the prefetch for this player, waiting for it if necessary (normally it completed
-+     * during the login RTT window). Returns null when no prefetch exists (or it asked to fall
-+     * back) - the caller then runs the original synchronous path unchanged.
++     * Takes the prefetched RAW read for this player, waiting for it if necessary (normally it
++     * completed during the login RTT window). Returns null when no prefetch exists (or it asked
++     * to fall back) - the caller then runs the original synchronous path unchanged. The
++     * datafix is NOT applied here: the caller's map() does it on the main thread exactly like
++     * the synchronous path. Bounded wait (same budget as the batch 79 awaitPending): a wedged
++     * stage degrades to the synchronous path instead of hanging the main thread.
 +     */
 +    private @Nullable Optional<CompoundTag> papoConsumePrefetch(final NameAndId nameAndId) {
-+        final CompletableFuture<PapoPrefetchedPlayerData> future = this.papoPrefetches.remove(nameAndId.id());
-+        if (future == null) {
++        final io.papermc.paper.util.PapoOrderedFileWrites.ReadHandle<PapoRawPlayerRead> handle = this.papoPrefetches.remove(nameAndId.id());
++        if (handle == null) {
 +            return null;
 +        }
-+        final PapoPrefetchedPlayerData data = future.join();
-+        if (data.fallbackToSync()) {
++        final PapoRawPlayerRead raw;
++        try {
++            if (!handle.future().isDone()) {
++                handle.raiseToBlocking(); // main thread is about to wait: escalate like a sync-load
++            }
++            raw = handle.future().get(60, java.util.concurrent.TimeUnit.SECONDS);
++        } catch (final Exception e) {
++            return null; // timeout/exceptional: fall back to the synchronous path
++        }
++        if (raw.fallbackToSync()) {
 +            return null;
 +        }
-+        if (data.datWasEmpty()) {
++        if (raw.datTag().isEmpty()) {
 +            this.backup(nameAndId, ".dat");
 +        }
-+        if (data.tag().isPresent()) {
++        final Optional<CompoundTag> rawTag = raw.datTag().isPresent() ? raw.datTag() : raw.datOldTag();
++        if (rawTag.isPresent()) {
 +            // Same renames the synchronous load performs, applied at the same logical point
-+            if (data.datOfflineFile() != null) {
-+                data.datOfflineFile().renameTo(new File(data.datOfflineFile().getPath() + ".offline-read"));
++            if (raw.datOfflineFile() != null) {
++                raw.datOfflineFile().renameTo(new File(raw.datOfflineFile().getPath() + ".offline-read"));
 +            }
-+            if (data.datOldOfflineFile() != null) {
-+                data.datOldOfflineFile().renameTo(new File(data.datOldOfflineFile().getPath() + ".offline-read"));
++            if (raw.datOldOfflineFile() != null) {
++                raw.datOldOfflineFile().renameTo(new File(raw.datOldOfflineFile().getPath() + ".offline-read"));
 +            }
 +        }
-+        return data.tag();
++        return rawTag;
 +    }
 +    // Papo end - batch 82: prefetch player .dat during the login RTT window
 +
      private Optional<CompoundTag> load(NameAndId nameAndId, String suffix) {
          // Papo start - batch 79: a quick re-join can race the async .dat write; wait for it so
          // the read always observes the latest save, exactly like the synchronous code did.
-@@ -81,6 +183,19 @@ public class PlayerDataStorage {
+@@ -81,6 +186,19 @@ public class PlayerDataStorage {
                  this.playerDir.toPath().resolve(nameAndId.id().toString() + ".dat"));
          }
          // Papo end - batch 79: read-after-write visibility for the async .dat write
@@ -405,7 +428,7 @@ index 7e24ed5090f8e69b6e61cf5f9c9a250621c5dad0..79b8b0d1c557c66d2b2eac920446b117
          File file = new File(this.playerDir, nameAndId.id() + suffix);
          // Spigot start
          boolean usingWrongFile = false;
-@@ -96,20 +211,24 @@ public class PlayerDataStorage {
+@@ -96,20 +214,29 @@ public class PlayerDataStorage {
              try {
                  // Spigot start
                  Optional<CompoundTag> optional = Optional.of(NbtIo.readCompressed(file.toPath(), NbtAccounter.unlimitedHeap()));
@@ -426,10 +449,15 @@ index 7e24ed5090f8e69b6e61cf5f9c9a250621c5dad0..79b8b0d1c557c66d2b2eac920446b117
 +    // Papo end - batch 82
  
      public Optional<CompoundTag> load(NameAndId nameAndId) {
-+        // Papo start - batch 82: consume the login-window prefetch if one exists
-+        Optional<CompoundTag> papoPrefetched = this.papoConsumePrefetch(nameAndId);
-+        if (papoPrefetched != null) {
-+            return papoPrefetched;
++        // Papo start - batch 82: consume the prefetched raw read if one exists. The datafix
++        // in the map below then runs on this (main) thread exactly as the synchronous path -
++        // read-side-only prefetch keeps CPU pool placement identical to vanilla.
++        Optional<CompoundTag> papoPrefetchedRaw = this.papoConsumePrefetch(nameAndId);
++        if (papoPrefetchedRaw != null) {
++            return papoPrefetchedRaw.map(compoundTag -> {
++                int dataVersion = NbtUtils.getDataVersion(compoundTag);
++                return ca.spottedleaf.dataconverter.minecraft.MCDataConverter.convertTag(ca.spottedleaf.dataconverter.minecraft.datatypes.MCTypeRegistry.PLAYER, compoundTag, dataVersion, ca.spottedleaf.dataconverter.minecraft.util.Version.getCurrentVersion());
++            });
 +        }
 +        // Papo end - batch 82: consume the login-window prefetch
          Optional<CompoundTag> optional = this.load(nameAndId, ".dat");
