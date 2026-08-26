@@ -7,28 +7,32 @@ import sys
 
 PHASE_RE = re.compile(
     r"PapoTickProfile\.phase\s+(\S+)\s+total=\s*([\d.]+)ms avg/tick=\s*([\d.]+)us share=\s*([\d.]+)% n=(\d+)")
-WIN_RE = re.compile(r"PapoTickProfile window=400ticks totalWallMs=(\d+) measuredMs=(\d+)")
+WIN_RE = re.compile(r"PapoTickProfile window=400ticks totalWallMs=(\d+) measuredMs=(\d+)(?: gcMs=(\d+))?")
 
 def parse(path):
     # 每个窗口: {phase: avg_us}; 另存 totalWallMs 序列（tick 滞后信号）
     windows = []
     wall = []
+    gc = []
     for line in open(path, encoding="utf-8", errors="replace"):
         m = WIN_RE.search(line)
         if m:
             windows.append({})
             wall.append(int(m.group(1)))
+            if m.group(3) is not None:
+                gc.append(int(m.group(3)))
             continue
         m = PHASE_RE.search(line)
         if m and windows:
             windows[-1][m.group(1)] = float(m.group(3))
-    return windows, wall
+    return windows, wall, gc
 
 for path in sys.argv[1:]:
-    wins, wall = parse(path)
+    wins, wall, gc = parse(path)
     n = len(wins)
     tag = path.split("-")[-1].split(".")[0]
-    print(f"== {path} windows={n} wallMs={' '.join(str(w) for w in wall)}")
+    print(f"== {path} windows={n} gcMs={' '.join(str(g) for g in gc)}")
+    print(f"   wallMs={' '.join(str(w) for w in wall)}")
     if n < 4:
         print("   (too few windows)")
         continue

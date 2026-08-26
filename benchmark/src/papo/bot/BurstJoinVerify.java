@@ -261,7 +261,7 @@ public final class BurstJoinVerify {
 
     static boolean isBenignCloseRace(final String l) {
         if (l.contains("StacklessClosedChannelException") || l.contains("Connection reset by peer")
-            || l.contains("远程主机强迫关闭")) {
+            || l.contains("远程主机强迫关闭") || l.contains("中止了一个已建立")) { // 批次98：WSAECONNABORTED 文案（正体中文经 UTF-8 管道完整解码，非乱码形态）
             return true;
         }
         // 本机 locale 的 socket 错误文案经 sun.jnu.encoding 层产出（-Dfile.encoding 管不到），

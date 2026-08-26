@@ -2417,6 +2417,19 @@ flushQueue 排水）；worlds 2.65×/4× 亚线性；160 聚堆 bot 利用率 24
 
 ---
 
+## 批次 98（2026-08-27）：tick 相位分解探针——批次97 超线性归因修正 + 聚堆密度面发现（多核调度系列⑭，0.60.0）
+
+主题：0253 补丁 + PapoTickProfile 扩展（tracker.maintain/sendChanges、conn.flushQueue/
+listenerTick、server.taskDrain、窗口 gcMs；默认关零行为变化）。40/120/160 分解实测：
+**flushQueue 排水假设证伪**（3-8us/tick）；批次97 connection 超线性=争抢伪影+真面混合；
+真超线性在 **conn.listenerTick 高密度段**（638→1837→7998us，40→120 线性、120→160
+4.35×@1.33×，主嫌疑 LivingEntity.pushEntities 挤堆扫描）。批次99 设计：有界早停
+push 扫描（两消费者等价可证）。判例：内部仓库半成品 fixup 卡死恢复法、探针死门分支
+零数据、测量轮超线性先过方差关、Windows 管道 JVM stdout=GBK。报告：
+[note/report/perf/2026-08-27-tick-decomp-batch98.md](report/perf/2026-08-27-tick-decomp-batch98.md)。
+
+---
+
 ## 循环终止记录（2026-08-26，用户决断）
 
 多核调度系列（批次 78-96，0.51.0 → 0.59.0）由用户显式决断终止。终态：

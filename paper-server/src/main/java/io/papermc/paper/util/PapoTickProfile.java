@@ -32,12 +32,36 @@ public final class PapoTickProfile {
         if (!ENABLED) {
             return;
         }
+        addNanos(phase, System.nanoTime() - startNs);
+    }
+
+    // Papo start - batch 98: pre-accumulated segment variant (loop-level accumulation, one add per window segment)
+    /** Adds an already-measured duration in nanos (for loop-accumulated segments). */
+    public static void addNanos(final String phase, final long nanos) {
+        if (!ENABLED) {
+            return;
+        }
         final long[] arr = TOTALS.computeIfAbsent(phase, k -> new long[2]);
         synchronized (arr) {
-            arr[0] += System.nanoTime() - startNs;
+            arr[0] += nanos;
             arr[1]++;
         }
     }
+    // Papo end - batch 98
+
+    // Papo start - batch 98: per-window GC time attribution (collection ms delta across all GC beans)
+    private static final java.util.List<java.lang.management.GarbageCollectorMXBean> PAPO_GC_BEANS =
+        java.lang.management.ManagementFactory.getGarbageCollectorMXBeans();
+    private static long lastGcMs = sumGcMs();
+
+    private static long sumGcMs() {
+        long sum = 0;
+        for (final java.lang.management.GarbageCollectorMXBean bean : PAPO_GC_BEANS) {
+            sum += bean.getCollectionTime();
+        }
+        return sum;
+    }
+    // Papo end - batch 98
 
     /** Prints + resets the window every {@link #REPORT_EVERY_TICKS} ticks (call from tickServer). */
     public static void maybeReport(final int tickCount) {
@@ -46,11 +70,16 @@ public final class PapoTickProfile {
         }
         final long windowNanos = System.nanoTime() - windowStart;
         windowStart = System.nanoTime();
+        // Papo start - batch 98: GC ms delta for this window (attribution of superlinear phases to GC pressure)
+        final long gcNow = sumGcMs();
+        final long gcDeltaMs = gcNow - lastGcMs;
+        lastGcMs = gcNow;
+        // Papo end - batch 98
         final List<Map.Entry<String, long[]>> rows = new ArrayList<>(TOTALS.entrySet());
         rows.sort(Comparator.comparingLong(e -> -e.getValue()[0]));
         final long measured = rows.stream().mapToLong(e -> e.getValue()[0]).sum();
         System.out.println("PapoTickProfile window=400ticks totalWallMs=" + windowNanos / 1_000_000
-            + " measuredMs=" + measured / 1_000_000);
+            + " measuredMs=" + measured / 1_000_000 + " gcMs=" + gcDeltaMs);
         // 逐行 println（多行单次 println 的续行会被日志系统吞掉——实测判例）
         for (final Map.Entry<String, long[]> e : rows) {
             final long[] v = e.getValue();

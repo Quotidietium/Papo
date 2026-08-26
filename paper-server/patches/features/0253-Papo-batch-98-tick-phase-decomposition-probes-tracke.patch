@@ -1,0 +1,101 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 27 Aug 2026 03:27:45 +0800
+Subject: [PATCH] Papo: batch 98 tick-phase decomposition probes (tracker
+ maintain/sendChanges, conn flushQueue/listenerTick, server taskDrain bridge,
+ window gc)
+
+
+diff --git a/net/minecraft/network/Connection.java b/net/minecraft/network/Connection.java
+index d13dbacd28ff007a3c8d615735831c710f8f1353..c78b1b8950273310cecb736ebd4c7cfb1b7c64be 100644
+--- a/net/minecraft/network/Connection.java
++++ b/net/minecraft/network/Connection.java
+@@ -584,7 +584,13 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
+     private static int joinAttemptsThisTick; // Paper - Buffer joins to world
+     private static int currTick; // Paper - Buffer joins to world
+     public void tick() {
++        // Papo start - batch 98: connection-phase decomposition probes (diagnostic-only via papo.tickProfile)
++        final long papoTFlush = io.papermc.paper.util.PapoTickProfile.ENABLED ? System.nanoTime() : 0L;
+         this.flushQueue();
++        if (io.papermc.paper.util.PapoTickProfile.ENABLED) {
++            io.papermc.paper.util.PapoTickProfile.add("conn.flushQueue", papoTFlush);
++        }
++        // Papo end - batch 98
+         // Paper start - Buffer joins to world
+         if (Connection.currTick != net.minecraft.server.MinecraftServer.currentTick) {
+             Connection.currTick = net.minecraft.server.MinecraftServer.currentTick;
+@@ -596,6 +602,10 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
+             if (!(this.packetListener instanceof net.minecraft.server.network.ServerLoginPacketListenerImpl loginPacketListener)
+                 || loginPacketListener.state != net.minecraft.server.network.ServerLoginPacketListenerImpl.State.VERIFYING
+                 || Connection.joinAttemptsThisTick++ < MAX_PER_TICK) {
++            // Papo start - batch 98: listener tick probe (player doTick etc.) — wraps whichever
++            // branch executes; first revision only probed the PAPO_TRACK_PACKET_PROCESSING branch
++            // which is a dead gate, leaving the live else-branch unmeasured
++            final long papoTListener = io.papermc.paper.util.PapoTickProfile.ENABLED ? System.nanoTime() : 0L;
+             // Paper start - detailed watchdog information
+             if (net.minecraft.network.PacketProcessor.PAPO_TRACK_PACKET_PROCESSING) { // Papo - dead-instrumentation gate (zero readers repo-wide; per-tick-per-connection CLD alloc otherwise)
+             net.minecraft.network.PacketProcessor.packetProcessing.push(this.packetListener);
+@@ -607,6 +617,10 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
+             } else {
+                 tickablePacketListener.tick();
+             }
++            if (io.papermc.paper.util.PapoTickProfile.ENABLED) {
++                io.papermc.paper.util.PapoTickProfile.add("conn.listenerTick", papoTListener);
++            }
++            // Papo end - batch 98
+             } // Paper end - Buffer joins to world
+         }
+ 
+diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
+index 40793cec5e829d55402936bf29e31e53cf19240a..5603658d19bb056512238699d8337d69cd92bd56 100644
+--- a/net/minecraft/server/MinecraftServer.java
++++ b/net/minecraft/server/MinecraftServer.java
+@@ -1157,6 +1157,10 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+             0L,
+             false
+         );
++        // Papo start - batch 98: bridge per-tick task execution time (inbound packet handling + chunk
++        // tasks drained between/mid ticks) into the window profile; no-op when profiling disabled
++        io.papermc.paper.util.PapoTickProfile.addNanos("server.taskDrain", this.taskExecutionTime);
++        // Papo end - batch 98
+         this.taskExecutionTime = 0L;
+ 
+         this.addTickTime(time);
+diff --git a/net/minecraft/server/level/ChunkMap.java b/net/minecraft/server/level/ChunkMap.java
+index 1d0a89b70d2603c8bcc19bba5f055a3ca5ea3231..3eaa9f4bcd87bad339300fa8dc75e03031a819b3 100644
+--- a/net/minecraft/server/level/ChunkMap.java
++++ b/net/minecraft/server/level/ChunkMap.java
+@@ -1047,18 +1047,33 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
+ 
+         final ca.spottedleaf.moonrise.common.list.ReferenceList<net.minecraft.world.entity.Entity> trackerEntities = entityLookup.trackerEntities;
+         final Entity[] trackerEntitiesRaw = trackerEntities.getRawDataUnchecked();
++        // Papo start - batch 98: tracker decomposition probes (diagnostic-only via papo.tickProfile; two
++        // nanoTime per entity only when enabled, loop-level accumulation)
++        final boolean papoProf = io.papermc.paper.util.PapoTickProfile.ENABLED;
++        long papoMaintainNs = 0L;
++        long papoSendNs = 0L;
+         for (int i = 0, len = trackerEntities.size(); i < len; ++i) {
+             final Entity entity = trackerEntitiesRaw[i];
+             final ChunkMap.TrackedEntity tracker = ((ca.spottedleaf.moonrise.patches.entity_tracker.EntityTrackerEntity)entity).moonrise$getTrackedEntity();
+             if (tracker == null) {
+                 continue;
+             }
++            final long papoT0 = papoProf ? System.nanoTime() : 0L;
+             ((ca.spottedleaf.moonrise.patches.entity_tracker.EntityTrackerTrackedEntity)tracker).moonrise$tick(((ca.spottedleaf.moonrise.patches.chunk_system.entity.ChunkSystemEntity)entity).moonrise$getChunkData().nearbyPlayers);
++            final long papoT1 = papoProf ? System.nanoTime() : 0L;
++            papoMaintainNs += papoT1 - papoT0;
+             if (((ca.spottedleaf.moonrise.patches.entity_tracker.EntityTrackerTrackedEntity)tracker).moonrise$hasPlayers()
+                 || ((ca.spottedleaf.moonrise.patches.chunk_system.entity.ChunkSystemEntity)entity).moonrise$getChunkStatus().isOrAfter(FullChunkStatus.ENTITY_TICKING)) {
+                 tracker.serverEntity.sendChanges();
++                final long papoT2 = papoProf ? System.nanoTime() : 0L;
++                papoSendNs += papoT2 - papoT1;
+             }
+         }
++        if (papoProf) {
++            io.papermc.paper.util.PapoTickProfile.addNanos("chunkMap.tracker.maintain", papoMaintainNs);
++            io.papermc.paper.util.PapoTickProfile.addNanos("chunkMap.tracker.sendChanges", papoSendNs);
++        }
++        // Papo end - batch 98
+     }
+     // Paper end - optimise entity tracker
+ 
