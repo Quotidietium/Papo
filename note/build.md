@@ -399,3 +399,17 @@ Windows 中文 locale 下 socket 层 IOException 文案（"远程主机强迫关
 ### whenComplete 可能在 future 赋值表达式内同步触发（重入双 finish 判例）
 
 `this.chunkLoadFuture = trackLoadWithRadius(...)` 返回**已完成的 future** 时，紧随其后的 `whenComplete` 在赋值现场同步执行；若回调链推进状态机并 finishCurrentTask，而外层常规 tick() 尚在飞行中——内外双 finish → "Unexpected request for task finish" 断连（burst 才暴露，稳态不复现）。**规则：状态机完成转移必须单发（AtomicBoolean CAS 先到者胜），事件驱动与常规驱动共享同一 CAS。**
+
+## 2026-08-27 补充：批次 90 踩坑记录
+
+### Boolean.getBoolean 只认 "true" 不认 "1"（属性开关静默失效）
+
+`-Dpapo.tickProfile=1` 下 `Boolean.getBoolean("papo.tickProfile")` 返回 **false**（内部是 `Boolean.valueOf(getProperty)`）——探针静默不启用，空载/带载双最小探针才定位。**规则：系统属性开关用 `getProperty` 后自判 `"true".equalsIgnoreCase(v) || "1".equals(v)`。**
+
+### 多行单次 println 的续行被日志系统吞掉
+
+服务器内 `System.out.println(多行字符串)` 经 log4j 包装后，只有首行落日志文件（续行丢失）。**规则：诊断输出逐行 println。** 另：子进程 stdout 管道在部分运行丢 post-boot 行（批次85 ◴ 同源）——**可靠解析一律读服务器自身 logs/latest.log**。
+
+### paperclip/bundler jar 的类在嵌套 jar 里
+
+`createPapoJar` 产物外层 listing 查不到服务器类——实际在 `META-INF/versions/<mc>/paper-<mc>.jar` 嵌套 jar。核对"改动是否进包"必须解嵌套 jar（本批曾因此误判探针未进包）。
