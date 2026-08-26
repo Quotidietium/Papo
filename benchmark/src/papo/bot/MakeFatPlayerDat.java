@@ -24,6 +24,9 @@ public final class MakeFatPlayerDat {
     public static final int DATA_VERSION = 3700; // 1.20.1
     // 归因实验：PAPO_FAT_DV=<current> 时生成现代版本文件（datafix 无步进，读成本不变）
     private static final int EFFECTIVE_DV = Integer.parseInt(System.getenv().getOrDefault("PAPO_FAT_DV", String.valueOf(DATA_VERSION)));
+    // 批次86：PAPO_FAT_POS_X/Z 把出生点指向远方未生成区块（join 触发真实 worldgen 负载）
+    private static final double POS_X = Double.parseDouble(System.getenv().getOrDefault("PAPO_FAT_POS_X", "0.5"));
+    private static final double POS_Z = Double.parseDouble(System.getenv().getOrDefault("PAPO_FAT_POS_Z", "0.5"));
 
     public static void main(final String[] args) throws IOException {
         if (args.length < 2) {
@@ -137,7 +140,7 @@ public final class MakeFatPlayerDat {
         });
 
         // 位置/运动/基础状态
-        root.list("Pos", NbtWriter.DOUBLE, w -> { w.doubleItem(0.5); w.doubleItem(80.0); w.doubleItem(0.5); });
+        root.list("Pos", NbtWriter.DOUBLE, w -> { w.doubleItem(POS_X); w.doubleItem(80.0); w.doubleItem(POS_Z); });
         root.list("Motion", NbtWriter.DOUBLE, w -> { w.doubleItem(0.0); w.doubleItem(0.0); w.doubleItem(0.0); });
         root.list("Rotation", NbtWriter.FLOAT, w -> { w.floatItem(0.0f); w.floatItem(0.0f); });
         root.string("Dimension", "minecraft:overworld");

@@ -222,11 +222,12 @@ public final class BurstJoinVerify {
         logTail.join(5000);
 
         final long errors = logLines.stream().filter(BurstJoinVerify::isError).count();
-        // bot 突断与出站写入竞争时 netty 抛 StacklessClosedChannelException（客户端诱发的
-        // 已知良性现象，A/B 两版本同现）；单独计数披露、不计入失败门。
+        // bot 突断与出站写入竞争的良性噪声（两版本同现）：StacklessClosedChannelException、
+        // 裸 socket IOException（Connection reset / 中文 reset 文案 / 本机 locale 文案经
+        // sun.jnu.encoding 层产出、UTF-8 读取后呈 5+ 连问号乱码——file.encoding 管不到）。
+        // 单独计数披露、不计入失败门。
         final long botCloseRaces = logLines.stream()
-            .filter(l -> l.contains("StacklessClosedChannelException") || l.contains("Connection reset by peer")
-                || l.contains("远程主机强迫关闭")).count();
+            .filter(BurstJoinVerify::isBenignCloseRace).count();
         final long gateErrors = errors - botCloseRaces;
         String datCheck = "ok";
         for (final String name : names) {
@@ -243,8 +244,7 @@ public final class BurstJoinVerify {
             + " logErrors=" + gateErrors + " (+" + botCloseRaces + " benign bot-close races) dats=" + datCheck);
         if (gateErrors > 0) {
             logLines.stream().filter(BurstJoinVerify::isError)
-                .filter(l -> !l.contains("StacklessClosedChannelException") && !l.contains("Connection reset by peer")
-                    && !l.contains("远程主机强迫关闭"))
+                .filter(l -> !isBenignCloseRace(l))
                 .distinct().limit(6)
                 .forEach(l -> System.out.println("      " + l.trim()));
             Files.write(Path.of(System.getProperty("java.io.tmpdir"), "papo-burst-" + label + "-r" + round + "-gatefail.log"), logLines);
@@ -257,6 +257,16 @@ public final class BurstJoinVerify {
 
     private static boolean isError(final String line) {
         return line.contains("ERROR") || line.contains("Exception");
+    }
+
+    private static boolean isBenignCloseRace(final String l) {
+        if (l.contains("StacklessClosedChannelException") || l.contains("Connection reset by peer")
+            || l.contains("远程主机强迫关闭")) {
+            return true;
+        }
+        // 本机 locale 的 socket 错误文案经 sun.jnu.encoding 层产出（-Dfile.encoding 管不到），
+        // UTF-8 读取后呈乱码问号串：裸 java.io.IOException + 5 连问号 = 同一突断竞争
+        return l.contains("java.io.IOException:") && l.contains("?????");
     }
 
     private static String checkGzipNbt(final Path dat) {
