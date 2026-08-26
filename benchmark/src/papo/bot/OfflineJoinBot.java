@@ -62,14 +62,76 @@ public final class OfflineJoinBot {
 
     /** 返回 [connectMs, loginAckMs, spawnMs]（自 connect 起累计毫秒）。 */
     public long[] joinAndDisconnect(final long postSpawnDwellMs) throws IOException {
-        this.phaseTrace.clear();
-        return this.doJoin(postSpawnDwellMs);
+        final long[] t = this.doJoin(postSpawnDwellMs);
+        this.socket.close();
+        return t;
     }
 
     /** tracing 版：包级时间戳写入 {@link #getPhaseTrace()}。 */
     public long[] joinAndDisconnect(final long postSpawnDwellMs, final boolean tracing) throws IOException {
         this.phaseTrace.clear();
-        return this.doJoin(postSpawnDwellMs);
+        final long[] t = this.doJoin(postSpawnDwellMs);
+        this.socket.close();
+        return t;
+    }
+
+    /**
+     * 批次90：join 后在 play 阶段行走 durationMs（每 50ms 发 MOVE_PLAYER_POS 0x1D，
+     * 响应 KEEP_ALIVE 0x2B/回 PING 0x3B），然后断开。dx/dzPerTick 为每步位移。
+     */
+    public long[] joinWalkAndDisconnect(final long durationMs, final double dxPerTick, final double dzPerTick) throws IOException {
+        final long[] t = this.doJoin(100);
+        this.walk(durationMs, dxPerTick, dzPerTick);
+        this.socket.close();
+        return t;
+    }
+
+    private void walk(final long durationMs, final double dxPerTick, final double dzPerTick) throws IOException {
+        double x = 0.5, y = 100.0, z = 0.5;
+        final long deadline = System.currentTimeMillis() + durationMs;
+        this.socket.setSoTimeout(20); // 短超时读入站（keepalive/ping）
+        while (System.currentTimeMillis() < deadline) {
+            x += dxPerTick;
+            z += dzPerTick;
+            final ByteArrayOutputStream b = new ByteArrayOutputStream(25);
+            b.write(longBytes(Double.doubleToLongBits(x)));
+            b.write(longBytes(Double.doubleToLongBits(y)));
+            b.write(longBytes(Double.doubleToLongBits(z)));
+            b.write(0x01); // onGround=true, horizontalCollision=false
+            this.sendPacket(0x1D, b.toByteArray()); // MOVE_PLAYER_POS
+            this.drainPlayInbound();
+            try {
+                Thread.sleep(50);
+            } catch (final InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+        this.socket.setSoTimeout(0);
+    }
+
+    /** 非阻塞处理入站 keepalive/ping（其他包跳读）。 */
+    private void drainPlayInbound() {
+        try {
+            while (true) {
+                final Frame f = this.readFrame();
+                switch (f.packetId) {
+                    case 0x2B -> this.sendPacket(0x1B, f.payload); // keepalive echo（long）
+                    case 0x3B -> this.sendPacket(0x2B, f.payload); // ping → pong（int）
+                    default -> { }
+                }
+            }
+        } catch (final Exception expected) {
+            // SocketTimeout / EOF（EOF=被断开，由调用方发现）
+        }
+    }
+
+    private static byte[] longBytes(final long v) {
+        final byte[] b = new byte[8];
+        for (int i = 7; i >= 0; i--) {
+            b[i] = (byte) (v >>> (8 * i));
+        }
+        return b;
     }
 
     private long[] doJoin(final long postSpawnDwellMs) throws IOException {
@@ -161,7 +223,7 @@ public final class OfflineJoinBot {
         } catch (final InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-        this.socket.close(); // 退出 → 服务端 quit 存档（批次79 异步管线）
+        // 注意：不在此关闭 socket——由各入口（joinAndDisconnect/joinWalkAndDisconnect）关闭
 
         return new long[]{
             (tLoginStart - t0) / 1_000_000,
