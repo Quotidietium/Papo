@@ -2270,3 +2270,51 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 - worlds 37-39%（tickPending+misc 22-23% 为最大单项=空维度固定成本，上游已有 disable-world-ticking-when-empty 旋钮，运营建议）；connection 4-6%；sendChunks ≈1%（批次 58-77 网络+区块管线的真实负载验证）；functions/players ≈0。
 - **无新可安全消除的量化/阻塞面**（稳态各相位在 tick 内联连续执行，无边界等待）。
 - 踩坑三判例：Boolean.getBoolean 只认 "true"；多行 println 续行被日志吞（逐行）；bundler jar 类在嵌套 jar。
+
+## 批次 91（2026-08-26）：停机窗口提交竞态加固——离线程文件管线稳定性轮（多核调度⑫）
+
+主题：goal 后半句"多核调度之后的服务器核心稳定性"。批次 79/82 离线程存档管线
+（PapoOrderedFileWrites）的停机窗口提交语义从未实证——`isActive()` 预检与 `queueTask`
+之间存在 check-then-act 窗口，authenticator 线程登录读预取与 stopServer 尾部
+`haltExecutors()` 的 IO 池排空并发可命中。
+
+### 语义实证（HaltSemanticsProbe，concurrentutil 0.0.8 实跑）
+- `shutdown(false)` 排空中 **isActive()=true 但 queueTask 抛 ISE**（预检失效=真实竞态窗口）；
+  终止后 isActive=false 仍抛 ISE（一元重载同）；
+- `halt(false)` 后 **isActive()=true 且返回真 Task 对象但永不调度**（静默丢弃，提交侧不可
+  检测；仅 60s 优雅停机超时后触发，接受为残余面=watchdog 强杀同类）；
+- CompletableFuture 把 executor 抛出的 ISE 转成异常完成：簿记一致但**写任务被静默丢弃
+  （丢档）**，读的 result future 永不完成（消费方 60s get 兜底；stats/advancements 消费方
+  是无界 join()=潜在主线程永久挂起，仅关服竞态下可达）。
+
+### 修复（PapoOrderedFileWrites.java，直跟踪源码）
+- 写路径 executor 捕获 ISE → **内联降级执行**（与 isActive 预检的同步降级同一契约）；
+- 读路径 executor 捕获 ISE → `task.run()` 内联（result future 必然完成，悬挂类整类消除）；
+- awaitPending 恢复中断标志；正常路径零行为变化（不抛时与原提交同构）。
+
+### 验证
+- HaltRaceBench G1-G5 修复前后对拍全绿（丢档→执行、悬挂→完成、链 poison→健康、中断恢复）；
+- 全量 test ✓；四态冒烟 10/10 零异常、稳态 18.4ms（vs 批次88 基线 19.0ms 持平）✓；
+  fat-dat 20-bot burst exit 0 零错误 dats ok（p50 3384ms 在 0.57.0 带宽 3348-3478 内）✓；
+- **ShutdownRaceVerify**（新增实弹门）：12 bot 错峰 join 突发中 t=+1200ms 下发 stop →
+  exit 0、日志零门错误（扣良性突断与上游 POI 披露）、playerdata 每个 .dat gzip+NBT 全
+  合法、同目录重启 boot+join+stop 正常；0.59.0 ×3 轮全绿。
+- **race 门捕获上游既有竞态（A/B 归属，非 Papo 回归）**：关服尾部 `isStopped()` 后
+  `MinecraftServer.scheduleExecutables()`（CraftBukkit 覆写 `super && !isStopped()`）恒
+  false → 任意线程 `server.execute` 走 `doRunTask` **内联**——worker 世界生成的
+  `updatePOIOnBlockStateChange` POI 检查因此在 worker 上跑，Paper 主线程断言报 ERROR。
+  堆栈零 Papo 行；新生成区块无 stale POI，无数据影响；pre-fix 0.58.1 对照 jar 首轮
+  复现（Worker #6 同路径）证明先在性。门单独披露计数（upstream-poi-inline）不计失败，
+  不做代码修复（改上游停机语义超红线）。
+- 报告：[note/report/perf/2026-08-26-shutdown-window-stability-batch91.md](report/perf/2026-08-26-shutdown-window-stability-batch91.md)。
+
+### 判例
+- **第三方池停机语义必须实证而非读名**：isActive 在排空期与 halt 后都会"撒谎"；提交侧防御
+  以抛出的 ISE 为准（catch→降级），不能依赖 isActive 预检。
+- **上游 `isStopped()` 后 `server.execute` 内联执行**（CraftBukkit `scheduleExecutables`
+  覆写）：关服尾部任何线程的 execute 都在调用线程跑——含主线程断言的任务必然报 ERROR；
+  该行为与 Paper 区块系统 worker 世界生成叠加产生"关服时 POI off-main"ERROR，属上游既有，
+  排查同类关服 ERROR 时先看这条内联语义再考虑自身回归。
+- CompletableFuture 会把 executor 异常转成 future 异常完成——任务体不运行但 future 有终态，
+  "安静失败"只能靠对拍基准抓。
+- 停机窗口加固的正确形态是降级而非重试：与既有同步降级契约统一，不引入新调度假设。
