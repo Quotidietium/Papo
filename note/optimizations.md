@@ -2465,9 +2465,10 @@ PushScanBench 随机配置 20,000 组对拍全 PASS。性能：JMH 160 密度模
 tick 触发）。修复：`TrackedChunk.papoContainsInViewDistance`（updateCount 为失效键的
 惰性 ReferenceOpenHashSet，同 tick 全 tracker 共享重建，O(1) 探测）。JMH 风暴模型
 1389.7→230.5us（**6.0×**）；等价 5,000 代（含代际失效）全 PASS；test/四态冒烟绿。
-净窗口 160 A/B 因外部租户持续满载（8 轮 util 92-128% 全污染，行为门全绿）未取得，
-留作后续补测。判例：无序 ReferenceList 的 contains 是隐匿 O(n)，跨 tracker 共享探测
-按内容失效键建集合；O(N²) 不可削减时归因下沉到"每事件扇出"。报告：
+160 A/B 补测（同 epoch 背靠背两对）：maintain min 窗口径一致 **−25~−33%**（1037→780 /
+1070→719us），与 JMH 风暴 6.0× 自洽（风暴为 maintain 真子集）。判例：无序 ReferenceList
+的 contains 是隐匿 O(n)，跨 tracker 共享探测按内容失效键建集合；O(N²) 不可削减时归因
+下沉到"每事件扇出"。报告：
 [note/report/perf/2026-08-27-purge-probe-batch101.md](report/perf/2026-08-27-purge-probe-batch101.md)。
 
 ---
