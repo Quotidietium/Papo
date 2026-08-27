@@ -1,0 +1,199 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 27 Aug 2026 18:14:59 +0800
+Subject: [PATCH] Papo: batch 99 bounded push-entity scan (two-target early
+ stop, dense clusters O(density) -> O(bound))
+
+
+diff --git a/ca/spottedleaf/moonrise/patches/chunk_system/level/entity/ChunkEntitySlices.java b/ca/spottedleaf/moonrise/patches/chunk_system/level/entity/ChunkEntitySlices.java
+index 2dfd412344a0e57f25a08d9c65656a13113baa4e..04e89d2d4df09fccbe8a8699a7ba5a7ea469bcf5 100644
+--- a/ca/spottedleaf/moonrise/patches/chunk_system/level/entity/ChunkEntitySlices.java
++++ b/ca/spottedleaf/moonrise/patches/chunk_system/level/entity/ChunkEntitySlices.java
+@@ -327,6 +327,17 @@ public final class ChunkEntitySlices {
+         this.allEntities.getEntities(except, box, into, predicate);
+     }
+ 
++    // Papo start - batch 99: two-target bounded push-scan fill. Mirrors getEntitiesLimited but stops only
++    // when BOTH consumers of LivingEntity.pushEntities have their needs satisfied: the list prefix holds
++    // at least listTarget entities (push loop consumes at most maxEntityCollisions in order) AND at least
++    // npTarget non-passengers have been seen (cramming check only needs nonPassengerCount > cramming-1).
++    // Returns the updated running non-passenger count; callers re-check the stop condition across chunks.
++    public int papoGetEntitiesBounded(final Entity except, final AABB box, final List<Entity> into, final Predicate<? super Entity> predicate,
++                                      final int listTarget, final int npTarget, final int npRunning) {
++        return this.allEntities.papoGetEntitiesBounded(except, box, into, predicate, listTarget, npTarget, npRunning);
++    }
++    // Papo end - batch 99
++
+ 
+     public boolean getEntities(final Entity except, final AABB box, final List<Entity> into, final Predicate<? super Entity> predicate,
+                                final int maxCount) {
+@@ -598,5 +609,55 @@ public final class ChunkEntitySlices {
+ 
+             return false;
+         }
++
++        // Papo start - batch 99: two-target bounded fill (see ChunkEntitySlices.papoGetEntitiesBounded).
++        // Loop body identical to getEntitiesLimited; adds non-passenger counting and the joint stop check.
++        public int papoGetEntitiesBounded(final Entity except, final AABB box, final List<Entity> into, final Predicate<? super Entity> predicate,
++                                          final int listTarget, final int npTarget, int npRunning) {
++            if (this.count == 0) {
++                return npRunning;
++            }
++
++            final int minSection = this.slices.minSection;
++            final int maxSection = this.slices.maxSection;
++
++            final int min = Mth.clamp(Mth.floor(box.minY - 2.0) >> 4, minSection, maxSection);
++            final int max = Mth.clamp(Mth.floor(box.maxY + 2.0) >> 4, minSection, maxSection);
++
++            final BasicEntityList<Entity>[] entitiesBySection = this.entitiesBySection;
++
++            for (int section = min; section <= max; ++section) {
++                final BasicEntityList<Entity> list = entitiesBySection[section - minSection];
++
++                if (list == null) {
++                    continue;
++                }
++
++                final Entity[] storage = list.storage;
++
++                for (int i = 0, len = Math.min(storage.length, list.size()); i < len; ++i) {
++                    final Entity entity = storage[i];
++
++                    if (entity == null || entity == except || !entity.getBoundingBox().intersects(box)) {
++                        continue;
++                    }
++
++                    if (predicate != null && !predicate.test(entity)) {
++                        continue;
++                    }
++
++                    into.add(entity);
++                    if (!entity.isPassenger()) {
++                        ++npRunning;
++                    }
++                    if (into.size() >= listTarget && npRunning >= npTarget) {
++                        return npRunning;
++                    }
++                }
++            }
++
++            return npRunning;
++        }
++        // Papo end - batch 99
+     }
+ }
+diff --git a/ca/spottedleaf/moonrise/patches/chunk_system/level/entity/EntityLookup.java b/ca/spottedleaf/moonrise/patches/chunk_system/level/entity/EntityLookup.java
+index 2d24d03bbdb5ee0d862cbfff2219f58afffafe12..2b7e675f214be23b832906fdb7ec3406b8512e99 100644
+--- a/ca/spottedleaf/moonrise/patches/chunk_system/level/entity/EntityLookup.java
++++ b/ca/spottedleaf/moonrise/patches/chunk_system/level/entity/EntityLookup.java
+@@ -603,6 +603,57 @@ public abstract class EntityLookup implements LevelEntityGetter<Entity> {
+         }
+     }
+ 
++    // Papo start - batch 99: two-target bounded fill for LivingEntity.pushEntities (dense-cluster O(density)
++    // scans collapse to O(max(push cap, cramming threshold))). Mirrors getEntities above; stops iterating
++    // chunks once into.size() >= listTarget && nonPassengers >= npTarget. Result is an order-preserving
++    // prefix of the unbounded fill, which is everything the push/cramming consumers observe.
++    public void papoGetEntitiesBounded(final Entity except, final AABB box, final List<Entity> into, final Predicate<? super Entity> predicate,
++                                       final int listTarget, final int npTarget) {
++        final int minChunkX = (Mth.floor(box.minX) - 2) >> 4;
++        final int minChunkZ = (Mth.floor(box.minZ) - 2) >> 4;
++        final int maxChunkX = (Mth.floor(box.maxX) + 2) >> 4;
++        final int maxChunkZ = (Mth.floor(box.maxZ) + 2) >> 4;
++
++        final int minRegionX = minChunkX >> REGION_SHIFT;
++        final int minRegionZ = minChunkZ >> REGION_SHIFT;
++        final int maxRegionX = maxChunkX >> REGION_SHIFT;
++        final int maxRegionZ = maxChunkZ >> REGION_SHIFT;
++
++        int npRunning = 0;
++
++        outer:
++        for (int currRegionZ = minRegionZ; currRegionZ <= maxRegionZ; ++currRegionZ) {
++            final int minZ = currRegionZ == minRegionZ ? minChunkZ & REGION_MASK : 0;
++            final int maxZ = currRegionZ == maxRegionZ ? maxChunkZ & REGION_MASK : REGION_MASK;
++
++            for (int currRegionX = minRegionX; currRegionX <= maxRegionX; ++currRegionX) {
++                final ChunkSlicesRegion region = this.getRegion(currRegionX, currRegionZ);
++
++                if (region == null) {
++                    continue;
++                }
++
++                final int minX = currRegionX == minRegionX ? minChunkX & REGION_MASK : 0;
++                final int maxX = currRegionX == maxRegionX ? maxChunkX & REGION_MASK : REGION_MASK;
++
++                for (int currZ = minZ; currZ <= maxZ; ++currZ) {
++                    for (int currX = minX; currX <= maxX; ++currX) {
++                        final ChunkEntitySlices chunk = region.get(currX | (currZ << REGION_SHIFT));
++                        if (chunk == null || !chunk.status.isOrAfter(FullChunkStatus.FULL)) {
++                            continue;
++                        }
++
++                        npRunning = chunk.papoGetEntitiesBounded(except, box, into, predicate, listTarget, npTarget, npRunning);
++                        if (into.size() >= listTarget && npRunning >= npTarget) {
++                            break outer;
++                        }
++                    }
++                }
++            }
++        }
++    }
++    // Papo end - batch 99
++
+     public void getHardCollidingEntities(final Entity except, final AABB box, final List<Entity> into, final Predicate<? super Entity> predicate) {
+         final int minChunkX = (Mth.floor(box.minX) - 2) >> 4;
+         final int minChunkZ = (Mth.floor(box.minZ) - 2) >> 4;
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index 98371c7797c9153ffbbc82b541e8d3c189cb2cef..150d1dd85b12acf3e37fa167481e68d0b0cbb517 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -3930,7 +3930,22 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+         }
+         // Paper end - don't run getEntities if we're not going to use its result
+         List<Entity> pushableEntities = this.papoGetPushEntitiesScratch(); // Papo - per-entity scratch list instead of per-tick ArrayList
+-        this.level().papoGetEntitiesInto(this, this.getBoundingBox(), this.papoGetPushablePredicate(), pushableEntities); // Papo - fill overload (reuses cached pushable predicate, avoids per-tick allocations)
++        // Papo start - batch 99: bounded push scan. The two consumers of this list are (a) the push loop,
++        // which touches at most maxEntityCollisions entities in fill order, and (b) the cramming check,
++        // which only reads the booleans size > cramming-1 and nonPassengers > cramming-1 (and consumes a
++        // random draw only when the first boolean holds). Stopping the fill once the prefix holds
++        // max(maxEntityCollisions, cramming) entities AND cramming non-passengers satisfies both consumers
++        // on every configuration: push targets are an order-preserving prefix; the booleans are true in the
++        // full list whenever the stop targets are met (subset argument), and unchanged when the fill
++        // exhausts naturally. Dense clusters collapse from O(local density) to O(bound) per entity.
++        final int papoListTarget = Math.max(this.level().paperConfig().collisions.maxEntityCollisions, i);
++        final int papoNpTarget = i > 0 ? i : 0;
++        final long papoTPush = io.papermc.paper.util.PapoTickProfile.ENABLED ? System.nanoTime() : 0L;
++        this.level().papoGetEntitiesBounded(this, this.getBoundingBox(), this.papoGetPushablePredicate(), pushableEntities, papoListTarget, papoNpTarget);
++        if (io.papermc.paper.util.PapoTickProfile.ENABLED) {
++            io.papermc.paper.util.PapoTickProfile.add("player.pushEntities", papoTPush);
++        }
++        // Papo end - batch 99
+         if (!pushableEntities.isEmpty()) {
+             if (this.level() instanceof ServerLevel serverLevel) {
+                 // Paper - don't run getEntities if we're not going to use its result; moved up
+diff --git a/net/minecraft/world/level/Level.java b/net/minecraft/world/level/Level.java
+index 798422a9d8b718dc47ca54f82b1893d2dadd8d55..dbc4dca9bb152c5d6472ca301f0edd21180afe43 100644
+--- a/net/minecraft/world/level/Level.java
++++ b/net/minecraft/world/level/Level.java
+@@ -1705,6 +1705,19 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
+     }
+     // Papo end
+ 
++    // Papo start - batch 99: two-target bounded variant for LivingEntity.pushEntities — dense-cluster
++    // scans stop once BOTH consumers' needs are met (listTarget prefix for the push loop, npTarget
++    // non-passengers for the cramming boolean). Hook additions are appended unconditionally afterwards,
++    // same as the unbounded path. Fill order/prefix identical to papoGetEntitiesInto.
++    public void papoGetEntitiesBounded(@Nullable Entity entity, AABB boundingBox, Predicate<? super Entity> predicate, List<Entity> into, int listTarget, int npTarget) {
++        Profiler.get().incrementCounter("getEntities");
++
++        ((ca.spottedleaf.moonrise.patches.chunk_system.level.ChunkSystemLevel)this).moonrise$getEntityLookup().papoGetEntitiesBounded(entity, boundingBox, into, predicate, listTarget, npTarget);
++
++        ca.spottedleaf.moonrise.common.PlatformHooks.get().addToGetEntities((Level)(Object)this, entity, boundingBox, predicate, into);
++    }
++    // Papo end - batch 99
++
+     @Override
+     public <T extends Entity> List<T> getEntities(EntityTypeTest<Entity, T> entityTypeTest, AABB bounds, Predicate<? super T> predicate) {
+         List<T> list = Lists.newArrayList();

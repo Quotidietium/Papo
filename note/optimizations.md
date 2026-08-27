@@ -2430,6 +2430,21 @@ push 扫描（两消费者等价可证）。判例：内部仓库半成品 fixup
 
 ---
 
+## 批次 99（2026-08-27）：有界 push 扫描——聚堆密度超线性面消除（多核调度系列⑮，0.60.0→0.61.0）
+
+主题：0254 补丁。`LivingEntity.pushEntities` 的无界密度扫描 → 双目标有界早停
+（`papoGetEntitiesBounded` 三层：ChunkEntitySlices/EntityLookup/Level；listTarget=
+max(maxEntityCollisions, cramming) + npTarget=cramming）。等价性：消费者只有前 MEC 个
+按序 + 两个布尔（size/非乘骑数 vs cramming 阈）+ 随机消耗奇偶——单向蕴含+逆否闭合；
+PushScanBench 随机配置 20,000 组对拍全 PASS。性能：JMH 160 密度模型 590→115ns（5.1×）；
+真实 160 bot A/B conn.listenerTick 7998→5461us（−32%，min −30%），player.pushEntities
+全 160 人仅 135us（0.85us/人）——批次98 密度超线性归因闭环。四态冒烟全绿（push 是
+游戏可见行为）。判例：消费者分析先于扫描优化；对拍基准随机流同种子独立（共享流连续
+抽取伪装分歧）；早停等价=单向蕴含+逆否证明模式。报告：
+[note/report/perf/2026-08-27-pushscan-bounded-batch99.md](report/perf/2026-08-27-pushscan-bounded-batch99.md)。
+
+---
+
 ## 循环终止记录（2026-08-26，用户决断）
 
 多核调度系列（批次 78-96，0.51.0 → 0.59.0）由用户显式决断终止。终态：
