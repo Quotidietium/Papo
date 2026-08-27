@@ -1,0 +1,48 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 27 Aug 2026 22:06:12 +0800
+Subject: [PATCH] Papo: batch 102 sendChanges build-vs-fanout split probe
+
+
+diff --git a/net/minecraft/server/level/ChunkMap.java b/net/minecraft/server/level/ChunkMap.java
+index 9feee5c741fca543b52cb63b1b8426db12820ef4..b48000fa8db79559a6f37c3e6adfd96b7c8d9d1c 100644
+--- a/net/minecraft/server/level/ChunkMap.java
++++ b/net/minecraft/server/level/ChunkMap.java
+@@ -116,6 +116,11 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
+     private static final byte CHUNK_TYPE_REPLACEABLE = -1;
+     private static final byte CHUNK_TYPE_UNKNOWN = 0;
+     private static final byte CHUNK_TYPE_FULL = 1;
++
++    // Papo start - batch 102: fanout accumulator for the sendChanges build-vs-fanout split
++    // (main-thread only, profiling-gated; flushed+reset by newTrackerTick every tracked tick)
++    static long PAP0_FANOUT_NS;
++    // Papo end - batch 102
+     private static final Logger LOGGER = LogUtils.getLogger();
+     private static final int CHUNK_SAVED_PER_TICK = 200;
+     private static final int CHUNK_SAVED_EAGERLY_PER_TICK = 20;
+@@ -1072,6 +1077,8 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
+         if (papoProf) {
+             io.papermc.paper.util.PapoTickProfile.addNanos("chunkMap.tracker.maintain", papoMaintainNs);
+             io.papermc.paper.util.PapoTickProfile.addNanos("chunkMap.tracker.sendChanges", papoSendNs);
++            io.papermc.paper.util.PapoTickProfile.addNanos("chunkMap.tracker.fanout", PAP0_FANOUT_NS);
++            PAP0_FANOUT_NS = 0L;
+         }
+         // Papo end - batch 98
+     }
+@@ -1358,9 +1365,16 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
+ 
+         @Override
+         public void sendToTrackingPlayers(Packet<? super ClientGamePacketListener> packet) {
++            // Papo start - batch 102: fanout probe accumulator (main-thread only; profiling-gated,
++            // flushed per tick by newTrackerTick). Split: sendChanges total minus fanout = packet build.
++            final long papoTFan = io.papermc.paper.util.PapoTickProfile.ENABLED ? System.nanoTime() : 0L;
+             for (ServerPlayerConnection serverPlayerConnection : this.seenBy) {
+                 serverPlayerConnection.send(packet);
+             }
++            if (io.papermc.paper.util.PapoTickProfile.ENABLED) {
++                PAP0_FANOUT_NS += System.nanoTime() - papoTFan;
++            }
++            // Papo end - batch 102
+         }
+ 
+         @Override

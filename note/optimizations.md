@@ -2473,6 +2473,18 @@ tick 触发）。修复：`TrackedChunk.papoContainsInViewDistance`（updateCoun
 
 ---
 
+## 批次 102（2026-08-27）：sendChanges 面 build-vs-fanout 分解——结构封闭（多核调度系列⑱，0.63.0→0.64.0，勘察轮）
+
+主题：0257 探针（TrackedEntity.sendToTrackingPlayers 扇出累计器，默认关）。160bot 分解：
+**扇出 >92-99% 是面本体**（fanout min 1133us ≈ 总量 min 1232us；包构建差分 1.4-8%）；
+每 send ~90ns 已是 Paper 快路径；对数 N²/2 是追踪语义载荷（削减投递=客户端可见更新缺失
+=行为变更，红线）——**面封闭，无红线内优化空间**；高方差归因外部争抢对 eventLoop 的
+放大。聚堆规模主线程面全部处置完毕（99/100/101 消除三面，102 封闭第四面），剩余线性
+常量+N²/2 投递地板，进一步需投递模型变更（Folia 级）超红线。报告：
+[note/report/perf/2026-08-27-fanout-split-batch102.md](report/perf/2026-08-27-fanout-split-batch102.md)。
+
+---
+
 ## 循环终止记录（2026-08-26，用户决断）
 
 多核调度系列（批次 78-96，0.51.0 → 0.59.0）由用户显式决断终止。终态：
