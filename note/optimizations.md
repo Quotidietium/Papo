@@ -2485,6 +2485,18 @@ tick 触发）。修复：`TrackedChunk.papoContainsInViewDistance`（updateCoun
 
 ---
 
+## 批次 103（2026-08-27）：doTick 链细分——线性地板归因与封闭（多核调度系列⑲，0.64.0→0.65.0，勘察轮）
+
+主题：0258 探针（player.superTick / player.aiStepTouchScan，默认关）。40/160 双点分解：
+**superTick（实体 tick 链）= 地板本体**（~70% listenerTick，每玩家 9.2→16.6us 随密度 1.8×）；
+touchScan/push 各 <1us/玩家（密度斜率 0.5us 级）；线性部分为玩家实体 tick 语义载荷
+（O(1) 段常量和，无单一热点），残余密度链 ~1.1ms@160 深埋 tick 链内部且逐段语义必需
+——**面封闭**。批次 97-103 聚堆主线程面全部消除或封闭，地板=实体 tick 链+N²/2 投递，
+进一步需 Folia 级变更超红线。判例：包络−子段差分法决定深挖止损点；密度斜率必须双点测。
+报告：[note/report/perf/2026-08-27-dotick-split-batch103.md](report/perf/2026-08-27-dotick-split-batch103.md)。
+
+---
+
 ## 循环终止记录（2026-08-26，用户决断）
 
 多核调度系列（批次 78-96，0.51.0 → 0.59.0）由用户显式决断终止。终态：
