@@ -1,0 +1,67 @@
+
+=== round 1 boot ===
+  boot: [23:20:06 INFO]: Done (24.848s)! For help, type "help"
+  warm#1 spawn=4299ms
+  warm#2 spawn=67ms
+  >>> stop issued mid-burst (t=+1200ms)
+  race: spawned=5/12 abruptClosed=7 unexpectedFailures=0
+  shutdown: exited=true exitCode=0 logErrors=0 (benign-close=0 upstream-poi-inline=0)
+  artifacts: 6 .dat files, all-valid=ok
+  reboot same world...
+  boot: [23:20:36 INFO]: Done (17.362s)! For help, type "help"
+  reboot join spawn=1855ms
+  reboot: exited=true exitCode=0 logErrors=0 warmDat=ok
+
+=== round 2 boot ===
+  boot: [23:21:12 INFO]: Done (30.487s)! For help, type "help"
+  warm#1 spawn=5753ms
+  warm#2 spawn=203ms
+  >>> stop issued mid-burst (t=+1200ms)
+  race: spawned=5/12 abruptClosed=7 unexpectedFailures=0
+  shutdown: exited=true exitCode=0 logErrors=0 (benign-close=0 upstream-poi-inline=2)
+  artifacts: 6 .dat files, all-valid=ok
+  reboot same world...
+  boot: [23:21:44 INFO]: Done (17.016s)! For help, type "help"
+  reboot join spawn=1930ms
+  reboot: exited=true exitCode=0 logErrors=0 warmDat=ok
+
+=== round 3 boot ===
+  boot: [23:22:13 INFO]: Done (23.912s)! For help, type "help"
+  warm#1 spawn=4906ms
+  warm#2 spawn=102ms
+  >>> stop issued mid-burst (t=+1200ms)
+  race: spawned=5/12 abruptClosed=7 unexpectedFailures=0
+  shutdown: exited=true exitCode=0 logErrors=0 (benign-close=0 upstream-poi-inline=2)
+  artifacts: 6 .dat files, all-valid=ok
+  reboot same world...
+  boot: [23:22:46 INFO]: Done (19.317s)! For help, type "help"
+  reboot join spawn=2485ms
+  reboot: exited=true exitCode=0 logErrors=0 warmDat=ok
+
+=== round 4 boot ===
+  boot: [23:23:44 INFO]: Done (47.367s)! For help, type "help"
+  warm#1 spawn=8729ms
+  warm#2 spawn=838ms
+  >>> stop issued mid-burst (t=+1200ms)
+  race: spawned=5/12 abruptClosed=7 unexpectedFailures=0
+  shutdown: exited=true exitCode=0 logErrors=0 (benign-close=0 upstream-poi-inline=0)
+  artifacts: 7 .dat files, all-valid=ok
+  reboot same world...
+  boot: [23:24:39 INFO]: Done (36.103s)! For help, type "help"
+  reboot join spawn=3338ms
+  reboot: exited=true exitCode=0 logErrors=0 warmDat=ok
+
+=== round 5 boot ===
+  boot: [23:25:35 INFO]: Done (43.759s)! For help, type "help"
+  warm#1 spawn=7380ms
+  warm#2 spawn=195ms
+  >>> stop issued mid-burst (t=+1200ms)
+  race: spawned=5/12 abruptClosed=7 unexpectedFailures=0
+  shutdown: exited=true exitCode=0 logErrors=0 (benign-close=0 upstream-poi-inline=2)
+  artifacts: 6 .dat files, all-valid=ok
+  reboot same world...
+  boot: [23:26:34 INFO]: Done (42.049s)! For help, type "help"
+  reboot join spawn=3293ms
+  reboot: exited=true exitCode=0 logErrors=0 warmDat=ok
+
+SHUTDOWN-RACE ALL ROUNDS PASS
