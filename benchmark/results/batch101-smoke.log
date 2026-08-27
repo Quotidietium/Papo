@@ -1,0 +1,22 @@
+
+=== boot 0.63.0 (Papo-1.21.11-0.63.0.jar) ===
+  boot: [20:03:46 INFO]: Done (28.453s)! For help, type "help" (+30066ms)
+  join#01  connect=16ms loginAck=2123ms spawn=8096ms
+  join#02  connect=1ms loginAck=315ms spawn=506ms
+  join#03  connect=1ms loginAck=240ms spawn=340ms
+  join#04  connect=1ms loginAck=9ms spawn=47ms
+  join#05  connect=1ms loginAck=7ms spawn=34ms
+  join#06  connect=1ms loginAck=7ms spawn=30ms
+  join#07  connect=1ms loginAck=4ms spawn=18ms
+  join#08  connect=1ms loginAck=4ms spawn=22ms
+  join#09  connect=1ms loginAck=3ms spawn=20ms
+  join#10  connect=1ms loginAck=4ms spawn=21ms
+
+  result 0.63.0:
+    joins=10/10
+    shutdown: exited=true exitCode=0 logErrors=0
+    artifacts: dat=ok stats=ok advancements=ok
+
+=== A/B summary (steady-state joins #3..#10) ===
+jar          mean(ms)     p50(ms)      max(ms)     
+0.63.0       66.5         30.0         340.0       

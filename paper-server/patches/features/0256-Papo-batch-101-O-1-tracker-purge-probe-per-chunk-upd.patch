@@ -1,0 +1,69 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 27 Aug 2026 19:50:40 +0800
+Subject: [PATCH] Papo: batch 101 O(1) tracker purge probe (per-chunk
+ updateCount-keyed view set)
+
+
+diff --git a/ca/spottedleaf/moonrise/common/misc/NearbyPlayers.java b/ca/spottedleaf/moonrise/common/misc/NearbyPlayers.java
+index 1b8193587814225c2ef2c5d9e667436eb50ff6c5..b195e977cfeff313657e022879cc3ccf3b3d3e22 100644
+--- a/ca/spottedleaf/moonrise/common/misc/NearbyPlayers.java
++++ b/ca/spottedleaf/moonrise/common/misc/NearbyPlayers.java
+@@ -181,6 +181,39 @@ public final class NearbyPlayers {
+             return this.players[type.ordinal()];
+         }
+ 
++        // Papo start - batch 101: O(1) membership probe for the tracker purge path.
++        // ChunkMap.moonrise$tick's purge previously ran ReferenceList.contains (linear) per
++        // (tracker x seenBy) entry; with clustered players and walking bots crossing chunk borders,
++        // every updateCount bump triggers a purge across all trackers of the chunk — a purge storm of
++        // trackers x seenBy x O(list) identity scans. Lazily build a set per (chunk, updateCount) and
++        // share it across all trackers purging in the same tick. Membership is exact: the view list
++        // holds each player at most once (add throws on duplicates), and every add/remove bumps
++        // updateCount, so the cache can never answer for stale list contents.
++        private it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet<ServerPlayer> papoViewProbeSet;
++        private long papoViewProbeSetUpdateCount = -1L;
++
++        public boolean papoContainsInViewDistance(final ServerPlayer player) {
++            final ReferenceList<ServerPlayer> list = this.getPlayers(NearbyMapType.VIEW_DISTANCE);
++            if (list == null) {
++                return false;
++            }
++            if (this.papoViewProbeSet == null || this.papoViewProbeSetUpdateCount != this.updateCount) {
++                if (this.papoViewProbeSet == null) {
++                    this.papoViewProbeSet = new it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet<>(Math.max(4, list.size()));
++                } else {
++                    this.papoViewProbeSet.clear();
++                    this.papoViewProbeSet.ensureCapacity(list.size());
++                }
++                final ServerPlayer[] raw = list.getRawDataUnchecked();
++                for (int i = 0, len = list.size(); i < len; ++i) {
++                    this.papoViewProbeSet.add(raw[i]);
++                }
++                this.papoViewProbeSetUpdateCount = this.updateCount;
++            }
++            return this.papoViewProbeSet.contains(player);
++        }
++        // Papo end - batch 101
++
+         public void addPlayer(final ServerPlayer player, final NearbyMapType type) {
+             ++this.updateCount;
+ 
+diff --git a/net/minecraft/server/level/ChunkMap.java b/net/minecraft/server/level/ChunkMap.java
+index 3eaa9f4bcd87bad339300fa8dc75e03031a819b3..9feee5c741fca543b52cb63b1b8426db12820ef4 100644
+--- a/net/minecraft/server/level/ChunkMap.java
++++ b/net/minecraft/server/level/ChunkMap.java
+@@ -1267,10 +1267,12 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
+                 // need to purge any players possible not in the chunk list
+                 // Papo - lazily collect removals instead of defensively copying seenBy
+                 // (usually nobody needs purging; removePlayer call sequence unchanged).
++                // Papo - batch 101: O(1) membership probe via per-(chunk, updateCount) set shared
++                // across all trackers purging this tick (was: linear ReferenceList.contains per entry).
+                 java.util.List<ServerPlayer> toRemove = null;
+                 for (final ServerPlayerConnection conn : this.seenBy) {
+                     final ServerPlayer player = conn.getPlayer();
+-                    if (!players.contains(player)) {
++                    if (!chunk.papoContainsInViewDistance(player)) {
+                         if (toRemove == null) {
+                             toRemove = new java.util.ArrayList<>();
+                         }
