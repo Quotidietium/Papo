@@ -1,0 +1,58 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Thu, 27 Aug 2026 19:18:22 +0800
+Subject: [PATCH] Papo: batch 100 per-player scratch list for aiStep touch scan
+ (kill per-tick ArrayList, predicate verbatim NO_SPECTATORS)
+
+
+diff --git a/net/minecraft/world/entity/player/Player.java b/net/minecraft/world/entity/player/Player.java
+index 575aad5cbd96b6bb29a76d9c57d554ce86a05cf2..486546c3db5c9177d974064a8681344a4b741b1f 100644
+--- a/net/minecraft/world/entity/player/Player.java
++++ b/net/minecraft/world/entity/player/Player.java
+@@ -64,6 +64,7 @@ import net.minecraft.world.entity.Entity;
+ import net.minecraft.world.entity.EntityEquipment;
+ import net.minecraft.world.entity.EntityEvent;
+ import net.minecraft.world.entity.EntityReference;
++import net.minecraft.world.entity.EntitySelector; // Papo - batch 100
+ import net.minecraft.world.entity.EntityType;
+ import net.minecraft.world.entity.EquipmentSlot;
+ import net.minecraft.world.entity.HumanoidArm;
+@@ -506,7 +507,15 @@ public abstract class Player extends Avatar implements ContainerUser {
+                 aabb = this.getBoundingBox().inflate(1.0, 0.5, 1.0);
+             }
+ 
+-            List<Entity> entities = this.level().getEntities(this, aabb);
++            // Papo start - batch 100: per-player scratch list + fill overload instead of a fresh
++            // ArrayList per player per tick (the plain getEntities allocating variant). Predicate is
++            // verbatim EntitySelector.NO_SPECTATORS — the exact predicate the 2-arg overload passes.
++            // Re-entrancy: the list is filled and consumed inside this block only; touch callbacks
++            // (playerTouch -> pickup events) iterate the same snapshot the vanilla list held, and
++            // aiStep cannot re-enter on the same player within a tick.
++            final List<Entity> entities = this.papoGetTouchScanScratch();
++            this.level().papoGetEntitiesInto(this, aabb, EntitySelector.NO_SPECTATORS, entities);
++            // Papo end - batch 100
+             List<Entity> list = null; // Papo - lazily allocated: most ticks touch no XP orb
+ 
+             for (Entity entity : entities) {
+@@ -541,6 +550,21 @@ public abstract class Player extends Avatar implements ContainerUser {
+         entity.playerTouch(this);
+     }
+ 
++    // Papo start - batch 100: per-player scratch for the aiStep touch scan (see aiStep). One list per
++    // player instead of one per tick; cleared on reuse.
++    private List<Entity> papoTouchScanScratch;
++
++    private List<Entity> papoGetTouchScanScratch() {
++        List<Entity> scratch = this.papoTouchScanScratch;
++        if (scratch == null) {
++            scratch = this.papoTouchScanScratch = new java.util.ArrayList<>();
++        } else {
++            scratch.clear();
++        }
++        return scratch;
++    }
++    // Papo end - batch 100
++
+     public int getScore() {
+         return this.entityData.get(DATA_SCORE_ID);
+     }

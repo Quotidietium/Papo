@@ -2445,6 +2445,18 @@ PushScanBench 随机配置 20,000 组对拍全 PASS。性能：JMH 160 密度模
 
 ---
 
+## 批次 100（2026-08-27）：aiStep touch 扫描 scratch 化（多核调度系列⑯，0.61.0→0.62.0）
+
+主题：0255 补丁。`Player.aiStep` 的每玩家每 tick `getEntities(this, aabb)` 新 ArrayList
+（160 聚堆 ≈4800 次/tick）→ per-player scratch + fill 重载，谓词逐字 NO_SPECTATORS。
+消费者是逐实体 `playerTouch` 多态派发（公开多态点，Mixin 可注入）——**不可有界化**，
+分配消除是精确性上限。A/B 中性如实披露（预期量级低于共享机噪声底；无回归信号）。
+判例（复发）：端口孤儿的新症状=稳定快速"server_full"×N 拒绝（bot 连到占 25594 的
+孤儿），与击杀的无输出死亡症状不同；重试环前置 netstat 查杀端口占用者后即过。
+报告：[note/report/perf/2026-08-27-aiStep-scratch-batch100.md](report/perf/2026-08-27-aiStep-scratch-batch100.md)。
+
+---
+
 ## 循环终止记录（2026-08-26，用户决断）
 
 多核调度系列（批次 78-96，0.51.0 → 0.59.0）由用户显式决断终止。终态：

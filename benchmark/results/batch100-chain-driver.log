@@ -1,0 +1,26 @@
+=== internal commit ===
+results/batch100-chain.sh: line 8: cd: paper-server/src/minecraft/java: No such file or directory
+=== rebuildPatches ===
+rebuild attempt=1 ok=1
+0254-Papo-batch-99-bounded-push-entity-scan-two-target-ea.patch
+=== version bump ===
+papoVersion=0.62.0
+=== test ===
+test attempt=1 ok=0
+test attempt=2 ok=0
+test attempt=3 ok=0
+test attempt=4 ok=0
+=== jar ===
+jar attempt=1 ok=0
+jar attempt=2 ok=0
+jar attempt=3 ok=0
+jar attempt=4 ok=0
+ls: cannot access '../paper-server/build/libs/Papo-1.21.11-0.62.0.jar': No such file or directory
+=== 160bot A/B ===
+decomp160 attempt=1 exit=1 walkDone=0 19:16:01
+decomp160 attempt=2 exit=1 walkDone=0 19:16:22
+decomp160 attempt=3 exit=1 walkDone=0 19:16:42
+decomp160 attempt=4 exit=1 walkDone=0 19:17:03
+decomp160 attempt=5 exit=1 walkDone=0 19:17:23
+decomp160 attempt=6 exit=1 walkDone=0 19:17:44
+BATCH100 CHAIN DONE
