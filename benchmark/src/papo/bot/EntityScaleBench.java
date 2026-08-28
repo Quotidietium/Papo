@@ -81,16 +81,9 @@ public final class EntityScaleBench {
         tail.setDaemon(true);
         tail.start();
 
-        // 禁自然刷新 + 清场：peaceful 只禁怪物，动物照刷（v5 冒烟实测 boot+join 期混入 5 头自然牛，
-        // 污染 N 口径与 N=0 基线）。gamerule 防未来刷新，kill 清 boot 期存量（此时尚无 bot 进场），
-        // 二次 kill 清掉被杀生物的掉落物（item 5 分钟不消失会污染窗口负载）。
-        server.getOutputStream().write(String.join("\n",
-            "gamerule doMobSpawning false",
-            "kill @e[type=!minecraft:player]",
-            "").getBytes(StandardCharsets.UTF_8));
-        server.getOutputStream().flush();
-        Thread.sleep(4000);
-        server.getOutputStream().write("kill @e[type=minecraft:item]\n".getBytes(StandardCharsets.UTF_8));
+        // 禁周期性自然刷新（peaceful 只禁怪物，动物照刷；gamerule 不影响 summon 召唤物，
+        // 也不影响 chunk population 的 worldgen 种群——后者由 join 后清场兜底，见下）
+        server.getOutputStream().write("gamerule doMobSpawning false\n".getBytes(StandardCharsets.UTF_8));
         server.getOutputStream().flush();
         Thread.sleep(2000);
 
@@ -122,7 +115,16 @@ public final class EntityScaleBench {
                 t.start();
             }
             go.countDown();
-            Thread.sleep(joinSettleMs); // 等全体 bot 进场稳定（join 窗口外）
+            Thread.sleep(joinSettleMs); // 等全体 bot 进场稳定（join 窗口外；vd=6 区块全加载，
+            // chunk population 的 worldgen 种群刷新也在此发生——doMobSpawning 管不到它）
+
+            // 清场：bot 已在场（type=!player 不伤 bot），此后不再有新区块加载 → 无新增种群
+            server.getOutputStream().write("kill @e[type=!minecraft:player]\n".getBytes(StandardCharsets.UTF_8));
+            server.getOutputStream().flush();
+            Thread.sleep(4000);
+            server.getOutputStream().write("kill @e[type=minecraft:item]\n".getBytes(StandardCharsets.UTF_8));
+            server.getOutputStream().flush();
+            Thread.sleep(2000);
 
             // ① 清空脚平面以上 25 层（fill 单命令 32768 块上限 → 4 层/条 ×6 + 1 层 ×1）
             final StringBuilder cmd = new StringBuilder();

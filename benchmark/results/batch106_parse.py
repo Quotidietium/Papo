@@ -40,11 +40,13 @@ for path in sys.argv[1:]:
     tag = path.split("-")[-1].split(".")[0]
     print(f"== {path} windows={n} present={present}")
     print(f"   wallMs={' '.join(str(w) for w in wall)}")
-    if n < 5:
+    if n < 6:
         print("   (too few windows)")
         continue
-    # 牛群在场窗：去掉 boot/join/build 段的前 2 窗与探针尾 1 窗
-    steady = wins[2:-1]
+    # 牛群在场稳态窗：窗序列尾部——倒数第 2 窗为界往前 16 窗（6 分钟窗内去掉召唤后 2 个
+    # settle 窗与探针 B 拖尾窗；窗长 400 ticks=20s@20tps，窗数不足时取半）
+    take = min(16, max(1, n // 2))
+    steady = wins[-(take + 1):-1]
     phases = sorted({p for w in steady for p in w})
     total = 0.0
     for p in phases:
