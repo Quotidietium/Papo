@@ -2550,6 +2550,21 @@ PASS（0.59.0 后累计 ×14）——停机窗口无回归。R2 验证矩阵终�
 `perf/multicore-r2`（自 perf/multicore 同点）。R2 系列自批次 97 起，终止记录对 R2 不再生效；
 release 禁令沿用（仍不发布）。
 
+## 批次 107（2026-08-28）：扇出包型子归因——0259 探针 + 每 send ~1us 移交成本确立（多核调度系列㉙，0.65.0→0.66.0，勘察轮）
+
+主题：0259 探针（fanout.sends 观察者计数 + 8 类包型计数，默认关）+ PapoTickProfile.count
+计数节。N=2000 稳态归因：**每 send 主线程成本 902-1,060ns**（包装链+eventLoop.execute
+移交；flush 已被 Paper 的 suspend/resumeFlushing 按 tick 合并，移交成本是余量本体）；
+包型 velocity 41%/movePos 30%/headRot 15%/movePosRot 10% ≈ 1 包/牛/tick × 观察者。
+velocity 主导机理闭环：`EntityType.trackDeltas()` 对牛 true + 重力致 deltaMovement 每 tick
+振荡 → 每牛每 tick 速度包（vanilla 语义不可削）。批次 108 设计：per-connection tick
+批量排水（append 代替逐 send execute，suspend/resume 双端+256 阈值排水，每连接 FIFO/
+同 tick 交付/终端与捆绑包走原路径），预期扇出面 ~10×。判例：N=500 计数点两杀不死
+（清扫 21:45/22:00）如实披露不作门；稳态归因以 N=2000 完整 22 窗收口。报告：
+[note/report/perf/2026-08-28-fanout-attr-batch107.md](report/perf/2026-08-28-fanout-attr-batch107.md)。
+
+---
+
 ## 批次 106（2026-08-28）：实体规模轴在场确立——批次105 开放前沿根治 + 阶梯画像（多核调度系列㉒，R3 开篇，勘察/基建轮，无服务器代码变更，版本保持 0.65.0）
 
 主题：R3 首轮。R2 遗留的实体在场问题真因闭环：**OfflineJoinBot.walk() 起始位置硬编码
