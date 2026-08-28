@@ -2550,6 +2550,27 @@ PASS（0.59.0 后累计 ×14）——停机窗口无回归。R2 验证矩阵终�
 `perf/multicore-r2`（自 perf/multicore 同点）。R2 系列自批次 97 起，终止记录对 R2 不再生效；
 release 禁令沿用（仍不发布）。
 
+## 批次 106（2026-08-28）：实体规模轴在场确立——批次105 开放前沿根治 + 阶梯画像（多核调度系列㉒，R3 开篇，勘察/基建轮，无服务器代码变更，版本保持 0.65.0）
+
+主题：R3 首轮。R2 遗留的实体在场问题真因闭环：**OfflineJoinBot.walk() 起始位置硬编码
+绝对 (0.5,100,0.5)**，批次 105 的 y=104 绝对召唤因此坠落/窒息全灭（"NBT 键名被丢弃"
+判断不成立——NoAI/active_effects 在 1.21.11 均为合法键，Mob.java:130/LivingEntity:159）。
+v5 harness：`execute at StandB00` 相对建造 stone 平台+围栏（零坠落零窒息）、
+doMobSpawning=false + join 后清场（**worldgen population 不受 gamerule 约束**——早清
+后 N=0 仍混入 5 头自然牛，晚清后归零）、计数式在场门（`execute as @e[type=cow] run say`
+MOO_A/B，N=500/1000 均 A 精确=N）。在场门 PASS 判据 A==B>=N。
+
+阶梯矩阵（10 站立 bot × 6min 窗，min 窗口径，N=0/500/1000/2000）：**容量墙确立——
+2000 聚堆牛 worlds=44.9ms/tick（50ms 预算 90%，TPS 尚保 20）**；每牛总成本 ~20us，两
+大面=实体 tick 链（9.4→6.7→9.5us/牛 U 型，1000→2000 密度超线性抬头）与 tracker 扇出
+（18.9→11.8→10.6us/牛次线性，主线程 send 调用）；maintain 0.86→0.44us/牛单调降=
+批次101 O(1) purge 在规模轴成立。扇出 19us/牛 vs 批次102 ~90ns/send 差 ~20×，内部
+构成（包型×ns/send）未归因——R3 首个深挖面。共享机清扫 ×3（500/2000/4000 三窗被杀，
+harness 加固 stdin 容错+dump 永达+bot 失败改标志位，数据可抢救；4000 错峰重试）。
+报告：[note/report/perf/2026-08-28-entity-scale-presence-batch106.md](report/perf/2026-08-28-entity-scale-presence-batch106.md)。
+
+---
+
 ## R3 轮重启记录（2026-08-28，用户决断）
 
 用户于 2026-08-28 再次重发同一常驻 goal（多核调度优化+完全重写授权，红线=安全性/稳定

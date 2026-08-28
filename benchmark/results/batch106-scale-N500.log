@@ -1,0 +1,11 @@
+boot: [20:50:22 INFO]: Done (15.578s)! For help, type "help"
+built platform (half=40) + summoned 500 cows (side=23, spacing=2.78)
+cowsPresentA=500 expected=500
+Exception in thread "main" java.io.IOException: 管道正在被关闭。
+	at java.base/java.io.FileOutputStream.writeBytes(Native Method)
+	at java.base/java.io.FileOutputStream.write(FileOutputStream.java:367)
+	at java.base/java.io.BufferedOutputStream.flushBuffer(BufferedOutputStream.java:125)
+	at java.base/java.io.BufferedOutputStream.implFlush(BufferedOutputStream.java:252)
+	at java.base/java.io.BufferedOutputStream.flush(BufferedOutputStream.java:240)
+	at papo.bot.EntityScaleBench.probeCount(EntityScaleBench.java:230)
+	at papo.bot.EntityScaleBench.main(EntityScaleBench.java:176)

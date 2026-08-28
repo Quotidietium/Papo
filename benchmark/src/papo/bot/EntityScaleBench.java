@@ -167,14 +167,15 @@ public final class EntityScaleBench {
                 + " cows (side=" + side + ", spacing=" + String.format(java.util.Locale.ROOT, "%.2f", spacing) + ")");
             Thread.sleep(buildMs + summonSettleMs);
 
-            // ⑤ 在场探针 A（计数式：say 逐实体回显，缺失即门失败）
+            // ⑤ 在场探针 A（计数式：say 逐实体回显，缺失即门失败；-1=服务器已被外部杀死）
             final long presentA = probeCount(server, logLines, "MOO_A");
             System.out.println("cowsPresentA=" + presentA + " expected=" + entities);
-
-            Thread.sleep(windowMs); // 测量窗（bot 全程站立在场）
-
-            final long presentB = probeCount(server, logLines, "MOO_B");
-            System.out.println("cowsPresentB=" + presentB);
+            long presentB = -1;
+            if (presentA >= 0) {
+                Thread.sleep(windowMs); // 测量窗（bot 全程站立在场）
+                presentB = probeCount(server, logLines, "MOO_B");
+                System.out.println("cowsPresentB=" + presentB);
+            }
 
             for (final Thread t : botThreads) {
                 t.join(120_000);
@@ -183,16 +184,17 @@ public final class EntityScaleBench {
                 }
             }
             if (!failures.isEmpty()) {
-                failures.forEach(f -> System.out.println("BOT-FAIL " + f));
-                throw new IllegalStateException(failures.size() + " bot failures");
+                failures.forEach(f -> System.out.println("BOT-FAIL " + f)); // 服务器死亡时 bot 断连失败属预期，标志位收口
+            } else {
+                System.out.println("window done (" + bots + " bots x " + windowMs + "ms, entities=" + entities + ")");
             }
-            System.out.println("window done (" + bots + " bots x " + windowMs + "ms, entities=" + entities + ")");
             Thread.sleep(3000);
             // 在场门：A==B（窗口零死亡）且 A>=N（召唤牛全活；自然刷新已由 doMobSpawning=false 消除）
-            presenceOk = presentA == presentB && presentA >= entities;
+            presenceOk = !failures.isEmpty() ? false : presentA == presentB && presentA >= entities;
             System.out.println(presenceOk
                 ? "presence gate PASS (A=B=" + presentA + " >= N=" + entities + ")"
-                : "presence gate FAILED: A=" + presentA + " B=" + presentB + " expected=" + entities);
+                : "presence gate FAILED: A=" + presentA + " B=" + presentB + " expected=" + entities
+                    + (failures.isEmpty() ? "" : " botFailures=" + failures.size()));
         } finally {
             try {
                 server.getOutputStream().write("stop\n".getBytes(StandardCharsets.UTF_8));
@@ -226,8 +228,15 @@ public final class EntityScaleBench {
 
     /** 逐实体 say 计数在场探针：全量写 stdin，等回显落日志后按标记计数。 */
     private static long probeCount(final Process server, final List<String> logLines, final String marker) throws Exception {
-        server.getOutputStream().write(("execute as @e[type=cow] run say " + marker + "\n").getBytes(StandardCharsets.UTF_8));
-        server.getOutputStream().flush();
+        try {
+            server.getOutputStream().write(("execute as @e[type=cow] run say " + marker + "\n").getBytes(StandardCharsets.UTF_8));
+            server.getOutputStream().flush();
+        } catch (final IOException e) {
+            // 共享机 java 清扫判例：服务器进程被外部杀死 → stdin 管道关闭。计数返回 -1，
+            // 由调用方标记 presence 失败；窗口数据仍会从 logs/latest.log dump（finally 链保证）
+            System.out.println("SERVER_DIED during " + marker + ": " + e);
+            return -1;
+        }
         Thread.sleep(12_000); // 4000 实体 × say 回显（含 bot 广播）需要数秒排空
         synchronized (logLines) {
             return logLines.stream().filter(l -> l.contains(marker)).count();
