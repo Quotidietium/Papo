@@ -21,14 +21,17 @@ import java.util.List;
  * ② y-1 层铺 stone 平台（stone 不触发草方块动物自然刷新；地形起伏被抹平）；
  * ③ 平台边缘 y 层橡木围栏一圈（牛跳不过 1.5 高，杜绝平台外坠落）；
  * ④ 牛群以等面积网格（±32 足印恒定）召唤于 bot 脚平面（零坠落零窒息）；
- * ⑤ 在场门 = 窗口前后两次 {@code execute as @e[type=cow] run say} 计数全等
- * （MOO_A==N 且 MOO_B==N，缺失即环境失败 exit 1，不再以平坦数据冒充基线）。
+ * ⑤ 在场门 = 窗口前后两次 {@code execute as @e[type=cow,tag=papoCow] run say} 计数全等
+ * （MOO_A==N 且 MOO_B==N，缺失即环境失败 exit 1，不再以平坦数据冒充基线；tag 只数
+ * 召唤群，worldgen 种群杂散不污染计数——批次109 soak 判例）。
  *
  * spigot.yml 预写 entity-activation-range.animals=96：±32 足印对中心站立 bot 恒在
  * 激活半径内（EAR 判例：AABB 的 Y 向按全高度膨胀，垂直距离不影响激活）。
  * 服务器以 -Dpapo.tickProfile=1 启动，输出与 TickSurveyBench 同格式（400-tick 窗）。
  *
- * 用法：java papo.bot.EntityScaleBench <jar> [entities=1000] [windowMs=360000] [bots=10]
+ * 用法：java papo.bot.EntityScaleBench <jar> [entities=1000] [windowMs=360000] [bots=10] [noai]
+ * （第 4 参传 "noai" = NoAI 变体：牛保留物理/push/EAR/追踪，跳过 serverAiStep——批次110
+ * 实体链 AI/非 AI 分量分解仪器，零服务器代码改动）
  */
 public final class EntityScaleBench {
 
@@ -41,6 +44,9 @@ public final class EntityScaleBench {
         final int entities = args.length > 1 ? Integer.parseInt(args[1]) : 1000;
         final long windowMs = args.length > 2 ? Long.parseLong(args[2]) : 360_000;
         final int bots = args.length > 3 ? Integer.parseInt(args[3]) : 10;
+        // 批次110：NoAI 变体（第 4 参为 "noai"）——NoAI 牛跳过 serverAiStep（goal/nav）但保留
+        // 物理/push/EAR/追踪，与 AI 版对照分解实体链的 AI 与非 AI 分量（零服务器代码）
+        final boolean noai = args.length > 4 ? "noai".equals(args[4]) : false;
         final Path dir = Files.createTempDirectory("papo-entscale-");
         Files.copy(jar, dir.resolve("server.jar"));
         Files.writeString(dir.resolve("eula.txt"), "eula=true\n", StandardCharsets.UTF_8);
@@ -158,8 +164,12 @@ public final class EntityScaleBench {
                 final double gz = (i / side) - (side - 1) / 2.0;
                 final double x = gx * spacing + (i % 7) * 0.05 - 0.15;
                 final double z = gz * spacing + ((i / 7) % 7) * 0.05 - 0.15;
+                // 召唤即打标签：在场门只数本批次召唤群（tag=papoCow）——批次109 soak 判例：
+                // 全局 @e[type=cow] 计数会把 worldgen 种群杂散牛（doMobSpawning 管不到、
+                // 全局 kill 之后晚期 population 又刷出）混进 A/B，504/505 vs 500 假失败
                 cmd.append("execute at ").append(ANCHOR).append(" run summon cow ")
-                    .append(String.format(java.util.Locale.ROOT, "~%.2f ~ ~%.2f", x, z)).append('\n');
+                    .append(String.format(java.util.Locale.ROOT, "~%.2f ~ ~%.2f", x, z))
+                    .append(noai ? " {NoAI:1b,Tags:[\"papoCow\"]}" : " {Tags:[\"papoCow\"]}").append('\n');
             }
             server.getOutputStream().write(cmd.toString().getBytes(StandardCharsets.UTF_8));
             server.getOutputStream().flush();
@@ -189,7 +199,8 @@ public final class EntityScaleBench {
                 System.out.println("window done (" + bots + " bots x " + windowMs + "ms, entities=" + entities + ")");
             }
             Thread.sleep(3000);
-            // 在场门：A==B（窗口零死亡）且 A>=N（召唤牛全活；自然刷新已由 doMobSpawning=false 消除）
+            // 在场门：A==B（窗口零死亡）且 A>=N（召唤牛全活；tag=papoCow 只数召唤群，
+            // worldgen 杂散/自然刷新一律不计——批次109 soak 判例的根治）
             presenceOk = !failures.isEmpty() ? false : presentA == presentB && presentA >= entities;
             System.out.println(presenceOk
                 ? "presence gate PASS (A=B=" + presentA + " >= N=" + entities + ")"
@@ -229,7 +240,7 @@ public final class EntityScaleBench {
     /** 逐实体 say 计数在场探针：全量写 stdin，等回显落日志后按标记计数。 */
     private static long probeCount(final Process server, final List<String> logLines, final String marker) throws Exception {
         try {
-            server.getOutputStream().write(("execute as @e[type=cow] run say " + marker + "\n").getBytes(StandardCharsets.UTF_8));
+            server.getOutputStream().write(("execute as @e[type=cow,tag=papoCow] run say " + marker + "\n").getBytes(StandardCharsets.UTF_8));
             server.getOutputStream().flush();
         } catch (final IOException e) {
             // 共享机 java 清扫判例：服务器进程被外部杀死 → stdin 管道关闭。计数返回 -1，
