@@ -69,12 +69,22 @@ Gradle 会自动探测 PATH 中的 JDK 21 作为 toolchain，无需手动配置 
 `paper-server/src/minecraft/` 下有一个 paperweight 维护的**内部 git 仓库**（`src/minecraft/java/.git`），外部 `patches/` 目录才是提交进版本库的"事实来源"。两者通过 gradle 任务同步：
 
 1. **修改源码**：直接编辑 `src/minecraft/java/...` 下的文件。
-2. **`./gradlew :paper-server:fixupSourcePatches`** —— 把未提交的源码修改以 `git commit --fixup` + `rebase --autosquash` 合并进内部仓库的 "paper File Patches" 提交。
+2. **新增 Papo feature（0252+ 批次补丁的唯一正确路径）：内部仓库手动提交**——
+   `cd paper-server/src/minecraft/java && git add <files> && git commit -m "Papo: batch NNN <subject>"`。
 3. **`./gradlew :paper-server:rebuildPatches`** —— 从内部仓库重新生成 `patches/` 下的补丁文件（会自动 `git add`）。
+
+**⚠️ 不要对"新增 Papo feature"调用 `fixupSourcePatches`（批次111 事故判例，2026-08-29）**：
+它把改动以 `fixup!` 折进 **"paper File Patches" 基座提交**（重写为新哈希），且 `file`
+标签**不跟随移动**——rebuildPatches 随后从断裂区间导出 283 个垃圾补丁
+（0001-ROOT/Vanilla/Mache… 全内部历史 + 全部 feature 错位 +7 编号）。恢复判例：
+① 外层 `git restore --staged paper-server/patches && git restore paper-server/patches`
+再清 untracked 垃圾；② 内部仓库 `git reset --hard <fixup 前的 main 顶端>`（reflog 里
+`commit: Papo: batch ...` 的最近一条）；③ 重做编辑、手动 feature 提交、rebuildPatches。
+fixupSourcePatches 只适用于"把修改折回**既有**补丁"的场景。
 
 注意：
 
-- **不要**只跑 `rebuildSourcePatches` 而不先 `fixupSourcePatches`：rebuild 会先 `git stash` 未提交的修改再重建，未 fixup 的修改会"丢失"（补丁重新生成后不含你的改动）。
+- **不要**只跑 `rebuildSourcePatches` 而不先提交内部仓库修改：rebuild 会先 `git stash` 未提交的修改再重建，未提交的修改会"丢失"（补丁重新生成后不含你的改动）。
 - **不要**在同一次 gradlew 调用里串联 `fixupSourcePatches rebuildPatches`：实测会在内部 `git stash push` 时失败并**清空 patches 目录**（可用 `git restore --staged paper-server/patches && git restore paper-server/patches` 恢复，因为补丁已提交）。分开两次调用即可。
 - 直接手工编辑 `patches/` 下的 `.patch` 文件也是合法的（它们是事实来源），但之后必须跑**完整的** `./gradlew :paper-server:applyPatches` 同步源码树。只跑 `applySourcePatches` 会把 feature 补丁（如对 log4j AsyncAppender 的修改）从源码树里抹掉，导致莫名编译错误。
 - 内部仓库的 `file` 标签标记 "paper File Patches" 提交的位置，fixup/rebase 后若标签未跟随移动（任务中断时会发生），rebuild 会从旧提交重新生成补丁，表现为"修改神秘消失"。修复方法：`cd paper-server/src/minecraft/java && git tag -f file <新的paper File Patches提交哈希>`。

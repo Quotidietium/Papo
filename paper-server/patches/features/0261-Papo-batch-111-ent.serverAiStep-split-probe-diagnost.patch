@@ -1,0 +1,21 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 29 Aug 2026 00:13:30 +0800
+Subject: [PATCH] Papo: batch 111 ent.serverAiStep split probe
+ (diagnostic-only, papo.tickProfile-gated)
+
+
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index 150d1dd85b12acf3e37fa167481e68d0b0cbb517..8d582b6fd426f17126ae02857a6b951c93db8109 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -3713,7 +3713,9 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+             this.zza = 0.0F;
+         } else if (this.isEffectiveAi() && !this.level().isClientSide()) {
+             profilerFiller.push("newAi");
++            final long papoTAiStep = System.nanoTime(); // Papo - batch 111 serverAiStep split probe
+             this.serverAiStep();
++            io.papermc.paper.util.PapoTickProfile.add("ent.serverAiStep", papoTAiStep); // Papo - batch 111
+             profilerFiller.pop();
+         }
+ 
