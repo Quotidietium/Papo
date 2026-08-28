@@ -2615,3 +2615,36 @@ MOO_A/B，N=500/1000 均 A 精确=N）。在场门 PASS 判据 A==B>=N。
 不再生效；release 禁令与"不主动合并"沿用。开局前沿：①实体规模轴在场问题（批次 105
 遗留，候选解已聚焦：execute at bot 落地安全放置/结构模板/插件式注入）②红石/流体轴
 （未勘察）③Folia 级区域化（超等价红线，不做）。
+
+## 批次 109（2026-08-28）：0.67.0 发送批量化 10 分钟 soak——稳定性收口（多核调度系列㉕，验证轮，无服务器代码变更）
+
+主题：批次108 批量排水的长时稳定性。N=500、10 bot、600s 窗：**33 个非爬坡 400-tick
+窗 TPS 19.80-20.06、logErrors=0、正常停机、GC 均值 7.7ms/20s 窗（0.04%）无漂移**——
+批次108 收口成立。在场门 FAILED 504/505 vs 500 判读为 harness 精度（worldgen 种群杂散
+混入全局计数；只多不少=零死亡），**根治：在场门标签化**（召唤打 `Tags:["papoCow"]`，
+探针 `@e[type=cow,tag=papoCow]`，后续批次恢复全精度）。worlds 6.43ms/tick 均值与
+批次108 短窗同量级无恶化。报告：
+[note/report/perf/2026-08-28-sendbatch-soak-batch109.md](report/perf/2026-08-28-sendbatch-soak-batch109.md)。
+
+## 批次 110（2026-08-28）：NoAI 变体 A/B——容量墙实体链 50/50 分裂（多核调度系列㉖，勘察轮，无服务器代码变更）
+
+主题：实体链 AI/非AI 分量分解。harness 加 NoAI 变体（`{NoAI:1b}` 跳过 serverAiStep
+保物理/push/EAR/追踪）。N=2000 稳态尾 4 窗：**AI 束 11636us vs 非 AI 地板 11413us/tick
+（50.5%/49.5%）**，每牛 11.55 vs 5.72us；worlds 差 13.88ms。AI 组 5 头窗前 AI 行为性
+死亡（NoAI 组 A=2000 精确→定性：游走挤压，vanilla 语义，排除机制/计数假说）。NoAI 组
+窗口末进程被外部消灭（共享机清扫判例：无 hs_err/无 stop/日志完整窗止——数据有效）。
+fanout 每 send 成本两态持平 78-83ns（批次108 成果与牛运动无关）。报告：
+[note/report/perf/2026-08-28-noai-split-batch110.md](report/perf/2026-08-28-noai-split-batch110.md)。
+
+## 批次 111（2026-08-29）：ent.serverAiStep 分解探针 0261——AI 计算仅 16%，实体轴闭合（多核调度系列㉗，勘察轮，0.67.0→0.68.0）
+
+主题：AI 束内部再分刀。0261 探针（LivingEntity.aiStep 的 isEffectiveAi 分支内计时，
+papo.tickProfile 门控）。N=2000 **presence gate 全绿首达**（A=B=2000 精确）：
+**ent.serverAiStep=3033us/tick（1.51us/牛，实体链 16%）**——AI 束 ~9.4ms 中 ~6.4ms
+为诱导物理/推挤。**"AI 计算下放"否决**（无规模+无等价性）；O(N×P) 玩家面排除
+（Moonrise 玩家已在 section 切片，addToGetEntities 只补龙部件）；全谱账目闭合
+（worlds=entities 81%+chunkSource 19%；tracker 三相占 chunkSource 98%；tickPending+misc
+−chunkSource≈13us/tick 无隐藏面）。**实体轴等价保持战役闭合**（105→111 七批）。
+工具链判例：fixupSourcePatches 禁用于新 feature（file 标签断裂→283 垃圾补丁；恢复流程
++ build.md 修正）。下一前沿：红石/流体轴（需新 harness）。报告：
+[note/report/perf/2026-08-28-serveraistep-split-batch111.md](report/perf/2026-08-28-serveraistep-split-batch111.md)。
