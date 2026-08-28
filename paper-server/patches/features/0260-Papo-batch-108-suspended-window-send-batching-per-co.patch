@@ -1,0 +1,106 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <zurker@local>
+Date: Fri, 28 Aug 2026 22:39:10 +0800
+Subject: [PATCH] Papo: batch 108 suspended-window send batching
+ (per-connection batch, single-task drain)
+
+
+diff --git a/net/minecraft/network/Connection.java b/net/minecraft/network/Connection.java
+index c78b1b8950273310cecb736ebd4c7cfb1b7c64be..afd2e6632898282aad4274a2ca0644179f5eb33e 100644
+--- a/net/minecraft/network/Connection.java
++++ b/net/minecraft/network/Connection.java
+@@ -429,8 +429,30 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
+         if (connected && ((io.papermc.paper.util.MCUtil.isMainThread() && packet.isReady() && this.pendingActions.isEmpty()
+             && (packet.getExtraPackets() == null || packet.getExtraPackets().isEmpty()))
+             || InnerUtil.canSendImmediate(this, packet))) {
+-            this.sendPacket(packet, sendListener, flush);
++            // Papo start - batch 108: suspended-window send batching
++            // While server-thread flushing is suspended (writes issued with flush=false during the
++            // tick), append to a per-connection batch drained by a single eventLoop task instead of
++            // one execute() hand-off per packet (batch 107: ~1us/send hand-off cost, 15k sends/tick
++            // at 2000 tracked cows). Scope: main-thread, extra-free, non-flush writes only —
++            // flush=true sends (outside the suspended window) keep the exact immediate path.
++            if (!flush && packet.getExtraPackets() == null && io.papermc.paper.util.MCUtil.isMainThread()) {
++                this.papoAppendSuspended(packet, sendListener);
++            } else {
++                // FIFO guard: a direct send must not overtake earlier batched writes (drain only
++                // from the main thread; async whitelist sends may overtake — disclosed: pong-class
++                // packets have no ordering contract with tracker traffic)
++                if (this.papoSuspendBatchSize > 0 && io.papermc.paper.util.MCUtil.isMainThread()) {
++                    this.papoDrainSuspendedBatch();
++                }
++                this.sendPacket(packet, sendListener, flush);
++            }
++            // Papo end - batch 108
+         } else {
++            // Papo start - batch 108: queue path taken — batched writes precede queue processing
++            if (this.papoSuspendBatchSize > 0 && io.papermc.paper.util.MCUtil.isMainThread()) {
++                this.papoDrainSuspendedBatch();
++            }
++            // Papo end - batch 108
+             // Write the packets to the queue, then flush - antixray hooks there already
+             final java.util.List<Packet<?>> extraPackets = InnerUtil.buildExtraPackets(packet);
+             final boolean hasExtraPackets = extraPackets != null && !extraPackets.isEmpty();
+@@ -505,6 +527,11 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
+ 
+     public void flushChannel() {
+         if (this.isConnected()) {
++            // Papo start - batch 108: drain the suspended batch BEFORE the flush so the whole tick's
++            // batched writes are written and then flushed once (the pre-batching cadence: writes
++            // spread through the tick, single flush here — only the hand-off is amortized)
++            this.papoDrainSuspendedBatch();
++            // Papo end - batch 108
+             this.flush();
+         } else {
+             this.pendingActions.add(new WrappedConsumer(Connection::flush)); // Paper - Optimize network
+@@ -520,6 +547,50 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
+     private final Runnable papoFlushTask = this::flush;
+     // Papo end - cache the flush task
+ 
++    // Papo start - batch 108: per-connection suspended-window send batch (see send() for scope)
++    private PacketSendAction[] papoSuspendBatch = new PacketSendAction[64];
++    private int papoSuspendBatchSize;
++
++    /** Main-thread append of a flush=false write; drains at 256 to bound mid-tick latency. */
++    private void papoAppendSuspended(final Packet<?> packet, @Nullable final ChannelFutureListener listener) {
++        if (this.papoSuspendBatchSize == this.papoSuspendBatch.length) {
++            this.papoSuspendBatch = java.util.Arrays.copyOf(this.papoSuspendBatch, this.papoSuspendBatch.length * 2);
++        }
++        this.papoSuspendBatch[this.papoSuspendBatchSize++] = new PacketSendAction(packet, listener, false);
++        if (this.papoSuspendBatchSize >= 256) {
++            this.papoDrainSuspendedBatch();
++        }
++    }
++
++    /**
++     * Hands the whole batch to the event loop as ONE task (write-only, flush=false each — the
++     * tick-end flushChannel/flush provides the single flush, exactly as before batching).
++     * Main-thread-only by contract; the internal guard makes any async call site a no-op
++     * instead of a race (appends happen exclusively on the main thread).
++     *
++     * A/B 判例（0.67.0 首版）：排水任务与后续 append 复用同一数组时，在途任务逐槽置 null
++     * 与下一次排水的读取竞态 → NPE → keepalive 丢失超时断连。修复：排水即换新数组，
++     * 在途任务独占旧数组（每 tick 每连接一次数组分配，仍远小于逐包 lambda+任务分配）。
++     */
++    private void papoDrainSuspendedBatch() {
++        if (this.papoSuspendBatchSize == 0 || !io.papermc.paper.util.MCUtil.isMainThread()) {
++            return;
++        }
++        final int n = this.papoSuspendBatchSize;
++        final PacketSendAction[] batch = this.papoSuspendBatch;
++        this.papoSuspendBatch = new PacketSendAction[Math.max(64, this.papoSuspendBatch.length)];
++        this.papoSuspendBatchSize = 0;
++        final Connection self = this;
++        this.channel.eventLoop().execute(() -> {
++            for (int i = 0; i < n; ++i) {
++                final PacketSendAction action = batch[i];
++                batch[i] = null; // release references (this drain owns the array exclusively)
++                action.accept(self);
++            }
++        });
++    }
++    // Papo end - batch 108
++
+     private void flush() {
+         if (this.channel.eventLoop().inEventLoop()) {
+             this.channel.flush();
