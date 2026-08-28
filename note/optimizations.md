@@ -2560,14 +2560,16 @@ doMobSpawning=false + join 后清场（**worldgen population 不受 gamerule 约
 后 N=0 仍混入 5 头自然牛，晚清后归零）、计数式在场门（`execute as @e[type=cow] run say`
 MOO_A/B，N=500/1000 均 A 精确=N）。在场门 PASS 判据 A==B>=N。
 
-阶梯矩阵（10 站立 bot × 6min 窗，min 窗口径，N=0/500/1000/2000）：**容量墙确立——
-2000 聚堆牛 worlds=44.9ms/tick（50ms 预算 90%，TPS 尚保 20）**；每牛总成本 ~20us，两
-大面=实体 tick 链（9.4→6.7→9.5us/牛 U 型，1000→2000 密度超线性抬头）与 tracker 扇出
-（18.9→11.8→10.6us/牛次线性，主线程 send 调用）；maintain 0.86→0.44us/牛单调降=
-批次101 O(1) purge 在规模轴成立。扇出 19us/牛 vs 批次102 ~90ns/send 差 ~20×，内部
-构成（包型×ns/send）未归因——R3 首个深挖面。共享机清扫 ×3（500/2000/4000 三窗被杀，
-harness 加固 stdin 容错+dump 永达+bot 失败改标志位，数据可抢救；4000 错峰重试）。
-报告：[note/report/perf/2026-08-28-entity-scale-presence-batch106.md](report/perf/2026-08-28-entity-scale-presence-batch106.md)。
+阶梯矩阵（10 站立 bot × 6min 窗，min 窗口径，N=0/500/1000/2000/4000 五点）：**容量墙
+确立——2000 聚堆牛 worlds=44.9ms/tick（50ms 预算 90%，TPS 尚保 20），4000 破墙 TPS 18.9
+且发生 jam 相变**（spacing 1.0 挤死平台：游荡寻路无路→移动停止→扇出坍缩 10.6→0.7us/牛；
+寻路失败+挤堆推挤灌入实体链 44.1ms=worlds 84%，每牛 11us）。流动工况（500-2000）两主面：
+实体链 U 型 9.4→6.7→9.5us/牛（1000→2000 密度超线性抬头）与 tracker 扇出 18.9→11.8→
+10.6us/牛次线性；maintain 0.86→0.38us/牛单调降=批次101 O(1) purge 全程成立。扇出
+19us/牛 vs 批次102 ~90ns/send 差 ~20×，内部构成（包型×ns/send）未归因——R3 首个深挖面。
+共享机清扫 ×3（500/2000/4000-boot 三窗被杀；harness 加固 stdin 容错+dump 永达+bot 失败
+改标志位，数据可抢救；4000 错峰重试全窗存活）。报告：
+[note/report/perf/2026-08-28-entity-scale-presence-batch106.md](report/perf/2026-08-28-entity-scale-presence-batch106.md)。
 
 ---
 
