@@ -2,6 +2,7 @@ package papo.bot;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -9,23 +10,36 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 批次105：实体规模轴勘察 harness。
+ * 批次106：实体规模轴勘察 harness v5。
  *
- * 控制台批量 summon 带 PersistenceRequired+高抗性（免疫摔落伤害）的牛于出生点上空，
- * 落地后 spreadplayers 散布（间距≥4 防聚堆 push 干扰，范围 48 格内保持 EAR 激活）；
- * 10 个行走 bot 维持区块加载与追踪观察者。服务器以 -Dpapo.tickProfile=1 启动，
- * 输出与 TickSurveyBench 同格式（batch97_parse.py 可直接解析）。
+ * 批次105 判例链的根治版。真因已闭环：OfflineJoinBot.walk() 起始位置硬编码为绝对
+ * (0.5, 100.0, 0.5)——站立 bot 实际站在那里，而 v4 牛群召唤在 y=104 绝对坐标，地形
+ * 低于 100 时坠落摔死、高于 104 时山体窒息，"在场"从未成立。
  *
- * 用法：java papo.bot.EntityScaleBench <jar> [entities=500] [walkMs=360000] [bots=10]
+ * v5 方案：全部命令以 {@code execute at StandB00}（bot 真实位置的权威锚点）相对执行——
+ * ① 清空 bot 脚平面 ±40 XZ、y+0..y+24 共 25 层（7 条 fill，每条 ≤32768 块限制内）；
+ * ② y-1 层铺 stone 平台（stone 不触发草方块动物自然刷新；地形起伏被抹平）；
+ * ③ 平台边缘 y 层橡木围栏一圈（牛跳不过 1.5 高，杜绝平台外坠落）；
+ * ④ 牛群以等面积网格（±32 足印恒定）召唤于 bot 脚平面（零坠落零窒息）；
+ * ⑤ 在场门 = 窗口前后两次 {@code execute as @e[type=cow] run say} 计数全等
+ * （MOO_A==N 且 MOO_B==N，缺失即环境失败 exit 1，不再以平坦数据冒充基线）。
+ *
+ * spigot.yml 预写 entity-activation-range.animals=96：±32 足印对中心站立 bot 恒在
+ * 激活半径内（EAR 判例：AABB 的 Y 向按全高度膨胀，垂直距离不影响激活）。
+ * 服务器以 -Dpapo.tickProfile=1 启动，输出与 TickSurveyBench 同格式（400-tick 窗）。
+ *
+ * 用法：java papo.bot.EntityScaleBench <jar> [entities=1000] [windowMs=360000] [bots=10]
  */
 public final class EntityScaleBench {
 
     private static final int PORT = 25594;
+    private static final String ANCHOR = "StandB00"; // OfflineJoinBot 首个站立 bot（位置权威锚点）
+    private static final int HALF = 40; // 平台半宽（fence at ±40，inner ±39）
 
     public static void main(final String[] args) throws Exception {
         final Path jar = Path.of(args[0]);
-        final int entities = args.length > 1 ? Integer.parseInt(args[1]) : 500;
-        final long walkMs = args.length > 2 ? Long.parseLong(args[2]) : 360_000;
+        final int entities = args.length > 1 ? Integer.parseInt(args[1]) : 1000;
+        final long windowMs = args.length > 2 ? Long.parseLong(args[2]) : 360_000;
         final int bots = args.length > 3 ? Integer.parseInt(args[3]) : 10;
         final Path dir = Files.createTempDirectory("papo-entscale-");
         Files.copy(jar, dir.resolve("server.jar"));
@@ -36,13 +50,16 @@ public final class EntityScaleBench {
             "view-distance=6", "simulation-distance=8", "spawn-protection=0",
             "difficulty=peaceful", "spawn-monsters=false", "motd=papo-entscale",
             "sync-chunk-writes=false", "enforce-secure-profile=false", ""), StandardCharsets.UTF_8);
+        // EAR 预写：animals 96 使 ±32 足印全激活（SpigotConfig copyDefaults(true) 支持部分文件合并）
+        Files.writeString(dir.resolve("spigot.yml"),
+            "entity-activation-range:\n  animals: 96\n", StandardCharsets.UTF_8);
 
         final Process server = new ProcessBuilder(
             "F:/Java/21/bin/java", "-Xmx4G", "-Dfile.encoding=UTF-8", "-Dpapo.tickProfile=1",
             "-jar", "server.jar", "nogui")
             .directory(dir.toFile()).redirectErrorStream(true).start();
         final List<String> logLines = new ArrayList<>();
-        final BufferedReader reader = new BufferedReader(new java.io.InputStreamReader(server.getInputStream(), StandardCharsets.UTF_8));
+        final BufferedReader reader = new BufferedReader(new InputStreamReader(server.getInputStream(), StandardCharsets.UTF_8));
         final long bootStart = System.nanoTime();
         String line;
         while (System.nanoTime() - bootStart < java.util.concurrent.TimeUnit.SECONDS.toNanos(300) && (line = reader.readLine()) != null) {
@@ -64,51 +81,38 @@ public final class EntityScaleBench {
         tail.setDaemon(true);
         tail.start();
 
-        // 批量 summon：高抗性（免疫摔落）+ 持久化（不消失）+ 网格坐标直接散布
-        // （首版 spreadplayers 在 500 实体时主线程阻塞 ~5 分钟，弃用；二版 ±46 网格超出
-        // 站立 bot 的 EAR 激活半径 32 致实体不 tick，本版 NoAI + ±20 网格全体激活）
-        final StringBuilder cmd = new StringBuilder();
-        final int side = (int) Math.ceil(Math.sqrt(entities));
-        final int spacing = Math.max(1, (40 / Math.max(1, side)));
-        for (int i = 0; i < entities; i++) {
-            final int gx = (i % side) - side / 2;
-            final int gz = (i / side) - side / 2;
-            final double x = 0.5 + gx * spacing + (i % 2) * 0.4;
-            final double z = 0.5 + gz * spacing + ((i / 2) % 2) * 0.4;
-            // v4（终版）：裸召唤零 NBT（1.21.x 实体 NBT 键名兼容性反复坑：ActiveEffects/NoAI 均可能
-            // 被静默丢弃）；y=104 贴中心地形低空（批次内 3-min 窗口内 despawn 不可达——常驻激活半径内）
-            cmd.append("summon cow ").append(x).append(" 104.0 ").append(z).append("\n");
-        }
-        server.getOutputStream().write(cmd.toString().getBytes(StandardCharsets.UTF_8));
+        // 禁自然刷新 + 清场：peaceful 只禁怪物，动物照刷（v5 冒烟实测 boot+join 期混入 5 头自然牛，
+        // 污染 N 口径与 N=0 基线）。gamerule 防未来刷新，kill 清 boot 期存量（此时尚无 bot 进场），
+        // 二次 kill 清掉被杀生物的掉落物（item 5 分钟不消失会污染窗口负载）。
+        server.getOutputStream().write(String.join("\n",
+            "gamerule doMobSpawning false",
+            "kill @e[type=!minecraft:player]",
+            "").getBytes(StandardCharsets.UTF_8));
         server.getOutputStream().flush();
-        System.out.println("summoned " + entities + " cows on grid (side=" + side + ", spacing=" + spacing + ")");
-        Thread.sleep(20_000); // 等落地+首 tick 稳定（join 窗口外）
-        // 批次105 验证：控制台反馈计数（Summoned 成功数 / 解析错误数）——控制台回显不进 stdout 门
-        synchronized (logLines) {
-            long ok = logLines.stream().filter(l -> l.contains("Summoned new Cow")).count();
-            long bad = logLines.stream().filter(l -> l.contains("Expected") || l.contains("Couldn't parse") || l.contains("Unknown or incomplete command")).count();
-            System.out.println("summonFeedback ok=" + ok + " bad=" + bad);
-        }
-        // 批次105 在场判定：execute-if 探针（控制台回显确认牛群真实存在且被选择器命中）
-        server.getOutputStream().write("execute if entity @e[type=cow] run say COWS_PRESENT\n".getBytes(StandardCharsets.UTF_8));
+        Thread.sleep(4000);
+        server.getOutputStream().write("kill @e[type=minecraft:item]\n".getBytes(StandardCharsets.UTF_8));
         server.getOutputStream().flush();
-        Thread.sleep(3000);
-        synchronized (logLines) {
-            long present = logLines.stream().filter(l -> l.contains("COWS_PRESENT")).count();
-            System.out.println("cowsPresent=" + (present > 0));
-        }
+        Thread.sleep(2000);
 
+        // 相位预算（bot 在场总时长 = 各段之和 + 余量）
+        final int joinSettleMs = 25_000;
+        final int buildMs = 15_000;
+        final int summonSettleMs = 25_000;
+        final int probeMs = 12_000;
+        final long botDwellMs = joinSettleMs + buildMs + summonSettleMs + probeMs + windowMs + probeMs + 10_000;
+
+        final List<Thread> botThreads = new ArrayList<>();
+        boolean presenceOk = false;
         try {
             final java.util.concurrent.CountDownLatch go = new java.util.concurrent.CountDownLatch(1);
-            final List<Thread> botThreads = new ArrayList<>();
             final List<RuntimeException> failures = java.util.Collections.synchronizedList(new ArrayList<>());
             for (int i = 0; i < bots; i++) {
-                final String name = String.format("WalkB%02d", i);
+                final String name = String.format("StandB%02d", i);
                 final Thread t = new Thread(() -> {
                     try {
                         go.await();
                         Thread.sleep((long) (Math.random() * 500));
-                        new OfflineJoinBot("127.0.0.1", PORT, name).joinWalkAndDisconnect(walkMs, 0, 0);
+                        new OfflineJoinBot("127.0.0.1", PORT, name).joinWalkAndDisconnect(botDwellMs, 0, 0);
                     } catch (final Throwable e) {
                         failures.add(new RuntimeException("bot " + name + " failed: " + e, e));
                     }
@@ -118,8 +122,60 @@ public final class EntityScaleBench {
                 t.start();
             }
             go.countDown();
+            Thread.sleep(joinSettleMs); // 等全体 bot 进场稳定（join 窗口外）
+
+            // ① 清空脚平面以上 25 层（fill 单命令 32768 块上限 → 4 层/条 ×6 + 1 层 ×1）
+            final StringBuilder cmd = new StringBuilder();
+            for (int layer = 0; layer < 25; layer += 4) {
+                final int top = Math.min(24, layer + 3);
+                cmd.append("execute at ").append(ANCHOR).append(" run fill ~-").append(HALF)
+                    .append(" ~").append(layer).append(" ~-").append(HALF)
+                    .append(" ~").append(HALF).append(" ~").append(top).append(" ~").append(HALF)
+                    .append(" minecraft:air\n");
+            }
+            // ② y-1 平台（stone：非草方块，不触发动物自然刷新；地形起伏整平）
+            cmd.append("execute at ").append(ANCHOR).append(" run fill ~-").append(HALF)
+                .append(" ~-1 ~-").append(HALF)
+                .append(" ~").append(HALF).append(" ~-1 ~").append(HALF)
+                .append(" minecraft:stone\n");
+            // ③ y 层围栏圈（4 条，角部重叠无害）
+            cmd.append("execute at ").append(ANCHOR).append(" run fill ~-").append(HALF).append(" ~ ~-").append(HALF)
+                .append(" ~").append(HALF).append(" ~ ~-").append(HALF).append(" minecraft:oak_fence\n");
+            cmd.append("execute at ").append(ANCHOR).append(" run fill ~-").append(HALF).append(" ~ ~").append(HALF)
+                .append(" ~").append(HALF).append(" ~ ~").append(HALF).append(" minecraft:oak_fence\n");
+            cmd.append("execute at ").append(ANCHOR).append(" run fill ~-").append(HALF).append(" ~ ~").append(-(HALF - 1))
+                .append(" ~-").append(HALF).append(" ~ ~").append(HALF - 1).append(" minecraft:oak_fence\n");
+            cmd.append("execute at ").append(ANCHOR).append(" run fill ~").append(HALF).append(" ~ ~").append(-(HALF - 1))
+                .append(" ~").append(HALF).append(" ~ ~").append(HALF - 1).append(" minecraft:oak_fence\n");
+            // ④ 等面积网格召唤（±32 足印恒定，density 随 N 缩放——捕获线性+密度超线性两轴）
+            final int footprint = 64; // ±32
+            final int side = (int) Math.ceil(Math.sqrt(entities));
+            final double spacing = entities > 0 ? (double) footprint / side : 0;
+            for (int i = 0; i < entities; i++) {
+                final double gx = (i % side) - (side - 1) / 2.0;
+                final double gz = (i / side) - (side - 1) / 2.0;
+                final double x = gx * spacing + (i % 7) * 0.05 - 0.15;
+                final double z = gz * spacing + ((i / 7) % 7) * 0.05 - 0.15;
+                cmd.append("execute at ").append(ANCHOR).append(" run summon cow ")
+                    .append(String.format(java.util.Locale.ROOT, "~%.2f ~ ~%.2f", x, z)).append('\n');
+            }
+            server.getOutputStream().write(cmd.toString().getBytes(StandardCharsets.UTF_8));
+            server.getOutputStream().flush();
+            System.out.println("built platform (half=" + HALF + ") + summoned " + entities
+                + " cows (side=" + side + ", spacing=" + String.format(java.util.Locale.ROOT, "%.2f", spacing) + ")");
+            Thread.sleep(buildMs + summonSettleMs);
+
+            // ⑤ 在场探针 A（计数式：say 逐实体回显，缺失即门失败）
+            final long presentA = probeCount(server, logLines, "MOO_A");
+            System.out.println("cowsPresentA=" + presentA + " expected=" + entities);
+
+            Thread.sleep(windowMs); // 测量窗（bot 全程站立在场）
+
+            final long presentB = probeCount(server, logLines, "MOO_B");
+            System.out.println("cowsPresentB=" + presentB);
+
             for (final Thread t : botThreads) {
-                t.join(walkMs + 180_000);
+                t.join(120_000);
                 if (t.isAlive()) {
                     failures.add(new RuntimeException("bot thread did not finish: " + t.getName()));
                 }
@@ -128,11 +184,19 @@ public final class EntityScaleBench {
                 failures.forEach(f -> System.out.println("BOT-FAIL " + f));
                 throw new IllegalStateException(failures.size() + " bot failures");
             }
-            System.out.println("walk window done (" + bots + " bots x " + walkMs + "ms, entities=" + entities + ")");
+            System.out.println("window done (" + bots + " bots x " + windowMs + "ms, entities=" + entities + ")");
             Thread.sleep(3000);
+            // 在场门：A==B（窗口零死亡）且 A>=N（召唤牛全活；自然刷新已由 doMobSpawning=false 消除）
+            presenceOk = presentA == presentB && presentA >= entities;
+            System.out.println(presenceOk
+                ? "presence gate PASS (A=B=" + presentA + " >= N=" + entities + ")"
+                : "presence gate FAILED: A=" + presentA + " B=" + presentB + " expected=" + entities);
         } finally {
-            server.getOutputStream().write("stop\n".getBytes(StandardCharsets.UTF_8));
-            server.getOutputStream().flush();
+            try {
+                server.getOutputStream().write("stop\n".getBytes(StandardCharsets.UTF_8));
+                server.getOutputStream().flush();
+            } catch (final IOException ignored) {
+            }
             server.waitFor(120, java.util.concurrent.TimeUnit.SECONDS);
             tail.join(5000);
         }
@@ -150,11 +214,21 @@ public final class EntityScaleBench {
             .filter(l -> (l.contains("ERROR") || l.contains("Exception")) && !BurstJoinVerify.isBenignCloseRace(l))
             .count();
         System.out.println("logErrors=" + errors + " exited=" + (server.exitValue() == 0));
-        if (errors > 0 || server.exitValue() != 0) {
+        if (!presenceOk || errors > 0 || server.exitValue() != 0) {
             all.stream().filter(l -> l.contains("ERROR") || l.contains("Exception"))
                 .filter(l -> !BurstJoinVerify.isBenignCloseRace(l)).distinct().limit(8)
                 .forEach(l -> System.out.println("  " + l.trim()));
             System.exit(1);
+        }
+    }
+
+    /** 逐实体 say 计数在场探针：全量写 stdin，等回显落日志后按标记计数。 */
+    private static long probeCount(final Process server, final List<String> logLines, final String marker) throws Exception {
+        server.getOutputStream().write(("execute as @e[type=cow] run say " + marker + "\n").getBytes(StandardCharsets.UTF_8));
+        server.getOutputStream().flush();
+        Thread.sleep(12_000); // 4000 实体 × say 回显（含 bot 广播）需要数秒排空
+        synchronized (logLines) {
+            return logLines.stream().filter(l -> l.contains(marker)).count();
         }
     }
 }
