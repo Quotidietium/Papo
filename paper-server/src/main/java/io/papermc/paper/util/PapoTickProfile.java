@@ -63,6 +63,22 @@ public final class PapoTickProfile {
     }
     // Papo end - batch 98
 
+    // Papo start - batch 107: raw event counters (same [total, samples] shape as TOTALS; semantics = events)
+    private static final ConcurrentHashMap<String, long[]> COUNTERS = new ConcurrentHashMap<>();
+
+    /** Adds an event count (e.g. packets by type); printed in a separate .count section per window. */
+    public static void addCount(final String name, final long count) {
+        if (!ENABLED) {
+            return;
+        }
+        final long[] arr = COUNTERS.computeIfAbsent(name, k -> new long[2]);
+        synchronized (arr) {
+            arr[0] += count;
+            arr[1]++;
+        }
+    }
+    // Papo end - batch 107
+
     /** Prints + resets the window every {@link #REPORT_EVERY_TICKS} ticks (call from tickServer). */
     public static void maybeReport(final int tickCount) {
         if (!ENABLED || tickCount % REPORT_EVERY_TICKS != 0) {
@@ -75,6 +91,10 @@ public final class PapoTickProfile {
         final long gcDeltaMs = gcNow - lastGcMs;
         lastGcMs = gcNow;
         // Papo end - batch 98
+        // Papo start - batch 107: raw counters (events, not nanos) — packet-type decomposition probes
+        final List<Map.Entry<String, long[]>> countRows = new ArrayList<>(COUNTERS.entrySet());
+        COUNTERS.clear();
+        // Papo end - batch 107
         final List<Map.Entry<String, long[]>> rows = new ArrayList<>(TOTALS.entrySet());
         rows.sort(Comparator.comparingLong(e -> -e.getValue()[0]));
         final long measured = rows.stream().mapToLong(e -> e.getValue()[0]).sum();
@@ -87,6 +107,16 @@ public final class PapoTickProfile {
                 e.getKey(), v[0] / 1_000_000.0, v[0] / 1_000.0 / REPORT_EVERY_TICKS,
                 100.0 * v[0] / Math.max(1, measured), v[1]));
         }
+        // Papo start - batch 107: print raw counters sorted descending (total = events)
+        if (!countRows.isEmpty()) {
+            countRows.sort(Comparator.comparingLong(e -> -e.getValue()[0]));
+            for (final Map.Entry<String, long[]> e : countRows) {
+                final long[] v = e.getValue();
+                System.out.println(String.format("PapoTickProfile.count %-26s total=%9d avg/tick=%9.1f n=%d",
+                    e.getKey(), v[0], v[0] / (double) REPORT_EVERY_TICKS, v[1]));
+            }
+        }
+        // Papo end - batch 107
         TOTALS.clear();
     }
 }
