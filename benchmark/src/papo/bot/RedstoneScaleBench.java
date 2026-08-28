@@ -106,17 +106,23 @@ public final class RedstoneScaleBench {
         tail.setDaemon(true);
         tail.start();
 
-        // 禁自然刷新（红石负载不依赖实体；清杂散只为降噪）
-        server.getOutputStream().write("gamerule doMobSpawning false\n".getBytes(StandardCharsets.UTF_8));
-        server.getOutputStream().flush();
+        // 禁自然刷新（红石负载不依赖实体；清杂散只为降噪）。boot 期死亡（共享机清扫判例）
+        // 在此以管道关闭显形——捕获后走 finally 停机与日志 dump 链，不裸栈退出
+        try {
+            server.getOutputStream().write("gamerule doMobSpawning false\n".getBytes(StandardCharsets.UTF_8));
+            server.getOutputStream().flush();
+        } catch (final IOException e) {
+            System.out.println("SERVER_DIED before gamerule (boot-phase sweeper kill?): " + e);
+        }
         Thread.sleep(2000);
 
-        // 相位预算
+        // 相位预算（分块写入耗时 + ≤3 轮校验-修复 + B 探针余量——REP_B=0 判例：
+        // bot 在 B 探针前离场使 execute at 失效，dwell 必须覆盖探针 B 结束）
         final int joinSettleMs = 25_000;
         final int buildMs = 15_000;
         final int settleMs = 25_000;
         final int probeMs = 12_000;
-        final long botDwellMs = joinSettleMs + buildMs + settleMs + probeMs + windowMs + probeMs + 10_000;
+        final long botDwellMs = joinSettleMs + buildMs + settleMs + probeMs + windowMs + probeMs + 130_000;
 
         final List<Thread> botThreads = new ArrayList<>();
         boolean presenceOk = false;
@@ -149,36 +155,45 @@ public final class RedstoneScaleBench {
             server.getOutputStream().flush();
             Thread.sleep(2000);
 
-            // ① 清空脚平面以上 32 层（fill 单命令 32768 块上限 → 4 层/条 ×8）。
-            // 32 层 + 建环前沉降清扫 = 重力方块判例的双重根治：清场边界上方（y+32+）的
-            // 沙/沙砾柱受邻居更新触发坠落，2×3 足迹可连毁环上 6 槽位（cell 取证实证）
+            // ⓪ 天空锚点：StandB00 钉到绝对 y=200 高空（v7 终极根治）。批次112 判例链
+            // 的总收束：地形锚点（出生点散布 ±10 格、塘岸/水面高度不定）使盒体与天然
+            // 水体/重力方块/清除边界产生运行间不确定交互；stdin 命令行选择性丢失叠加
+            // 锚点漂移造成"损伤 cell"假象（实为命令丢失+定位漂移，非物理损伤）。悬空
+            // 盒从物理上消灭全部地形向量：无水无沙无需清除；锚点钉定后全程静止（bot
+            // 不发包则服务器不移动玩家），构建/探针/修复共享同一坐标系
+            server.getOutputStream().write("tp StandB00 ~ 200 ~\n".getBytes(StandardCharsets.UTF_8));
+            server.getOutputStream().flush();
+            Thread.sleep(2000);
+
+            // ① 悬空全封闭盒：y-1 石地板 + y+0..+31 玻璃墙 + y+32 barrier 封顶。
+            // 天空无物可清——无清场 fill、无沉降清扫（6 条 fill 即全部基础设施）
             final StringBuilder cmd = new StringBuilder();
-            for (int layer = 0; layer < 32; layer += 4) {
-                final int top = Math.min(31, layer + 3);
-                cmd.append("execute at ").append(ANCHOR).append(" run fill ~-").append(HALF)
-                    .append(" ~").append(layer).append(" ~-").append(HALF)
-                    .append(" ~").append(HALF).append(" ~").append(top).append(" ~").append(HALF)
-                    .append(" minecraft:air\n");
-            }
-            // ② y-1 石平台（红石粉/中继器的承重与信号绝缘底座）
             cmd.append("execute at ").append(ANCHOR).append(" run fill ~-").append(HALF)
                 .append(" ~-1 ~-").append(HALF)
                 .append(" ~").append(HALF).append(" ~-1 ~").append(HALF)
                 .append(" minecraft:stone\n");
-            server.getOutputStream().write(cmd.toString().getBytes(StandardCharsets.UTF_8));
-            server.getOutputStream().flush();
-            Thread.sleep(4000); // 等清场边界外的重力方块坠落落地（下落 ~30 层需 1-2s）
-
-            // ③ 沉降清扫：清除已坠落到脚平面的碎屑（沙/沙砾/原木），随后才建环
-            final StringBuilder sweep = new StringBuilder();
-            for (int layer = 0; layer < 3; layer++) {
-                sweep.append("execute at ").append(ANCHOR).append(" run fill ~-").append(HALF)
-                    .append(" ~").append(layer).append(" ~-").append(HALF)
-                    .append(" ~").append(HALF).append(" ~").append(layer).append(" ~").append(HALF)
-                    .append(" minecraft:air\n");
-            }
-            server.getOutputStream().write(sweep.toString().getBytes(StandardCharsets.UTF_8));
-            server.getOutputStream().flush();
+            cmd.append("execute at ").append(ANCHOR).append(" run fill ~-").append(HALF)
+                .append(" ~32 ~-").append(HALF)
+                .append(" ~").append(HALF).append(" ~32 ~").append(HALF)
+                .append(" minecraft:barrier\n");
+            // 全高四面玻璃墙（1×32×177=5,664/条）
+            cmd.append("execute at ").append(ANCHOR).append(" run fill ~-").append(HALF)
+                .append(" ~ ~-").append(HALF).append(" ~-").append(HALF).append(" ~31 ~").append(HALF)
+                .append(" minecraft:glass\n");
+            cmd.append("execute at ").append(ANCHOR).append(" run fill ~").append(HALF)
+                .append(" ~ ~-").append(HALF).append(" ~").append(HALF).append(" ~31 ~").append(HALF)
+                .append(" minecraft:glass\n");
+            cmd.append("execute at ").append(ANCHOR).append(" run fill ~-").append(HALF)
+                .append(" ~ ~-").append(HALF).append(" ~").append(HALF).append(" ~31 ~-").append(HALF)
+                .append(" minecraft:glass\n");
+            cmd.append("execute at ").append(ANCHOR).append(" run fill ~-").append(HALF)
+                .append(" ~ ~").append(HALF).append(" ~").append(HALF).append(" ~31 ~").append(HALF)
+                .append(" minecraft:glass\n");
+            // 基础设施批：分块节流 + 幂等双发（管道判例：命令行选择性丢失——fill 幂等，
+            // 双发让丢失行在第二遍补上）
+            writeChunked(server, cmd.toString());
+            Thread.sleep(500);
+            writeChunked(server, cmd.toString());
             Thread.sleep(2000);
             cmd.setLength(0); // 复用构建器：以下追加环阵列命令
 
@@ -210,18 +225,60 @@ public final class RedstoneScaleBench {
                 }
                 placed++;
             }
-            server.getOutputStream().write(cmd.toString().getBytes(StandardCharsets.UTF_8));
-            server.getOutputStream().flush();
+            writeChunked(server, cmd.toString()); // 环批只发一遍：重发未上电中继器会重置
+            // 振荡环相位制造额外脉冲（计数器 452.8>441 判例）；丢失行由校验-修复循环补
             for (final StringBuilder seedBatch : seedCmds) {
-                server.getOutputStream().write(seedBatch.toString().getBytes(StandardCharsets.UTF_8));
-                server.getOutputStream().flush();
+                writeChunked(server, seedBatch.toString());
                 Thread.sleep(60); // ~1.2gt 批间隔 → 8 批铺满 8gt 周期的相位谱
             }
             System.out.println("built platform (half=" + HALF + ") + " + placed + " ring cells (side="
                 + side + ", pitch=" + PITCH + ", blocks/cell=12)");
             Thread.sleep(buildMs + settleMs);
 
-            // ④ 在场探针 A：结构（RING_i，精确=N）+ 种子存在性（REP_i，精确=N）+ 缺失取证
+            // ⑤ 校验-修复循环（管道判例的根治：探测缺失 cell → 只补缺失（REP 缺=环静态，
+            // 全 12 槽重发+重种子安全；仅 RING 缺=环在振荡，只补粉防双脉冲）；≤3 轮）
+            final int side2 = side;
+            for (int round = 0; round < 3; round++) {
+                final java.util.TreeSet<Integer> seenRingV = probeMarker(server, logLines, cells, "RING_V" + round);
+                final java.util.TreeSet<Integer> seenRepV = probeMarker(server, logLines, cells, "REP_V" + round);
+                final java.util.TreeSet<Integer> missing = new java.util.TreeSet<>();
+                for (int i = 0; i < cells; i++) {
+                    if (!seenRingV.contains(i) || !seenRepV.contains(i)) {
+                        missing.add(i);
+                    }
+                }
+                System.out.println("verify round " + round + ": RING=" + seenRingV.size() + " REP=" + seenRepV.size()
+                    + " missing=" + missing);
+                if (missing.isEmpty()) {
+                    break;
+                }
+                final StringBuilder repair = new StringBuilder();
+                final StringBuilder repairSeeds = new StringBuilder();
+                for (final int i : missing) {
+                    if (!seenRepV.contains(i)) {
+                        repairSeeds.append(cellCommands(i, side2)); // 环静态：全槽重发（含种子）
+                    } else {
+                        // 环在振荡（种子在）：只补缺失的粉——重设种子会产生双脉冲
+                        final int originX = (i % side2) * PITCH - (side2 - 1) * PITCH / 2;
+                        final int originZ = (i / side2) * PITCH - (side2 - 1) * PITCH / 2;
+                        for (int d = 0; d < DUSTS.length; d++) {
+                            repair.append(setblockAt(originX + DUSTS[d][0], originZ + DUSTS[d][1], "minecraft:redstone_wire"));
+                        }
+                        for (int r = 0; r < REPEATERS.length; r++) {
+                            if (REPEATERS[r][0] != SEED[0] || REPEATERS[r][1] != SEED[1]) {
+                                repair.append(setblockAt(originX + REPEATERS[r][0], originZ + REPEATERS[r][1],
+                                    "minecraft:repeater[facing=" + FACING[r] + ",delay=1,powered=false,locked=false]"));
+                            }
+                        }
+                    }
+                }
+                writeChunked(server, repair.toString());
+                Thread.sleep(200);
+                writeChunked(server, repairSeeds.toString());
+                Thread.sleep(3000);
+            }
+
+            // ⑥ 在场探针 A：结构（RING_i，精确=N）+ 种子存在性（REP_i，精确=N）
             final java.util.TreeSet<Integer> seenRingA = probeMarker(server, logLines, cells, "RING_A");
             final java.util.TreeSet<Integer> seenRepA = probeMarker(server, logLines, cells, "REP_A");
             final long ringA = seenRingA.size();
@@ -270,7 +327,13 @@ public final class RedstoneScaleBench {
                 server.getOutputStream().flush();
             } catch (final IOException ignored) {
             }
-            server.waitFor(120, java.util.concurrent.TimeUnit.SECONDS);
+            // 孤儿判例（批次112）：harness 异常退出时 stop 可能失效（stdin 已断），
+            // waitFor 超时后必须强杀——否则服务器残留持有 25595，后续运行的 server
+            // bind 失败即死（连续两次"boot 期死亡"假象的真因）
+            if (!server.waitFor(120, java.util.concurrent.TimeUnit.SECONDS)) {
+                server.destroyForcibly();
+                server.waitFor(15, java.util.concurrent.TimeUnit.SECONDS);
+            }
             tail.join(5000);
         }
 
@@ -330,6 +393,51 @@ public final class RedstoneScaleBench {
 
     private static String setblockAt(final int dx, final int dz, final String block) {
         return "execute at " + ANCHOR + " run setblock ~" + dx + " ~ ~" + dz + " " + block + "\n";
+    }
+
+    /**
+     * 分块节流写入（批次112 管道判例：大块 stdin 写入的命令行会被 Paper 控制台选择性
+     * 丢失——14 条 fill 只执行 6 条且无任何失败日志；gamerule 行也曾被截断损坏）。
+     * 每 50 行一写 + 40ms 间隔，给控制台读取器喘息空间。
+     */
+    private static void writeChunked(final Process server, final String commands) throws Exception {
+        final String[] lines = commands.split("\n", -1);
+        final StringBuilder chunk = new StringBuilder();
+        int inChunk = 0;
+        for (final String l : lines) {
+            if (l.isEmpty()) {
+                continue;
+            }
+            chunk.append(l).append('\n');
+            if (++inChunk >= 50) {
+                server.getOutputStream().write(chunk.toString().getBytes(StandardCharsets.UTF_8));
+                server.getOutputStream().flush();
+                chunk.setLength(0);
+                inChunk = 0;
+                Thread.sleep(40);
+            }
+        }
+        if (inChunk > 0) {
+            server.getOutputStream().write(chunk.toString().getBytes(StandardCharsets.UTF_8));
+            server.getOutputStream().flush();
+        }
+    }
+
+    /** 重发一个 cell 的全部 12 槽位（修复循环用：幂等，静态环重种子安全）。 */
+    private static String cellCommands(final int i, final int side) {
+        final int originX = (i % side) * PITCH - (side - 1) * PITCH / 2;
+        final int originZ = (i / side) * PITCH - (side - 1) * PITCH / 2;
+        final StringBuilder sb = new StringBuilder();
+        for (int d = 0; d < DUSTS.length; d++) {
+            sb.append(setblockAt(originX + DUSTS[d][0], originZ + DUSTS[d][1], "minecraft:redstone_wire"));
+        }
+        for (int r = 0; r < REPEATERS.length; r++) {
+            final String state = "minecraft:repeater[facing=" + FACING[r] + ",delay=1,powered="
+                + (REPEATERS[r][0] == SEED[0] && REPEATERS[r][1] == SEED[1] ? "true" : "false")
+                + ",locked=false]";
+            sb.append(setblockAt(originX + REPEATERS[r][0], originZ + REPEATERS[r][1], state));
+        }
+        return sb.toString();
     }
 
     /**
