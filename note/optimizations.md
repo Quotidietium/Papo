@@ -2648,3 +2648,17 @@ papo.tickProfile 门控）。N=2000 **presence gate 全绿首达**（A=B=2000 �
 工具链判例：fixupSourcePatches 禁用于新 feature（file 标签断裂→283 垃圾补丁；恢复流程
 + build.md 修正）。下一前沿：红石/流体轴（需新 harness）。报告：
 [note/report/perf/2026-08-28-serveraistep-split-batch111.md](report/perf/2026-08-28-serveraistep-split-batch111.md)。
+
+## 批次 112（2026-08-29）：红石轴勘察——环振荡器 harness + tickPending 子相位拆分 + 运营旋钮 5× 量化（多核调度系列㉘，勘察/基建轮，0.68.0→0.69.0）
+
+主题：0262 探针（level.blockTicks/fluidTicks/blockEvents 子相位 + rs.blockTickRuns/
+fluidTickRuns/blockEventRuns 计数器，默认关）+ RedstoneScaleBench v7（中继器环振荡器
+阵列，天空盒确定性建造）。六点阶梯全绿：**VANILLA 完美线性 ~53us/计划tick**（N=441
+→23.7ms/tick=预算 47% 保 TPS20；外推容量墙 ~890 环）；**Paper 既有旋钮量化：
+ALTERNATE_CURRENT 5.03× / EIGENCRAFT 2.30×**（运营推荐，Papo 默认保持 VANILLA）。
+计数器门精确=N（441.0/441）确立振荡在场度量。harness 七版迭代判例链：**stdin 大块
+突发写入的命令行选择性丢失**（14 fill 只执行 6 且零错误日志——"物理损伤"三阶假说
+更替的真因；分块节流 50行/40ms 根治）+ **锚点漂移**（出生点散布 ±10 格；天空钉定
+y=200 根治）+ 孤儿进程持端口链 + 无玩家 boot 区块不保活（forceload 前置）+ 瞬时
+方块态采样相位不鲁棒（计数器窗均值为权威）。报告：
+[note/report/perf/2026-08-29-redstone-axis-batch112.md](report/perf/2026-08-29-redstone-axis-batch112.md)。
