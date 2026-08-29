@@ -88,6 +88,10 @@ public final class PapoTickProfile {
     private static final Object TICK_LOCK = new Object();
     private static final java.util.ArrayList<long[]> TICK_STATS = new java.util.ArrayList<>(512);
     private static long lastTickEndNanos;
+    // stall events: [tickCount, gapNanos, durationNanos, wallEpochMs] for gaps >= 100ms —
+    // exact wall-clock correlation with server log lines (join/autosave/worldgen bursts)
+    private static final java.util.ArrayList<long[]> STALL_EVENTS = new java.util.ArrayList<>(8);
+    private static int stallTickCount;
 
     /** Records one tick's wall duration (tickServer tallying site; gated, zero-cost off). */
     public static void recordTickTime(final long durationNanos) {
@@ -99,6 +103,10 @@ public final class PapoTickProfile {
             final long gap = lastTickEndNanos == 0 ? 0 : now - lastTickEndNanos;
             lastTickEndNanos = now;
             TICK_STATS.add(new long[]{durationNanos, gap});
+            if (gap >= 100_000_000L) {
+                STALL_EVENTS.add(new long[]{stallTickCount, gap, durationNanos, System.currentTimeMillis()});
+            }
+            stallTickCount++;
         }
     }
 
@@ -147,9 +155,12 @@ public final class PapoTickProfile {
         // Papo end - batch 107
         // Papo start - batch 113: per-tick duration/gap histogram section
         final List<long[]> ticksCopy;
+        final List<long[]> stallCopy;
         synchronized (TICK_LOCK) {
             ticksCopy = new ArrayList<>(TICK_STATS);
             TICK_STATS.clear();
+            stallCopy = new ArrayList<>(STALL_EVENTS);
+            STALL_EVENTS.clear();
         }
         if (!ticksCopy.isEmpty()) {
             final long[] durs = new long[ticksCopy.size()];
@@ -181,6 +192,13 @@ public final class PapoTickProfile {
                 pct(gaps, 0.95) / 1e6, pct(gaps, 0.99) / 1e6, gaps[gaps.length - 1] / 1e6,
                 stallTicks,
                 durs.length / (windowNanos / 1e9)));
+        }
+        // stall events with exact wall-clock (correlate with server log lines: joins,
+        // autosaves, worldgen bursts, plugin tasks)
+        for (final long[] ev : stallCopy) {
+            System.out.println(String.format(java.util.Locale.ROOT,
+                "PapoTickProfile.stall tick=%d gapMs=%.1f durMs=%.1f at=%1$tH:%1$tM:%1$tS.%1$tL",
+                ev[0], ev[1] / 1e6, ev[2] / 1e6, ev[3]));
         }
         // Papo end - batch 113
         TOTALS.clear();
