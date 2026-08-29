@@ -1,0 +1,43 @@
+From 69fb622d0837d4b8a95ecee8a7281a8d1a52cc52 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sun, 30 Aug 2026 01:43:30 +0800
+Subject: [PATCH] Papo: batch 114 async warm-up of CraftEntityTypes class-init
+ at boot end (first-join main-thread freeze fix, jstack-proven root cause)
+
+---
+ .../server/dedicated/DedicatedServer.java     | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
+
+diff --git a/net/minecraft/server/dedicated/DedicatedServer.java b/net/minecraft/server/dedicated/DedicatedServer.java
+index eb06d8f0..6b9626ae 100644
+--- a/net/minecraft/server/dedicated/DedicatedServer.java
++++ b/net/minecraft/server/dedicated/DedicatedServer.java
+@@ -390,6 +390,25 @@ public class DedicatedServer extends MinecraftServer implements ServerInterface
+                 LOGGER.info("JMX monitoring enabled");
+             }
+ 
++            // Papo start - batch 114: async warm-up of the CraftBukkit entity type registry
++            // First-join stall root cause (jstack-proven, batch 114): the first entity NBT load of a
++            // boot (player's surrounding chunks on join) hits Entity.getBukkitEntity ->
++            // CraftEntityTypes.<clinit>, whose static initializer defines hundreds of entity-adapter
++            // classes on whatever thread runs it first - which, unwarmed, is the MAIN thread inside a
++            // between-tick pollTask chunk callback (0.6-0.8s freeze, reproducible 3/3). Warming the
++            // class initialization here on a background thread moves that cost into the boot window
++            // where no ticks are running. Equivalence: <clinit> only builds static lookup mappings
++            // (no events, no world state, no packets); JVM init-lock semantics guarantee single
++            // execution, so the observable behavior is unchanged - the first join simply stops
++            // paying the class-load cost on the main thread.
++            java.util.concurrent.CompletableFuture.runAsync(() -> {
++                try {
++                    Class.forName("org.bukkit.craftbukkit.entity.CraftEntityTypes");
++                } catch (final ClassNotFoundException ignored) {
++                }
++            });
++            // Papo end - batch 114
++
+             this.notificationManager().serverStarted();
+             return true;
+         }
+-- 
+2.55.0.windows.5
+
