@@ -2679,3 +2679,18 @@ EmbeddedChannel 非 FIFO 交错 quirk（不能作事件循环模型）；stall �
 锚参错位判例。自服诊断路径四型（慢性贴墙/周期停摆=autosave/突发群=插件命令派发/
 主机级）与 stall 行判别法入报告。报告：
 [note/report/perf/2026-08-30-tps-stability-batch113.md](report/perf/2026-08-30-tps-stability-batch113.md)。
+
+## 批次 114（2026-08-30）：首 join 停摆修复——冷类初始化预热 0264（多核调度系列㉚，修复轮，0.70.0→0.71.0）
+
+主题：批次113 遗留的 boot/首 join 冻结除根。FirstJoinStallBench（复现 harness +
+jstack 采样器）3/3 复现 0.6-0.9s 主线程冻结；jstack 现场实证两源：①首实体 NBT
+加载→`CraftEntityTypes.<clinit>`（数百 adapter 类主线程冷加载，tick 间 pollTask
+区块回调内）②首 `ServerPlayer.<init>`→`HashOps.<clinit>`→guava CRC32C 探测
+（runAllTasksAtTickStart 内）。**0264 修复：initServer 尾部异步预热两个类**——
+等价论证：<clinit> 只建静态映射/探测 intrinsic，JVM 初始化锁保证单次，时机迁移
+零可观测。**A/B 三代：worst gap 827→522→490ms（冷启动浪费 −46%）**；剩余 ~0.5s
+=首 join 真实工作（构造/广播/tracker 注册，vanilla 同付），触等价红线收束。回归
+门全绿（join 稳态 20ms 同级、churn 120 轮 PASS、boot 后扰动同向改善 1.16→0.85s）。
+判例：stall 墙钟行+jstack=冷类风暴标准仪器；预热类初始化=零等价代价修复模式；
+gap 计时学（END-to-END 含 park+tick 头任务+dur，归因必须拆层）。报告：
+[note/report/perf/2026-08-30-firstjoin-stall-batch114.md](report/perf/2026-08-30-firstjoin-stall-batch114.md)。
