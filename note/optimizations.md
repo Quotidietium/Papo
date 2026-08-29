@@ -2662,3 +2662,20 @@ ALTERNATE_CURRENT 5.03× / EIGENCRAFT 2.30×**（运营推荐，Papo 默认保�
 y=200 根治）+ 孤儿进程持端口链 + 无玩家 boot 区块不保活（forceload 前置）+ 瞬时
 方块态采样相位不鲁棒（计数器窗均值为权威）。报告：
 [note/report/perf/2026-08-29-redstone-axis-batch112.md](report/perf/2026-08-29-redstone-axis-batch112.md)。
+
+## 批次 113（2026-08-30）：TPS 稳定性轴——逐 tick 直方图 + 七场景矩阵 + 闪回 FIFO 证明（多核调度系列㉙，诊断/验证轮，0.69.0→0.70.0）
+
+主题：用户报告"多线程下 TPS 突变+交互闪回"。0263 探针（PapoTickProfile.tickdist
+逐tick p50/p95/p99/max+over45/50+gap分布+stalls100ms+**stall 事件墙钟行**——400-tick
+均值窗掩盖尖峰的根治）+ 四 harness（ChurnStability/WalkGen/ForceloadGen +
+JoinPhaseBench 开探针）构成七场景矩阵：**fork 运行时稳态全部干净**（轻载 p99=8ms、
+churn 120 次 join p95=2.5ms、forceload 世界生成 p95=3-6ms）；巨停摆仅存在于 stdin
+群发命令期（主线程本体成本）、boot/首 join 窗一次性离群（两次 churn 复现、
+JoinPhaseBench 不复现，疑 OS 级冷启动干扰）与 GC 无关（0.2%）。**闪回假说形式化
+闭合：SuspendBatchOrderBench 忠实复刻 0260 三路径守卫组合，10,000 随机交错 ×四
+形态 wire order==issue order 全过**；挂起窗线上时刻批量化前后不变（同一 tick 末
+flush）→ 闪回=停摆下游症状，fork 侧无乱序/延迟机制。判例：netty 4.2
+EmbeddedChannel 非 FIFO 交错 quirk（不能作事件循环模型）；stall 墙钟格式 %1$t→%4$t
+锚参错位判例。自服诊断路径四型（慢性贴墙/周期停摆=autosave/突发群=插件命令派发/
+主机级）与 stall 行判别法入报告。报告：
+[note/report/perf/2026-08-30-tps-stability-batch113.md](report/perf/2026-08-30-tps-stability-batch113.md)。
