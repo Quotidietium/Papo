@@ -93,3 +93,42 @@ cd benchmark
 java -cp build/classes papo.bot.FirstJoinStallBench ../paper-server/build/libs/Papo-1.21.11-0.71.0.jar 3
 # BEFORE 对照：0.70.0 jar 同命令
 ```
+
+## 补充：残留 ~0.5s 摊销空间评估（终版，v2 修复 180 帧 jstack 全量分类）
+
+对修复后运行的 3×60 帧样本按主线程栈顶分类，停摆窗内构成实证：
+
+1. **LambdaForm/CallSite 惰性链接**（`InvokerBytecodeGenerator`/`InnerClassLambdaMetafactory`
+   字节码生成，如 `LandRandomPos` 内联 lambda 首链、`ServerboundPlayerInputPacket` 类
+   加载及其 jar Inflater 读取）——JVM 级冷执行，`Class.forName` 预热**覆盖不到**
+   （LambdaForm 只在真正执行时编译），安全预热不可行（后台执行这些链路需真实
+   世界/寻路上下文）。
+2. **区块 postProcessGeneration**（`NewChunkHolder.handleFullStatusChange →
+   postProcessGeneration → updateFromNeighbourShapes`）——首 join 扩展票务半径使
+   边缘区块 LOADED→TICKING 升级的形状后处理，**真实语义工作**（vanilla 同付）。
+3. 零散包/实体类冷加载——穷举不经济（上百类，抽样命中率为递减分布）。
+
+**结论：0264（冷类预热）已达该修复模式的等价安全边界**；继续压缩需改变 join
+语义（构造/后处理时机），触红线。残留 ~0.5s 中约半数为 JVM 冷执行、半数为
+首 join 固有工作。
+
+## 补充：插件命令派发型（用户实例四型假说之三）的非源论证
+
+菜单类插件每交互 dispatchCommand 的服务端固定开销 = `ServerCommandEvent`
+分配 + 零监听 HandlerList 遍历（纳秒级，0125/0134 同形态）——**非停摆源**；
+stdin 群发实验的 0.3-0.9s 停摆来自命令语义本体（fill/summon 的世界修改），
+属插件侧责任，服务端不可等价优化。四型假说本环境验证状态全齐：贴墙型=rs441
+数据；周期型=ent2000 9.7min autosave 无尖峰；突发群型=stdin 群发实证+本节
+事件包装排除；主机型=共享机 boot 离群观察。
+
+## 用户实例源确认：硬外部依赖（数据收集指引）
+
+用户实例上的持续性波动源确认需要其服务器数据（本环境无法替代）：
+
+1. 以 `java -Dpapo.tickProfile=1 -jar Papo-1.21.11-0.71.0.jar` 启动；
+2. 出现症状时段后查 `logs/latest.log` 中 `PapoTickProfile.stall tick=… gapMs=…
+   durMs=… at=HH:mm:ss.mmm` 行；
+3. 与同文件日志行对齐：等周期≈autosave/备份任务；与交互时刻对齐≈插件命令
+   派发（检查菜单插件点击处理）；dur 低 gap 大且无日志对应≈主机级（CPU steal/
+   页文件/杀软）；
+4. 将含 stall 行与对齐日志的时段片段反馈，可据此实施针对性修复。
