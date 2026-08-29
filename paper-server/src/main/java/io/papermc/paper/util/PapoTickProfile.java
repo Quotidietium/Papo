@@ -197,7 +197,7 @@ public final class PapoTickProfile {
         // autosaves, worldgen bursts, plugin tasks)
         for (final long[] ev : stallCopy) {
             System.out.println(String.format(java.util.Locale.ROOT,
-                "PapoTickProfile.stall tick=%d gapMs=%.1f durMs=%.1f at=%1$tH:%1$tM:%1$tS.%1$tL",
+                "PapoTickProfile.stall tick=%d gapMs=%.1f durMs=%.1f at=%4$tH:%4$tM:%4$tS.%4$tL",
                 ev[0], ev[1] / 1e6, ev[2] / 1e6, ev[3]));
         }
         // Papo end - batch 113

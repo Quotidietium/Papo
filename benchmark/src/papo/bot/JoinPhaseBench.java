@@ -38,7 +38,7 @@ public final class JoinPhaseBench {
             "sync-chunk-writes=false", "enforce-secure-profile=false", ""), StandardCharsets.UTF_8);
 
         final Process server = new ProcessBuilder(
-            "F:/Java/21/bin/java", "-Xmx3G", "-Dfile.encoding=UTF-8", "-jar", "server.jar", "nogui")
+            "F:/Java/21/bin/java", "-Xmx3G", "-Dfile.encoding=UTF-8", "-Dpapo.tickProfile=1", "-jar", "server.jar", "nogui")
             .directory(dir.toFile()).redirectErrorStream(true).start();
         final List<String> logLines = new ArrayList<>();
         final BufferedReader reader = new BufferedReader(new InputStreamReader(server.getInputStream(), StandardCharsets.UTF_8));
