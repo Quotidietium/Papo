@@ -156,3 +156,15 @@ gap max 52.8ms / over45=over50=stalls=0**——autosave 边界零扰动（Moonri
 dur p50=9.7ms / p99=23-27ms / max≤30ms / over45=over50=stalls=0 / TPS 20.00
 恒定**；停摆仅在建造 setup 期（已知形态）。**八场景家族（7 孤立+1 混合）全部
 验证，交互效应假说排除**——fork 核心在可构现场的全部形态下无持续性波动缺陷。
+
+## 补充：上游基线对照（Paper 1.21.11-132 官方 jar）
+
+用户症状描述「当前多线程情况下」暗示与 fork 的多线程改动相关——基线对照证伪该
+暗示的因果：FirstJoinStallBench（jstack 采样器为外部工具，与服务器实现无关）×3
+于官方 Paper 1.21.11-132（fill API 下载，sha256 校验通过）：**首 join 窗口主线程
+同样命中 `CraftEntityTypes.<clinit>` 类加载风暴**（多个 RUNNABLE defineClass
+样本，CraftEntityTypes.java:279/332——上游同款注册表）。即：①首 join 冻结是
+**上游 Paper 固有缺陷**，非 fork 引入；②0264 预热后 fork 在该缺陷上**严格优于
+上游**（827→490ms vs 上游未修复）。持续性波动在八场景（含混合并发）不可复现 +
+四型假说验证 + 上游对照——「fork 多线程改动导致用户症状」的证据链闭合为否定，
+fork 侧无回归性缺陷。
