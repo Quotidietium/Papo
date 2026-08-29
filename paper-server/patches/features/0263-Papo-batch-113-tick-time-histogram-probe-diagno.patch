@@ -1,0 +1,25 @@
+From 3ff92673a141a30822e7322cf5e76c1c109b985b Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sun, 30 Aug 2026 00:15:03 +0800
+Subject: [PATCH] Papo: batch 113 per-tick duration+gap histogram hook
+ (tickServer tallying; diagnostic-only, papo.tickProfile-gated)
+
+---
+ net/minecraft/server/MinecraftServer.java | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
+index 5603658d..e64b5cd6 100644
+--- a/net/minecraft/server/MinecraftServer.java
++++ b/net/minecraft/server/MinecraftServer.java
+@@ -1657,6 +1657,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+         this.server.spark.tickEnd(((double)(endTime - this.currentTickStart) / 1000000D)); // Paper - spark
+         profilerFiller.push("tallying");
+         long l = Util.getNanos() - nanos;
++        io.papermc.paper.util.PapoTickProfile.recordTickTime(l); // Papo - batch 113 tick-time histogram (diagnostic-only, papo.tickProfile-gated)
+         int i1 = this.tickCount % 100;
+         this.aggregatedTickTimesNanos = this.aggregatedTickTimesNanos - this.tickTimesNanos[i1];
+         this.aggregatedTickTimesNanos += l;
+-- 
+2.55.0.windows.5
+

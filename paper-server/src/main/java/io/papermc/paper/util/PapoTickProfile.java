@@ -79,6 +79,34 @@ public final class PapoTickProfile {
     }
     // Papo end - batch 107
 
+    // Papo start - batch 113: per-tick duration + inter-tick gap histogram (TPS stability axis)
+    // 400-tick mean windows hide spikes: a single 500ms stall shifts the window average by
+    // ~1.25% while TPS observably crashes. This section records every tick's wall duration
+    // and the gap since the previous tick's END (sleep included), printing p50/p95/p99/max
+    // percentiles + over-45/50ms overrun counts per window. Gap > nominal 50ms exposes
+    // multi-tick stalls (GC pause, OS scheduling, lock contention).
+    private static final Object TICK_LOCK = new Object();
+    private static final java.util.ArrayList<long[]> TICK_STATS = new java.util.ArrayList<>(512);
+    private static long lastTickEndNanos;
+
+    /** Records one tick's wall duration (tickServer tallying site; gated, zero-cost off). */
+    public static void recordTickTime(final long durationNanos) {
+        if (!ENABLED) {
+            return;
+        }
+        final long now = System.nanoTime();
+        synchronized (TICK_LOCK) {
+            final long gap = lastTickEndNanos == 0 ? 0 : now - lastTickEndNanos;
+            lastTickEndNanos = now;
+            TICK_STATS.add(new long[]{durationNanos, gap});
+        }
+    }
+
+    private static long pct(final long[] sorted, final double q) {
+        return sorted[(int) Math.min(sorted.length - 1L, (long) (q * sorted.length))];
+    }
+    // Papo end - batch 113
+
     /** Prints + resets the window every {@link #REPORT_EVERY_TICKS} ticks (call from tickServer). */
     public static void maybeReport(final int tickCount) {
         if (!ENABLED || tickCount % REPORT_EVERY_TICKS != 0) {
@@ -117,6 +145,44 @@ public final class PapoTickProfile {
             }
         }
         // Papo end - batch 107
+        // Papo start - batch 113: per-tick duration/gap histogram section
+        final List<long[]> ticksCopy;
+        synchronized (TICK_LOCK) {
+            ticksCopy = new ArrayList<>(TICK_STATS);
+            TICK_STATS.clear();
+        }
+        if (!ticksCopy.isEmpty()) {
+            final long[] durs = new long[ticksCopy.size()];
+            final long[] gaps = new long[ticksCopy.size()];
+            for (int i = 0; i < ticksCopy.size(); i++) {
+                durs[i] = ticksCopy.get(i)[0];
+                gaps[i] = ticksCopy.get(i)[1];
+            }
+            java.util.Arrays.sort(durs);
+            java.util.Arrays.sort(gaps);
+            long over45 = 0;
+            long over50 = 0;
+            long stallTicks = 0; // gaps >= 2× nominal (100ms): single-tick wall or multi-tick stall
+            for (int i = 0; i < durs.length; i++) {
+                if (durs[i] >= 50_000_000L) {
+                    over50++;
+                } else if (durs[i] >= 45_000_000L) {
+                    over45++;
+                }
+                if (gaps[i] >= 100_000_000L) {
+                    stallTicks++;
+                }
+            }
+            System.out.println(String.format(java.util.Locale.ROOT,
+                "PapoTickProfile.tickdist n=%d durMs[p50=%.2f p95=%.2f p99=%.2f max=%.2f] over45=%d over50=%d | gapMs[p95=%.2f p99=%.2f max=%.2f] stalls100ms=%d | tps=%.2f",
+                durs.length,
+                pct(durs, 0.50) / 1e6, pct(durs, 0.95) / 1e6, pct(durs, 0.99) / 1e6, durs[durs.length - 1] / 1e6,
+                over45, over50,
+                pct(gaps, 0.95) / 1e6, pct(gaps, 0.99) / 1e6, gaps[gaps.length - 1] / 1e6,
+                stallTicks,
+                durs.length / (windowNanos / 1e9)));
+        }
+        // Papo end - batch 113
         TOTALS.clear();
     }
 }
