@@ -132,3 +132,18 @@ stdin 群发实验的 0.3-0.9s 停摆来自命令语义本体（fill/summon 的�
    派发（检查菜单插件点击处理）；dur 低 gap 大且无日志对应≈主机级（CPU steal/
    页文件/杀软）；
 4. 将含 stall 行与对齐日志的时段片段反馈，可据此实施针对性修复。
+
+## 补充：周期型（autosave）假说的大脏世界排除（AutosaveStallBench）
+
+小世界结论（批次113）升级为真实形态：forceload 40×40=**1600 脏区块**（每区块
+setblock 弄脏、保持加载）跨 **2 个 bukkit autosave 周期**（6000 tick=5min）+
+autosave 时刻武装的 jstack 采样。结果：**稳态 dur p50=1.2ms / p99=1.9ms /
+gap max 52.8ms / over45=over50=stalls=0**——autosave 边界零扰动（Moonrise 异步
+区块 IO + 实体保存下放批79 + sync-chunk-writes=false 的组合下主线程成本≈0）。
+唯二 stall 在脏化 setup 期（tick 70/71，已知形态）。
+
+**四型假说本环境验证终态**：①贴墙型=rs441 数据；②周期型=小世界+大脏世界 1600
+区块双数据排除（若用户服在 autosave 时刻停摆→查其 WorldSaveEvent 插件监听器或
+备份任务本体）；③突发群型=stdin 群发实证+命令事件包装纳秒级排除；④主机型=
+共享机 boot 离群观察。服务端核心在全部可构现场形态下无停摆缺陷；用户实例源
+确认依赖其 stall 行数据（收集指引见上节）。
