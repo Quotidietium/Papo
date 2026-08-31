@@ -2705,3 +2705,15 @@ CommandCostBench：5 类代表性菜单命令（give/give+NBT 组件/playsound/e
 证明→容器事件复核→命令层实测→八场景家族），剩余=插件自身监听器工作或用户环境，
 仍需 stall-report.txt/插件清单解锁。报告：
 [note/report/perf/2026-08-31-cmdcost-batch115.md](report/perf/2026-08-31-cmdcost-batch115.md)。
+
+## 批次 116（2026-08-31）：菜单插件刷新链量化——监听器工作层典型模式排除（多核调度系列㉜，bench 轮，无服务器代码变更，版本保持 0.71.0）
+
+主题：批次115 排除命令层后，以真实 Bukkit 插件（MenuRefreshPlugin，ChestCommands
+式刷新链：54×setItem(NBT 组件) + updateInventory 全量重同步 + 取消点击）复现菜单
+插件的监听器成本面。MenuPluginBench 四相位（0/10/30/heavy-30Hz 各 120s）：**全相位
+稳态 p99 ≤ 3.2ms、零超时**——刷新链单次 <~50µs，20 玩家 30Hz 线性外推 ≈1.5ms/tick
+上界。**菜单插件全部典型成本面（命令+刷新链）服务端定量排除**；用户实例剩余可能
+收窄为插件非典型工作或主机级（仍需 stall-report.txt/插件清单）。判例：Paper 插件
+remapper 资源依赖、1.21 API 枚举名（LOOTING）、0259 fanout.sends 只覆盖 tracker
+路径（容器包盲区，dur 为地面真相）。报告：
+[note/report/perf/2026-08-31-menuplugin-batch116.md](report/perf/2026-08-31-menuplugin-batch116.md)。
