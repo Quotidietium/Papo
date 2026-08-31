@@ -43,3 +43,24 @@ cd benchmark/menuplugin && F:/Java/21/bin/javac -encoding UTF-8 @cp.args -d buil
 cd build && F:/Java/21/bin/jar cf ../MenuRefresh.jar papo plugin.yml && cd ../..
 java -cp build/classes papo.bot.MenuPluginBench ../paper-server/build/libs/Papo-1.21.11-0.71.0.jar menuplugin/MenuRefresh.jar
 ```
+
+---
+
+# 批次 117：PapoDiag 零配置停摆诊断插件——实例数据收集摩擦清零（多核调度系列㉝，工具轮，无服务器代码变更，版本保持 0.71.0）
+
+用户「暂无法提供」实例数据的最大可能是操作摩擦（换启动参数+跑 PowerShell+找文件）。
+PapoDiag 插件（benchmark/papodiag/PapoDiag.jar）把摩擦清零：**丢进 plugins/ 重启即
+可**——主线程每 tick 心跳，看门狗守护线程 25ms 巡检，心跳年龄 ≥150ms 判定停摆
+进行中，立即自动抓取主线程 25 帧栈（Thread.getAllStackTraces——批次114 定位首
+join 冻结的同款证据形态）+ 在线玩家 + 已启用插件清单 + 滚动 20-tick 时长历史，
+追加写入 `plugins/PapoDiag/stall-report.txt`（5s 去抖、追加式永不覆盖、诊断失败
+静默绝不影响服务器）。
+
+验证（DiagValidateBench）：强制停摆（forceload 未生成区域世界生成 + fill）→
+**PASS**——自动捕获 2 条停摆（boot 期 MXBean 注册 152ms + forceload 生成尖峰
+170ms），栈/插件清单齐全。判例：插件 dataFolder 需 mkdirs（FileWriter 静默失败
+首版教训）。
+
+**用户操作（终版，唯一一步）**：把 `benchmark/papodiag/PapoDiag.jar` 丢进你服务器
+的 plugins/ 目录重启，正常游玩到症状出现，然后把 `plugins/PapoDiag/stall-report.txt`
+发回——文件里已是完整定位证据（停摆时刻主线程正卡在哪+当时哪些插件在线）。
