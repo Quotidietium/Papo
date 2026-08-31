@@ -1,0 +1,25 @@
+boot ok, pluginOn=true
+soak churn ok=7 fail=0
+report exists=true
+report lines=72
+  [2026-08-31 23:09:48.244] STALL ageMs=156 online=0
+    main-thread state=RUNNABLE
+      at jdk.management/com.sun.management.internal.DiagnosticCommandImpl.executeDiagnosticCommand(Native Method)
+      at jdk.management/com.sun.management.internal.DiagnosticCommandImpl.commandDescriptor(DiagnosticCommandImpl.java:314)
+      at jdk.management/com.sun.management.internal.DiagnosticCommandImpl.getMBeanInfo(DiagnosticCommandImpl.java:216)
+      at java.management/com.sun.jmx.interceptor.DefaultMBeanServerInterceptor.getNewMBeanClassName(DefaultMBeanServerInterceptor.java:324)
+      at java.management/com.sun.jmx.interceptor.DefaultMBeanServerInterceptor.registerMBean(DefaultMBeanServerInterceptor.java:310)
+      at java.management/com.sun.jmx.mbeanserver.JmxMBeanServer.registerMBean(JmxMBeanServer.java:523)
+      at java.management/java.lang.management.ManagementFactory.lambda$addMXBean$7(ManagementFactory.java:908)
+      at java.base/java.security.AccessController.doPrivileged(AccessController.java:571)
+      at java.management/java.lang.management.ManagementFactory.addMXBean(ManagementFactory.java:898)
+      at java.management/java.lang.management.ManagementFactory.lambda$getPlatformMBeanServer$1(ManagementFactory.java:492)
+      at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.accept(ForEachOps.java:184)
+      at java.base/java.util.Collections$2.tryAdvance(Collections.java:5073)
+      at java.base/java.util.Collections$2.forEachRemaining(Collections.java:5081)
+      at java.base/java.util.stream.ReferencePipeline$Head.forEach(ReferencePipeline.java:762)
+      at java.base/java.util.stream.ReferencePipeline$7$1.accept(ReferencePipeline.java:276)
+      at java.base/java.util.stream.ReferencePipeline$2$1.accept(ReferencePipeline.java:179)
+      at java.base/java.util.HashMap$ValueSpliterator.forEachRemaining(HashMap.java:1787)
+      at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:509)
+VALIDATION PASS (stack+plugins captured, soak clean)

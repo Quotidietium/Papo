@@ -64,3 +64,9 @@ join 冻结的同款证据形态）+ 在线玩家 + 已启用插件清单 + 滚�
 **用户操作（终版，唯一一步）**：把 `benchmark/papodiag/PapoDiag.jar` 丢进你服务器
 的 plugins/ 目录重启，正常游玩到症状出现，然后把 `plugins/PapoDiag/stall-report.txt`
 发回——文件里已是完整定位证据（停摆时刻主线程正卡在哪+当时哪些插件在线）。
+
+**浸泡验证（终版）**：DiagValidateBench 加负载浸泡段（churn bot 循环 3min ×7 轮
+零失败 + 500 NoAI 牛）——PapoDiag 在真实负载下零影响、持续捕获停摆证据
+（72 行），服务器健康全程——**生产就绪**。判例：python 补丁把 `\n` 真换行写进
+Java 字面量导致静默旧类回跑（编译错误被 grep 过滤吞掉）——源码补丁后必须断言
+产物含新符号。
