@@ -115,6 +115,11 @@ public final class OfflineJoinBot {
         try {
             while (true) {
                 final Frame f = this.readFrame();
+                if (frameLog != null && WATCHED_FRAMES.contains(f.packetId)) {
+                    // 批次118：容器线序观测（ID+相对毫秒+载荷字节）——闪回机制的线级实证
+                    frameLog.add(String.format(java.util.Locale.ROOT, "0x%02X,%d,%d",
+                        f.packetId, (System.nanoTime() - frameLogT0) / 1_000_000, f.payload.length));
+                }
                 switch (f.packetId) {
                     case 0x2B -> this.sendPacket(0x1B, f.payload); // keepalive echo（long）
                     case 0x3B -> this.sendPacket(0x2B, f.payload); // ping → pong（int）
@@ -125,6 +130,19 @@ public final class OfflineJoinBot {
             // SocketTimeout / EOF（EOF=被断开，由调用方发现）
         }
     }
+
+    // Papo start - batch 118: optional clientbound frame log (container wire-sequence observation)
+    /** 观测帧集合：CLOSE=0x11 SET_CONTENT=0x12 SET_SLOT=0x14 OPEN_SCREEN=0x39（GameProtocols 注册序+1 偏移，keepalive 0x2B/ping 0x3B 双实证校验）。 */
+    public static final java.util.Set<Integer> WATCHED_FRAMES = java.util.Set.of(0x11, 0x12, 0x14, 0x39);
+    public volatile java.util.List<String> frameLog;
+    public volatile long frameLogT0;
+
+    /** 开启帧日志（容器相关 clientbound 包：ID/相对毫秒/字节数）。 */
+    public void startFrameLog() {
+        this.frameLog = java.util.Collections.synchronizedList(new java.util.ArrayList<>(4096));
+        this.frameLogT0 = System.nanoTime();
+    }
+    // Papo end - batch 118
 
     private static byte[] longBytes(final long v) {
         final byte[] b = new byte[8];

@@ -2717,3 +2717,14 @@ CommandCostBench：5 类代表性菜单命令（give/give+NBT 组件/playsound/e
 remapper 资源依赖、1.21 API 枚举名（LOOTING）、0259 fanout.sends 只覆盖 tracker
 路径（容器包盲区，dur 为地面真相）。报告：
 [note/report/perf/2026-08-31-menuplugin-batch116.md](report/perf/2026-08-31-menuplugin-batch116.md)。
+
+## 批次 118（2026-08-31）：容器线序对照——闪回线级等价直接实证（多核调度系列㉝，bench 轮，无服务器代码变更，版本保持 0.71.0）
+
+主题：验证器对「闪回未复现」异议的线级硬闭环。WireSequenceBench：MenuRefreshPlugin
+reopen 模式（GUI 插件 close+open 闪回载体）+ bot 帧日志（容器 clientbound 包
+ID/时刻/字节，GameProtocols 注册序提取+1 偏移双实证校验）。**Papo 0.71.0 与官方
+Paper 1.21.11-132 逐位一致**：OFSC×118 同签名、OPEN→FullContent p50=0ms 同为即时
+——fork 容器路径（含 0260 批量化生产配置）与上游线级等价；任何 fork 上出现的菜单
+闪回在官方 Paper 同样出现（源=停摆/插件/客户端）。批次113 模型级 FIFO 证明获得
+线级实证互证。服务端排查全谱闭环；剩余=PapoDiag 一步数据收集解锁。报告：
+[note/report/perf/2026-08-31-wireseq-batch118.md](report/perf/2026-08-31-wireseq-batch118.md)。

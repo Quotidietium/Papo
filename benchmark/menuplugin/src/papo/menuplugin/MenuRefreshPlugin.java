@@ -94,6 +94,24 @@ public final class MenuRefreshPlugin extends JavaPlugin implements Listener {
 
     @Override
     public boolean onCommand(final CommandSender sender, final Command command, final String label, final String[] args) {
+        if (args.length >= 2 && "reopen".equals(args[0])) {
+            // 批次118：close+reopen 模式（GUI 插件闪回机制的标准载体）
+            final long period = Math.max(2, Integer.parseInt(args[1]));
+            if (this.refreshTaskId >= 0) {
+                Bukkit.getScheduler().cancelTask(this.refreshTaskId);
+                this.refreshTaskId = -1;
+            }
+            this.refreshTaskId = Bukkit.getScheduler().runTaskTimer(this, () -> {
+                for (final Player p : Bukkit.getOnlinePlayers()) {
+                    if (p.getOpenInventory().getTopInventory() == this.menu) {
+                        p.closeInventory();
+                        p.openInventory(this.menu);
+                    }
+                }
+            }, period, period).getTaskId();
+            sender.sendMessage("reopen every " + period + " ticks");
+            return true;
+        }
         if (args.length >= 1 && "heavy".equals(args[0])) {
             this.heavyItems = args.length < 2 || "1".equals(args[1]);
             rebuildMenu();
