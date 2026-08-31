@@ -2728,3 +2728,9 @@ Paper 1.21.11-132 逐位一致**：OFSC×118 同签名、OPEN→FullContent p50=
 闪回在官方 Paper 同样出现（源=停摆/插件/客户端）。批次113 模型级 FIFO 证明获得
 线级实证互证。服务端排查全谱闭环；剩余=PapoDiag 一步数据收集解锁。报告：
 [note/report/perf/2026-08-31-wireseq-batch118.md](report/perf/2026-08-31-wireseq-batch118.md)。
+
+补充（2026-09-01，0.71.1）：收尾复核发现 0265 残留——`git revert` 0266 时把先前被空置化的
+0265（timeBeginPeriod）原始代码顶回源码树，0.71.0 jar 因此含已声明回退的代码。已修复：
+DedicatedServer 字节级恢复 0264 链锚点内容（内部树与锚点零差异=树≡补丁链证明），重编产物
+0.71.1 残留串清零、0263/0264 阳性对照在位。判例见
+[note/build.md](build.md)「批次 118 收尾踩坑」。
