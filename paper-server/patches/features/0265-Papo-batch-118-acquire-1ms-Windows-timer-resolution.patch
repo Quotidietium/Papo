@@ -1,0 +1,71 @@
+From ccd47bc1e7fb000236a8d276e20ad0d3f92d807a Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Mon, 31 Aug 2026 23:29:41 +0800
+Subject: [PATCH] Papo: batch 118 acquire 1ms Windows timer resolution at boot
+ (parkNanos precision fix, self-verifying log)
+
+---
+ .../server/dedicated/DedicatedServer.java     | 40 +++++++++++++++++++
+ 1 file changed, 40 insertions(+)
+
+diff --git a/net/minecraft/server/dedicated/DedicatedServer.java b/net/minecraft/server/dedicated/DedicatedServer.java
+index de27d048..c8b264c4 100644
+--- a/net/minecraft/server/dedicated/DedicatedServer.java
++++ b/net/minecraft/server/dedicated/DedicatedServer.java
+@@ -390,6 +390,30 @@ public class DedicatedServer extends MinecraftServer implements ServerInterface
+                 LOGGER.info("JMX monitoring enabled");
+             }
+ 
++            // Papo start - batch 118: acquire 1ms Windows timer resolution (parkNanos precision)
++            // The tick loop's between-tick wait is LockSupport.parkNanos, which sleeps at the OS
++            // timer granularity — 15.6ms by default on Windows (measured on the dev host:
++            // parkNanos(1ms) took 14-16ms while Thread.sleep(1) took 1-3ms; other processes had
++            // partially raised the resolution there already — a dedicated host defaults to the
++            // full 15.6ms). Each tick's wait then overshoots by up to one timer period → chronic
++            // TPS jitter and interaction-latency wobble with LOW tick durations (gap-only jitter).
++            // winmm.timeBeginPeriod(1) moves parkNanos to 1ms granularity for this process.
++            // Pure OS-timing change: zero game semantics; released never (process lifetime),
++            // matching common Minecraft hosting practice. JNA ships with the server (spark dep).
++            // Self-verifying: parkNanos(1ms) sampled before/after, logged — the production log
++            // carries its own before/after evidence.
++            try {
++                final long beforeP50 = papoParkP50Micros();
++                final com.sun.jna.Function timeBeginPeriod = com.sun.jna.NativeLibrary.getInstance("winmm").getFunction("timeBeginPeriod");
++                final int rc = timeBeginPeriod.invokeInt(new Object[]{1});
++                final long afterP50 = papoParkP50Micros();
++                LOGGER.info("Papo: Windows timer resolution acquired (rc={}): parkNanos(1ms) p50 {}us -> {}us",
++                    rc, beforeP50, afterP50);
++            } catch (final Throwable t) {
++                // non-Windows / JNA unavailable — parkNanos already fine-grained there
++            }
++            // Papo end - batch 118
++
+             // Papo start - batch 114: async warm-up of cold-class-init hotspots hit by the first join
+             // First-join stall root causes (jstack-proven, batch 114, reproducible 3/3):
+             //  1. the first entity NBT load of a boot hits Entity.getBukkitEntity ->
+@@ -417,6 +441,22 @@ public class DedicatedServer extends MinecraftServer implements ServerInterface
+         }
+     }
+ 
++    // Papo start - batch 118: parkNanos granularity probe (median of 200 × parkNanos(1ms), microseconds)
++    private static long papoParkP50Micros() {
++        final long[] samples = new long[200];
++        for (int i = 0; i < 20; i++) { // warmup
++            java.util.concurrent.locks.LockSupport.parkNanos(1_000_000L);
++        }
++        for (int i = 0; i < samples.length; i++) {
++            final long t0 = System.nanoTime();
++            java.util.concurrent.locks.LockSupport.parkNanos(1_000_000L);
++            samples[i] = System.nanoTime() - t0;
++        }
++        java.util.Arrays.sort(samples);
++        return samples[samples.length / 2] / 1_000L;
++    }
++    // Papo end - batch 118
++
+     // Paper start
+     public java.io.File getPluginsFolder() {
+         return (java.io.File) this.options.valueOf("plugins");
+-- 
+2.55.0.windows.5
+
