@@ -42,3 +42,24 @@ PapoDiag（批次117，生产就绪）的一步数据收集是唯一解锁路径
 ```bash
 cd benchmark && java -cp build/classes papo.bot.WireSequenceBench <jar> menuplugin/MenuRefresh.jar <label>
 ```
+
+---
+
+# 批次 118 附：定时器粒度假说的双负结果（判例归档，补丁已回退，版本保持 0.71.0）
+
+「dur 低 gap 大」型停摆的主机级假说之一：tick 循环等待 `LockSupport.parkNanos` 以
+OS 定时器粒度睡眠（Windows 默认 15.6ms；实测本机 sleep(1)=1ms 而 parkNanos(1ms)
+=14-16ms 的分裂确凿）。两条修复路径均被实证否决：
+
+1. **0265 timeBeginPeriod(1)（已回退）**：winmm 调用成功（rc=0）但自证日志显示
+   parkNanos p50 15634→15576us——**JVM 21 的 park 不走 winmm 缩放的等待路径**。
+   负结果判例（服主圈常见误解："定时器修复"对现代 JVM 的 tick 等待无效）。
+2. **0266 hybrid 等待（粗段 park+尾段 sleep(1) 阶梯，已回退）**：A/B 显示 gap
+   分布无变化——**因为等待精度从来不是问题**：gap 完整分布实证（dur p50=1.5/
+   p99=2.5ms；gap p95=63ms 且恰为每 20 tick 一次）表明 p95 尖峰是**每秒一次
+   ~13ms 的 tick 间工作**（chunk 系统 1Hz 维护类，TPS 20.00 正常吸收），均值
+   gap 正常。零收益复杂度按红线原则移除。
+
+A/B 数据：before/hybrid gap p95 62.5-63.1ms 持平（F:/TEMP 已清，结论入本节）。
+两判例均为外部依赖数据到来前的有效排除面：用户实例若为「dur 低 gap 大」型，
+可排除定时器粒度，指向 CPU 抢占/IO 阻塞类主机因素。
