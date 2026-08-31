@@ -2694,3 +2694,14 @@ jstack 采样器）3/3 复现 0.6-0.9s 主线程冻结；jstack 现场实证两�
 判例：stall 墙钟行+jstack=冷类风暴标准仪器；预热类初始化=零等价代价修复模式；
 gap 计时学（END-to-END 含 park+tick 头任务+dur，归因必须拆层）。报告：
 [note/report/perf/2026-08-30-firstjoin-stall-batch114.md](report/perf/2026-08-30-firstjoin-stall-batch114.md)。
+
+## 批次 115（2026-08-31）：菜单命令派发链成本量化——头号假说服务端排除（多核调度系列㉛，bench 轮，无服务器代码变更，版本保持 0.71.0）
+
+主题：批次114 锁定的头号假说（菜单插件点击处理器 dispatchCommand 链）的直接量化。
+CommandCostBench：5 类代表性菜单命令（give/give+NBT 组件/playsound/effect/title）
+× 3 档批量（10/50/200），**全部批量窗 max ≤42ms、p99 ≤7.4ms、零超时**——200 条
+同型命令突发对主线程无可测影响（<0.2ms/条摊销，含 NBT give）。**命令派发层作为
+服务端停摆源被实测排除**；用户实例症状的全部服务端层至此定量排除完毕（发送路径
+证明→容器事件复核→命令层实测→八场景家族），剩余=插件自身监听器工作或用户环境，
+仍需 stall-report.txt/插件清单解锁。报告：
+[note/report/perf/2026-08-31-cmdcost-batch115.md](report/perf/2026-08-31-cmdcost-batch115.md)。
