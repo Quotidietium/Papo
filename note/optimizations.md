@@ -2769,3 +2769,29 @@ DedicatedServer 字节级恢复 0264 链锚点内容（内部树与锚点零差�
 - **改法**：记录看门狗线程引用，`onDisable` 中 interrupt（sleep 即醒即退）；重新启用
   起新线程，旧线程不会被复醒。服务器正常关机时插件禁用钩子同样触发，顺带消除关机
   尾部的一两条伪停摆记录。
+
+## 批次 120 — R3 审计轮：wire memo 族事后对抗审查（0.71.2 → 0.71.3，补丁 0268）
+
+对批次 70-77 落盘的 wire memo 族（0241-0248）做设计文档之外的**事后对抗审查**（以应用树
+实际代码为准），并复核登录预取生命周期、join 静态包缓存失效链、brand 输入面与功能完整
+性。九面中八面闭合（含 0241 失效信号完备性逐路径重推、memo 撕裂读竞态的协议解码不变量
+论证、recipes/tags reload 失效链全路径核对、0247/0248 逐分支 vanilla 对照），发现并修复
+一处语义等价性缺陷。报告：
+[note/report/perf/2026-09-01-wirememo-locale-batch120.md](report/perf/2026-09-01-wirememo-locale-batch120.md)。
+
+### 120a — locale 敏感包的共享 memo 门控（0268）
+- **文件**：`PapoSharedWireMemo.java`（Carrier 契约）、`PacketEncoder.java`（统一门控）、
+  `ClientboundPlayerInfoUpdatePacket.java`（声明 locale 依赖）。
+- **缺陷**：Paper 的 `ComponentSerialization.TRUSTED_STREAM_CODEC` 在服务端注册过翻译
+  （`PaperAdventure.hasAnyTranslations()`）时按**接收连接的 locale** 本地化组件编码
+  （AdventureComponent 无条件、TranslatableContents 条件）。vanilla 对共享实例本就是
+  逐连接重编码、locale 各自正确；而 join 广播两处武装的 PlayerInfoUpdate 双 memo
+  （编码快照 + 压缩段）把**首观众的 locale 冻结进字节**——其余观众收到错误语言的
+  tab 显示名，持续到该显示名下次变更。触发需多语言服务器 + 可翻译显示名 + 观众
+  locale 互异；默认配置（无翻译注册）编码 locale 无关、零行为差异。
+- **改法**：Carrier 新增 `papoLocaleDependent()`（缺省 false）；PlayerInfoUpdate 覆写
+  true；PacketEncoder 以 `!localeDependent || !hasAnyTranslations()` 统一门控编码快照
+  的回放/存储**与**压缩 memo 的 ATTR 发布（段内嵌同样 locale 冻结字节，须同门）。
+  翻译注册运行时翻转的两种时序均无陈旧泄漏（快照只在可用窗口内写入/消费）。
+- **判例**：编码缓存的「确定性」声明必须对**逐连接差异源**（locale/属性/会话）证伪，
+  「包内容不变」的失效信号模型覆盖不到这一维度。
