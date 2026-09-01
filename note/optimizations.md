@@ -2734,3 +2734,38 @@ Paper 1.21.11-132 逐位一致**：OFSC×118 同签名、OPEN→FullContent p50=
 DedicatedServer 字节级恢复 0264 链锚点内容（内部树与锚点零差异=树≡补丁链证明），重编产物
 0.71.1 残留串清零、0263/0264 阳性对照在位。判例见
 [note/build.md](build.md)「批次 118 收尾踩坑」。
+
+## 批次 119（2026-09-01）：R3 审计轮——异步管线长期运行加固（补丁 0267，0.71.1→0.71.2）
+
+主题：持续性安全/稳定性审查（本轮覆盖面：0260 发送批量化对抗性边界、0264 异步预热
+竞态、探针族开启态长时安全、R1/R2 异步存档与 join 预取数据完整性、未信任输入面、
+功能完整性核对）。发现并修复三处长期运行缺陷，其余审计面闭合。报告：
+[note/report/perf/2026-09-01-r3-audit-batch119.md](report/perf/2026-09-01-r3-audit-batch119.md)。
+
+### 119a — stats/advancements 预取消费点有界化（0267）
+- **文件**：`ServerStatsCounter.java`（ctor 消费点）、`PlayerAdvancements.java`（load 消费点）。
+- **缺陷**：两处用无界 `CompletableFuture.join()` 在主线程等批次82 的登录预取 future——
+  若该 future 永不完成（批次91 已披露接受的 halt(false) 残留、IO 池线程死亡等病理场景），
+  主线程永久悬挂=服务器整机死锁，仅能杀进程恢复。
+- **改法**：`get(60s)` 有界等待 + 超时/异常回退同步读路径（与 .dat 消费点
+  `papoConsumePrefetch` 及 `awaitPending` 完全同一降级纪律）。正常路径 future 早已
+  完成，零行为差异；唯一变化=病理场景从「永久挂死」变为「60s 界 + 同步回退 + 一条
+  warn/error 日志」。
+- **等价性**：登录 RTT 窗口内完成的预取（≥99.9% 常态）字节级同路径；超时回退路径与
+  无预取路径（批次82 的 else 分支）代码完全一致。
+
+### 119b — stats 预取 map 孤儿条目清理（0267）
+- **文件**：`PlayerList.java` `getPlayerStats(GameProfile)`。
+- **缺陷**：`locateStatsFile` 的遗留名回退（uuid 文件缺失、旧名文件在位、且 rename 失败
+  时返回旧名路径）使批次82 的 uuid 路径预取条目永不被消费——`papoStatsPrefetches`
+  每次该型 join 泄漏一条（罕见条件叠合，但高负载长期运行下属须清零的累积面）。
+- **改法**：路径解析时若返回路径 ≠ uuid 路径则主动移除 uuid 路径预取条目。
+
+### 119c — PapoDiag 看门狗生命周期修复（非补丁，benchmark 直改）
+- **文件**：`benchmark/papodiag/src/papo/papodiag/PapoDiagPlugin.java`（jar 已重编）。
+- **缺陷**：插件无 `onDisable`，看门狗线程 `while(true)` 永不退出——插件被禁用/卸载后
+  心跳停止，看门狗每 5s 向 stall-report.txt 追加一条伪"停摆"直至 JVM 退出（约 17MB/天
+  垃圾写入）；`/reload` 或插件管理器卸载场景线程永存。
+- **改法**：记录看门狗线程引用，`onDisable` 中 interrupt（sleep 即醒即退）；重新启用
+  起新线程，旧线程不会被复醒。服务器正常关机时插件禁用钩子同样触发，顺带消除关机
+  尾部的一两条伪停摆记录。
