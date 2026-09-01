@@ -23,6 +23,7 @@ public final class PapoDiagPlugin extends JavaPlugin {
     private volatile int tickHistoryIndex;
     private volatile long lastReportMs;
     private java.io.File reportFile;
+    private volatile Thread watchdogThread;
 
     @Override
     public void onEnable() {
@@ -44,7 +45,7 @@ public final class PapoDiagPlugin extends JavaPlugin {
 
         // 看门狗：停摆进行中抓主线程栈（停摆中主线程正卡在哪一目了然）
         final Thread watchdog = new Thread(() -> {
-            while (true) {
+            while (!Thread.currentThread().isInterrupted()) {
                 try {
                     Thread.sleep(25);
                     final long ageNanos = System.nanoTime() - this.lastHeartbeatNanos;
@@ -64,9 +65,25 @@ public final class PapoDiagPlugin extends JavaPlugin {
             }
         }, "PapoDiag-Watchdog");
         watchdog.setDaemon(true);
+        this.watchdogThread = watchdog;
         watchdog.start();
         this.getLogger().info("PapoDiag active: stalls >=150ms will be captured to "
             + this.reportFile.getAbsolutePath());
+    }
+
+    /**
+     * 批次119审计修复：禁用/关服时停掉看门狗。否则插件禁用后心跳停止，
+     * 看门狗会把"停摆"报告每 5 秒追加进报告文件直到 JVM 退出（~17MB/天），
+     * 且 /reload 或插件管理器卸载后线程永存。interrupt 使 sleep 立即退出；
+     * 重启用新线程，旧线程不会再被唤醒（每线程各自响应自己的 interrupt）。
+     */
+    @Override
+    public void onDisable() {
+        final Thread t = this.watchdogThread;
+        this.watchdogThread = null;
+        if (t != null) {
+            t.interrupt();
+        }
     }
 
     private void report(final long ageNanos, final long nowMs) {
