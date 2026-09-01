@@ -1,0 +1,88 @@
+From a0db66f355a96e28379ec1efcf631b74132f1b3c Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Tue, 1 Sep 2026 08:29:06 +0800
+Subject: [PATCH] Papo: batch 119 bounded join-prefetch waits and
+ stats-prefetch map hygiene (R3 audit fixes)
+
+Audit of the R1/R2 async save/join-prefetch pipelines (batches 78-85) found two long-run stability gaps: (1) the stats/advancements prefetch consume points used unbounded CompletableFuture.join() on the main thread - a read future that never completes (documented halt(false) residual, IO-pool thread death) would hang the main thread forever; now a bounded 60s get with the synchronous path as fallback, the same degradation discipline as the .dat consume point (papoConsumePrefetch) and awaitPending. (2) locateStatsFile's legacy-name fallback (uuid file absent, name-keyed file present, rename failed) returns a path the batch 82 prefetch never keyed on, leaving an orphaned uuid-path entry in papoStatsPrefetches per join; now dropped at resolution time. Normal operation is byte-identical: the future is normally already done, so the bounded wait never elapses, and the fallback only runs in the pathological cases where the previous behavior was a permanent hang.
+---
+ net/minecraft/server/PlayerAdvancements.java | 15 ++++++++++++++-
+ net/minecraft/server/players/PlayerList.java |  9 +++++++++
+ net/minecraft/stats/ServerStatsCounter.java  | 15 ++++++++++++++-
+ 3 files changed, 37 insertions(+), 2 deletions(-)
+
+diff --git a/net/minecraft/server/PlayerAdvancements.java b/net/minecraft/server/PlayerAdvancements.java
+index dfcaf577..d50e9c9e 100644
+--- a/net/minecraft/server/PlayerAdvancements.java
++++ b/net/minecraft/server/PlayerAdvancements.java
+@@ -120,7 +120,20 @@ public class PlayerAdvancements {
+             if (!papoPrefetched.future().isDone()) {
+                 papoPrefetched.raiseToBlocking(); // main thread is about to wait
+             }
+-            papoJson = papoPrefetched.future().join();
++            // Papo start - batch 119: bounded wait — a read future that never completes
++            // (halt residual / IO-pool thread death) must degrade to the synchronous path
++            // instead of hanging the main thread forever; same budget as the .dat consume
++            // point (papoConsumePrefetch) and awaitPending
++            try {
++                papoJson = papoPrefetched.future().get(60, java.util.concurrent.TimeUnit.SECONDS);
++            } catch (final InterruptedException e) {
++                Thread.currentThread().interrupt();
++                papoJson = null;
++            } catch (final Exception e) {
++                LOGGER.error("Timed out or failed waiting for prefetched advancements {}, falling back to the synchronous path", this.playerSavePath, e);
++                papoJson = null;
++            }
++            // Papo end - batch 119
+         } else {
+             papoJson = null;
+         }
+diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
+index c40056e0..e008eedc 100644
+--- a/net/minecraft/server/players/PlayerList.java
++++ b/net/minecraft/server/players/PlayerList.java
+@@ -1258,6 +1258,15 @@ public abstract class PlayerList {
+     }
+     public ServerStatsCounter getPlayerStats(GameProfile gameProfile) {
+             Path path = this.locateStatsFile(gameProfile);
++            // Papo start - batch 119: locateStatsFile's legacy-name fallback (uuid file absent,
++            // name-keyed file present, rename failed) returns a path the batch 82 prefetch never
++            // keyed on — drop the uuid-path entry so the prefetch map cannot grow across
++            // repeated joins under that condition
++            final Path papoUuidStatsPath = this.papoStatsDir.resolve(gameProfile.id() + ".json");
++            if (!path.equals(papoUuidStatsPath)) {
++                this.papoStatsPrefetches.remove(papoUuidStatsPath);
++            }
++            // Papo end - batch 119
+             return new ServerStatsCounter(this.server, path);
+     }
+     // CraftBukkit end
+diff --git a/net/minecraft/stats/ServerStatsCounter.java b/net/minecraft/stats/ServerStatsCounter.java
+index a5f0fd0c..fc07b8dd 100644
+--- a/net/minecraft/stats/ServerStatsCounter.java
++++ b/net/minecraft/stats/ServerStatsCounter.java
+@@ -76,7 +76,20 @@ public class ServerStatsCounter extends StatsCounter {
+             if (!papoPrefetched.future().isDone()) {
+                 papoPrefetched.raiseToBlocking(); // main thread is about to wait
+             }
+-            papoJson = papoPrefetched.future().join();
++            // Papo start - batch 119: bounded wait — a read future that never completes
++            // (halt residual / IO-pool thread death) must degrade to the synchronous path
++            // instead of hanging the main thread forever; same budget as the .dat consume
++            // point (papoConsumePrefetch) and awaitPending
++            try {
++                papoJson = papoPrefetched.future().get(60, java.util.concurrent.TimeUnit.SECONDS);
++            } catch (final InterruptedException e) {
++                Thread.currentThread().interrupt();
++                papoJson = null;
++            } catch (final Exception e) {
++                LOGGER.warn("Timed out or failed waiting for prefetched stats {}, falling back to the synchronous path", file, e);
++                papoJson = null;
++            }
++            // Papo end - batch 119
+         } else {
+             papoJson = null;
+         }
+-- 
+2.55.0.windows.5
+
