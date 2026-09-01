@@ -2795,3 +2795,41 @@ DedicatedServer 字节级恢复 0264 链锚点内容（内部树与锚点零差�
   翻译注册运行时翻转的两种时序均无陈旧泄漏（快照只在可用窗口内写入/消费）。
 - **判例**：编码缓存的「确定性」声明必须对**逐连接差异源**（locale/属性/会话）证伪，
   「包内容不变」的失效信号模型覆盖不到这一维度。
+
+## 批次 121 — R3 审计轮：事件门控/分配优化族 0200-0240 事后对抗审查（零缺陷闭合轮，版本保持 0.71.3）
+
+对 0200-0240 共 41 个补丁（批次 91-96 落盘的零监听器快路、scratch 复用、缓冲/零拷贝/
+netty 生命周期、广播去重、缓存门控、k-nearest 选择、纯计算内联族）做八面事后对抗
+审查，以应用树实际代码为准。**零新缺陷**；六项关键声明以独立证据收案（Vec3i 哈希
+公式对照应用树、ensureCompatible retain 字节码反编译实证、getNextEntityPos 索引与
+normalize 守卫对照应用树、k-nearest floor>=1 上游守卫、fastutil addTo 旧值语义对照
+上游 enderPearl 同型代码、watchdog 插装零读者 grep）。连同批次 119/120 与三轮既往
+审计，**Papo 整条补丁链至此全部经过事后对抗审计**。报告：
+[note/report/perf/2026-09-01-eventgate-family-batch121.md](report/perf/2026-09-01-eventgate-family-batch121.md)。
+
+- **零监听器快路族（0228/0229/0232/0233/0235/0238/0239/0240）**：HandlerList 归属在
+  paper-api 源码逐个核实（InventoryCreativeEvent 无自有列表、Drag 有）；事件字段在
+  dispatch 时刻逐项等价；0232 红石 HashSet 桶序复刻的哈希公式与 HashMap 前提
+  （无 resize/无树化/桶内插入序）齐备。
+- **scratch 复用族（0200/0201/0202/0220/0236/0255）**：fill 重载追加+clear-first、
+  谓词逐字（二参 getEntitiesOfClass 默认 NO_SPECTATORS 在 EntityGetter 实证）、
+  无重入、0236 循环内 isMergable 重查为死代码的论证成立。
+- **netty 生命周期族（0213-0217/0221-0225）**：压缩初缓冲上界支配 DEFLATE 存储块
+  最坏界；0217 零拷贝引用计数的支点（ensureCompatible 原样返回时 retain）以
+  velocity-native jar 字节码实证，两次 release 平衡；attr 标记协议单 event loop
+  单写遍历无嵌套；0216 压缩器复用消除 vanilla 重跑孤儿泄漏且 clamp 仅救崩溃路径。
+- **广播去重族（0210/0211/0212）**：同实例豁免保住 NMS 原位变更刷新习惯；
+  onTeamChanged 伴生的 waypoints 重建/存盘标记在值未变时跳过无语义影响；0212 仅
+  去重逐字节相同的结构性第二包。
+- **数据完整性重点（0209）**：区块加载路径实证不经 ServerLevel.addEntity（cap 位点），
+  开启上限无存档物品丢失面；计数器回调与上游 enderPearl 同线程域同 map 类型同惯用法。
+- **k-nearest（0203/0220）**：`!(batchQuota<1.0F)` 守卫使 floor>=1 恒成立，空数组
+  索引不可达；平局披露复核成立；batchQuota 不下穿。
+- **纯计算内联（0230 等）**：FP 等价三项对照应用树收案（含两处与旧版 vanilla 记忆
+  相异处以树为准）；0207 单线程域核实；0227 双载去重只读前提成立；0231 Present
+  原位读与 null/absent 折叠等价。
+- **功能完整性**：0209/0237/0225 的全部配置键与 getter 消费者在位（netstat 四列
+  接线核实）；入站帧长度守卫保持；0205 出站方向再证。
+- **判例**：补丁注释的 verified 声明不可作审计证据——本轮三处与通行记忆相悖的声明
+  全部以应用树逐字对照收案，按记忆「纠正」反而会引入缺陷；第三方契约（retain 语义、
+  addTo 返回值）用字节码/上游同型代码实证而非推理。
