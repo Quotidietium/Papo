@@ -1,0 +1,103 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Tue, 1 Sep 2026 09:01:27 +0800
+Subject: [PATCH] Papo: batch 120 skip shared wire/encode memo for
+ locale-dependent player-info broadcasts while server-side translations are
+ registered
+
+
+diff --git a/net/minecraft/network/PacketEncoder.java b/net/minecraft/network/PacketEncoder.java
+index 2118d08376a2d2dd5bd9288ec63c9190a22f164f..4ae35eba381a6aa45b9afa1c87e3a25278ad5430 100644
+--- a/net/minecraft/network/PacketEncoder.java
++++ b/net/minecraft/network/PacketEncoder.java
+@@ -64,8 +64,16 @@ public class PacketEncoder<T extends PacketListener> extends MessageToByteEncode
+             // snapshot is taken from this very buffer right after the first codec encode, so hit
+             // and miss paths produce byte-identical output; the PacketTooLarge check below reads
+             // readableBytes() which is identical either way.
+-            if (packet instanceof PapoSharedWireMemo.Carrier papoCarrier && papoCarrier.papoWireMemo() != null) {
+-                PapoSharedWireMemo papoMemo = papoCarrier.papoWireMemo();
++            // papoLocaleDependent carriers are excluded while server-side translations are
++            // registered: their component serialization resolves per the receiving connection's
++            // locale, so a shared snapshot would freeze one viewer's locale into every other
++            // viewer's bytes (batch 120). The exclusion also covers the compression-memo publish
++            // below, whose segment would embed the same locale-frozen payload.
++            PapoSharedWireMemo.Carrier papoCarrier = packet instanceof PapoSharedWireMemo.Carrier papoC ? papoC : null;
++            PapoSharedWireMemo papoMemo = papoCarrier != null ? papoCarrier.papoWireMemo() : null;
++            boolean papoMemoUsable = papoMemo != null
++                && (!papoCarrier.papoLocaleDependent() || !io.papermc.paper.adventure.PaperAdventure.hasAnyTranslations());
++            if (papoMemoUsable) {
+                 byte[] papoCachedEncode = papoMemo.papoEncoded();
+                 if (papoCachedEncode != null) {
+                     byteBuf.writeBytes(papoCachedEncode);
+@@ -90,11 +98,10 @@ public class PacketEncoder<T extends PacketListener> extends MessageToByteEncode
+                 // Papo - shared wire-compression memo: publish alongside the headroom marker (same
+                 // write traversal, consumed by CompressionEncoder only when the buffer identity
+                 // matches; armed exclusively on shared multi-viewer packets, null otherwise).
+-                if (packet instanceof PapoSharedWireMemo.Carrier papoCarrier) {
+-                    PapoSharedWireMemo papoMemo = papoCarrier.papoWireMemo();
+-                    if (papoMemo != null) {
+-                        channelHandlerContext.channel().attr(PapoSharedWireMemo.ATTR).set(papoMemo);
+-                    }
++                // Gated by papoMemoUsable: a locale-dependent carrier under registered
++                // translations must compress per connection (its bytes are per-viewer).
++                if (papoMemoUsable) {
++                    channelHandlerContext.channel().attr(PapoSharedWireMemo.ATTR).set(papoMemo);
+                 }
+             }
+             // Papo end
+diff --git a/net/minecraft/network/PapoSharedWireMemo.java b/net/minecraft/network/PapoSharedWireMemo.java
+index 64f5257a5fa3be9c1f2f7e9d82e29e314f669d1e..953985638ea0fe4b19c4583321d2af2c340d9d85 100644
+--- a/net/minecraft/network/PapoSharedWireMemo.java
++++ b/net/minecraft/network/PapoSharedWireMemo.java
+@@ -91,6 +91,20 @@ public final class PapoSharedWireMemo {
+     public interface Carrier {
+         @Nullable
+         PapoSharedWireMemo papoWireMemo();
++
++        /**
++         * Papo - true when this packet's encoded bytes can vary with the receiving connection's
++         * locale: component fields serialized through ComponentSerialization.TRUSTED_STREAM_CODEC
++         * resolve TranslatableContents/AdventureComponents per-locale server-side while
++         * PaperAdventure.hasAnyTranslations() is true (Paper's localized codec reads the
++         * per-connection locale from the encode buffer). The encoders skip memo replay/store and
++         * memo publish for such packets while translations are registered, so each connection
++         * keeps receiving its own locale's bytes exactly like a non-shared encode would.
++         * Locale-free packets (the default) share unconditionally.
++         */
++        default boolean papoLocaleDependent() {
++            return false;
++        }
+     }
+ 
+     /**
+diff --git a/net/minecraft/network/protocol/game/ClientboundPlayerInfoUpdatePacket.java b/net/minecraft/network/protocol/game/ClientboundPlayerInfoUpdatePacket.java
+index 793341e8c9f4ea8f4f9ae32af36fa9124333bcc2..41c2ebb8cf8574e25752a4efb6de37ecb14b1684 100644
+--- a/net/minecraft/network/protocol/game/ClientboundPlayerInfoUpdatePacket.java
++++ b/net/minecraft/network/protocol/game/ClientboundPlayerInfoUpdatePacket.java
+@@ -272,8 +272,8 @@ public class ClientboundPlayerInfoUpdatePacket implements Packet<ClientGamePacke
+     // PlayerList sends one createPlayerInitializing instance to every online player on join
+     // (profile entries with skin properties are ~0.5-1.5 KiB, above the compression threshold);
+     // the memo replays the first connection's encode + DEFLATE - see PapoSharedWireMemo. The
+-    // packet is immutable and its codec is deterministic and locale-independent. Armed only at
+-    // the join broadcast sites; every other construction keeps a null memo.
++    // packet is immutable and its codec is deterministic. Armed only at the join broadcast
++    // sites; every other construction keeps a null memo.
+     private PapoSharedWireMemo papoWireMemo;
+ 
+     public void papoEnableWireMemo() {
+@@ -284,6 +284,15 @@ public class ClientboundPlayerInfoUpdatePacket implements Packet<ClientGamePacke
+     public @Nullable PapoSharedWireMemo papoWireMemo() {
+         return this.papoWireMemo;
+     }
++
++    // Papo - Entry.displayName goes through ComponentSerialization.TRUSTED_STREAM_CODEC, which
++    // localizes TranslatableContents/AdventureComponents per the receiving connection's locale
++    // while server-side translations are registered (PaperAdventure.hasAnyTranslations()); the
++    // shared memo must not freeze one viewer's locale into the replayed bytes (batch 120)
++    @Override
++    public boolean papoLocaleDependent() {
++        return true;
++    }
+     // Papo end - shared wire memo for the join player-info broadcast
+ 
+ }
