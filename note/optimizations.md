@@ -2404,3 +2404,20 @@ papo90 口径不变）。papo95seedB 20bot × 10min：零错误 exit 0；相位�
   用户于批次 96 运行中下达终止指令。
 - 分支 perf/multicore 为系列工作分支；本记录后按全局规则合并回 main（不发布
   GitHub release，goal 明确禁止）。
+
+---
+
+## R2+R3 抛弃记录（2026-09-03，用户决断）
+
+用户于 2026-09-03 决断：**抛弃多核调度 R2+R3 全部工作（批次 97-122，0.60.0 → 0.71.4，
+62 提交），保留 0.59.0（R1 批次 78-96）为已知最稳定基线**。
+
+- 操作：封存 tag `archive/multicore-r3`（指向原 perf/multicore-r3 顶端 877dea1eea，完整
+  含 R2+R3 全部提交，含 PapoDiag 诊断插件源码与全部报告文档，可考古取回）后删除
+  perf/multicore、perf/multicore-r2、perf/multicore-r3 三个分支（perf/multicore 已完全
+  包含于 main，零信息损失）。
+- 已知接受面：R3 审计轮三个缺陷修复随批抛弃——0267（R1 join 预取无界等待，仅病理
+  场景）、0268（0245/0246 locale 冻结，仅非默认配置触发）、0269（0241/0242 chunk 缓存
+  GB 级常驻，大视距多玩家场景）。0.59.0 为批次 104 长时浸泡验证态（12k ticks 零错误）。
+- 本地 main 领先 origin/main 48 提交（0.51.0 → 0.59.0 未推送）；线上 release 停在
+  0.54.0，均在保留范围内，无需处理。
