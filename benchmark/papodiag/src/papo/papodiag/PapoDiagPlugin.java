@@ -34,12 +34,14 @@ public final class PapoDiagPlugin extends JavaPlugin {
         this.lastHeartbeatNanos = System.nanoTime();
 
         // 心跳：主线程每 tick 一拍 + 滚动时长历史
+        // floorMod：int 计数在 ~3.4 年（2^31 tick）后回绕为负，% 会抛 AIOOBE 并终止定时任务，
+        // 心跳随之永久停止（看门狗从此每 5s 记一条伪停摆）——批次122 修复
         Bukkit.getScheduler().runTaskTimer(this, () -> {
             final long now = System.nanoTime();
             final long gap = now - this.lastHeartbeatNanos;
             this.lastHeartbeatNanos = now;
             final long[] h = this.tickHistoryMicros;
-            h[this.tickHistoryIndex % h.length] = gap / 1000;
+            h[Math.floorMod(this.tickHistoryIndex, h.length)] = gap / 1000;
             this.tickHistoryIndex++;
         }, 1L, 1L);
 
@@ -89,8 +91,7 @@ public final class PapoDiagPlugin extends JavaPlugin {
     private void report(final long ageNanos, final long nowMs) {
         final StringBuilder sb = new StringBuilder(2048);
         sb.append('[').append(new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new java.util.Date(nowMs)))
-            .append("] STALL ageMs=").append(ageNanos / 1_000_000)
-            .append(" online=").append(Bukkit.getOnlinePlayers().size()).append('\n');
+            .append("] STALL ageMs=").append(ageNanos / 1_000_000).append('\n');
         // 主线程栈（停摆现场）
         for (final Thread t : Thread.getAllStackTraces().keySet()) {
             if ("Server thread".equals(t.getName())) {
@@ -105,25 +106,44 @@ public final class PapoDiagPlugin extends JavaPlugin {
         // 滚动 tick 时长（µs，旧→新）
         sb.append("  recentTicksMicros=");
         final long[] h = this.tickHistoryMicros;
-        final int idx = this.tickHistoryIndex;
+        final int idx = Math.floorMod(this.tickHistoryIndex, h.length);
         for (int i = 0; i < h.length; i++) {
             sb.append(h[(idx + i) % h.length]).append(i == h.length - 1 ? "" : ",");
         }
         sb.append('\n');
-        // 插件清单（定位嫌疑插件）
-        sb.append("  plugins=");
-        for (final org.bukkit.plugin.Plugin p : Bukkit.getPluginManager().getPlugins()) {
-            sb.append(p.getName()).append(p.isEnabled() ? "" : "(off)").append(' ');
+        // 插件清单（定位嫌疑插件）与在线玩家：从看门狗线程读取主线程结构，join/quit 恰好
+        // 交错时可能抛 CME——分节捕获，损失该节也不丢主线程栈（停摆现场是报告的核心价值）
+        try {
+            sb.append("  plugins=");
+            for (final org.bukkit.plugin.Plugin p : Bukkit.getPluginManager().getPlugins()) {
+                sb.append(p.getName()).append(p.isEnabled() ? "" : "(off)").append(' ');
+            }
+            sb.append('\n');
+        } catch (final Throwable ignored) {
+            sb.append("  plugins=<unavailable: ").append(ignored.getClass().getSimpleName()).append(">\n");
         }
-        sb.append('\n');
-        // 在线玩家
-        sb.append("  players=");
-        for (final org.bukkit.entity.Player p : Bukkit.getOnlinePlayers()) {
-            sb.append(p.getName()).append(' ');
+        try {
+            sb.append("  players=");
+            for (final org.bukkit.entity.Player p : Bukkit.getOnlinePlayers()) {
+                sb.append(p.getName()).append(' ');
+            }
+            sb.append('\n');
+        } catch (final Throwable ignored) {
+            sb.append("  players=<unavailable: ").append(ignored.getClass().getSimpleName()).append(">\n");
         }
-        sb.append('\n');
         synchronized (this) {
             try {
+                // 报告体积上限：持续病理停摆下每 5s 追加 2KiB 仍会无限增长（~17MB/天）；
+                // 超过 8MiB 轮转一次（旧报告改名为 .old，再旧的丢弃），磁盘占用有界
+                if (this.reportFile.exists() && this.reportFile.length() > 8L * 1024 * 1024) {
+                    final java.io.File old = new java.io.File(this.reportFile.getParentFile(), "stall-report.old.txt");
+                    // nofollow: Windows 上 File.renameTo 目标存在时必败，先删旧 .old
+                    if (!old.delete() && old.exists()) {
+                        // 删除失败（被占用等）就继续追加原文件，绝不因轮转失败丢报告
+                    } else {
+                        this.reportFile.renameTo(old);
+                    }
+                }
                 final java.io.PrintWriter out = new java.io.PrintWriter(new java.io.FileWriter(this.reportFile, true));
                 out.print(sb);
                 out.close();

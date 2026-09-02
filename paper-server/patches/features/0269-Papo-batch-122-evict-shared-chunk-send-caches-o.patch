@@ -1,0 +1,59 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Wed, 2 Sep 2026 23:42:10 +0800
+Subject: [PATCH] Papo: batch 122 evict shared chunk-send caches when the last
+ viewer stops tracking the chunk (long-run memory residency fix, R3 audit)
+
+diff --git a/net/minecraft/server/level/ChunkHolder.java b/net/minecraft/server/level/ChunkHolder.java
+index 3c728b845ca0c5c671be23f22b11c76f179f2f83..fe7ecbfbdebbc6e5b7ffbfe3404885feab692ee9 100644
+--- a/net/minecraft/server/level/ChunkHolder.java
++++ b/net/minecraft/server/level/ChunkHolder.java
+@@ -76,6 +76,25 @@ public class ChunkHolder extends GenerationChunkHolder implements ca.spottedleaf
+         if (!this.playersSentChunkTo.remove(player)) {
+             throw new IllegalStateException("Already sent chunk " + this.pos + " in world '" + ca.spottedleaf.moonrise.common.util.WorldUtil.getWorldName(this.getChunkMap().level) + "' to player " + player);
+         }
++        // Papo start - batch 122: evict the shared chunk-send caches when the last viewer leaves
++        // With zero viewers no full chunk send can happen until a new viewer is added, and that
++        // viewer rebuilds byte-identically from chunk state (the caches are version-gated pure
++        // functions of it). Without eviction every once-sent chunk retains its serialized buffer
++        // (~10-40 KiB) plus - for BE-empty chunks - the shared packet's light snapshot and wire-memo
++        // DEFLATE segment (~40-100 KiB total) until unload; on servers with large unwatched-loaded
++        // sets (spawn/forceloaded chunks, unload-delay trails, view-overlap margins) that is a
++        // linear, long-lived residency vanilla does not have. In-flight sends are unaffected: they
++        // hold their own packet references and the packet is immutable.
++        // Main thread only (callers are the player chunk loader's tick-thread update paths).
++        if (this.playersSentChunkTo.size() == 0) {
++            this.papoSharedChunkPacket = null;
++            this.papoSharedChunkPacketDataVersion = Long.MIN_VALUE;
++            this.papoSharedChunkPacketLightVersion = Long.MIN_VALUE;
++            if (this.newChunkHolder.getCurrentChunk() instanceof LevelChunk papoChunk) {
++                papoChunk.papoEvictChunkPacketCache();
++            }
++        }
++        // Papo end - batch 122
+     }
+ 
+     @Override
+diff --git a/net/minecraft/world/level/chunk/LevelChunk.java b/net/minecraft/world/level/chunk/LevelChunk.java
+index 722bbb41c38070bfb0b69b4f39c096ab08cc2b88..c06a7c4ce849c121af35a87441f24fcfdef26940 100644
+--- a/net/minecraft/world/level/chunk/LevelChunk.java
++++ b/net/minecraft/world/level/chunk/LevelChunk.java
+@@ -144,6 +144,18 @@ public class LevelChunk extends ChunkAccess implements DebugValueSource, ca.spot
+     public byte[] papoPacketBufferCache() {
+         return this.papoPacketBufferCache;
+     }
++
++    // Papo start - evict the serialized chunk-packet cache (batch 122)
++    // Called when the chunk's last viewer stops tracking it: with no viewer, no full chunk send can
++    // occur until a new viewer arrives, and that viewer rebuilds the buffer from the (unchanged)
++    // chunk state byte-identically - the version-gated cache is a pure function of that state. Main
++    // thread only, same contract as papoStoreChunkPacketCache.
++    public void papoEvictChunkPacketCache() {
++        this.papoPacketHeightmapsCache = null;
++        this.papoPacketBufferCache = null;
++        this.papoChunkPacketCacheVersion = Long.MIN_VALUE;
++    }
++    // Papo end - evict the serialized chunk-packet cache (batch 122)
+     // Papo end - multi-viewer chunk packet data cache
+ 
+     @Override
