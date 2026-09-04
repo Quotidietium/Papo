@@ -1,0 +1,100 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 5 Sep 2026 00:46:50 +0800
+Subject: [PATCH] Papo: batch 123 allocation-free wire-side signal pull
+ (getBlockSignal specialization - mutable scratch positions + wire-neighbour
+ zero short-circuit under shouldSignal=false, exact
+ getBestNeighborSignal/getDirectSignalTo order and early-exits replicated)
+
+---
+ .../world/level/block/RedStoneWireBlock.java  | 73 ++++++++++++++++++-
+ 1 file changed, 72 insertions(+), 1 deletion(-)
+
+diff --git a/net/minecraft/world/level/block/RedStoneWireBlock.java b/net/minecraft/world/level/block/RedStoneWireBlock.java
+index bd7dd1fa..65c1957a 100644
+--- a/net/minecraft/world/level/block/RedStoneWireBlock.java
++++ b/net/minecraft/world/level/block/RedStoneWireBlock.java
+@@ -331,11 +331,82 @@ public class RedStoneWireBlock extends Block {
+ 
+     public int getBlockSignal(Level level, BlockPos pos) {
+         this.shouldSignal = false;
+-        int bestNeighborSignal = level.getBestNeighborSignal(pos);
++        final int bestNeighborSignal = papoPullBestNeighborSignal(level, pos);
+         this.shouldSignal = true;
+         return bestNeighborSignal;
+     }
+ 
++    // Papo start - batch 123: allocation-free replication of the wire-side signal pull
++    // Replicates SignalGetter.getBestNeighborSignal -> getSignal -> getDirectSignalTo
++    // exactly (same direction order DOWN,UP,NORTH,SOUTH,WEST,EAST; same early-exit-at-15
++    // structure; getDirectSignalTo is invoked for a conductor regardless of the already
++    // read signal, matching getSignal) with two changes that are no-ops under the
++    // shouldSignal=false flag this method runs under:
++    //  1) one MutableBlockPos per level instead of BlockPos.relative()/below()/... per
++    //     direction - all vanilla getSignal/getDirectSignal/isRedstoneConductor
++    //     implementations only read the position (block classes cannot be extended by
++    //     plugins, the block registry is closed), so mutation between reads is invisible;
++    //  2) a redstone_wire neighbour contributes 0 without the virtual dispatch: with
++    //     shouldSignal==false, RedStoneWireBlock.getSignal returns 0 (flag is the first
++    //     condition) and its isRedstoneConductor is false (it is a signal source), so the
++    //     generic path returns exactly 0 for it and never fans out.
++    private int papoPullBestNeighborSignal(final Level level, final BlockPos pos) {
++        int best = 0;
++        final BlockPos.MutableBlockPos papoNeighbor = new BlockPos.MutableBlockPos();
++        final BlockPos.MutableBlockPos papoInner = new BlockPos.MutableBlockPos();
++
++        for (final Direction papoDirection : DIRECTIONS) { // Papo - cached array; DOWN,UP,N,S,W,E
++            papoNeighbor.setWithOffset(pos, papoDirection);
++            final BlockState papoState = level.getBlockState(papoNeighbor);
++            int papoSignal;
++            if (papoState.is(Blocks.REDSTONE_WIRE)) {
++                papoSignal = 0;
++            } else {
++                papoSignal = papoState.getSignal(level, papoNeighbor, papoDirection);
++                if (papoState.isRedstoneConductor(level, papoNeighbor)) {
++                    // SignalGetter.getDirectSignalTo at this position, wire pulls resolve to 0
++                    int papoDirect = 0;
++                    papoInner.setWithOffset(papoNeighbor, Direction.DOWN);
++                    papoDirect = Math.max(papoDirect, papoDirectSignalSkippingWire(level, papoInner, Direction.DOWN));
++                    if (papoDirect < 15) {
++                        papoInner.setWithOffset(papoNeighbor, Direction.UP);
++                        papoDirect = Math.max(papoDirect, papoDirectSignalSkippingWire(level, papoInner, Direction.UP));
++                    }
++                    if (papoDirect < 15) {
++                        papoInner.setWithOffset(papoNeighbor, Direction.NORTH);
++                        papoDirect = Math.max(papoDirect, papoDirectSignalSkippingWire(level, papoInner, Direction.NORTH));
++                    }
++                    if (papoDirect < 15) {
++                        papoInner.setWithOffset(papoNeighbor, Direction.SOUTH);
++                        papoDirect = Math.max(papoDirect, papoDirectSignalSkippingWire(level, papoInner, Direction.SOUTH));
++                    }
++                    if (papoDirect < 15) {
++                        papoInner.setWithOffset(papoNeighbor, Direction.WEST);
++                        papoDirect = Math.max(papoDirect, papoDirectSignalSkippingWire(level, papoInner, Direction.WEST));
++                    }
++                    if (papoDirect < 15) {
++                        papoInner.setWithOffset(papoNeighbor, Direction.EAST);
++                        papoDirect = Math.max(papoDirect, papoDirectSignalSkippingWire(level, papoInner, Direction.EAST));
++                    }
++                    papoSignal = Math.max(papoSignal, papoDirect);
++                }
++            }
++            if (papoSignal >= 15) {
++                return 15;
++            }
++            if (papoSignal > best) {
++                best = papoSignal;
++            }
++        }
++        return best;
++    }
++
++    private static int papoDirectSignalSkippingWire(final Level level, final BlockPos papoAt, final Direction papoFrom) {
++        final BlockState papoState = level.getBlockState(papoAt);
++        return papoState.is(Blocks.REDSTONE_WIRE) ? 0 : papoState.getDirectSignal(level, papoAt, papoFrom);
++    }
++    // Papo end - batch 123
++
+     private void checkCornerChangeAt(Level level, BlockPos pos) {
+         if (level.getBlockState(pos).is(this)) {
+             level.updateNeighborsAt(pos, this);
