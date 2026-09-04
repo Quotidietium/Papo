@@ -2471,3 +2471,21 @@ CollectingNeighborUpdater 四种更新 record 池化（可变类+每型自由表
 单态内联友好性，成本不现在等价复刻模型中；分配消除型重构必须过宏基准裁决。
 报告：[note/report/perf/2026-09-05-neighbor-updater-pooling-rejected-batch124.md](report/perf/2026-09-05-neighbor-updater-pooling-rejected-batch124.md)。
 NeighborUpdaterPoolBench 留库（机制模型可复用）。
+
+---
+
+## 批次 125（2026-09-05）：粉目标强度单遍合并 + 评估冗余勘察（0.73.0 → 0.74.0）
+
+0258 = calculateTargetStrength 单遍合并扫描（两遍读合一：每评估省 ~5 位置读 +
+4 次 isRedstoneConductor 重复；wireMax 只喂 vanilla incoming 认的位置、导体扇出
+只喂信号侧、方向序/15 早退逐行复刻）；1M 随机邻域对拍全等；JMH 模型噪声不可
+分辨（机制保留，0230 先例）。0259 = 评估冗余勘察探针：**87.9% 粉评估无变化**
+（30870/tick，27122 不变）——脏追踪轮上限确立。放弃路线留档：粉 POWER-only
+setBlock 形状扇出跳过因 CoralBlock.updateShape 消耗世界随机流（60+nextInt(40)）
+不可严格等价——判例：纯函数论证必须覆盖随机流与 schedule 侧效应，107 个
+updateShape 覆写面逐一排查是必要成本。
+
+**环境漂移判例（本批最重要产出）**：机器 ~01:15 进入持续慢窗，b123 同二进制
+原窗 23043 → 现窗 27195（+18%）；批次124 的"−26% 劣化"修正为环境主导（报告
+已加修正头，处置维持保守不采纳）。**规则：宏 A/B 判定必须附带同时窗对照腿。**
+报告：[note/report/perf/2026-09-05-wire-target-merge-batch125.md](report/perf/2026-09-05-wire-target-merge-batch125.md)。
