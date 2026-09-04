@@ -2459,3 +2459,15 @@ PASS。JFR 确认 Int2ObjectOpenHashMap.get 从热点榜消失。
 下一轮前沿（画像副产物）：getWireSignal 属性读与邻接更新机械（handleNeighborChanged/
 updateShape/runUpdates 池化）为前二族；粉评估器同级联重算冗余为 VANILLA 语义内
 最大剩余面（需输入脏追踪设计）。
+
+---
+
+## 批次 124（2026-09-05）：邻接更新对象池化——否决轮（0258 回退，版本保持 0.73.0）
+
+CollectingNeighborUpdater 四种更新 record 池化（可变类+每型自由表+位置快照，
+执行序逐行保留，JMH 分配 44029→0.37 B/op、模型时间中性、执行序自检 100×1000
+全等）——但宏基准两腿复现 **blockTicks 中位 23043→28993/28091（−20~26%）真实
+劣化**，按 R2 批次60 判例回退留档。判例：record→可变池化破坏 JIT 标量替换/
+单态内联友好性，成本不现在等价复刻模型中；分配消除型重构必须过宏基准裁决。
+报告：[note/report/perf/2026-09-05-neighbor-updater-pooling-rejected-batch124.md](report/perf/2026-09-05-neighbor-updater-pooling-rejected-batch124.md)。
+NeighborUpdaterPoolBench 留库（机制模型可复用）。
