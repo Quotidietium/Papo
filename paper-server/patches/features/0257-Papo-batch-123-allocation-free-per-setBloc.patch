@@ -1,0 +1,87 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 5 Sep 2026 00:55:22 +0800
+Subject: [PATCH] Papo: batch 123 allocation-free per-setBlock POI check
+ (forStateOrNull + reference comparison, interned registry holders make it
+ equivalent to the Optional pair equality)
+
+---
+ net/minecraft/server/level/ServerLevel.java   | 43 +++++++++++--------
+ .../world/entity/ai/village/poi/PoiTypes.java |  8 ++++
+ 2 files changed, 34 insertions(+), 17 deletions(-)
+
+diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
+index 447c0a3a..e3bdaa61 100644
+--- a/net/minecraft/server/level/ServerLevel.java
++++ b/net/minecraft/server/level/ServerLevel.java
+@@ -2343,25 +2343,34 @@ public class ServerLevel extends Level implements ServerEntityGetter, WorldGenLe
+ 
+     @Override
+     public void updatePOIOnBlockStateChange(BlockPos pos, BlockState oldState, BlockState newState) {
+-        Optional<Holder<PoiType>> optional = PoiTypes.forState(oldState);
+-        Optional<Holder<PoiType>> optional1 = PoiTypes.forState(newState);
+-        if (!Objects.equals(optional, optional1)) {
++        // Papo start - batch 123: registry holders are interned, so reference inequality
++        // (null included) is exactly the old !Objects.equals(Optional, Optional); this
++        // runs on every setBlock and the Optional pair was pure allocation for the
++        // overwhelmingly common no-POI case
++        Holder<PoiType> optional = PoiTypes.forStateOrNull(oldState);
++        Holder<PoiType> optional1 = PoiTypes.forStateOrNull(newState);
++        if (optional != optional1) {
++        // Papo end - batch 123
+             BlockPos blockPos = pos.immutable();
+-            optional.ifPresent(holder -> this.getServer().execute(() -> {
+-                this.getPoiManager().remove(blockPos);
+-                this.debugSynchronizers.dropPoi(blockPos);
+-            }));
+-            optional1.ifPresent(holder -> this.getServer().execute(() -> {
+-                // Paper start - Remove stale POIs
+-                if (optional.isEmpty() && this.getPoiManager().exists(blockPos, ignored -> true)) {
++            if (optional != null) {
++                this.getServer().execute(() -> {
+                     this.getPoiManager().remove(blockPos);
+-                }
+-                // Paper end - Remove stale POIs
+-                PoiRecord poiRecord = this.getPoiManager().add(blockPos, (Holder<PoiType>)holder);
+-                if (poiRecord != null) {
+-                    this.debugSynchronizers.registerPoi(poiRecord);
+-                }
+-            }));
++                    this.debugSynchronizers.dropPoi(blockPos);
++                });
++            }
++            if (optional1 != null) {
++                this.getServer().execute(() -> {
++                    // Paper start - Remove stale POIs
++                    if (optional == null && this.getPoiManager().exists(blockPos, ignored -> true)) {
++                        this.getPoiManager().remove(blockPos);
++                    }
++                    // Paper end - Remove stale POIs
++                    PoiRecord poiRecord = this.getPoiManager().add(blockPos, (Holder<PoiType>)optional1);
++                    if (poiRecord != null) {
++                        this.debugSynchronizers.registerPoi(poiRecord);
++                    }
++                });
++            }
+         }
+     }
+ 
+diff --git a/net/minecraft/world/entity/ai/village/poi/PoiTypes.java b/net/minecraft/world/entity/ai/village/poi/PoiTypes.java
+index df666bda..e2841f11 100644
+--- a/net/minecraft/world/entity/ai/village/poi/PoiTypes.java
++++ b/net/minecraft/world/entity/ai/village/poi/PoiTypes.java
+@@ -114,6 +114,14 @@ public class PoiTypes {
+         return Optional.ofNullable(TYPE_BY_STATE.get(state));
+     }
+ 
++    // Papo start - batch 123: allocation-free lookup for the per-setBlock POI check
++    // (registry holders are interned, so null vs reference comparison is equivalent
++    // to the old Optional pair equality)
++    public static Holder<PoiType> forStateOrNull(BlockState state) {
++        return TYPE_BY_STATE.get(state);
++    }
++    // Papo end - batch 123
++
+     public static boolean hasPoi(BlockState state) {
+         return TYPE_BY_STATE.containsKey(state);
+     }
