@@ -39,6 +39,23 @@ public final class PapoTickProfile {
         }
     }
 
+    // Papo start - batch 123 (R3 batch 112 port): activity counters for tick sub-phases
+    // Counts occurrences (not wall time) of per-block events, reported as "count <key>" rows
+    // so load presence (e.g. redstone oscillation) can be gated independently of timing.
+    private static final ConcurrentHashMap<String, long[]> COUNTS = new ConcurrentHashMap<>();
+
+    /** Adds {@code delta} to a named counter (typ. 1 per event). */
+    public static void addCount(final String key, final long delta) {
+        if (!ENABLED) {
+            return;
+        }
+        final long[] arr = COUNTS.computeIfAbsent(key, k -> new long[1]);
+        synchronized (arr) {
+            arr[0] += delta;
+        }
+    }
+    // Papo end - batch 123
+
     /** Prints + resets the window every {@link #REPORT_EVERY_TICKS} ticks (call from tickServer). */
     public static void maybeReport(final int tickCount) {
         if (!ENABLED || tickCount % REPORT_EVERY_TICKS != 0) {
@@ -58,6 +75,17 @@ public final class PapoTickProfile {
                 e.getKey(), v[0] / 1_000_000.0, v[0] / 1_000.0 / REPORT_EVERY_TICKS,
                 100.0 * v[0] / Math.max(1, measured), v[1]));
         }
+        // Papo start - batch 123: activity counter rows (avg/tick of counted events)
+        if (!COUNTS.isEmpty()) {
+            final List<Map.Entry<String, long[]>> counts = new ArrayList<>(COUNTS.entrySet());
+            counts.sort(Map.Entry.comparingByKey());
+            for (final Map.Entry<String, long[]> e : counts) {
+                System.out.println(String.format("PapoTickProfile.count %-26s total=%7d avg/tick=%7.1f",
+                    e.getKey(), e.getValue()[0], e.getValue()[0] / (double) REPORT_EVERY_TICKS));
+            }
+            COUNTS.clear();
+        }
+        // Papo end - batch 123
         TOTALS.clear();
     }
 }

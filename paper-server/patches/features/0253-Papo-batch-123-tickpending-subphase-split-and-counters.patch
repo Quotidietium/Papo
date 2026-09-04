@@ -1,0 +1,65 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 5 Sep 2026 00:21:53 +0800
+Subject: [PATCH] Papo: batch 123 tickPending sub-phase split
+ (blockTicks/fluidTicks/blockEvents) and scheduled-tick/block-event run
+ counters (diagnostic-only, papo.tickProfile-gated)
+
+---
+ net/minecraft/server/level/ServerLevel.java | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
+index 2fc20049..447c0a3a 100644
+--- a/net/minecraft/server/level/ServerLevel.java
++++ b/net/minecraft/server/level/ServerLevel.java
+@@ -795,9 +795,13 @@ public class ServerLevel extends Level implements ServerEntityGetter, WorldGenLe
+         if (!this.isDebug() && runsNormally) {
+             long l = this.getGameTime();
+             profilerFiller.push("blockTicks");
++            final long papoTBlockTicks = System.nanoTime(); // Papo - batch 123 tick profile
+             this.blockTicks.tick(l, paperConfig().environment.maxBlockTicks, this::tickBlock); // Paper - configurable max block ticks
++            io.papermc.paper.util.PapoTickProfile.add("level.blockTicks", papoTBlockTicks); // Papo - batch 123
+             profilerFiller.popPush("fluidTicks");
++            final long papoTFluidTicks = System.nanoTime(); // Papo - batch 123 tick profile
+             this.fluidTicks.tick(l, paperConfig().environment.maxFluidTicks, this::tickFluid); // Paper - configurable max fluid ticks
++            io.papermc.paper.util.PapoTickProfile.add("level.fluidTicks", papoTFluidTicks); // Papo - batch 123
+             profilerFiller.pop();
+         }
+ 
+@@ -811,9 +815,11 @@ public class ServerLevel extends Level implements ServerEntityGetter, WorldGenLe
+         this.getChunkSource().tick(hasTimeLeft, true);
+         io.papermc.paper.util.PapoTickProfile.add("level.chunkSource", papoTChunkSource); // Papo - batch 90
+         profilerFiller.popPush("blockEvents");
++        final long papoTBlockEvents = System.nanoTime(); // Papo - batch 123 tick profile
+         if (runsNormally) {
+             this.runBlockEvents();
+         }
++        io.papermc.paper.util.PapoTickProfile.add("level.blockEvents", papoTBlockEvents); // Papo - batch 123
+ 
+         this.handlingTick = false;
+         profilerFiller.pop();
+@@ -1303,6 +1309,7 @@ public class ServerLevel extends Level implements ServerEntityGetter, WorldGenLe
+     }
+ 
+     private void tickFluid(BlockPos pos, Fluid fluid) {
++        io.papermc.paper.util.PapoTickProfile.addCount("rs.fluidTickRuns", 1); // Papo - batch 123 activity counter (diagnostic-only, papo.tickProfile-gated)
+         BlockState blockState = this.getBlockState(pos);
+         FluidState fluidState = blockState.getFluidState();
+         if (fluidState.is(fluid)) {
+@@ -1317,6 +1324,7 @@ public class ServerLevel extends Level implements ServerEntityGetter, WorldGenLe
+     }
+ 
+     private void tickBlock(BlockPos pos, Block block) {
++        io.papermc.paper.util.PapoTickProfile.addCount("rs.blockTickRuns", 1); // Papo - batch 123 activity counter (diagnostic-only, papo.tickProfile-gated)
+         BlockState blockState = this.getBlockState(pos);
+         if (blockState.is(block)) {
+             blockState.tick(this, pos, this.random);
+@@ -2017,6 +2025,7 @@ public class ServerLevel extends Level implements ServerEntityGetter, WorldGenLe
+         while (!this.blockEvents.isEmpty()) {
+             BlockEventData blockEventData = this.blockEvents.removeFirst();
+             if (this.shouldTickBlocksAt(blockEventData.pos())) {
++                io.papermc.paper.util.PapoTickProfile.addCount("rs.blockEventRuns", 1); // Papo - batch 123 activity counter (diagnostic-only, papo.tickProfile-gated)
+                 if (this.doBlockEvent(blockEventData)) {
+                     this.server
+                         .getPlayerList()
