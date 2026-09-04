@@ -1,0 +1,272 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 5 Sep 2026 00:52:26 +0800
+Subject: [PATCH] Papo: batch 123 probe-free scheduled-tick dedup
+ (PapoPosTypeSet open-addressing (packedPos,type) set replaces
+ UNIQUE_TICK_HASH ObjectOpenCustomHashSet in LevelChunkTicks + eager
+ willTickThisTick membership in LevelTicks - no probe record allocation on the
+ re-schedule check hot path)
+
+---
+ .../world/ticks/LevelChunkTicks.java          |  17 ++-
+ net/minecraft/world/ticks/LevelTicks.java     |  21 ++-
+ net/minecraft/world/ticks/PapoPosTypeSet.java | 121 ++++++++++++++++++
+ 3 files changed, 141 insertions(+), 18 deletions(-)
+ create mode 100644 net/minecraft/world/ticks/PapoPosTypeSet.java
+
+diff --git a/net/minecraft/world/ticks/LevelChunkTicks.java b/net/minecraft/world/ticks/LevelChunkTicks.java
+index 0b139712..a7993a02 100644
+--- a/net/minecraft/world/ticks/LevelChunkTicks.java
++++ b/net/minecraft/world/ticks/LevelChunkTicks.java
+@@ -1,6 +1,5 @@
+ package net.minecraft.world.ticks;
+ 
+-import it.unimi.dsi.fastutil.objects.ObjectOpenCustomHashSet;
+ import java.util.ArrayList;
+ import java.util.Iterator;
+ import java.util.List;
+@@ -16,7 +15,11 @@ import org.jspecify.annotations.Nullable;
+ public class LevelChunkTicks<T> implements SerializableTickContainer<T>, TickContainerAccess<T>, ca.spottedleaf.moonrise.patches.chunk_system.ticks.ChunkSystemLevelChunkTicks { // Paper - rewrite chunk system
+     private final Queue<ScheduledTick<T>> tickQueue = new PriorityQueue<>(ScheduledTick.DRAIN_ORDER);
+     private @Nullable List<SavedTick<T>> pendingTicks;
+-    private final Set<ScheduledTick<?>> ticksPerPosition = new ObjectOpenCustomHashSet<>(ScheduledTick.UNIQUE_TICK_HASH);
++    // Papo start - batch 123: (packedPos, type) open-addressing set - identical membership
++    // to the old UNIQUE_TICK_HASH ObjectOpenCustomHashSet but contains() needs no probe
++    // ScheduledTick allocation (hasScheduledTick is on the redstone re-schedule hot path)
++    private final PapoPosTypeSet<T> ticksPerPosition = new PapoPosTypeSet<>();
++    // Papo end
+     private @Nullable BiConsumer<LevelChunkTicks<T>, ScheduledTick<T>> onTickAdded;
+ 
+     // Paper start - rewrite chunk system
+@@ -50,7 +53,7 @@ public class LevelChunkTicks<T> implements SerializableTickContainer<T>, TickCon
+         this.pendingTicks = pendingTicks;
+ 
+         for (SavedTick<T> savedTick : pendingTicks) {
+-            this.ticksPerPosition.add(ScheduledTick.probe(savedTick.type(), savedTick.pos()));
++            this.ticksPerPosition.add(savedTick.pos().asLong(), savedTick.type()); // Papo - batch 123
+         }
+     }
+ 
+@@ -65,7 +68,7 @@ public class LevelChunkTicks<T> implements SerializableTickContainer<T>, TickCon
+     public @Nullable ScheduledTick<T> poll() {
+         ScheduledTick<T> scheduledTick = this.tickQueue.poll();
+         if (scheduledTick != null) {
+-            this.ticksPerPosition.remove(scheduledTick); this.dirty = true; // Paper - rewrite chunk system
++            this.ticksPerPosition.remove(scheduledTick.pos().asLong(), scheduledTick.type()); this.dirty = true; // Papo - batch 123 // Paper - rewrite chunk system
+         }
+ 
+         return scheduledTick;
+@@ -73,7 +76,7 @@ public class LevelChunkTicks<T> implements SerializableTickContainer<T>, TickCon
+ 
+     @Override
+     public void schedule(ScheduledTick<T> tick) {
+-        if (this.ticksPerPosition.add(tick)) {
++        if (!this.ticksPerPosition.add(tick.pos().asLong(), tick.type())) { // Papo - batch 123 (add returns true when present)
+             this.scheduleUnchecked(tick); this.dirty = true; // Paper - rewrite chunk system
+         }
+     }
+@@ -87,7 +90,7 @@ public class LevelChunkTicks<T> implements SerializableTickContainer<T>, TickCon
+ 
+     @Override
+     public boolean hasScheduledTick(BlockPos pos, T type) {
+-        return this.ticksPerPosition.contains(ScheduledTick.probe(type, pos));
++        return this.ticksPerPosition.contains(pos.asLong(), type); // Papo - batch 123 (probe-free)
+     }
+ 
+     public void removeIf(Predicate<ScheduledTick<T>> predicate) {
+@@ -97,7 +100,7 @@ public class LevelChunkTicks<T> implements SerializableTickContainer<T>, TickCon
+             ScheduledTick<T> scheduledTick = iterator.next();
+             if (predicate.test(scheduledTick)) {
+                 iterator.remove(); this.dirty = true; // Paper - rewrite chunk system
+-                this.ticksPerPosition.remove(scheduledTick);
++                this.ticksPerPosition.remove(scheduledTick.pos().asLong(), scheduledTick.type()); // Papo - batch 123
+             }
+         }
+     }
+diff --git a/net/minecraft/world/ticks/LevelTicks.java b/net/minecraft/world/ticks/LevelTicks.java
+index b932f32d..b97557d0 100644
+--- a/net/minecraft/world/ticks/LevelTicks.java
++++ b/net/minecraft/world/ticks/LevelTicks.java
+@@ -7,7 +7,6 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
+ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+ import it.unimi.dsi.fastutil.longs.Long2LongMap.Entry;
+ import it.unimi.dsi.fastutil.objects.ObjectIterator;
+-import it.unimi.dsi.fastutil.objects.ObjectOpenCustomHashSet;
+ import java.util.ArrayDeque;
+ import java.util.ArrayList;
+ import java.util.Comparator;
+@@ -37,7 +36,13 @@ public class LevelTicks<T> implements LevelTickAccess<T> {
+     private final Queue<LevelChunkTicks<T>> containersToTick = new PriorityQueue<>(CONTAINER_DRAIN_ORDER);
+     private final Queue<ScheduledTick<T>> toRunThisTick = new ArrayDeque<>();
+     private final List<ScheduledTick<T>> alreadyRunThisTick = new ArrayList<>();
+-    private final Set<ScheduledTick<?>> toRunThisTickSet = new ObjectOpenCustomHashSet<>(ScheduledTick.UNIQUE_TICK_HASH);
++    // Papo start - batch 123: (packedPos, type) set maintained eagerly at schedule-for-
++    // this-tick time instead of the lazy one-shot copy in calculateTickSetIfNeeded.
++    // Between the collect and run phases nothing is appended to toRunThisTick, and both
++    // variants drop entries on poll, so willTickThisTick observes identical membership
++    // at every query point; the probe ScheduledTick allocation per query is gone.
++    private final PapoPosTypeSet<T> toRunThisTickSet = new PapoPosTypeSet<>();
++    // Papo end
+     private final BiConsumer<LevelChunkTicks<T>, ScheduledTick<T>> chunkScheduleUpdater = (levelChunkTicks, scheduledTick) -> {
+         if (scheduledTick.equals(levelChunkTicks.peek())) {
+             this.updateContainerScheduling(scheduledTick);
+@@ -172,6 +177,7 @@ public class LevelTicks<T> implements LevelTickAccess<T> {
+ 
+     private void scheduleForThisTick(ScheduledTick<T> tick) {
+         this.toRunThisTick.add(tick);
++        this.toRunThisTickSet.add(tick.pos().asLong(), tick.type()); // Papo - batch 123
+     }
+ 
+     private boolean canScheduleMoreTicks(int maxAllowedTicks) {
+@@ -182,7 +188,7 @@ public class LevelTicks<T> implements LevelTickAccess<T> {
+         while (!this.toRunThisTick.isEmpty()) {
+             ScheduledTick<T> scheduledTick = this.toRunThisTick.poll();
+             if (!this.toRunThisTickSet.isEmpty()) {
+-                this.toRunThisTickSet.remove(scheduledTick);
++                this.toRunThisTickSet.remove(scheduledTick.pos().asLong(), scheduledTick.type()); // Papo - batch 123
+             }
+ 
+             this.alreadyRunThisTick.add(scheduledTick);
+@@ -205,14 +211,7 @@ public class LevelTicks<T> implements LevelTickAccess<T> {
+ 
+     @Override
+     public boolean willTickThisTick(BlockPos pos, T type) {
+-        this.calculateTickSetIfNeeded();
+-        return this.toRunThisTickSet.contains(ScheduledTick.probe(type, pos));
+-    }
+-
+-    private void calculateTickSetIfNeeded() {
+-        if (this.toRunThisTickSet.isEmpty() && !this.toRunThisTick.isEmpty()) {
+-            this.toRunThisTickSet.addAll(this.toRunThisTick);
+-        }
++        return this.toRunThisTickSet.contains(pos.asLong(), type); // Papo - batch 123 (probe-free, eagerly maintained)
+     }
+ 
+     private void forContainersInArea(BoundingBox area, LevelTicks.PosAndContainerConsumer<T> action) {
+diff --git a/net/minecraft/world/ticks/PapoPosTypeSet.java b/net/minecraft/world/ticks/PapoPosTypeSet.java
+new file mode 100644
+index 00000000..a65ac264
+--- /dev/null
++++ b/net/minecraft/world/ticks/PapoPosTypeSet.java
+@@ -0,0 +1,121 @@
++package net.minecraft.world.ticks;
++
++// Papo start - batch 123: allocation-free (packedPos, type) dedup set for scheduled ticks
++// Replaces ObjectOpenCustomHashSet<ScheduledTick<?>> (ScheduledTick.UNIQUE_TICK_HASH),
++// which requires a fresh probe ScheduledTick record allocation on every
++// hasScheduledTick/willTickThisTick contains() call. Membership semantics are identical
++// to UNIQUE_TICK_HASH: same position AND identical type reference (its equals() compares
++// type() with ==). Open addressing with linear probing and backward-shift deletion.
++final class PapoPosTypeSet<T> {
++    private long[] keys = new long[16];
++    private Object[] types = new Object[16];
++    private int mask = 15;
++    private int size;
++
++    private static int hash(final long key, final Object type) {
++        int h = (int) (key ^ (key >>> 32));
++        h = h * 31 + System.identityHashCode(type);
++        h ^= h >>> 16;
++        return h;
++    }
++
++    private void resize() {
++        final long[] oldKeys = this.keys;
++        final Object[] oldTypes = this.types;
++        final int newCap = oldKeys.length << 1;
++        this.keys = new long[newCap];
++        this.types = new Object[newCap];
++        this.mask = newCap - 1;
++        this.size = 0;
++        for (int i = 0; i < oldKeys.length; i++) {
++            final Object type = oldTypes[i];
++            if (type != null) {
++                this.addUnchecked(oldKeys[i], type);
++            }
++        }
++    }
++
++    // caller guarantees the pair is absent
++    private void addUnchecked(final long key, final Object type) {
++        int slot = hash(key, type) & this.mask;
++        while (this.types[slot] != null) {
++            slot = (slot + 1) & this.mask;
++        }
++        this.keys[slot] = key;
++        this.types[slot] = type;
++        this.size++;
++    }
++
++    /** @return true if the pair was already present (not added). */
++    public boolean add(final long key, final T type) {
++        int slot = hash(key, type) & this.mask;
++        while (this.types[slot] != null) {
++            if (this.keys[slot] == key && this.types[slot] == type) {
++                return true;
++            }
++            slot = (slot + 1) & this.mask;
++        }
++        if (this.size >= (this.mask + 1) * 3 / 4) {
++            this.resize();
++            this.addUnchecked(key, type);
++            return false;
++        }
++        this.keys[slot] = key;
++        this.types[slot] = type;
++        this.size++;
++        return false;
++    }
++
++    /** @return true if a matching pair was removed. */
++    public boolean remove(final long key, final T type) {
++        int slot = hash(key, type) & this.mask;
++        while (this.types[slot] != null) {
++            if (this.keys[slot] == key && this.types[slot] == type) {
++                // backward-shift deletion keeps probe chains intact: an element at `probe`
++                // may shift into `hole` iff hole lies on its own probe path from home,
++                // i.e. (probe-hole) mod n <= (probe-home) mod n (equality covers the
++                // home==hole case; the at-home element a==0 never moves)
++                int hole = slot;
++                int probe = slot;
++                while (true) {
++                    probe = (probe + 1) & this.mask;
++                    if (this.types[probe] == null) {
++                        break;
++                    }
++                    final int home = hash(this.keys[probe], this.types[probe]) & this.mask;
++                    if (((probe - hole) & this.mask) <= ((probe - home) & this.mask)) {
++                        this.keys[hole] = this.keys[probe];
++                        this.types[hole] = this.types[probe];
++                        hole = probe;
++                    }
++                }
++                this.types[hole] = null;
++                this.size--;
++                return true;
++            }
++            slot = (slot + 1) & this.mask;
++        }
++        return false;
++    }
++
++    public boolean contains(final long key, final T type) {
++        int slot = hash(key, type) & this.mask;
++        while (this.types[slot] != null) {
++            if (this.keys[slot] == key && this.types[slot] == type) {
++                return true;
++            }
++            slot = (slot + 1) & this.mask;
++        }
++        return false;
++    }
++
++    public boolean isEmpty() {
++        return this.size == 0;
++    }
++
++    public void clear() {
++        java.util.Arrays.fill(this.types, null);
++        this.size = 0;
++    }
++}
++// Papo end - batch 123
