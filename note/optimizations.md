@@ -2421,3 +2421,41 @@ papo90 口径不变）。papo95seedB 20bot × 10min：零错误 exit 0；相位�
   GB 级常驻，大视距多玩家场景）。0.59.0 为批次 104 长时浸泡验证态（12k ticks 零错误）。
 - 本地 main 领先 origin/main 48 提交（0.51.0 → 0.59.0 未推送）；线上 release 停在
   0.54.0，均在保留范围内，无需处理。
+
+---
+
+## 批次 123（2026-09-05）：R4 开篇——红石轴 VANILLA 评估级联常量因子（0.59.0 → 0.73.0）
+
+系列背景：用户 2026-09-05 以更宽授权重启循环（红线=安全/稳定/兼容；授权完全重写；
+内部 API/方法可增删，插件面 API 与用户体验一致为准）。分支 perf/rewrite-r4。
+版本跳段说明：0.60.0–0.71.4 属已抛弃 R2+R3 段，0.72.0 被远端废弃分支批次118 占用，
+起点取 0.73.0 消歧。
+
+画像（0253 探针=R3 0262 移植 + JFR）：N=441 环振荡器稳态 **level.blockTicks
+28743us/tick（中位，20 振荡窗）**，JFR ~90% 样本在 VANILLA 粉评估级联
+（getWireSignal 14.2%/getSignal 12.1%/handleNeighborChanged 11.2%/getDirectSignal
+10.0%/属性表 ~8%）。传播机制闭环：getSignal 对导体邻居（石地板）额外 getDirectSignalTo
+六向拉取；拉取期 shouldSignal=false 使粉邻居恒返 0。
+
+四补丁（全部顺序保持型，可证等价）：
+- **0254** 属性表直接映射槽缓存（id&(size-1) 键校验，冲突/外来回退 map，纯正缓存）；
+  全游戏 getValue/setValue 受益。JMH 1.18×（HashMap 装箱模型=下界）。
+- **0255** 粉信号拉取特化（两 MutableBlockPos + 粉邻居零派化短路；方向序/15 早退/
+  导体必拉逐行对齐 getBestNeighborSignal/getDirectSignalTo 原文）。7~13 分配→0。
+  JMH 1.10×（静态调用模型=下界）。
+- **0256** 计划 tick 去重 probe-free（PapoPosTypeSet (packedPos,type) 开放寻址+后移
+  删除；LevelTicks eager 维护消灭惰性拷贝）。JMH contains 1.32×/mixed 1.36×。
+- **0257** 每 setBlock POI 检查去 Optional（注册表 Holder 驻留→引用比较等价）。
+  模型内 0.94× 为 EA 伪影（-prof gc 证明，批次43 先例），机制保留并披露。
+
+宏 A/B（两腿同条件：探针+JFR 同开，N=441×240s）：**blockTicks 中位 28743→23043
+us/tick（−19.8%，1.247×），均值 −18.4%**；窗分布从 23241–35780 收紧至
+22549–27200；振荡速率逐位一致（每窗 176400=441×400）；在场/活动/错误门双腿
+PASS。JFR 确认 Int2ObjectOpenHashMap.get 从热点榜消失。
+
+4 类 JMH 自检 ALL OK（10 万~100 万级随机等价对拍）；compileJava+全量 applyPatches
+全绿。报告：[note/report/perf/2026-09-05-redstone-constant-factors-batch123.md](report/perf/2026-09-05-redstone-constant-factors-batch123.md)。
+
+下一轮前沿（画像副产物）：getWireSignal 属性读与邻接更新机械（handleNeighborChanged/
+updateShape/runUpdates 池化）为前二族；粉评估器同级联重算冗余为 VANILLA 语义内
+最大剩余面（需输入脏追踪设计）。
