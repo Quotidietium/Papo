@@ -1,0 +1,101 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 5 Sep 2026 00:45:34 +0800
+Subject: [PATCH] Papo: batch 123 direct-mapped id-to-Indexer slot cache in
+ ZeroCollidingReferenceStateTable (pure positive cache, verify-by-key with map
+ fallback) - kills the per-getValue/setValue Int2ObjectOpenHashMap hash+probe
+ server-wide
+
+---
+ .../ZeroCollidingReferenceStateTable.java     | 47 +++++++++++++++++--
+ 1 file changed, 43 insertions(+), 4 deletions(-)
+
+diff --git a/ca/spottedleaf/moonrise/patches/blockstate_propertyaccess/util/ZeroCollidingReferenceStateTable.java b/ca/spottedleaf/moonrise/patches/blockstate_propertyaccess/util/ZeroCollidingReferenceStateTable.java
+index 866f38eb..e94f64ab 100644
+--- a/ca/spottedleaf/moonrise/patches/blockstate_propertyaccess/util/ZeroCollidingReferenceStateTable.java
++++ b/ca/spottedleaf/moonrise/patches/blockstate_propertyaccess/util/ZeroCollidingReferenceStateTable.java
+@@ -24,6 +24,16 @@ public final class ZeroCollidingReferenceStateTable<O, S> {
+     private final Int2ObjectOpenHashMap<Indexer> propertyToIndexer;
+     private S[] lookup;
+     private final Collection<Property<?>> properties;
++    // Papo start - batch 123: direct-mapped id->Indexer slot cache
++    // propertyToIndexer (Int2ObjectOpenHashMap) pays hash+probe on every getValue/setValue
++    // server-wide; tables hold only a handful of properties, so a small id-keyed direct
++    // array answers most lookups with one int compare. Slots are verify-by-key (only an
++    // exact id hit returns the cached Indexer); colliding or foreign ids fall through to
++    // the map, so this is a pure positive cache with identical results by construction.
++    private final int papoSlotMask;
++    private final int[] papoSlotIds;
++    private final Indexer[] papoSlotIndexers;
++    // Papo end
+ 
+     public ZeroCollidingReferenceStateTable(final Collection<Property<?>> properties) {
+         this.propertyToIndexer = new Int2ObjectOpenHashMap<>(properties.size());
+@@ -56,10 +66,39 @@ public final class ZeroCollidingReferenceStateTable<O, S> {
+ 
+             currentMultiple *= totalValues;
+         }
++
++        // Papo start - batch 123: populate the direct-mapped id->Indexer slots
++        int papoSlots = 8;
++        while (papoSlots < properties.size() * 2 && papoSlots < 32) {
++            papoSlots <<= 1;
++        }
++        this.papoSlotMask = papoSlots - 1;
++        this.papoSlotIds = new int[papoSlots];
++        java.util.Arrays.fill(this.papoSlotIds, -1);
++        this.papoSlotIndexers = new Indexer[papoSlots];
++        for (final it.unimi.dsi.fastutil.ints.Int2ObjectMap.Entry<Indexer> papoEntry : this.propertyToIndexer.int2ObjectEntrySet()) {
++            final int papoId = papoEntry.getIntKey();
++            final int papoSlot = papoId & this.papoSlotMask;
++            if (this.papoSlotIds[papoSlot] == -1) {
++                this.papoSlotIds[papoSlot] = papoId;
++                this.papoSlotIndexers[papoSlot] = papoEntry.getValue();
++            } // else: two of this table's ids share a slot - both keep the map path
++        }
++        // Papo end
++    }
++
++    // Papo start - batch 123: cached indexer resolution (verify-by-key slot, map fallback)
++    private Indexer papoIndexer(final int id) {
++        final int slot = id & this.papoSlotMask;
++        if (this.papoSlotIds[slot] == id) {
++            return this.papoSlotIndexers[slot];
++        }
++        return this.propertyToIndexer.get(id);
+     }
++    // Papo end
+ 
+     public <T extends Comparable<T>> boolean hasProperty(final Property<T> property) {
+-        return this.propertyToIndexer.containsKey(((PropertyAccess<T>)property).moonrise$getId());
++        return this.papoIndexer(((PropertyAccess<T>)property).moonrise$getId()) != null; // Papo - batch 123 slot cache
+     }
+ 
+     public long getIndex(final StateHolder<O, S> stateHolder) {
+@@ -104,7 +143,7 @@ public final class ZeroCollidingReferenceStateTable<O, S> {
+     }
+ 
+     public <T extends Comparable<T>> T get(final long index, final Property<T> property) {
+-        final Indexer indexer = this.propertyToIndexer.get(((PropertyAccess<T>)property).moonrise$getId());
++        final Indexer indexer = this.papoIndexer(((PropertyAccess<T>)property).moonrise$getId()); // Papo - batch 123 slot cache
+         if (indexer == null) {
+             return null;
+         }
+@@ -123,7 +162,7 @@ public final class ZeroCollidingReferenceStateTable<O, S> {
+             return null;
+         }
+ 
+-        final Indexer indexer = this.propertyToIndexer.get(((PropertyAccess<T>)property).moonrise$getId());
++        final Indexer indexer = this.papoIndexer(((PropertyAccess<T>)property).moonrise$getId()); // Papo - batch 123 slot cache
+         if (indexer == null) {
+             return null;
+         }
+@@ -140,7 +179,7 @@ public final class ZeroCollidingReferenceStateTable<O, S> {
+     }
+ 
+     public <T extends Comparable<T>> S trySet(final long index, final Property<T> property, final T with, final S dfl) {
+-        final Indexer indexer = this.propertyToIndexer.get(((PropertyAccess<T>)property).moonrise$getId());
++        final Indexer indexer = this.papoIndexer(((PropertyAccess<T>)property).moonrise$getId()); // Papo - batch 123 slot cache
+         if (indexer == null) {
+             return dfl;
+         }
