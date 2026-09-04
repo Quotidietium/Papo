@@ -1,0 +1,138 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 5 Sep 2026 01:53:09 +0800
+Subject: [PATCH] Papo: batch 125 single-sweep merge of the wire
+ target-strength calculation (getBlockSignal + getIncomingWireSignal passes
+ composed into one neighbor sweep - shared position reads eliminated, wire
+ dispatch skips retained, exact direction order/early-exit structure, wireMax
+ fed only from vanilla's incoming positions)
+
+---
+ .../DefaultRedstoneWireEvaluator.java         | 115 +++++++++++++++++-
+ 1 file changed, 113 insertions(+), 2 deletions(-)
+
+diff --git a/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java b/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
+index 5c03243a..cfcdfebb 100644
+--- a/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
++++ b/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
+@@ -72,7 +72,118 @@ public class DefaultRedstoneWireEvaluator extends RedstoneWireEvaluator {
+     }
+ 
+     public int calculateTargetStrength(Level level, BlockPos pos) { // Paper - Optimize redstone
+-        int blockSignal = this.getBlockSignal(level, pos);
+-        return blockSignal == 15 ? blockSignal : Math.max(blockSignal, this.getIncomingWireSignal(level, pos));
++        // Papo start - batch 125: single-sweep merge of the getBlockSignal (diode/signal-source
++        // pull under shouldSignal=false, incl. per-conductor getDirectSignalTo fan-out) and
++        // getIncomingWireSignal (same-level horizontal wires + conductor-dependent up/down
++        // variant wires) passes. Faithful composition rules:
++        //  - direction order and the >=15 early returns replicate getBestNeighborSignal /
++        //    getDirectSignalTo exactly (a 15 found in the sweep returns 15 before the
++        //    incoming reads, like the old two-pass short-circuit);
++        //  - wire neighbours contribute 0 to the signal-source side (shouldSignal==false for
++        //    the whole sweep, so their getSignal/getDirectSignal would return 0 anyway) and
++        //    their POWER feeds wireMax only for the positions vanilla's incoming pass reads:
++        //    same-level HORIZONTAL wires (never the UP/DOWN columns) plus the variant
++        //    positions selected by the original conductor rules;
++        //  - the conductor fan-out (inner sweep) feeds only the signal-source side - its
++        //    wire reads are flag-zeroed in vanilla and must not inflate wireMax;
++        //  - result math identical: 15, else max(blockSignal, max(0, wireMax - 1)).
++        final RedStoneWireBlock papoWire = this.wireBlock;
++        papoWire.shouldSignal = false;
++        final int papoResult = this.papoCalculateTargetStrength(level, pos);
++        papoWire.shouldSignal = true;
++        return papoResult;
++        // Papo end - batch 125
+     }
++
++    // Papo start - batch 125: the merged sweep (see the contract above)
++    private int papoCalculateTargetStrength(final Level level, final BlockPos pos) {
++        int papoBlockSignal = 0;
++        int papoWireMax = 0;
++        boolean papoAboveIsConductor = false;
++        final BlockPos.MutableBlockPos papoNeighbor = new BlockPos.MutableBlockPos();
++        final BlockPos.MutableBlockPos papoInner = new BlockPos.MutableBlockPos();
++        final BlockPos.MutableBlockPos papoVariant = new BlockPos.MutableBlockPos();
++
++        for (int papoD = 0; papoD < 6; papoD++) {
++            final Direction papoDirection = DIRECTIONS[papoD]; // DOWN, UP, NORTH, SOUTH, WEST, EAST
++            papoNeighbor.setWithOffset(pos, papoDirection);
++            final BlockState papoState = level.getBlockState(papoNeighbor);
++            final boolean papoConductor = papoState.isRedstoneConductor(level, papoNeighbor);
++
++            if (papoState.is(this.wireBlock)) {
++                // horizontal same-level wires feed wireMax; UP/DOWN columns contribute 0
++                // (both to the signal side under the flag and to the incoming side)
++                if (papoD >= 2) {
++                    final int papoPower = papoState.getValue(RedStoneWireBlock.POWER);
++                    if (papoPower > papoWireMax) {
++                        papoWireMax = papoPower;
++                    }
++                }
++            } else {
++                int papoSignal = papoState.getSignal(level, papoNeighbor, papoDirection);
++                if (papoConductor) {
++                    // SignalGetter.getDirectSignalTo at this position, wire pulls resolve to 0
++                    int papoDirect = 0;
++                    papoInner.setWithOffset(papoNeighbor, Direction.DOWN);
++                    papoDirect = Math.max(papoDirect, papoDirectSkippingWire(level, papoInner, Direction.DOWN));
++                    if (papoDirect < 15) {
++                        papoInner.setWithOffset(papoNeighbor, Direction.UP);
++                        papoDirect = Math.max(papoDirect, papoDirectSkippingWire(level, papoInner, Direction.UP));
++                    }
++                    if (papoDirect < 15) {
++                        papoInner.setWithOffset(papoNeighbor, Direction.NORTH);
++                        papoDirect = Math.max(papoDirect, papoDirectSkippingWire(level, papoInner, Direction.NORTH));
++                    }
++                    if (papoDirect < 15) {
++                        papoInner.setWithOffset(papoNeighbor, Direction.SOUTH);
++                        papoDirect = Math.max(papoDirect, papoDirectSkippingWire(level, papoInner, Direction.SOUTH));
++                    }
++                    if (papoDirect < 15) {
++                        papoInner.setWithOffset(papoNeighbor, Direction.WEST);
++                        papoDirect = Math.max(papoDirect, papoDirectSkippingWire(level, papoInner, Direction.WEST));
++                    }
++                    if (papoDirect < 15) {
++                        papoInner.setWithOffset(papoNeighbor, Direction.EAST);
++                        papoDirect = Math.max(papoDirect, papoDirectSkippingWire(level, papoInner, Direction.EAST));
++                    }
++                    papoSignal = Math.max(papoSignal, papoDirect);
++                }
++                if (papoSignal >= 15) {
++                    return 15;
++                }
++                if (papoSignal > papoBlockSignal) {
++                    papoBlockSignal = papoSignal;
++                }
++            }
++
++            if (papoD == 1) {
++                papoAboveIsConductor = papoConductor;
++            } else if (papoD >= 2) {
++                // getIncomingWireSignal's horizontal variant rules (Plane.HORIZONTAL order
++                // N,E,S,W vs sweep N,S,W,E - read order only, membership identical)
++                if (papoConductor) {
++                    if (!papoAboveIsConductor) {
++                        papoVariant.setWithOffset(papoNeighbor, Direction.UP);
++                        papoWireMax = Math.max(papoWireMax, papoWireSignal(level, papoVariant));
++                    }
++                } else {
++                    papoVariant.setWithOffset(papoNeighbor, Direction.DOWN);
++                    papoWireMax = Math.max(papoWireMax, papoWireSignal(level, papoVariant));
++                }
++            }
++        }
++
++        return papoBlockSignal >= 15 ? 15 : Math.max(papoBlockSignal, Math.max(0, papoWireMax - 1));
++    }
++
++    private int papoDirectSkippingWire(final Level level, final BlockPos papoAt, final Direction papoFrom) {
++        final BlockState papoState = level.getBlockState(papoAt);
++        return papoState.is(this.wireBlock) ? 0 : papoState.getDirectSignal(level, papoAt, papoFrom);
++    }
++
++    private int papoWireSignal(final Level level, final BlockPos papoAt) {
++        final BlockState papoState = level.getBlockState(papoAt);
++        return papoState.is(this.wireBlock) ? papoState.getValue(RedStoneWireBlock.POWER) : 0;
++    }
++    // Papo end - batch 125
+ }

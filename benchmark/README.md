@@ -62,6 +62,8 @@ cd benchmark
 | `WirePullBench` | 0255 | 粉侧信号拉取通用派发+BlockPos 分配 vs MutableBlockPos 复用+粉零派化短路（含 10 万随机世界等价对拍+分配 7→0 度量） |
 | `TickDedupSetBench` | 0256 | UNIQUE_TICK_HASH 集合+probe record 分配 vs (packedPos,type) 开放寻址零分配（含 10×10 万随机操作对拍+扩容压力） |
 | `PoiCheckBench` | 0257 | 每 setBlock POI 检查 Optional 对+equals vs 引用比较（五形态分支等价自检；模型内中性=EA 伪影，-prof gc 裁决留档） |
+| `NeighborUpdaterPoolBench` | 批次124 否决 | 邻接更新对象池化机制模型+执行序等价自检（100×1000 全等）；JMH 分配 44029→0.37 B/op 但宏被环境噪声淹没（否决留档，模型可复用） |
+| `WireTargetMergeBench` | 0258 | 粉目标强度两遍 vs 单遍合并扫描（100 万随机邻域对拍全等；wireMax 位置域/导体扇出方向性定向用例） |
 | `SpawnScanBench` | 0235-0237 | merge 扫描分配 vs 复用（gc 探针 280 B/op 真差）+ despawn HashMap vs 数组 3.75×（含同集合同序/查值一致自检） |
 | `CombatEventGateBench` | 0238-0240 | 战斗事件门控模型 + EntityDamageEvent 构造器 stream vs 循环校验 2.74×（含异常类型/消息对拍自检） |
 

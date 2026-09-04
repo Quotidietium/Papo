@@ -1,0 +1,32 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 5 Sep 2026 01:54:03 +0800
+Subject: [PATCH] Papo: batch 125 wire evaluation-redundancy survey counters
+ (rs.wireEvalRuns/rs.wireEvalNoChange per 400-tick window, diagnostic-only,
+ papo.tickProfile-gated) - groundwork for a future input-dirty-tracking round
+
+---
+ .../world/level/redstone/DefaultRedstoneWireEvaluator.java     | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java b/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
+index cfcdfebb..0a860caa 100644
+--- a/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
++++ b/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
+@@ -25,6 +25,7 @@ public class DefaultRedstoneWireEvaluator extends RedstoneWireEvaluator {
+ 
+     @Override
+     public void updatePowerStrength(Level level, BlockPos pos, BlockState state, @Nullable Orientation orientation, boolean updateShape) {
++        io.papermc.paper.util.PapoTickProfile.addCount("rs.wireEvalRuns", 1); // Papo - batch 125 evaluation-redundancy survey counter (diagnostic-only, papo.tickProfile-gated)
+         int i = this.calculateTargetStrength(level, pos);
+         // CraftBukkit start
+         int oldPower = state.getValue(RedStoneWireBlock.POWER);
+@@ -68,6 +69,8 @@ public class DefaultRedstoneWireEvaluator extends RedstoneWireEvaluator {
+                 }
+             }
+             // Papo end - replicate the 7-position HashSet's iteration order directly
++        } else {
++            io.papermc.paper.util.PapoTickProfile.addCount("rs.wireEvalNoChange", 1); // Papo - batch 125 survey counter (diagnostic-only)
+         }
+     }
+ 
