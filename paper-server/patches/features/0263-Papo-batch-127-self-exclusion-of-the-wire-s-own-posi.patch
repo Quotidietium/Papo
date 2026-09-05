@@ -1,0 +1,44 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sun, 6 Sep 2026 01:37:11 +0800
+Subject: [PATCH] Papo: batch 127 self-exclusion of the wire's own position
+ from the mark closure - a wire's own POWER is not an input to its own
+ calculation (calculateTargetStrength reads neighbours only), so the
+ self-notification arriving from its own flip's fan-out is provably redundant
+ (skip-safe: inputs unchanged since the evaluation that just set that POWER;
+ any interleaved input change re-marks through the existing closure hooks);
+ the freshly-placed wire's first onPlace evaluation (stored POWER is the
+ placement default, not a computed value - the batch 126 self-marking
+ rationale) is instead guaranteed by the evaluator gate: updateShape==true
+ arrives exactly from RedStoneWireBlock.onPlace (!oldState.is(wire)), so those
+ evaluations always proceed and additionally clear any stale dirty bit at pos
+ (the synchronized stripe lock gives the happens-before edge against
+ concurrent WorldGenRegion marks); net effect: the
+ one-extra-no-change-evaluation correctness cost of batch 126 (~3714/tick in
+ the N=441 macro, 12.1% of notifications) becomes skippable
+
+
+diff --git a/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java b/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
+index ddfa2c4751a0bc040b539b936821df6893b5197f..5bc66377c2d5a798c89861850e33caabd9d6b7e8 100644
+--- a/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
++++ b/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
+@@ -33,10 +33,18 @@ public class DefaultRedstoneWireEvaluator extends RedstoneWireEvaluator {
+         // evaluation is skipped, equivalent by construction.
+         // Survey measured 85.0% of ring-oscillator evaluations taking this branch
+         // (77.5% in the post-closure-fix 4-cell verify leg).
+-        if (level.papoWireDirty.evalEntry(pos)) {
++        // Batch 127: updateShape == true marks the onPlace-driven evaluation of a
++        // freshly placed wire (blockAdded path in RedStoneWireBlock) - its stored
++        // POWER is the placement default, not a computed value, so this evaluation
++        // must ALWAYS proceed (marking is self-excluded since batch 127, and even
++        // before that the placement mark could race ahead of the evaluator).
++        if (!updateShape && level.papoWireDirty.evalEntry(pos)) {
+             io.papermc.paper.util.PapoTickProfile.addCount("rs.wireEvalSkipped", 1);
+             return;
+         }
++        if (updateShape) {
++            level.papoWireDirty.evalEntry(pos); // clear any stale dirty bit: this evaluation supersedes it
++        }
+         io.papermc.paper.util.PapoTickProfile.addCount("rs.wireEvalRuns", 1); // Papo - batch 125 counter (now counts proceeded evaluations; diagnostic-only, papo.tickProfile-gated)
+         // Papo end - batch 126
+         int i = this.calculateTargetStrength(level, pos);

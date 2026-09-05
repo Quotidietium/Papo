@@ -16,12 +16,12 @@ import net.minecraft.world.level.block.state.BlockState;
 // skippable.
 //
 // Input closure (what a transition at pos must mark):
-//  - every wire within Chebyshev distance 1 (the 3x3x3 input cube of a wire
-//    contains pos), INCLUDING pos itself: a newly placed wire's stored power is
-//    the placement default, not the computed value - its first onPlace
-//    evaluation must proceed (self-exclusion stalled every oscillator), and a
-//    wire's own POWER flip must re-mark itself for the fan-out's self-
-//    notification (one extra no-change evaluation as the correctness cost);
+//  - every wire within Chebyshev distance 1 EXCEPT pos itself (the 3x3x3 input
+//    cube of a wire contains pos; own pos excluded since batch 127 - a wire's
+//    own POWER is not an input to its own calculation, so the self-notification
+//    from its own flip is provably redundant; the freshly-placed wire's first
+//    onPlace evaluation, whose stored power is the placement default, bypasses
+//    the skip via the updateShape parameter in the evaluator instead);
 //  - the straight-through Chebyshev-2 positions: for each axis direction d, if
 //    the block at pos+d is a redstone conductor, the wire at pos+2d reads a
 //    direct signal THROUGH it (strong power from a source behind a block) - the
@@ -73,7 +73,13 @@ public final class PapoWireDirtyTracking {
     /**
      * Marks every wire whose input closure contains a change at {@code pos}.
      * The reader must be safe for the calling thread (a tick-thread Level, a
-     * client level, or a WorldGenRegion).
+     * client level, or a WorldGenRegion). NOTE: pos itself is deliberately NOT
+     * marked (batch 127): a wire's own POWER is not an input to its own
+     * calculation (calculateTargetStrength reads neighbours only), so the
+     * self-notification from its own flip is provably redundant - the
+     * onPlace-driven first evaluation of a freshly placed wire (whose stored
+     * power is the placement default) bypasses the skip in the evaluator
+     * instead (updateShape == true).
      */
     public void mark(final BlockGetter reader, final BlockPos pos) {
         final int x = pos.getX();
@@ -83,7 +89,9 @@ public final class PapoWireDirtyTracking {
         for (int dy = -1; dy <= 1; dy++) {
             for (int dx = -1; dx <= 1; dx++) {
                 for (int dz = -1; dz <= 1; dz++) {
-                    // (0,0,0) IS included - see the class comment
+                    if (dx == 0 && dy == 0 && dz == 0) {
+                        continue; // self-excluded, see contract above
+                    }
                     scan.set(x + dx, y + dy, z + dz);
                     this.markIfWire(reader, scan);
                 }
