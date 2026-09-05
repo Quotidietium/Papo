@@ -16,12 +16,20 @@ import net.minecraft.world.level.block.state.BlockState;
 // skippable.
 //
 // Input closure (what a transition at pos must mark):
-//  - every wire within Chebyshev distance 1 EXCEPT pos itself (the 3x3x3 input
-//    cube of a wire contains pos; own pos excluded since batch 127 - a wire's
-//    own POWER is not an input to its own calculation, so the self-notification
-//    from its own flip is provably redundant; the freshly-placed wire's first
-//    onPlace evaluation, whose stored power is the placement default, bypasses
-//    the skip via the updateShape parameter in the evaluator instead);
+//  - every wire within Chebyshev distance 1 EXCEPT pos itself and EXCEPT the 8
+//    corners (the 3x3x3 input cube of a wire contains pos; own pos excluded since
+//    batch 127 - a wire's own POWER is not an input to its own calculation, so the
+//    self-notification from its own flip is provably redundant; the freshly-placed
+//    wire's first onPlace evaluation, whose stored power is the placement default,
+//    bypasses the skip via the updateShape parameter in the evaluator instead).
+//    The 8 cube corners (±1,±1,±1) are excluded since batch 129: the exact set of
+//    positions a wire's evaluation reads is the 6 faces (neighbour signal +
+//    conductor), the 12 edges (conductor fan-out W+d+e, variant columns W+h±v),
+//    and the axis-2 straight-through positions - every vanilla override involved
+//    (getSignal/getDirectSignal/isRedstoneConductor/canSupportCenter) reads only
+//    its own position or own block state, so no read path ever touches a diagonal
+//    corner; marking a corner wire could only ever produce a redundant no-change
+//    evaluation;
 //  - the straight-through Chebyshev-2 positions: for each axis direction d, if
 //    the block at pos+d is a redstone conductor, the wire at pos+2d reads a
 //    direct signal THROUGH it (strong power from a source behind a block) - the
@@ -79,23 +87,42 @@ public final class PapoWireDirtyTracking {
      * self-notification from its own flip is provably redundant - the
      * onPlace-driven first evaluation of a freshly placed wire (whose stored
      * power is the placement default) bypasses the skip in the evaluator
-     * instead (updateShape == true).
+     * instead (updateShape == true). The 8 cube corners are skipped since
+     * batch 129 (exact input closure - see the class comment): the scan walks
+     * the 18 face+edge offsets instead of the 27-cell cube.
      */
+    // Papo start - batch 129: the 18 face+edge offsets (6 faces + 12 edges) in a
+    // fixed order - provably the only Chebyshev-1 positions any wire evaluation
+    // reads; the 8 corners and the center are unreachable by every read path.
+    // Order: 6 faces (W E D U N S), 4 x&y edges, 4 x&z edges, 4 y&z edges.
+    private static final int[] SCAN_DX = {
+        -1, 1, 0, 0, 0, 0,              // faces
+        -1, -1, 1, 1,                   // x&y edges
+        -1, -1, 1, 1,                   // x&z edges
+        0, 0, 0, 0,                     // y&z edges
+    };
+    private static final int[] SCAN_DY = {
+        0, 0, -1, 1, 0, 0,              // faces
+        -1, 1, -1, 1,                   // x&y edges
+        0, 0, 0, 0,                     // x&z edges
+        -1, -1, 1, 1,                   // y&z edges
+    };
+    private static final int[] SCAN_DZ = {
+        0, 0, 0, 0, -1, 1,              // faces
+        0, 0, 0, 0,                     // x&y edges
+        -1, 1, -1, 1,                   // x&z edges
+        -1, 1, -1, 1,                   // y&z edges
+    };
+    // Papo end - batch 129
+
     public void mark(final BlockGetter reader, final BlockPos pos) {
         final int x = pos.getX();
         final int y = pos.getY();
         final int z = pos.getZ();
         final BlockPos.MutableBlockPos scan = new BlockPos.MutableBlockPos();
-        for (int dy = -1; dy <= 1; dy++) {
-            for (int dx = -1; dx <= 1; dx++) {
-                for (int dz = -1; dz <= 1; dz++) {
-                    if (dx == 0 && dy == 0 && dz == 0) {
-                        continue; // self-excluded, see contract above
-                    }
-                    scan.set(x + dx, y + dy, z + dz);
-                    this.markIfWire(reader, scan);
-                }
-            }
+        for (int i = 0; i < SCAN_DX.length; i++) {
+            scan.set(x + SCAN_DX[i], y + SCAN_DY[i], z + SCAN_DZ[i]);
+            this.markIfWire(reader, scan);
         }
         // straight-through closure: a source behind a conductor feeds the wire two
         // out along the axis (direct signal through the strongly powered block)

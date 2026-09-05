@@ -14,8 +14,8 @@ import org.openjdk.jmh.annotations.*;
  *   槽 1-2 = Chebyshev-1 邻域粉（两腿均 dirty 评估）；
  *   槽 3-15 = 级联远端通知（clean 跳过）。
  * before = 每次通知都全量评估（模型评估 = 16 位置读 + max 计算）；
- * after126 = 含自身位 mark + 3/16 dirty；after127 = 自排除 mark + 2/16 dirty；
- * skipPathOnly = clean 入口簿记底价。
+ * after126 = 含自身位 27 扫描 + 3/16 dirty；after129 = 自身位+角位排除 18 表扫描
+ * + 2/16 dirty（批 127 语义 + 批 129 精确闭包形状）；skipPathOnly = clean 入口簿记底价。
  *
  * 注意（0230/批次125 先例）：模型评估是缓存驻留数组直读（~31ns），远低于真实
  * calculateTargetStrength 的区块节段读取（JFR 口径 ~850ns/eval）——微基准的
@@ -49,20 +49,35 @@ public class WireDirtySkipBench {
         int x = (int) (packedPos & 0x3FFFFFFL) - (1 << 25);
         int y = 0;
         int z = (int) ((packedPos >> 38) & 0x3FFFFFFL) - (1 << 25);
-        for (int dy = -1; dy <= 1; dy++) {
-            for (int dx = -1; dx <= 1; dx++) {
-                for (int dz = -1; dz <= 1; dz++) {
-                    // 批 127：自身位排除（continue 与生产同形）；批 126 腿含自身。
-                    // 模型为 2D 平面（dy≠0 位不存在）——27 次扫描迭代对齐生产形状，
-                    // 添加仅发生在 dy==0 的实际粉位（每粉位恰一次，不因 dy 冗余重复）。
-                    if (dy == 0 && dx == 0 && dz == 0 && !includeSelf) continue;
-                    if (dy == 0 && WORLD[(z + dz + S) & (S - 1)][(x + dx + S) & (S - 1)] >= 0) {
-                        long p = pack(x + dx, y, z + dz);
-                        int s = stripe(p);
-                        synchronized (LOCKS[s]) {
-                            if (DIRTY[s].size() >= CAP) DIRTY[s].clear();
-                            DIRTY[s].add(p);
+        if (includeSelf) {
+            // 批 126 形状：27 格立方全扫描（含自身位；dy==0 守卫=2D 模型压缩——dy≠0
+            // 的 18 次迭代对应 3D 中不存在的平面外位，只耗迭代不添加）
+            for (int dy = -1; dy <= 1; dy++) {
+                for (int dx = -1; dx <= 1; dx++) {
+                    for (int dz = -1; dz <= 1; dz++) {
+                        if (dy == 0 && WORLD[(z + dz + S) & (S - 1)][(x + dx + S) & (S - 1)] >= 0) {
+                            long p = pack(x + dx, y, z + dz);
+                            int s = stripe(p);
+                            synchronized (LOCKS[s]) {
+                                if (DIRTY[s].size() >= CAP) DIRTY[s].clear();
+                                DIRTY[s].add(p);
+                            }
                         }
+                    }
+                }
+            }
+        } else {
+            // 批 129 形状：18 面+棱偏移表（自身位与 8 角位排除）。dy==0 守卫=2D 模型
+            // 压缩（面内成员=4 面+4 x&z 棱；x&y/y&z 棱为面外位，只耗迭代不添加——
+            // 3D 角位在 2D 平面外本就不存在，模型语义不变，仅迭代形状对齐生产）
+            for (int i = 0; i < SCAN18_DX.length; i++) {
+                int dx = SCAN18_DX[i], dz = SCAN18_DZ[i];
+                if (SCAN18_DY[i] == 0 && WORLD[(z + dz + S) & (S - 1)][(x + dx + S) & (S - 1)] >= 0) {
+                    long p = pack(x + dx, y, z + dz);
+                    int s = stripe(p);
+                    synchronized (LOCKS[s]) {
+                        if (DIRTY[s].size() >= CAP) DIRTY[s].clear();
+                        DIRTY[s].add(p);
                     }
                 }
             }
@@ -92,6 +107,10 @@ public class WireDirtySkipBench {
         return acc;
     }
     static final int[][] HOFF = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+    // 批 129 形状：18 面+棱偏移表（与生产 PapoWireDirtyTracking.SCAN_D* 同构）
+    static final int[] SCAN18_DX = {-1, 1, 0, 0, 0, 0, -1, -1, 1, 1, -1, -1, 1, 1, 0, 0, 0, 0};
+    static final int[] SCAN18_DY = {0, 0, -1, 1, 0, 0, -1, 1, -1, 1, 0, 0, 0, 0, -1, -1, 1, 1};
+    static final int[] SCAN18_DZ = {0, 0, 0, 0, -1, 1, 0, 0, 0, 0, -1, 1, -1, 1, -1, 1, -1, 1};
     public static volatile int MARK_SINK; // 线程压力腿的 mark 读累积（防 DCE）
     static boolean evalEntry(long packed) {
         int s = stripe(packed);
@@ -237,9 +256,9 @@ public class WireDirtySkipBench {
         return acc;
     }
 
-    /** 批 127 机制：自身位排除 mark → 16 评估，2/16 dirty 继续（自身槽 clean 跳过）。 */
+    /** 批 129 机制：自身位+8 角位排除的 18 表扫描 → 16 评估，2/16 dirty 继续（自身槽 clean 跳过）。 */
     @Benchmark
-    public int after127SelfExcluded() {
+    public int after129ExactClosure() {
         int acc = 0;
         for (int e = 0; e < MARKS; e++) {
             acc += mark(markTargets[e], false);
