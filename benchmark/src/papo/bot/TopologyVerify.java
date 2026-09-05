@@ -20,8 +20,13 @@ import java.util.List;
  *   箱内物品数 → BE 输出 1→5（POWERED 恒 true，无 setBlock）→ updateNeighborsInFront
  *   通知前方粉。粉经强充能石块读取模拟值，距比较器 Chebyshev-2。
  *
- * 两腿同 jar：-Dpapo.wireSkip 未设（默认 skip 开）vs PAPO_JVM_EXTRA=-Dpapo.wireSkip=0
- * （vanilla 行为）——验收 = 两腿探针输出逐行全等。
+ * 两腿为两个 jar 各跑一次（before/after）——验收 = 两腿探针输出逐行全等（全 PASS）。
+ * （历史注：排查期曾用同 jar -Dpapo.wireSkip=0 切换腿；最终生产代码无运行时开关。）
+ *
+ * ③ 新鲜落位点亮（批次 127 正向门：自排除后 onPlace 首评估靠 evaluator 的
+ *   updateShape 旁路强制执行——若旁路失效，新落粉保持放置默认 power=0）：
+ *   在已上电粉旁放置新粉 → 探针 14（15-1）。拆除后原位重放置 → 再探 15
+ *   （覆盖 updateShape 清过期位路径：重放置位可能残留拆除前的脏位）。
  *
  * 用法：java papo.bot.TopologyVerify <jar>
  */
@@ -116,6 +121,25 @@ public final class TopologyVerify {
         Thread.sleep(2500);
         probe(server, "T2c_dust0", "10 " + Y + " 11", 0);
 
+        // ③ 新鲜落位（批次 127）：先重新上电 T1 路径（T1b 已断源）——红石块回位 →
+        //    R 延迟后导通 → W 回 15（transition 标记 → 评估）
+        writeChunked(server, "setblock 11 " + Y + " 8 redstone_block\n");
+        Thread.sleep(2500);
+        probe(server, "T3a_repower15", "8 " + Y + " 8", 15);
+        //    在 W(8,Y,8) 旁放新粉(8,Y,9)：onPlace 首评估（updateShape=true 旁路）→ 15-1=14
+        writeChunked(server, "setblock 8 " + Y + " 9 redstone_wire\n");
+        Thread.sleep(2000);
+        probe(server, "T3b_fresh14", "8 " + Y + " 9", 14);
+        // ④ 拆除 W → 原位重放置：重放置位带着拆除前的脏位进入 onPlace（清位路径），
+        //    首评估必须执行 → 再探 15；邻位新粉回落再回升（传播完整性）
+        writeChunked(server, "setblock 8 " + Y + " 8 air\n");
+        Thread.sleep(2000);
+        probe(server, "T4a_gone0", "8 " + Y + " 9", 0);
+        writeChunked(server, "setblock 8 " + Y + " 8 redstone_wire\n");
+        Thread.sleep(2000);
+        probe(server, "T4b_replace15", "8 " + Y + " 8", 15);
+        probe(server, "T4c_recover14", "8 " + Y + " 9", 14);
+
         // 清场并停机
         writeChunked(server, "fill 6 199 6 12 200 14 air\nforceload remove all\n");
         Thread.sleep(1000);
@@ -140,12 +164,12 @@ public final class TopologyVerify {
         }
         results.forEach(System.out::println);
         final long fails = results.stream().filter(l -> l.contains("_FAIL")).count();
-        System.out.println("TOPOLOGY " + (fails == 0 && results.size() >= 5 ? "PASS" : "FAILED") + " (" + results.size() + " probes, " + fails + " fail)");
+        System.out.println("TOPOLOGY " + (fails == 0 && results.size() >= 10 ? "PASS" : "FAILED") + " (" + results.size() + " probes, " + fails + " fail)");
         final List<String> all = new ArrayList<>(logLines);
         all.addAll(Files.readAllLines(dir.resolve("logs/latest.log"), StandardCharsets.UTF_8));
         final long errors = all.stream().filter(l -> l.contains("ERROR") || l.contains("Exception")).count();
         System.out.println("logErrors=" + errors + " exited=" + (server.exitValue() == 0));
-        if (fails > 0 || results.size() < 5) {
+        if (fails > 0 || results.size() < 10) {
             System.exit(1);
         }
     }
