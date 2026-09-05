@@ -1,0 +1,401 @@
+boot: [03:29:44 INFO]: Done (16.971s)! For help, type "help"
+built platform (half=88) + 441 ring cells (side=21, pitch=8, blocks/cell=12)
+verify round 0: RING=441 REP=441 missing=[]
+ringStructuralA=441 seedRepeaterA=441 expectedCells=441
+forensics entry: missing=[]
+ringStructuralB=441 seedRepeaterB=441
+window done (10 bots x 240000ms, cells=441)
+presence gate PASS (RING A=B=441 REP A=B=441 == N=441)
+echoes dumped: C:\Users\Z\AppData\Local\Temp\papo-rsscale-1943742315637182336\echoes.txt
+---- PapoTickProfile windows (from logs/latest.log) ----
+[03:29:44] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile window=400ticks totalWallMs=0 measuredMs=0
+[03:30:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile window=400ticks totalWallMs=20888 measuredMs=6662
+[03:30:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase worlds                     total= 2386.7ms avg/tick= 5966.9us share= 35.8% n=400
+[03:30:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.tickPending+misc     total= 1477.6ms avg/tick= 3693.9us share= 22.2% n=1200
+[03:30:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.chunkSource          total= 1021.1ms avg/tick= 2552.8us share= 15.3% n=1200
+[03:30:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.entities             total=  871.0ms avg/tick= 2177.5us share= 13.1% n=1200
+[03:30:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase connection                 total=  425.4ms avg/tick= 1063.4us share=  6.4% n=400
+[03:30:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockTicks           total=  294.6ms avg/tick=  736.4us share=  4.4% n=1200
+[03:30:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.fluidTicks           total=  155.6ms avg/tick=  388.9us share=  2.3% n=1200
+[03:30:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase sendChunks                 total=   25.6ms avg/tick=   64.1us share=  0.4% n=400
+[03:30:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockEvents          total=    2.7ms avg/tick=    6.8us share=  0.0% n=1200
+[03:30:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase functions                  total=    2.2ms avg/tick=    5.5us share=  0.0% n=400
+[03:30:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase players                    total=    0.5ms avg/tick=    1.2us share=  0.0% n=400
+[03:30:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.blockTickRuns           total=  70802 avg/tick=  177.0
+[03:30:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.fluidTickRuns           total=   7814 avg/tick=   19.5
+[03:30:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile window=400ticks totalWallMs=20049 measuredMs=3162
+[03:30:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase connection                 total=  927.0ms avg/tick= 2317.6us share= 29.3% n=400
+[03:30:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase worlds                     total=  834.7ms avg/tick= 2086.8us share= 26.4% n=400
+[03:30:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.tickPending+misc     total=  550.3ms avg/tick= 1375.6us share= 17.4% n=1200
+[03:30:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.chunkSource          total=  518.8ms avg/tick= 1297.0us share= 16.4% n=1200
+[03:30:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.entities             total=  272.3ms avg/tick=  680.9us share=  8.6% n=1200
+[03:30:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase sendChunks                 total=   27.8ms avg/tick=   69.5us share=  0.9% n=400
+[03:30:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.fluidTicks           total=   18.2ms avg/tick=   45.6us share=  0.6% n=1200
+[03:30:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockTicks           total=   10.3ms avg/tick=   25.6us share=  0.3% n=1200
+[03:30:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockEvents          total=    1.4ms avg/tick=    3.5us share=  0.0% n=1200
+[03:30:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase players                    total=    1.2ms avg/tick=    3.0us share=  0.0% n=400
+[03:30:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase functions                  total=    0.8ms avg/tick=    1.9us share=  0.0% n=400
+[03:30:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.blockTickRuns           total=     13 avg/tick=    0.0
+[03:30:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.fluidTickRuns           total=    865 avg/tick=    2.2
+[03:30:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalNoChange        total=   8675 avg/tick=   21.7
+[03:30:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalRuns            total=   8675 avg/tick=   21.7
+[03:30:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalSkipped         total=  18487 avg/tick=   46.2
+[03:30:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile window=400ticks totalWallMs=20000 measuredMs=26590
+[03:30:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase worlds                     total= 8858.2ms avg/tick=22145.5us share= 33.3% n=400
+[03:30:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.tickPending+misc     total= 8702.6ms avg/tick=21756.4us share= 32.7% n=1200
+[03:30:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockTicks           total= 7933.9ms avg/tick=19834.8us share= 29.8% n=1200
+[03:30:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.chunkSource          total=  759.9ms avg/tick= 1899.8us share=  2.9% n=1200
+[03:30:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase connection                 total=  158.6ms avg/tick=  396.5us share=  0.6% n=400
+[03:30:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.entities             total=  143.1ms avg/tick=  357.8us share=  0.5% n=1200
+[03:30:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase sendChunks                 total=   25.9ms avg/tick=   64.9us share=  0.1% n=400
+[03:30:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.fluidTicks           total=    5.9ms avg/tick=   14.6us share=  0.0% n=1200
+[03:30:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockEvents          total=    1.3ms avg/tick=    3.2us share=  0.0% n=1200
+[03:30:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase functions                  total=    0.5ms avg/tick=    1.3us share=  0.0% n=400
+[03:30:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase players                    total=    0.1ms avg/tick=    0.4us share=  0.0% n=400
+[03:30:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.blockTickRuns           total= 168017 avg/tick=  420.0
+[03:30:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.fluidTickRuns           total=    130 avg/tick=    0.3
+[03:30:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalNoChange        total= 338382 avg/tick=  846.0
+[03:30:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalRuns            total=1767400 avg/tick= 4418.5
+[03:30:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalSkipped         total=10007130 avg/tick=25017.8
+[03:31:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile window=400ticks totalWallMs=20000 measuredMs=31101
+[03:31:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase worlds                     total=10393.5ms avg/tick=25983.8us share= 33.4% n=400
+[03:31:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.tickPending+misc     total=10228.3ms avg/tick=25570.8us share= 32.9% n=1200
+[03:31:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockTicks           total= 9192.0ms avg/tick=22980.0us share= 29.6% n=1200
+[03:31:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.chunkSource          total= 1027.7ms avg/tick= 2569.2us share=  3.3% n=1200
+[03:31:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.entities             total=  151.8ms avg/tick=  379.6us share=  0.5% n=1200
+[03:31:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase connection                 total=   73.5ms avg/tick=  183.8us share=  0.2% n=400
+[03:31:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase sendChunks                 total=   27.3ms avg/tick=   68.3us share=  0.1% n=400
+[03:31:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.fluidTicks           total=    4.8ms avg/tick=   12.1us share=  0.0% n=1200
+[03:31:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockEvents          total=    1.6ms avg/tick=    3.9us share=  0.0% n=1200
+[03:31:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase functions                  total=    0.6ms avg/tick=    1.5us share=  0.0% n=400
+[03:31:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase players                    total=    0.5ms avg/tick=    1.2us share=  0.0% n=400
+[03:31:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.blockTickRuns           total= 176400 avg/tick=  441.0
+[03:31:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.fluidTickRuns           total=     97 avg/tick=    0.2
+[03:31:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalNoChange        total= 352800 avg/tick=  882.0
+[03:31:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalRuns            total=1852200 avg/tick= 4630.5
+[03:31:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalSkipped         total=10495800 avg/tick=26239.5
+[03:31:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile window=400ticks totalWallMs=20000 measuredMs=31548
+[03:31:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase worlds                     total=10491.2ms avg/tick=26228.0us share= 33.3% n=400
+[03:31:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.tickPending+misc     total=10331.6ms avg/tick=25829.0us share= 32.7% n=1200
+[03:31:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockTicks           total= 9288.0ms avg/tick=23219.9us share= 29.4% n=1200
+[03:31:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.chunkSource          total= 1036.4ms avg/tick= 2590.9us share=  3.3% n=1200
+[03:31:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase connection                 total=  221.3ms avg/tick=  553.3us share=  0.7% n=400
+[03:31:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.entities             total=  147.2ms avg/tick=  368.0us share=  0.5% n=1200
+[03:31:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase sendChunks                 total=   26.0ms avg/tick=   65.0us share=  0.1% n=400
+[03:31:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.fluidTicks           total=    4.1ms avg/tick=   10.1us share=  0.0% n=1200
+[03:31:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockEvents          total=    1.3ms avg/tick=    3.2us share=  0.0% n=1200
+[03:31:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase players                    total=    0.6ms avg/tick=    1.5us share=  0.0% n=400
+[03:31:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase functions                  total=    0.6ms avg/tick=    1.4us share=  0.0% n=400
+[03:31:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.blockTickRuns           total= 176400 avg/tick=  441.0
+[03:31:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.fluidTickRuns           total=     70 avg/tick=    0.2
+[03:31:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalNoChange        total= 352800 avg/tick=  882.0
+[03:31:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalRuns            total=1852200 avg/tick= 4630.5
+[03:31:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalSkipped         total=10495800 avg/tick=26239.5
+[03:31:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile window=400ticks totalWallMs=20002 measuredMs=27687
+[03:31:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase worlds                     total= 9251.9ms avg/tick=23129.7us share= 33.4% n=400
+[03:31:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.tickPending+misc     total= 9106.3ms avg/tick=22765.7us share= 32.9% n=1200
+[03:31:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockTicks           total= 8302.5ms avg/tick=20756.4us share= 30.0% n=1200
+[03:31:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.chunkSource          total=  797.9ms avg/tick= 1994.7us share=  2.9% n=1200
+[03:31:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.entities             total=  135.0ms avg/tick=  337.6us share=  0.5% n=1200
+[03:31:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase connection                 total=   64.2ms avg/tick=  160.4us share=  0.2% n=400
+[03:31:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase sendChunks                 total=   25.1ms avg/tick=   62.7us share=  0.1% n=400
+[03:31:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.fluidTicks           total=    3.6ms avg/tick=    9.1us share=  0.0% n=1200
+[03:31:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase functions                  total=    0.5ms avg/tick=    1.2us share=  0.0% n=400
+[03:31:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockEvents          total=    0.5ms avg/tick=    1.2us share=  0.0% n=1200
+[03:31:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase players                    total=    0.1ms avg/tick=    0.4us share=  0.0% n=400
+[03:31:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.blockTickRuns           total= 176411 avg/tick=  441.0
+[03:31:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.fluidTickRuns           total=     94 avg/tick=    0.2
+[03:31:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalNoChange        total= 352800 avg/tick=  882.0
+[03:31:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalRuns            total=1852200 avg/tick= 4630.5
+[03:31:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalSkipped         total=10495800 avg/tick=26239.5
+[03:32:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile window=400ticks totalWallMs=20002 measuredMs=28611
+[03:32:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase worlds                     total= 9554.5ms avg/tick=23886.3us share= 33.4% n=400
+[03:32:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.tickPending+misc     total= 9414.7ms avg/tick=23536.7us share= 32.9% n=1200
+[03:32:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockTicks           total= 8592.2ms avg/tick=21480.5us share= 30.0% n=1200
+[03:32:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.chunkSource          total=  819.0ms avg/tick= 2047.4us share=  2.9% n=1200
+[03:32:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.entities             total=  135.4ms avg/tick=  338.5us share=  0.5% n=1200
+[03:32:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase connection                 total=   66.3ms avg/tick=  165.7us share=  0.2% n=400
+[03:32:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase sendChunks                 total=   25.4ms avg/tick=   63.5us share=  0.1% n=400
+[03:32:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.fluidTicks           total=    2.5ms avg/tick=    6.1us share=  0.0% n=1200
+[03:32:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase functions                  total=    0.5ms avg/tick=    1.3us share=  0.0% n=400
+[03:32:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase players                    total=    0.4ms avg/tick=    1.0us share=  0.0% n=400
+[03:32:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockEvents          total=    0.3ms avg/tick=    0.7us share=  0.0% n=1200
+[03:32:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.blockTickRuns           total= 176403 avg/tick=  441.0
+[03:32:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.fluidTickRuns           total=      4 avg/tick=    0.0
+[03:32:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalNoChange        total= 352800 avg/tick=  882.0
+[03:32:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalRuns            total=1852200 avg/tick= 4630.5
+[03:32:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalSkipped         total=10495800 avg/tick=26239.5
+[03:32:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile window=400ticks totalWallMs=19994 measuredMs=30985
+[03:32:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase worlds                     total=10345.6ms avg/tick=25864.0us share= 33.4% n=400
+[03:32:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.tickPending+misc     total=10203.2ms avg/tick=25508.0us share= 32.9% n=1200
+[03:32:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockTicks           total= 9196.3ms avg/tick=22990.9us share= 29.7% n=1200
+[03:32:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.chunkSource          total= 1003.3ms avg/tick= 2508.1us share=  3.2% n=1200
+[03:32:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.entities             total=  137.9ms avg/tick=  344.7us share=  0.4% n=1200
+[03:32:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase connection                 total=   69.1ms avg/tick=  172.6us share=  0.2% n=400
+[03:32:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase sendChunks                 total=   26.4ms avg/tick=   66.0us share=  0.1% n=400
+[03:32:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.fluidTicks           total=    2.5ms avg/tick=    6.3us share=  0.0% n=1200
+[03:32:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase functions                  total=    0.6ms avg/tick=    1.5us share=  0.0% n=400
+[03:32:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase players                    total=    0.3ms avg/tick=    0.9us share=  0.0% n=400
+[03:32:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockEvents          total=    0.3ms avg/tick=    0.7us share=  0.0% n=1200
+[03:32:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.blockTickRuns           total= 176400 avg/tick=  441.0
+[03:32:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.fluidTickRuns           total=     59 avg/tick=    0.1
+[03:32:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalNoChange        total= 352800 avg/tick=  882.0
+[03:32:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalRuns            total=1852200 avg/tick= 4630.5
+[03:32:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalSkipped         total=10495800 avg/tick=26239.5
+[03:32:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile window=400ticks totalWallMs=20012 measuredMs=30695
+[03:32:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase worlds                     total=10255.2ms avg/tick=25637.9us share= 33.4% n=400
+[03:32:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.tickPending+misc     total=10095.4ms avg/tick=25238.6us share= 32.9% n=1200
+[03:32:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockTicks           total= 9152.8ms avg/tick=22881.9us share= 29.8% n=1200
+[03:32:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.chunkSource          total=  939.1ms avg/tick= 2347.9us share=  3.1% n=1200
+[03:32:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.entities             total=  154.8ms avg/tick=  387.0us share=  0.5% n=1200
+[03:32:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase connection                 total=   69.0ms avg/tick=  172.4us share=  0.2% n=400
+[03:32:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase sendChunks                 total=   25.5ms avg/tick=   63.9us share=  0.1% n=400
+[03:32:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.fluidTicks           total=    2.4ms avg/tick=    5.9us share=  0.0% n=1200
+[03:32:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase functions                  total=    0.6ms avg/tick=    1.4us share=  0.0% n=400
+[03:32:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockEvents          total=    0.3ms avg/tick=    0.8us share=  0.0% n=1200
+[03:32:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase players                    total=    0.2ms avg/tick=    0.4us share=  0.0% n=400
+[03:32:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.blockTickRuns           total= 176400 avg/tick=  441.0
+[03:32:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.fluidTickRuns           total=     35 avg/tick=    0.1
+[03:32:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalNoChange        total= 352800 avg/tick=  882.0
+[03:32:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalRuns            total=1852200 avg/tick= 4630.5
+[03:32:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalSkipped         total=10495800 avg/tick=26239.5
+[03:33:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile window=400ticks totalWallMs=20001 measuredMs=39917
+[03:33:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase worlds                     total=13343.7ms avg/tick=33359.3us share= 33.4% n=400
+[03:33:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.tickPending+misc     total=13081.7ms avg/tick=32704.2us share= 32.8% n=1200
+[03:33:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockTicks           total=11625.9ms avg/tick=29064.7us share= 29.1% n=1200
+[03:33:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.chunkSource          total= 1450.0ms avg/tick= 3625.0us share=  3.6% n=1200
+[03:33:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.entities             total=  254.5ms avg/tick=  636.3us share=  0.6% n=1200
+[03:33:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase connection                 total=  122.2ms avg/tick=  305.4us share=  0.3% n=400
+[03:33:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase sendChunks                 total=   33.3ms avg/tick=   83.1us share=  0.1% n=400
+[03:33:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.fluidTicks           total=    4.0ms avg/tick=   10.0us share=  0.0% n=1200
+[03:33:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase functions                  total=    0.8ms avg/tick=    2.0us share=  0.0% n=400
+[03:33:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase players                    total=    0.5ms avg/tick=    1.3us share=  0.0% n=400
+[03:33:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockEvents          total=    0.5ms avg/tick=    1.2us share=  0.0% n=1200
+[03:33:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.blockTickRuns           total= 176400 avg/tick=  441.0
+[03:33:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.fluidTickRuns           total=     19 avg/tick=    0.0
+[03:33:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalNoChange        total= 352800 avg/tick=  882.0
+[03:33:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalRuns            total=1852200 avg/tick= 4630.5
+[03:33:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalSkipped         total=10495800 avg/tick=26239.5
+[03:33:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile window=400ticks totalWallMs=20199 measuredMs=39062
+[03:33:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase worlds                     total=13064.3ms avg/tick=32660.8us share= 33.4% n=400
+[03:33:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.tickPending+misc     total=12805.1ms avg/tick=32012.8us share= 32.8% n=1200
+[03:33:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockTicks           total=11233.3ms avg/tick=28083.2us share= 28.8% n=1200
+[03:33:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.chunkSource          total= 1566.7ms avg/tick= 3916.7us share=  4.0% n=1200
+[03:33:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.entities             total=  252.2ms avg/tick=  630.5us share=  0.6% n=1200
+[03:33:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase connection                 total=  104.4ms avg/tick=  261.0us share=  0.3% n=400
+[03:33:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase sendChunks                 total=   31.5ms avg/tick=   78.6us share=  0.1% n=400
+[03:33:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.fluidTicks           total=    3.6ms avg/tick=    8.9us share=  0.0% n=1200
+[03:33:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase functions                  total=    0.8ms avg/tick=    1.9us share=  0.0% n=400
+[03:33:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase players                    total=    0.4ms avg/tick=    1.1us share=  0.0% n=400
+[03:33:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockEvents          total=    0.4ms avg/tick=    1.1us share=  0.0% n=1200
+[03:33:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.blockTickRuns           total= 176400 avg/tick=  441.0
+[03:33:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.fluidTickRuns           total=     58 avg/tick=    0.1
+[03:33:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalNoChange        total= 352800 avg/tick=  882.0
+[03:33:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalRuns            total=1852200 avg/tick= 4630.5
+[03:33:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalSkipped         total=10495800 avg/tick=26239.5
+[03:33:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile window=400ticks totalWallMs=19804 measuredMs=40079
+[03:33:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase worlds                     total=13458.6ms avg/tick=33646.5us share= 33.6% n=400
+[03:33:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.tickPending+misc     total=13028.4ms avg/tick=32571.0us share= 32.5% n=1200
+[03:33:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockTicks           total=11607.2ms avg/tick=29018.0us share= 29.0% n=1200
+[03:33:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.chunkSource          total= 1415.9ms avg/tick= 3539.8us share=  3.5% n=1200
+[03:33:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.entities             total=  423.1ms avg/tick= 1057.7us share=  1.1% n=1200
+[03:33:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase connection                 total=  108.1ms avg/tick=  270.2us share=  0.3% n=400
+[03:33:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase sendChunks                 total=   33.4ms avg/tick=   83.5us share=  0.1% n=400
+[03:33:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.fluidTicks           total=    3.3ms avg/tick=    8.3us share=  0.0% n=1200
+[03:33:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase functions                  total=    1.1ms avg/tick=    2.7us share=  0.0% n=400
+[03:33:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockEvents          total=    0.6ms avg/tick=    1.5us share=  0.0% n=1200
+[03:33:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase players                    total=    0.3ms avg/tick=    0.7us share=  0.0% n=400
+[03:33:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.blockTickRuns           total= 176400 avg/tick=  441.0
+[03:33:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.fluidTickRuns           total=     66 avg/tick=    0.2
+[03:33:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalNoChange        total= 352800 avg/tick=  882.0
+[03:33:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalRuns            total=1852200 avg/tick= 4630.5
+[03:33:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalSkipped         total=10495800 avg/tick=26239.5
+[03:34:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile window=400ticks totalWallMs=19995 measuredMs=40489
+[03:34:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase worlds                     total=13540.0ms avg/tick=33850.0us share= 33.4% n=400
+[03:34:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.tickPending+misc     total=13271.0ms avg/tick=33177.4us share= 32.8% n=1200
+[03:34:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockTicks           total=11798.3ms avg/tick=29495.7us share= 29.1% n=1200
+[03:34:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.chunkSource          total= 1467.0ms avg/tick= 3667.4us share=  3.6% n=1200
+[03:34:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.entities             total=  261.4ms avg/tick=  653.4us share=  0.6% n=1200
+[03:34:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase connection                 total=  113.0ms avg/tick=  282.6us share=  0.3% n=400
+[03:34:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase sendChunks                 total=   33.0ms avg/tick=   82.5us share=  0.1% n=400
+[03:34:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.fluidTicks           total=    3.9ms avg/tick=    9.6us share=  0.0% n=1200
+[03:34:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase functions                  total=    0.8ms avg/tick=    1.9us share=  0.0% n=400
+[03:34:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase players                    total=    0.6ms avg/tick=    1.6us share=  0.0% n=400
+[03:34:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockEvents          total=    0.6ms avg/tick=    1.5us share=  0.0% n=1200
+[03:34:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.blockTickRuns           total= 176400 avg/tick=  441.0
+[03:34:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.fluidTickRuns           total=     69 avg/tick=    0.2
+[03:34:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalNoChange        total= 352800 avg/tick=  882.0
+[03:34:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalRuns            total=1852200 avg/tick= 4630.5
+[03:34:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalSkipped         total=10495800 avg/tick=26239.5
+[03:34:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile window=400ticks totalWallMs=20031 measuredMs=40869
+[03:34:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase worlds                     total=13665.4ms avg/tick=34163.5us share= 33.4% n=400
+[03:34:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.tickPending+misc     total=13406.7ms avg/tick=33516.9us share= 32.8% n=1200
+[03:34:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockTicks           total=12017.0ms avg/tick=30042.6us share= 29.4% n=1200
+[03:34:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.chunkSource          total= 1383.4ms avg/tick= 3458.4us share=  3.4% n=1200
+[03:34:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.entities             total=  251.4ms avg/tick=  628.4us share=  0.6% n=1200
+[03:34:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase connection                 total=  105.2ms avg/tick=  263.1us share=  0.3% n=400
+[03:34:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase sendChunks                 total=   33.5ms avg/tick=   83.7us share=  0.1% n=400
+[03:34:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.fluidTicks           total=    4.7ms avg/tick=   11.9us share=  0.0% n=1200
+[03:34:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase players                    total=    0.8ms avg/tick=    2.0us share=  0.0% n=400
+[03:34:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase functions                  total=    0.8ms avg/tick=    1.9us share=  0.0% n=400
+[03:34:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockEvents          total=    0.5ms avg/tick=    1.1us share=  0.0% n=1200
+[03:34:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.blockTickRuns           total= 176400 avg/tick=  441.0
+[03:34:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.fluidTickRuns           total=     66 avg/tick=    0.2
+[03:34:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalNoChange        total= 352800 avg/tick=  882.0
+[03:34:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalRuns            total=1852200 avg/tick= 4630.5
+[03:34:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalSkipped         total=10495800 avg/tick=26239.5
+[03:34:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile window=400ticks totalWallMs=20066 measuredMs=48160
+[03:34:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase worlds                     total=16092.0ms avg/tick=40229.9us share= 33.4% n=400
+[03:34:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.tickPending+misc     total=15843.8ms avg/tick=39609.6us share= 32.9% n=1200
+[03:34:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockTicks           total=14411.5ms avg/tick=36028.8us share= 29.9% n=1200
+[03:34:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.chunkSource          total= 1427.6ms avg/tick= 3569.0us share=  3.0% n=1200
+[03:34:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.entities             total=  241.3ms avg/tick=  603.2us share=  0.5% n=1200
+[03:34:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase connection                 total=  106.3ms avg/tick=  265.8us share=  0.2% n=400
+[03:34:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase sendChunks                 total=   33.9ms avg/tick=   84.7us share=  0.1% n=400
+[03:34:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.fluidTicks           total=    3.1ms avg/tick=    7.7us share=  0.0% n=1200
+[03:34:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase functions                  total=    0.7ms avg/tick=    1.8us share=  0.0% n=400
+[03:34:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockEvents          total=    0.5ms avg/tick=    1.2us share=  0.0% n=1200
+[03:34:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase players                    total=    0.3ms avg/tick=    0.7us share=  0.0% n=400
+[03:34:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.blockTickRuns           total= 176400 avg/tick=  441.0
+[03:34:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.fluidTickRuns           total=     22 avg/tick=    0.1
+[03:34:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalNoChange        total= 352800 avg/tick=  882.0
+[03:34:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalRuns            total=1852200 avg/tick= 4630.5
+[03:34:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalSkipped         total=10495800 avg/tick=26239.5
+[03:35:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile window=400ticks totalWallMs=19904 measuredMs=41810
+[03:35:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase worlds                     total=13995.1ms avg/tick=34987.7us share= 33.5% n=400
+[03:35:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.tickPending+misc     total=13677.4ms avg/tick=34193.5us share= 32.7% n=1200
+[03:35:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockTicks           total=12106.1ms avg/tick=30265.2us share= 29.0% n=1200
+[03:35:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.chunkSource          total= 1565.9ms avg/tick= 3914.8us share=  3.7% n=1200
+[03:35:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.entities             total=  310.0ms avg/tick=  775.0us share=  0.7% n=1200
+[03:35:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase connection                 total=  111.1ms avg/tick=  277.8us share=  0.3% n=400
+[03:35:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase sendChunks                 total=   39.2ms avg/tick=   98.0us share=  0.1% n=400
+[03:35:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.fluidTicks           total=    3.6ms avg/tick=    9.0us share=  0.0% n=1200
+[03:35:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase functions                  total=    0.8ms avg/tick=    2.0us share=  0.0% n=400
+[03:35:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase players                    total=    0.7ms avg/tick=    1.9us share=  0.0% n=400
+[03:35:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockEvents          total=    0.5ms avg/tick=    1.2us share=  0.0% n=1200
+[03:35:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.blockTickRuns           total= 176400 avg/tick=  441.0
+[03:35:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.fluidTickRuns           total=     49 avg/tick=    0.1
+[03:35:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalNoChange        total= 352800 avg/tick=  882.0
+[03:35:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalRuns            total=1852200 avg/tick= 4630.5
+[03:35:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalSkipped         total=10495800 avg/tick=26239.5
+[03:35:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile window=400ticks totalWallMs=20005 measuredMs=48750
+[03:35:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase worlds                     total=16285.8ms avg/tick=40714.5us share= 33.4% n=400
+[03:35:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.tickPending+misc     total=16036.0ms avg/tick=40090.1us share= 32.9% n=1200
+[03:35:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockTicks           total=14568.4ms avg/tick=36421.0us share= 29.9% n=1200
+[03:35:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.chunkSource          total= 1462.5ms avg/tick= 3656.4us share=  3.0% n=1200
+[03:35:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.entities             total=  243.0ms avg/tick=  607.5us share=  0.5% n=1200
+[03:35:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase connection                 total=  112.5ms avg/tick=  281.1us share=  0.2% n=400
+[03:35:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase sendChunks                 total=   37.1ms avg/tick=   92.8us share=  0.1% n=400
+[03:35:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.fluidTicks           total=    3.3ms avg/tick=    8.3us share=  0.0% n=1200
+[03:35:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase functions                  total=    0.8ms avg/tick=    1.9us share=  0.0% n=400
+[03:35:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase players                    total=    0.6ms avg/tick=    1.5us share=  0.0% n=400
+[03:35:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockEvents          total=    0.4ms avg/tick=    1.1us share=  0.0% n=1200
+[03:35:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.blockTickRuns           total= 176400 avg/tick=  441.0
+[03:35:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.fluidTickRuns           total=     32 avg/tick=    0.1
+[03:35:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalNoChange        total= 352800 avg/tick=  882.0
+[03:35:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalRuns            total=1852200 avg/tick= 4630.5
+[03:35:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalSkipped         total=10495800 avg/tick=26239.5
+[03:35:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile window=400ticks totalWallMs=19987 measuredMs=41911
+[03:35:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase worlds                     total=13996.6ms avg/tick=34991.5us share= 33.4% n=400
+[03:35:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.tickPending+misc     total=13748.6ms avg/tick=34371.6us share= 32.8% n=1200
+[03:35:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockTicks           total=12286.0ms avg/tick=30715.0us share= 29.3% n=1200
+[03:35:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.chunkSource          total= 1457.5ms avg/tick= 3643.8us share=  3.5% n=1200
+[03:35:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.entities             total=  241.0ms avg/tick=  602.4us share=  0.6% n=1200
+[03:35:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase connection                 total=  142.6ms avg/tick=  356.5us share=  0.3% n=400
+[03:35:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase sendChunks                 total=   33.9ms avg/tick=   84.7us share=  0.1% n=400
+[03:35:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.fluidTicks           total=    3.3ms avg/tick=    8.2us share=  0.0% n=1200
+[03:35:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase functions                  total=    0.8ms avg/tick=    2.0us share=  0.0% n=400
+[03:35:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockEvents          total=    0.6ms avg/tick=    1.4us share=  0.0% n=1200
+[03:35:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase players                    total=    0.3ms avg/tick=    0.7us share=  0.0% n=400
+[03:35:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.blockTickRuns           total= 176400 avg/tick=  441.0
+[03:35:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.fluidTickRuns           total=     55 avg/tick=    0.1
+[03:35:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalNoChange        total= 352800 avg/tick=  882.0
+[03:35:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalRuns            total=1852200 avg/tick= 4630.5
+[03:35:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalSkipped         total=10495800 avg/tick=26239.5
+[03:36:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile window=400ticks totalWallMs=19991 measuredMs=29395
+[03:36:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase worlds                     total= 9831.6ms avg/tick=24579.0us share= 33.4% n=400
+[03:36:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.tickPending+misc     total= 9644.7ms avg/tick=24111.7us share= 32.8% n=1200
+[03:36:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockTicks           total= 8871.9ms avg/tick=22179.8us share= 30.2% n=1200
+[03:36:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.chunkSource          total=  769.8ms avg/tick= 1924.5us share=  2.6% n=1200
+[03:36:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.entities             total=  182.6ms avg/tick=  456.5us share=  0.6% n=1200
+[03:36:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase connection                 total=   65.2ms avg/tick=  163.0us share=  0.2% n=400
+[03:36:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase sendChunks                 total=   26.7ms avg/tick=   66.6us share=  0.1% n=400
+[03:36:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.fluidTicks           total=    1.9ms avg/tick=    4.8us share=  0.0% n=1200
+[03:36:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase functions                  total=    0.6ms avg/tick=    1.5us share=  0.0% n=400
+[03:36:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase players                    total=    0.4ms avg/tick=    0.9us share=  0.0% n=400
+[03:36:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockEvents          total=    0.3ms avg/tick=    0.8us share=  0.0% n=1200
+[03:36:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.blockTickRuns           total= 176400 avg/tick=  441.0
+[03:36:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.fluidTickRuns           total=     33 avg/tick=    0.1
+[03:36:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalNoChange        total= 352800 avg/tick=  882.0
+[03:36:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalRuns            total=1852200 avg/tick= 4630.5
+[03:36:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalSkipped         total=10495800 avg/tick=26239.5
+[03:36:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile window=400ticks totalWallMs=20010 measuredMs=28619
+[03:36:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase worlds                     total= 9569.2ms avg/tick=23923.0us share= 33.4% n=400
+[03:36:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.tickPending+misc     total= 9396.8ms avg/tick=23491.9us share= 32.8% n=1200
+[03:36:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockTicks           total= 8584.3ms avg/tick=21460.7us share= 30.0% n=1200
+[03:36:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.chunkSource          total=  809.6ms avg/tick= 2024.0us share=  2.8% n=1200
+[03:36:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.entities             total=  168.1ms avg/tick=  420.4us share=  0.6% n=1200
+[03:36:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase connection                 total=   62.1ms avg/tick=  155.3us share=  0.2% n=400
+[03:36:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase sendChunks                 total=   25.9ms avg/tick=   64.6us share=  0.1% n=400
+[03:36:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.fluidTicks           total=    1.9ms avg/tick=    4.7us share=  0.0% n=1200
+[03:36:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase functions                  total=    0.7ms avg/tick=    1.8us share=  0.0% n=400
+[03:36:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase players                    total=    0.4ms avg/tick=    0.9us share=  0.0% n=400
+[03:36:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockEvents          total=    0.3ms avg/tick=    0.7us share=  0.0% n=1200
+[03:36:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.blockTickRuns           total= 176400 avg/tick=  441.0
+[03:36:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.fluidTickRuns           total=     24 avg/tick=    0.1
+[03:36:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalNoChange        total= 352800 avg/tick=  882.0
+[03:36:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalRuns            total=1852200 avg/tick= 4630.5
+[03:36:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalSkipped         total=10495800 avg/tick=26239.5
+[03:36:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile window=400ticks totalWallMs=19990 measuredMs=29426
+[03:36:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase worlds                     total= 9838.6ms avg/tick=24596.5us share= 33.4% n=400
+[03:36:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.tickPending+misc     total= 9666.0ms avg/tick=24165.0us share= 32.8% n=1200
+[03:36:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockTicks           total= 8790.1ms avg/tick=21975.4us share= 29.9% n=1200
+[03:36:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.chunkSource          total=  873.0ms avg/tick= 2182.5us share=  3.0% n=1200
+[03:36:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.entities             total=  168.1ms avg/tick=  420.3us share=  0.6% n=1200
+[03:36:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase connection                 total=   62.6ms avg/tick=  156.4us share=  0.2% n=400
+[03:36:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase sendChunks                 total=   24.9ms avg/tick=   62.3us share=  0.1% n=400
+[03:36:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.fluidTicks           total=    1.9ms avg/tick=    4.6us share=  0.0% n=1200
+[03:36:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase functions                  total=    0.6ms avg/tick=    1.5us share=  0.0% n=400
+[03:36:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockEvents          total=    0.3ms avg/tick=    0.7us share=  0.0% n=1200
+[03:36:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase players                    total=    0.1ms avg/tick=    0.4us share=  0.0% n=400
+[03:36:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.blockTickRuns           total= 176400 avg/tick=  441.0
+[03:36:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.fluidTickRuns           total=     33 avg/tick=    0.1
+[03:36:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalNoChange        total= 352800 avg/tick=  882.0
+[03:36:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalRuns            total=1852200 avg/tick= 4630.5
+[03:36:45] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalSkipped         total=10495800 avg/tick=26239.5
+[03:37:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile window=400ticks totalWallMs=19999 measuredMs=30435
+[03:37:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase worlds                     total=10168.9ms avg/tick=25422.3us share= 33.4% n=400
+[03:37:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.tickPending+misc     total=10012.2ms avg/tick=25030.5us share= 32.9% n=1200
+[03:37:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockTicks           total= 9059.9ms avg/tick=22649.6us share= 29.8% n=1200
+[03:37:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.chunkSource          total=  949.3ms avg/tick= 2373.3us share=  3.1% n=1200
+[03:37:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.entities             total=  152.2ms avg/tick=  380.6us share=  0.5% n=1200
+[03:37:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase connection                 total=   63.8ms avg/tick=  159.6us share=  0.2% n=400
+[03:37:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase sendChunks                 total=   25.4ms avg/tick=   63.5us share=  0.1% n=400
+[03:37:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.fluidTicks           total=    1.9ms avg/tick=    4.8us share=  0.0% n=1200
+[03:37:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase functions                  total=    0.7ms avg/tick=    1.7us share=  0.0% n=400
+[03:37:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase players                    total=    0.4ms avg/tick=    1.0us share=  0.0% n=400
+[03:37:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockEvents          total=    0.3ms avg/tick=    0.7us share=  0.0% n=1200
+[03:37:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.blockTickRuns           total= 176400 avg/tick=  441.0
+[03:37:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.fluidTickRuns           total=     11 avg/tick=    0.0
+[03:37:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalNoChange        total= 352800 avg/tick=  882.0
+[03:37:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalRuns            total=1852200 avg/tick= 4630.5
+[03:37:05] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalSkipped         total=10495800 avg/tick=26239.5
+[03:37:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile window=400ticks totalWallMs=20002 measuredMs=29148
+[03:37:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase worlds                     total= 9740.4ms avg/tick=24351.0us share= 33.4% n=400
+[03:37:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.tickPending+misc     total= 9586.9ms avg/tick=23967.3us share= 32.9% n=1200
+[03:37:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockTicks           total= 8794.7ms avg/tick=21986.6us share= 30.2% n=1200
+[03:37:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.chunkSource          total=  789.5ms avg/tick= 1973.7us share=  2.7% n=1200
+[03:37:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.entities             total=  149.4ms avg/tick=  373.6us share=  0.5% n=1200
+[03:37:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase connection                 total=   59.4ms avg/tick=  148.6us share=  0.2% n=400
+[03:37:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase sendChunks                 total=   25.3ms avg/tick=   63.3us share=  0.1% n=400
+[03:37:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.fluidTicks           total=    1.9ms avg/tick=    4.6us share=  0.0% n=1200
+[03:37:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase functions                  total=    0.6ms avg/tick=    1.4us share=  0.0% n=400
+[03:37:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase players                    total=    0.3ms avg/tick=    0.8us share=  0.0% n=400
+[03:37:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.phase level.blockEvents          total=    0.3ms avg/tick=    0.6us share=  0.0% n=1200
+[03:37:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.blockTickRuns           total= 176400 avg/tick=  441.0
+[03:37:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.fluidTickRuns           total=     21 avg/tick=    0.1
+[03:37:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalNoChange        total= 352800 avg/tick=  882.0
+[03:37:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalRuns            total=1852200 avg/tick= 4630.5
+[03:37:25] [Server thread/INFO]: [STDOUT] [io.papermc.paper.util.PapoTickProfile] PapoTickProfile.count rs.wireEvalSkipped         total=10495800 avg/tick=26239.5
+logErrors=0 exited=true
+activity gate PASS: rs.blockTickRuns steady(tail-median)=441.0/tick vs expected ~441 (windows=46)

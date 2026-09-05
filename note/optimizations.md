@@ -2533,3 +2533,24 @@ javap 级验证 jar 语义。** 报告：
 实评为闭包保守性（对角位标记但非实际输入）；blockTicks 内剩余成本转入
 handleNeighborChanged 派发机械与 calculateTargetStrength 本体——批次 128 应先 JFR
 重画像（126/127 后的分布已变）再定方向。
+
+---
+
+## 批次 128（2026-09-06）：clean 跳过前移至通知入口（0.76.0 → 0.77.0）
+
+0264 = neighborChanged vanilla 分支入口（canSurvive 之前）整段跳过。0.76.0 JFR 画像
+驱动：跳过率达 85.0% 后，**被跳过通知仍支付 canSurvive 支撑块读取+两层帧**
+（handleNeighborChanged 内联桶 15.65% 居首）。等价性：支撑位在 Chebyshev-1 闭包内，
+"悬空且 clean"不可达（悬空必伴随下方 transition ⇒ dirty ⇒ 原路径弹出）；VANILLA+
+非实验门使 AC/EIGENCRAFT/experimental 腿与上游逐字节一致（EIGENCRAFT 共享
+neighborChanged 路径——门必须在跳过点）；移除路径评估恢复运行（稳态无操作，向
+vanilla 事件行为收敛）。**宏 ABAB 四腿合并中位 21197.9→19701.9us/tick（−7.1%，
+两配对 −5.5%/−4.4% 一致），计数器与 127 精确恒等**（纯路径成本削减），四腿门全
+PASS，拓扑 10 探针 PASS。判例：**跳过点前移的等价重心在"被跳过副作用的输入闭包
+覆盖"（canSurvive 的支撑位在闭包内 ⇒ 可跳）**；JMH 不适用（无算法变化）。
+报告：[note/report/perf/2026-09-06-notification-entry-skip-batch128.md](report/perf/2026-09-06-notification-entry-skip-batch128.md)。
+
+下一轮前沿（0.77.0 后预期分布）：markIfWire 标记扫描（9.33% 自身帧 + 读取链份额）
+升为第一优化面——候选：精确输入闭包（去 8 角位，26→18 读，需 getSignal/getDirectSignal
+覆写面对角读审计）或列固定 chunk 读取（32 次区块哈希查找→4-6 次）；方块态读取链
+（ZeroColling+SimpleBitStorage ≈ 9.2%）为公共底座。
