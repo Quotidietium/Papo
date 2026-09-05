@@ -2507,3 +2507,29 @@ updateNeighbourForOutputSignal 两漏斗挂钩闭合）；④全局集跨维度/
 harness（直通强充能+比较器模拟 5 探针双腿全等）。判例：**顺序性等价论证必须覆盖事件
 派发序（逐例验证全对 ≠ 流等价）；fixup 流配错目标时中止 rebase 顶层重提交更稳。**
 报告：[note/report/perf/2026-09-05-wire-dirty-skip-batch126.md](report/perf/2026-09-05-wire-dirty-skip-batch126.md)。
+
+---
+
+## 批次 127（2026-09-06）：粉自身位排除 + updateShape 旁路（0.75.0 → 0.76.0）
+
+0263 = 自身位排除出标记闭包（粉自身 POWER 非自身输入，翻转自通知评估可证冗余——
+评估刚读完输入，期间无输入变化则重算必无变化；有变化则既有闭包钩子重新标记）+
+评估器 `!updateShape` 门（updateShape==true 恰为 onPlace 落位路径，新粉首评估无条件
+执行并顺带清过期位，条纹锁 happens-before 对齐 WorldGenRegion 并发标记）。批 126
+的自标记正确性代价全数收回：**计数器判决 runs 7462.9→4630.5/tick（−2832.4，通知
+总数 30870 恒等、活动门 441.0 逐位一致），跳过率 75.8%→85.0%；宏 ABABAB 六腿交错
+合并中位 23029.1→21606.2us/tick（−6.2%，保守值，机制预测 −10%）；JMH 模型
+126腿→127腿 1.17×**。TopologyVerify 扩至 10 探针（新鲜落位/拆除/原位重放置直击
+updateShape 旁路）三 jar 全 PASS。
+
+**基线陷阱判例（本批最重要产出）**：本地 build/libs 版本 jar 被上会话批 127 WIP
+的同版本号重建覆盖——首轮"基线腿"实为 127 代码（双腿计数器全同暴露）；gh 上已
+发布 0.75.0 资产经下载核查为干净 126 代码无需修复。真基线以 git 状态临时回退重建
+（字节码验证 mark 无自排除/评估器无门）。**本地版本 jar 非权威，基线腿前必须
+javap 级验证 jar 语义。** 报告：
+[note/report/perf/2026-09-06-wire-self-exclusion-batch127.md](report/perf/2026-09-06-wire-self-exclusion-batch127.md)。
+
+下一轮前沿：脏追踪轴已达 no-change 上限的 97%（85.0%/87.9%），剩余 882/tick 无变化
+实评为闭包保守性（对角位标记但非实际输入）；blockTicks 内剩余成本转入
+handleNeighborChanged 派发机械与 calculateTargetStrength 本体——批次 128 应先 JFR
+重画像（126/127 后的分布已变）再定方向。
