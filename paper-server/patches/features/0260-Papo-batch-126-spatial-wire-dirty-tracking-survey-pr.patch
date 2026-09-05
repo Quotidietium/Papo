@@ -1,0 +1,54 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 5 Sep 2026 02:21:35 +0800
+Subject: [PATCH] Papo: batch 126 spatial wire dirty-tracking survey probe
+ (Chebyshev-1 marking on state transitions + clean-at-entry skippable/dirty
+ counters via PapoWireDirtySurvey; counts only, never skips - measures the
+ true skippable subset of the 87.9% no-change evaluations before any
+ production dirty-tracking design)
+
+
+diff --git a/net/minecraft/world/level/Level.java b/net/minecraft/world/level/Level.java
+index 798422a9d8b718dc47ca54f82b1893d2dadd8d55..9197ab00dc60de286b74d1ed141772f834132397 100644
+--- a/net/minecraft/world/level/Level.java
++++ b/net/minecraft/world/level/Level.java
+@@ -1148,6 +1148,18 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
+         if (blockState1 == state) {
+             if (blockState != blockState1) {
+                 this.setBlocksDirty(pos, blockState, blockState1);
++                // Papo start - batch 126 wire dirty-tracking survey (diagnostic-only, papo.tickProfile-gated)
++                // An actual state transition at pos changes an input of every wire within
++                // Chebyshev distance 1 (their 3x3x3 input cubes all contain pos). Mark those
++                // wires dirty; evaluation clears its own bit. "Notified while clean" = the
++                // evaluation is provably redundant (inputs unchanged since its last run, so
++                // the result equals the stored power and the no-change path has zero side
++                // effects). Counted, not skipped, in this survey round. Cross-dimension
++                // packed-pos collisions can only add false dirt (conservative undercount).
++                if (io.papermc.paper.util.PapoTickProfile.ENABLED) {
++                    io.papermc.paper.util.PapoWireDirtySurvey.mark(this, pos);
++                }
++                // Papo end - batch 126
+             }
+ 
+             if ((flags & Block.UPDATE_CLIENTS) != 0 && (!this.isClientSide() || (flags & Block.UPDATE_INVISIBLE) == 0) && (this.isClientSide() || chunkAt == null || (chunkAt.getFullStatus() != null && chunkAt.getFullStatus().isOrAfter(FullChunkStatus.FULL)))) { // allow chunk to be null here as chunk.isReady() is false when we send our notification during block placement // Paper - rewrite chunk system - change from ticking to full
+diff --git a/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java b/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
+index 0a860caafa8ed753c95f701ca51ef88323b57f96..6096793bf60cac62b7bdb9cbbc27bd3f5f6afd4e 100644
+--- a/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
++++ b/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
+@@ -26,6 +26,16 @@ public class DefaultRedstoneWireEvaluator extends RedstoneWireEvaluator {
+     @Override
+     public void updatePowerStrength(Level level, BlockPos pos, BlockState state, @Nullable Orientation orientation, boolean updateShape) {
+         io.papermc.paper.util.PapoTickProfile.addCount("rs.wireEvalRuns", 1); // Papo - batch 125 evaluation-redundancy survey counter (diagnostic-only, papo.tickProfile-gated)
++        // Papo start - batch 126 spatial dirty-tracking survey (diagnostic-only): clean-at-entry
++        // evaluations are provably redundant skips; dirty ones clear their bit. The invariant
++        // skippable + changed <= runs bounds the bookkeeping (a dirty entry must exist for
++        // every evaluation whose inputs changed since its last run).
++        if (io.papermc.paper.util.PapoWireDirtySurvey.entry(level, pos)) {
++            io.papermc.paper.util.PapoTickProfile.addCount("rs.wireEvalSpatialSkippable", 1);
++        } else {
++            io.papermc.paper.util.PapoTickProfile.addCount("rs.wireEvalDirty", 1);
++        }
++        // Papo end - batch 126
+         int i = this.calculateTargetStrength(level, pos);
+         // CraftBukkit start
+         int oldPower = state.getValue(RedStoneWireBlock.POWER);

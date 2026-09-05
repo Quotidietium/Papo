@@ -7,15 +7,9 @@ Subject: [PATCH] Papo: batch 123 probe-free scheduled-tick dedup
  willTickThisTick membership in LevelTicks - no probe record allocation on the
  re-schedule check hot path)
 
----
- .../world/ticks/LevelChunkTicks.java          |  17 ++-
- net/minecraft/world/ticks/LevelTicks.java     |  21 ++-
- net/minecraft/world/ticks/PapoPosTypeSet.java | 121 ++++++++++++++++++
- 3 files changed, 141 insertions(+), 18 deletions(-)
- create mode 100644 net/minecraft/world/ticks/PapoPosTypeSet.java
 
 diff --git a/net/minecraft/world/ticks/LevelChunkTicks.java b/net/minecraft/world/ticks/LevelChunkTicks.java
-index 0b139712..a7993a02 100644
+index 0b13971259f58876b778c0d28ad20c3510ed46ad..a7993a026cf6ba2ee71c81dbaab0b8b09ff0e0ce 100644
 --- a/net/minecraft/world/ticks/LevelChunkTicks.java
 +++ b/net/minecraft/world/ticks/LevelChunkTicks.java
 @@ -1,6 +1,5 @@
@@ -84,7 +78,7 @@ index 0b139712..a7993a02 100644
          }
      }
 diff --git a/net/minecraft/world/ticks/LevelTicks.java b/net/minecraft/world/ticks/LevelTicks.java
-index b932f32d..b97557d0 100644
+index b932f32d08ad663cd05910140c861045a9b1f922..b97557d0df1445f5c0fc06f010913aeb25286d62 100644
 --- a/net/minecraft/world/ticks/LevelTicks.java
 +++ b/net/minecraft/world/ticks/LevelTicks.java
 @@ -7,7 +7,6 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
@@ -145,7 +139,7 @@ index b932f32d..b97557d0 100644
      private void forContainersInArea(BoundingBox area, LevelTicks.PosAndContainerConsumer<T> action) {
 diff --git a/net/minecraft/world/ticks/PapoPosTypeSet.java b/net/minecraft/world/ticks/PapoPosTypeSet.java
 new file mode 100644
-index 00000000..a65ac264
+index 0000000000000000000000000000000000000000..a65ac264114af5ec577c7455ad47140b411b3b40
 --- /dev/null
 +++ b/net/minecraft/world/ticks/PapoPosTypeSet.java
 @@ -0,0 +1,121 @@

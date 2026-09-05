@@ -5,12 +5,9 @@ Subject: [PATCH] Papo: batch 123 tickPending sub-phase split
  (blockTicks/fluidTicks/blockEvents) and scheduled-tick/block-event run
  counters (diagnostic-only, papo.tickProfile-gated)
 
----
- net/minecraft/server/level/ServerLevel.java | 9 +++++++++
- 1 file changed, 9 insertions(+)
 
 diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
-index 2fc20049..447c0a3a 100644
+index 2fc20049985d5ca83382c919ff14136b11276a63..447c0a3a27630a5609567c548e8c4da84b5cfd42 100644
 --- a/net/minecraft/server/level/ServerLevel.java
 +++ b/net/minecraft/server/level/ServerLevel.java
 @@ -795,9 +795,13 @@ public class ServerLevel extends Level implements ServerEntityGetter, WorldGenLe

@@ -43,6 +43,12 @@ public final class PapoTickProfile {
     // Counts occurrences (not wall time) of per-block events, reported as "count <key>" rows
     // so load presence (e.g. redstone oscillation) can be gated independently of timing.
     private static final ConcurrentHashMap<String, long[]> COUNTS = new ConcurrentHashMap<>();
+    // Papo start - batch 126: registry of every key ever counted, so each window prints the
+    // full row set incl. zeros. Without it a dead load emits NO count line for its window
+    // (map cleared per window) and a consumer that only parses present lines sees the last
+    // non-zero value forever - the harness activity gate passed a fully dead ring that way.
+    private static final java.util.Set<String> COUNT_KEYS = ConcurrentHashMap.newKeySet();
+    // Papo end - batch 126
 
     /** Adds {@code delta} to a named counter (typ. 1 per event). */
     public static void addCount(final String key, final long delta) {
@@ -50,6 +56,7 @@ public final class PapoTickProfile {
             return;
         }
         final long[] arr = COUNTS.computeIfAbsent(key, k -> new long[1]);
+        COUNT_KEYS.add(key); // Papo - batch 126: ever-seen key registry (zero rows printed)
         synchronized (arr) {
             arr[0] += delta;
         }
@@ -75,13 +82,16 @@ public final class PapoTickProfile {
                 e.getKey(), v[0] / 1_000_000.0, v[0] / 1_000.0 / REPORT_EVERY_TICKS,
                 100.0 * v[0] / Math.max(1, measured), v[1]));
         }
-        // Papo start - batch 123: activity counter rows (avg/tick of counted events)
-        if (!COUNTS.isEmpty()) {
-            final List<Map.Entry<String, long[]>> counts = new ArrayList<>(COUNTS.entrySet());
-            counts.sort(Map.Entry.comparingByKey());
-            for (final Map.Entry<String, long[]> e : counts) {
+        // Papo start - batch 123: activity counter rows (avg/tick of counted events);
+        // batch 126: all ever-seen keys print each window (zero when absent this window)
+        if (!COUNT_KEYS.isEmpty()) {
+            final List<String> keys = new ArrayList<>(COUNT_KEYS);
+            java.util.Collections.sort(keys);
+            for (final String k : keys) {
+                final long[] v = COUNTS.get(k);
+                final long total = v == null ? 0 : v[0];
                 System.out.println(String.format("PapoTickProfile.count %-26s total=%7d avg/tick=%7.1f",
-                    e.getKey(), e.getValue()[0], e.getValue()[0] / (double) REPORT_EVERY_TICKS));
+                    k, total, total / (double) REPORT_EVERY_TICKS));
             }
             COUNTS.clear();
         }

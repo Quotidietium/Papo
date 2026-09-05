@@ -1,0 +1,89 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 5 Sep 2026 02:36:29 +0800
+Subject: [PATCH] Papo: batch 126 production wire input-dirty skip (Chebyshev-1
+ marking on every real transition incl. WorldGenRegion generation writes via
+ striped/locked sets; clean-at-entry evaluations skipped - unchanged inputs
+ guarantee the no-change path which has zero observable effects;
+ survey-measured 85.0% skip rate)
+
+
+diff --git a/net/minecraft/server/level/WorldGenRegion.java b/net/minecraft/server/level/WorldGenRegion.java
+index bf5e460b89d7c0fcdcb8826ba693bd23761df430..15f2a7fb934da3abe9176f21c908090e3d136b9c 100644
+--- a/net/minecraft/server/level/WorldGenRegion.java
++++ b/net/minecraft/server/level/WorldGenRegion.java
+@@ -342,6 +342,14 @@ public class WorldGenRegion implements WorldGenLevel {
+             BlockState blockState = chunk.setBlockState(pos, state, flags); final BlockState previousBlockState = blockState; // Paper - Clear block entity before setting up a DUMMY block entity - obfhelper
+             if (blockState != null) {
+                 this.level.updatePOIOnBlockStateChange(pos, blockState, state);
++                // Papo start - batch 126 wire input-dirty tracking: generation writes can
++                // change an input of a live wire in a neighbouring loaded chunk (structure
++                // paste at a region border); mark the same Chebyshev-1 wire set. Runs on
++                // generation threads - the tracking set is striped/locked for this reason.
++                if (blockState != state) {
++                    io.papermc.paper.util.PapoWireDirtyTracking.mark(this, pos);
++                }
++                // Papo end - batch 126
+             }
+ 
+             if (state.hasBlockEntity()) {
+diff --git a/net/minecraft/world/level/Level.java b/net/minecraft/world/level/Level.java
+index 9197ab00dc60de286b74d1ed141772f834132397..f39a398a733457230e95c4f64ffdc41a0affdbb7 100644
+--- a/net/minecraft/world/level/Level.java
++++ b/net/minecraft/world/level/Level.java
+@@ -1148,17 +1148,15 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
+         if (blockState1 == state) {
+             if (blockState != blockState1) {
+                 this.setBlocksDirty(pos, blockState, blockState1);
+-                // Papo start - batch 126 wire dirty-tracking survey (diagnostic-only, papo.tickProfile-gated)
++                // Papo start - batch 126 wire input-dirty tracking (production)
+                 // An actual state transition at pos changes an input of every wire within
+                 // Chebyshev distance 1 (their 3x3x3 input cubes all contain pos). Mark those
+-                // wires dirty; evaluation clears its own bit. "Notified while clean" = the
+-                // evaluation is provably redundant (inputs unchanged since its last run, so
+-                // the result equals the stored power and the no-change path has zero side
+-                // effects). Counted, not skipped, in this survey round. Cross-dimension
+-                // packed-pos collisions can only add false dirt (conservative undercount).
+-                if (io.papermc.paper.util.PapoTickProfile.ENABLED) {
+-                    io.papermc.paper.util.PapoWireDirtySurvey.mark(this, pos);
+-                }
++                // wires; a wire notified later while unmarked is provably redundant to
++                // re-evaluate (unchanged inputs -> the stored power -> the no-change path
++                // of updatePowerStrength has zero observable effects). Survey: 85.0% of
++                // ring-oscillator evaluations skip. Cross-dimension packed-pos collisions
++                // only add false dirt (a conservative, correctness-neutral skip loss).
++                io.papermc.paper.util.PapoWireDirtyTracking.mark(this, pos);
+                 // Papo end - batch 126
+             }
+ 
+diff --git a/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java b/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
+index 6096793bf60cac62b7bdb9cbbc27bd3f5f6afd4e..4882f1c94e49078a5757101a7e9ef7c8286daaeb 100644
+--- a/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
++++ b/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
+@@ -25,16 +25,17 @@ public class DefaultRedstoneWireEvaluator extends RedstoneWireEvaluator {
+ 
+     @Override
+     public void updatePowerStrength(Level level, BlockPos pos, BlockState state, @Nullable Orientation orientation, boolean updateShape) {
+-        io.papermc.paper.util.PapoTickProfile.addCount("rs.wireEvalRuns", 1); // Papo - batch 125 evaluation-redundancy survey counter (diagnostic-only, papo.tickProfile-gated)
+-        // Papo start - batch 126 spatial dirty-tracking survey (diagnostic-only): clean-at-entry
+-        // evaluations are provably redundant skips; dirty ones clear their bit. The invariant
+-        // skippable + changed <= runs bounds the bookkeeping (a dirty entry must exist for
+-        // every evaluation whose inputs changed since its last run).
+-        if (io.papermc.paper.util.PapoWireDirtySurvey.entry(level, pos)) {
+-            io.papermc.paper.util.PapoTickProfile.addCount("rs.wireEvalSpatialSkippable", 1);
+-        } else {
+-            io.papermc.paper.util.PapoTickProfile.addCount("rs.wireEvalDirty", 1);
++        // Papo start - batch 126 production wire input-dirty skip: when no block
++        // transition has occurred within this wire's 3x3x3 input cube since its last
++        // evaluation, calculateTargetStrength is guaranteed to return the stored POWER and
++        // the no-change path below performs zero observable effects (no event, no setBlock,
++        // no fan-out) - so the whole evaluation is skipped, equivalent by construction.
++        // Survey measured 85.0% of ring-oscillator evaluations taking this branch.
++        if (io.papermc.paper.util.PapoWireDirtyTracking.evalEntry(level, pos)) {
++            io.papermc.paper.util.PapoTickProfile.addCount("rs.wireEvalSkipped", 1);
++            return;
+         }
++        io.papermc.paper.util.PapoTickProfile.addCount("rs.wireEvalRuns", 1); // Papo - batch 125 counter (now counts proceeded evaluations; diagnostic-only, papo.tickProfile-gated)
+         // Papo end - batch 126
+         int i = this.calculateTargetStrength(level, pos);
+         // CraftBukkit start

@@ -99,7 +99,11 @@ public final class RedstoneScaleBench {
             try {
                 String l;
                 while ((l = reader.readLine()) != null) {
-                    logLines.add(l);
+                    // probeMarker/forensics 在 synchronized(logLines) 下迭代（CME 判例：
+                    // 无锁追加与有锁迭代并发即 ConcurrentModificationException）
+                    synchronized (logLines) {
+                        logLines.add(l);
+                    }
                 }
             } catch (final IOException ignored) {
             }

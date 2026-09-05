@@ -1,0 +1,158 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 5 Sep 2026 09:45:21 +0800
+Subject: [PATCH] Papo: batch 126 dirty-tracking soundness closure - mark at
+ the LevelChunk.setBlockState commit BEFORE any dispatch
+ (onPlace/affectNeighborsAfterRemoval fan-out evals previously arrived ahead
+ of the notifyAndUpdatePhysics mark and got skipped - oscillator seed-pulse
+ kill); straight-through Chebyshev-2 input closure (source behind a conductor
+ feeds the wire two out along the axis); DiodeBlock.updateNeighborsInFront +
+ Level.updateNeighbourForOutputSignal hooks (comparator BE-output refresh and
+ analog pokes change wire inputs with no transition); per-Level tracker
+ instance (packed-pos-only bits in a global set let different levels clear
+ each other's bits - unsound)
+
+
+diff --git a/net/minecraft/server/level/WorldGenRegion.java b/net/minecraft/server/level/WorldGenRegion.java
+index 15f2a7fb934da3abe9176f21c908090e3d136b9c..a3aec136128aa75aafa28ed86f856e453787c34c 100644
+--- a/net/minecraft/server/level/WorldGenRegion.java
++++ b/net/minecraft/server/level/WorldGenRegion.java
+@@ -344,10 +344,12 @@ public class WorldGenRegion implements WorldGenLevel {
+                 this.level.updatePOIOnBlockStateChange(pos, blockState, state);
+                 // Papo start - batch 126 wire input-dirty tracking: generation writes can
+                 // change an input of a live wire in a neighbouring loaded chunk (structure
+-                // paste at a region border); mark the same Chebyshev-1 wire set. Runs on
+-                // generation threads - the tracking set is striped/locked for this reason.
++                // paste at a region border); mark the wire input closure using the region
++                // as reader (bounds-safe on the generation thread - a ServerLevel read
++                // could force-load chunks) into the live level's tracker. The chunk-level
++                // commit hook skips generation threads for exactly this reason.
+                 if (blockState != state) {
+-                    io.papermc.paper.util.PapoWireDirtyTracking.mark(this, pos);
++                    this.level.papoWireDirty.mark(this, pos);
+                 }
+                 // Papo end - batch 126
+             }
+diff --git a/net/minecraft/world/level/Level.java b/net/minecraft/world/level/Level.java
+index f39a398a733457230e95c4f64ffdc41a0affdbb7..acf46137f6061ab8eb3cddba7aa08d813e586d44 100644
+--- a/net/minecraft/world/level/Level.java
++++ b/net/minecraft/world/level/Level.java
+@@ -150,6 +150,11 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
+     @Nullable
+     public List<net.minecraft.world.entity.item.ItemEntity> captureDrops;
+     public final it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap<SpawnCategory> ticksPerSpawnCategory = new it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap<>();
++    // Papo start - batch 126 wire input-dirty tracking: one tracker per level (a
++    // global set keyed by packed pos would let wires in different levels clear
++    // each other's bits - unsound). See PapoWireDirtyTracking for the contract.
++    public final io.papermc.paper.util.PapoWireDirtyTracking papoWireDirty = new io.papermc.paper.util.PapoWireDirtyTracking();
++    // Papo end - batch 126
+     // Paper start - EAR 2
+     public int wakeupInactiveRemainingAnimals;
+     public int wakeupInactiveRemainingFlying;
+@@ -1148,16 +1153,11 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
+         if (blockState1 == state) {
+             if (blockState != blockState1) {
+                 this.setBlocksDirty(pos, blockState, blockState1);
+-                // Papo start - batch 126 wire input-dirty tracking (production)
+-                // An actual state transition at pos changes an input of every wire within
+-                // Chebyshev distance 1 (their 3x3x3 input cubes all contain pos). Mark those
+-                // wires; a wire notified later while unmarked is provably redundant to
+-                // re-evaluate (unchanged inputs -> the stored power -> the no-change path
+-                // of updatePowerStrength has zero observable effects). Survey: 85.0% of
+-                // ring-oscillator evaluations skip. Cross-dimension packed-pos collisions
+-                // only add false dirt (a conservative, correctness-neutral skip loss).
+-                io.papermc.paper.util.PapoWireDirtyTracking.mark(this, pos);
+-                // Papo end - batch 126
++                // Papo batch 126 note: the wire input-dirty mark for this transition now
++                // happens at the section commit in LevelChunk.setBlockState, BEFORE any
++                // dispatch (onPlace/affectNeighborsAfterRemoval run inline from there) -
++                // a mark here would be too late for every evaluation fanned out by this
++                // transition's own dispatch cascade (ring-oscillator seed-pulse kill).
+             }
+ 
+             if ((flags & Block.UPDATE_CLIENTS) != 0 && (!this.isClientSide() || (flags & Block.UPDATE_INVISIBLE) == 0) && (this.isClientSide() || chunkAt == null || (chunkAt.getFullStatus() != null && chunkAt.getFullStatus().isOrAfter(FullChunkStatus.FULL)))) { // allow chunk to be null here as chunk.isReady() is false when we send our notification during block placement // Paper - rewrite chunk system - change from ticking to full
+@@ -1976,6 +1976,13 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
+     private static final Direction[] OUTPUT_SIGNAL_HORIZONTAL = {Direction.NORTH, Direction.EAST, Direction.SOUTH, Direction.WEST};
+ 
+     public void updateNeighbourForOutputSignal(BlockPos pos, Block block) {
++        // Papo start - batch 126 wire input-dirty tracking: this is the funnel for
++        // "analog output changed" notifications that happen WITHOUT a block
++        // transition (container contents, command blocks, ...) - the affected
++        // wires' inputs changed with no setBlock, so mark them dirty here or the
++        // skip would keep their stored power stale.
++        this.papoWireDirty.mark(this, pos);
++        // Papo end - batch 126
+         // Papo start - cached horizontal array (iterator alloc per for-each) + reusable MutableBlockPos
+         // (4-8 BlockPos allocs per call). ServerLevel.neighborChanged routes to CollectingNeighborUpdater
+         // which does pos.immutable(); hasChunkAt/getBlockState/isRedstoneConductor only read the pos.
+diff --git a/net/minecraft/world/level/block/DiodeBlock.java b/net/minecraft/world/level/block/DiodeBlock.java
+index b3e539678c2f172ed040d0068a5e608787bb25fb..112b48ccd3004a283631001373b6db361a2cb429 100644
+--- a/net/minecraft/world/level/block/DiodeBlock.java
++++ b/net/minecraft/world/level/block/DiodeBlock.java
+@@ -185,6 +185,14 @@ public abstract class DiodeBlock extends HorizontalDirectionalBlock {
+     }
+ 
+     protected void updateNeighborsInFront(Level level, BlockPos pos, BlockState state) {
++        // Papo start - batch 126 wire input-dirty tracking: comparator output-strength
++        // refreshes (block-entity output changed while POWERED stayed on) reach the
++        // front wires through this poke with NO block transition - mark the diode's
++        // wire input closure or those evaluations arrive clean and get skipped with
++        // a stale stored power. The transition-driven callers (onPlace / removal)
++        // re-mark harmlessly (idempotent set add).
++        level.papoWireDirty.mark(level, pos);
++        // Papo end - batch 126
+         Direction direction = state.getValue(FACING);
+         BlockPos blockPos = pos.relative(direction.getOpposite());
+         Orientation orientation = ExperimentalRedstoneUtils.initialOrientation(level, direction.getOpposite(), Direction.UP);
+diff --git a/net/minecraft/world/level/chunk/LevelChunk.java b/net/minecraft/world/level/chunk/LevelChunk.java
+index 722bbb41c38070bfb0b69b4f39c096ab08cc2b88..e120f11aaf5f78d3daf49c424a3f79a4904e8127 100644
+--- a/net/minecraft/world/level/chunk/LevelChunk.java
++++ b/net/minecraft/world/level/chunk/LevelChunk.java
+@@ -432,6 +432,20 @@ public class LevelChunk extends ChunkAccess implements DebugValueSource, ca.spot
+             if (blockState == state) {
+                 return null;
+             } else {
++                // Papo start - batch 126 wire input-dirty tracking: mark at the section
++                // commit, BEFORE this method dispatches anything (affectNeighborsAfterRemoval
++                // and onPlace below run inline and fan out neighbor updates - every wire
++                // evaluation they trigger must already see its dirty bit; a mark in
++                // Level.notifyAndUpdatePhysics runs after the whole cascade, which let the
++                // oscillator seed-pulse evaluations arrive clean and get skipped). Tick
++                // threads own their chunks' neighbourhood reads; world-gen threads skip
++                // here (ServerLevel reads could force-load chunks off-thread) and are
++                // covered by the WorldGenRegion hook instead; the client render thread
++                // marks through its own level (client chunk reads never load).
++                if (this.level.isClientSide() || ca.spottedleaf.moonrise.common.util.TickThread.isTickThread()) {
++                    this.level.papoWireDirty.mark(this.level, pos);
++                }
++                // Papo end - batch 126
+                 this.papoBumpChunkDataVersion(); // Papo - serialized chunk payload changed (section + heightmaps below)
+                 Block block = state.getBlock();
+                 this.heightmaps.get(Heightmap.Types.MOTION_BLOCKING).update(i, y, i2, state);
+diff --git a/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java b/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
+index 4882f1c94e49078a5757101a7e9ef7c8286daaeb..ddfa2c4751a0bc040b539b936821df6893b5197f 100644
+--- a/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
++++ b/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
+@@ -25,13 +25,15 @@ public class DefaultRedstoneWireEvaluator extends RedstoneWireEvaluator {
+ 
+     @Override
+     public void updatePowerStrength(Level level, BlockPos pos, BlockState state, @Nullable Orientation orientation, boolean updateShape) {
+-        // Papo start - batch 126 production wire input-dirty skip: when no block
+-        // transition has occurred within this wire's 3x3x3 input cube since its last
+-        // evaluation, calculateTargetStrength is guaranteed to return the stored POWER and
+-        // the no-change path below performs zero observable effects (no event, no setBlock,
+-        // no fan-out) - so the whole evaluation is skipped, equivalent by construction.
+-        // Survey measured 85.0% of ring-oscillator evaluations taking this branch.
+-        if (io.papermc.paper.util.PapoWireDirtyTracking.evalEntry(level, pos)) {
++        // Papo start - batch 126 production wire input-dirty skip: when no input of
++        // this wire has changed since its last evaluation (no block transition in its
++        // input closure - see PapoWireDirtyTracking), calculateTargetStrength is
++        // guaranteed to return the stored POWER and the no-change path below performs
++        // zero observable effects (no event, no setBlock, no fan-out) - so the whole
++        // evaluation is skipped, equivalent by construction.
++        // Survey measured 85.0% of ring-oscillator evaluations taking this branch
++        // (77.5% in the post-closure-fix 4-cell verify leg).
++        if (level.papoWireDirty.evalEntry(pos)) {
+             io.papermc.paper.util.PapoTickProfile.addCount("rs.wireEvalSkipped", 1);
+             return;
+         }

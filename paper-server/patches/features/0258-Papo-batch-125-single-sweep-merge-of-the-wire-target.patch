@@ -7,12 +7,9 @@ Subject: [PATCH] Papo: batch 125 single-sweep merge of the wire
  dispatch skips retained, exact direction order/early-exit structure, wireMax
  fed only from vanilla's incoming positions)
 
----
- .../DefaultRedstoneWireEvaluator.java         | 115 +++++++++++++++++-
- 1 file changed, 113 insertions(+), 2 deletions(-)
 
 diff --git a/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java b/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
-index 5c03243a..cfcdfebb 100644
+index 5c03243afe9ba631e8bb32108f439079710ece07..cfcdfebbc0921a6ab074ebd2ef9840fd12430b43 100644
 --- a/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
 +++ b/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
 @@ -72,7 +72,118 @@ public class DefaultRedstoneWireEvaluator extends RedstoneWireEvaluator {

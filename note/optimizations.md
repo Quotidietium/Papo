@@ -2489,3 +2489,21 @@ updateShape 覆写面逐一排查是必要成本。
 原窗 23043 → 现窗 27195（+18%）；批次124 的"−26% 劣化"修正为环境主导（报告
 已加修正头，处置维持保守不采纳）。**规则：宏 A/B 判定必须附带同时窗对照腿。**
 报告：[note/report/perf/2026-09-05-wire-target-merge-batch125.md](report/perf/2026-09-05-wire-target-merge-batch125.md)。
+
+---
+
+## 批次 126（2026-09-05）：粉输入脏追踪生产跳过 + 等价性闭包修复（0.74.0 → 0.75.0）
+
+0260 勘察探针（85.0% 评估到达 clean）+ 0261 生产跳过 + **0262 等价性闭包修复**（本批
+核心）：初版机制杀死全部环振荡器，trace 双腿对拍（同 jar skip0/skip1，176 万事件流
+diff）定位四个独立缺陷——①标记在 LevelChunk.setBlockState 的 onPlace 内联扇出**之后**
+（种子脉冲评估先于标记到达）；②闭包缺 Chebyshev-2 直通位（隔导体强充能最常见拓扑）；
+③比较器 BE 模拟刷新等无 transition 信号类未覆盖（updateNeighborsInFront /
+updateNeighbourForOutputSignal 两漏斗挂钩闭合）；④全局集跨维度/客户端位互扰（per-Level
+实例化）。终版：**宏 A/B blockTicks 中位 27442→20192 us/tick（−26.4%，21 振荡窗分布
+完全分离），活动门 441.0/tick 逐位一致**，评估通知 30870/tick 跳过 75.8%；JMH epoch
+模型 1.47×。附带交付：PapoTickProfile 零活动窗口全量打印（活动门盲区——死环曾沿用
+末个非零值 PASS）、RedstoneScaleBench log-tail CME 修复、TopologyVerify 拓扑验收
+harness（直通强充能+比较器模拟 5 探针双腿全等）。判例：**顺序性等价论证必须覆盖事件
+派发序（逐例验证全对 ≠ 流等价）；fixup 流配错目标时中止 rebase 顶层重提交更稳。**
+报告：[note/report/perf/2026-09-05-wire-dirty-skip-batch126.md](report/perf/2026-09-05-wire-dirty-skip-batch126.md)。

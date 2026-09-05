@@ -5,13 +5,9 @@ Subject: [PATCH] Papo: batch 123 allocation-free per-setBlock POI check
  (forStateOrNull + reference comparison, interned registry holders make it
  equivalent to the Optional pair equality)
 
----
- net/minecraft/server/level/ServerLevel.java   | 43 +++++++++++--------
- .../world/entity/ai/village/poi/PoiTypes.java |  8 ++++
- 2 files changed, 34 insertions(+), 17 deletions(-)
 
 diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
-index 447c0a3a..e3bdaa61 100644
+index 447c0a3a27630a5609567c548e8c4da84b5cfd42..e3bdaa6144e1085539f0cbc7fa5f70e1939aa722 100644
 --- a/net/minecraft/server/level/ServerLevel.java
 +++ b/net/minecraft/server/level/ServerLevel.java
 @@ -2343,25 +2343,34 @@ public class ServerLevel extends Level implements ServerEntityGetter, WorldGenLe
@@ -67,7 +63,7 @@ index 447c0a3a..e3bdaa61 100644
      }
  
 diff --git a/net/minecraft/world/entity/ai/village/poi/PoiTypes.java b/net/minecraft/world/entity/ai/village/poi/PoiTypes.java
-index df666bda..e2841f11 100644
+index df666bdabc6dc8d07691e5859a582f90d929891f..e2841f115cb7bd3ca4857687b17c360d126be5eb 100644
 --- a/net/minecraft/world/entity/ai/village/poi/PoiTypes.java
 +++ b/net/minecraft/world/entity/ai/village/poi/PoiTypes.java
 @@ -114,6 +114,14 @@ public class PoiTypes {

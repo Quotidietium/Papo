@@ -3,81 +3,140 @@ package io.papermc.paper.util;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.BlockGetter;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 
-// Papo start - batch 126: production wire input-dirty tracking
-// Model: a redstone wire is "dirty" when any block transition occurred within its 3x3x3
-// input cube since its last evaluation. Notification-driven evaluations that arrive while
-// clean are skipped: unchanged inputs mean calculateTargetStrength would return exactly
-// the stored POWER, and the no-change path of updatePowerStrength performs zero observable
+// Papo start - batch 126: production wire input-dirty tracking (per-Level instance)
+// Model: a redstone wire is "dirty" when any input of it changed since its last
+// evaluation. Notification-driven evaluations that arrive while clean are skipped:
+// unchanged inputs mean calculateTargetStrength would return exactly the stored
+// POWER, and the no-change path of updatePowerStrength performs zero observable
 // effects (no event, no setBlock, no fan-out) - so skipping it is equivalent by
-// construction. Batch 126 survey measured 85.0% of ring-oscillator evaluations skippable.
+// construction. Batch 126 survey measured 85.0% of ring-oscillator evaluations
+// skippable.
 //
-// Marking: every real block transition (old != new) marks wires within Chebyshev distance
-// 1 - exactly the set of wires whose input cubes contain the transition. Two hooks cover
-// all transition surfaces: Level.notifyAndUpdatePhysics (post-generation, main thread)
-// and WorldGenRegion.setBlock (generation threads - structures can paste next to live
-// chunks). The set is striped into 8 locks so main-thread marking/evaluation and
-// generation-thread marking share it safely.
+// Input closure (what a transition at pos must mark):
+//  - every wire within Chebyshev distance 1 (the 3x3x3 input cube of a wire
+//    contains pos), INCLUDING pos itself: a newly placed wire's stored power is
+//    the placement default, not the computed value - its first onPlace
+//    evaluation must proceed (self-exclusion stalled every oscillator), and a
+//    wire's own POWER flip must re-mark itself for the fan-out's self-
+//    notification (one extra no-change evaluation as the correctness cost);
+//  - the straight-through Chebyshev-2 positions: for each axis direction d, if
+//    the block at pos+d is a redstone conductor, the wire at pos+2d reads a
+//    direct signal THROUGH it (strong power from a source behind a block) - the
+//    classic repeater-powers-block-with-dust-beside topology.
 //
-// Bound: entries are only ever wires, cleared at their next evaluation; a leak valve
-// clears everything past a large cap (all wires then simply re-evaluate once dirty).
+// Marking hooks (all real input-change surfaces):
+//  - LevelChunk.setBlockState: at the section commit, BEFORE any dispatch of the
+//    transition (onPlace / affectNeighborsAfterRemoval run inline from there and
+//    their fan-out evaluations must already see the wires dirty - a mark placed
+//    in Level.notifyAndUpdatePhysics runs after the whole onPlace cascade, which
+//    is how the seed-pulse evaluations arrived clean and got skipped).
+//  - WorldGenRegion.setBlock: generation threads skip the chunk hook (the
+//    ServerLevel reader could force-load chunks off-thread); the region-bounded
+//    reader marks into the live level's tracker (structure paste next to a
+//    loaded chunk).
+//  - DiodeBlock.updateNeighborsInFront + Level.updateNeighbourForOutputSignal:
+//    the two notification funnels for signal-strength changes that happen
+//    WITHOUT a block transition (comparator block-entity output refresh, analog
+//    output pokes). State-based sources (daylight sensor POWER, plates, buttons,
+//    repeaters, torches, ...) all transition and are covered by the commit hook.
+//
+// Instance-per-Level: bits are keyed by packed pos only, so a global set shared
+// across dimensions/sides would let two wires at the same packed pos in
+// different levels CLEAR each other's bits - an unsound skip. One tracker per
+// Level (field Level.papoWireDirty).
+//
+// Bound: entries are only ever wires, cleared at their next evaluation; a leak
+// valve clears everything past a large cap (all wires then simply re-evaluate
+// once dirty).
 public final class PapoWireDirtyTracking {
 
     private static final int STRIPES = 8;
-    private static final LongOpenHashSet[] DIRTY = new LongOpenHashSet[STRIPES];
-    private static final Object[] LOCKS = new Object[STRIPES];
-    // generous leak valve: live oscillating loads churn the whole set every tick;
-    // anything past this is stale entries from unloaded wires - dropping them only
-    // costs one dirty re-evaluation per still-active wire
     private static final int CAP = 1 << 18;
+    private final LongOpenHashSet[] dirty = new LongOpenHashSet[STRIPES];
+    private final Object[] locks = new Object[STRIPES];
 
-    static {
+    public PapoWireDirtyTracking() {
         for (int i = 0; i < STRIPES; i++) {
-            DIRTY[i] = new LongOpenHashSet(512);
-            LOCKS[i] = new Object();
+            this.dirty[i] = new LongOpenHashSet(64);
+            this.locks[i] = new Object();
         }
     }
-
-    private PapoWireDirtyTracking() {}
 
     private static int stripe(final long packed) {
         // mix the high bits (y is low in BlockPos packing) into the stripe choice
         return (int) ((packed ^ (packed >>> 27)) & (STRIPES - 1));
     }
 
-    /** Marks wires within Chebyshev distance 1 of a block transition at pos. */
-    public static void mark(final BlockGetter level, final BlockPos pos) {
+    /**
+     * Marks every wire whose input closure contains a change at {@code pos}.
+     * The reader must be safe for the calling thread (a tick-thread Level, a
+     * client level, or a WorldGenRegion).
+     */
+    public void mark(final BlockGetter reader, final BlockPos pos) {
         final int x = pos.getX();
         final int y = pos.getY();
         final int z = pos.getZ();
         final BlockPos.MutableBlockPos scan = new BlockPos.MutableBlockPos();
-        int marked = 0;
         for (int dy = -1; dy <= 1; dy++) {
             for (int dx = -1; dx <= 1; dx++) {
                 for (int dz = -1; dz <= 1; dz++) {
-                    // (0,0,0) IS included: a newly placed wire's stored power is the
-                    // placement default, not the computed value - its first onPlace
-                    // evaluation must proceed, so the wire's own placement transition
-                    // has to mark itself. (For a mere POWER flip the self-mark only
-                    // costs one extra no-change evaluation via the fan-out's self-
-                    // notification - correctness over that micro-skip.)
+                    // (0,0,0) IS included - see the class comment
                     scan.set(x + dx, y + dy, z + dz);
-                    final BlockState state = level.getBlockState(scan);
-                    if (state.is(Blocks.REDSTONE_WIRE)) {
-                        final long packed = scan.asLong();
-                        final int s = stripe(packed);
-                        synchronized (LOCKS[s]) {
-                            if (DIRTY[s].size() >= CAP) {
-                                DIRTY[s].clear();
-                            }
-                            DIRTY[s].add(packed);
-                            marked++;
-                        }
-                    }
+                    this.markIfWire(reader, scan);
                 }
+            }
+        }
+        // straight-through closure: a source behind a conductor feeds the wire two
+        // out along the axis (direct signal through the strongly powered block)
+        scan.set(x + 1, y, z);
+        if (this.isConductor(reader, scan)) {
+            scan.set(x + 2, y, z);
+            this.markIfWire(reader, scan);
+        }
+        scan.set(x - 1, y, z);
+        if (this.isConductor(reader, scan)) {
+            scan.set(x - 2, y, z);
+            this.markIfWire(reader, scan);
+        }
+        scan.set(x, y + 1, z);
+        if (this.isConductor(reader, scan)) {
+            scan.set(x, y + 2, z);
+            this.markIfWire(reader, scan);
+        }
+        scan.set(x, y - 1, z);
+        if (this.isConductor(reader, scan)) {
+            scan.set(x, y - 2, z);
+            this.markIfWire(reader, scan);
+        }
+        scan.set(x, y, z + 1);
+        if (this.isConductor(reader, scan)) {
+            scan.set(x, y, z + 2);
+            this.markIfWire(reader, scan);
+        }
+        scan.set(x, y, z - 1);
+        if (this.isConductor(reader, scan)) {
+            scan.set(x, y, z - 2);
+            this.markIfWire(reader, scan);
+        }
+    }
+
+    private boolean isConductor(final BlockGetter reader, final BlockPos pos) {
+        return reader.getBlockState(pos).isRedstoneConductor(reader, pos);
+    }
+
+    private void markIfWire(final BlockGetter reader, final BlockPos pos) {
+        final BlockState state = reader.getBlockState(pos);
+        if (state.is(Blocks.REDSTONE_WIRE)) {
+            final long packed = pos.asLong();
+            final int s = stripe(packed);
+            synchronized (this.locks[s]) {
+                if (this.dirty[s].size() >= CAP) {
+                    this.dirty[s].clear();
+                }
+                this.dirty[s].add(packed);
             }
         }
     }
@@ -87,14 +146,14 @@ public final class PapoWireDirtyTracking {
      * evaluation is provably redundant and must be skipped; false when dirty (the
      * bit is cleared and the evaluation must proceed).
      */
-    public static boolean evalEntry(final Level level, final BlockPos pos) {
+    public boolean evalEntry(final BlockPos pos) {
         final long packed = pos.asLong();
         final int s = stripe(packed);
-        synchronized (LOCKS[s]) {
-            if (!DIRTY[s].contains(packed)) {
+        synchronized (this.locks[s]) {
+            if (!this.dirty[s].contains(packed)) {
                 return true;
             }
-            DIRTY[s].remove(packed);
+            this.dirty[s].remove(packed);
         }
         return false;
     }

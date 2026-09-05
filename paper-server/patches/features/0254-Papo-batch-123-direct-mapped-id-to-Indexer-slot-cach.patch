@@ -6,12 +6,9 @@ Subject: [PATCH] Papo: batch 123 direct-mapped id-to-Indexer slot cache in
  fallback) - kills the per-getValue/setValue Int2ObjectOpenHashMap hash+probe
  server-wide
 
----
- .../ZeroCollidingReferenceStateTable.java     | 47 +++++++++++++++++--
- 1 file changed, 43 insertions(+), 4 deletions(-)
 
 diff --git a/ca/spottedleaf/moonrise/patches/blockstate_propertyaccess/util/ZeroCollidingReferenceStateTable.java b/ca/spottedleaf/moonrise/patches/blockstate_propertyaccess/util/ZeroCollidingReferenceStateTable.java
-index 866f38eb..e94f64ab 100644
+index 866f38eb0f379ffbe2888023a7d1c290f521a231..e94f64ab05ffc6aa2bf21c0276ba9ae267ee36d0 100644
 --- a/ca/spottedleaf/moonrise/patches/blockstate_propertyaccess/util/ZeroCollidingReferenceStateTable.java
 +++ b/ca/spottedleaf/moonrise/patches/blockstate_propertyaccess/util/ZeroCollidingReferenceStateTable.java
 @@ -24,6 +24,16 @@ public final class ZeroCollidingReferenceStateTable<O, S> {

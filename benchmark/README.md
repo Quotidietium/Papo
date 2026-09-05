@@ -80,3 +80,5 @@ concurrentutil 0.0.8 + slf4j-api 2.0.1（批次78 起池 sizing 基准用，与�
   服务器端到端 TPS 收益取决于该路径在真实负载中的占比（如 NBT 读取在区块加载期密集）。
 - before/after 输入数据完全一致；分配敏感的用例（Optional、Vec3）差距包含 GC 压力，
   在真实服务器高分配场景下收益通常比微基准更大。
+| `WireDirtySkipBench` | 0260/0261/0262 | 粉输入脏追踪：epoch 负载模型（mark:eval=1:16 对齐环振荡实测，每 transition 16 次扇出评估 2.4 次 dirty）全量评估 vs 27+6 直通闭包标记+clean 跳过（1.47×）；clean 入口簿记 6.6ns/entry；自检 main：10 万随机通知暴力对照（含自身/邻域/远距 transition 判例）+ 4 线程并发 mark 压力 |
+| `TopologyVerify` | 批次126 | 非性能——wire 脏追踪跳过的拓扑行为验收（真实服务器）：直通强充能（中继器隔石块 on/off）+ 比较器模拟刷新（箱子 1→27 满格→清空，POWERED 不翻转）5 探针，同 jar skip 开/关双腿逐行全等 |
