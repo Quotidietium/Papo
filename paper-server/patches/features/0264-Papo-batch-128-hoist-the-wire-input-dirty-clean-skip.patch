@@ -1,0 +1,84 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sun, 6 Sep 2026 03:24:32 +0800
+Subject: [PATCH] Papo: batch 128 hoist the wire input-dirty clean-skip from
+ the evaluator up to RedStoneWireBlock.neighborChanged notification entry -
+ JFR on 0.76.0 showed the 26239/tick skipped notifications still paying
+ canSurvive's support-block read plus the updateSurroundingRedstone/evaluator
+ call frames inside the 15.65% handleNeighborChanged bucket; a clean wire now
+ returns before canSurvive, sound because the support block below sits inside
+ the Chebyshev-1 input closure ('floating yet clean' unreachable: the
+ below-transition marks the wire dirty and the dirty path re-checks survival
+ and pops it) and any notification source traces to a closure transition (the
+ 0262 audit surface); guarded to VANILLA implementation + non-experimental
+ evaluator so AC/EIGENCRAFT/experimental legs stay upstream-identical; the
+ evaluator drops its own skip (a dirty notification consumed at the entry must
+ run unconditionally) and keeps only the updateShape==true clear-stale-bit;
+ consequence: affectNeighborsAfterRemoval's updateShape=false evaluation runs
+ again (steady-state no-op at an air pos, restores the vanilla/CraftBukkit
+ stale-power removal event that batches 126/127 suppressed)
+
+
+diff --git a/net/minecraft/world/level/block/RedStoneWireBlock.java b/net/minecraft/world/level/block/RedStoneWireBlock.java
+index 65c1957aaa65b20b3aa049d595a5281643ecf011..baef474eaa8b19e9852e09362dd7e08cf83f1d67 100644
+--- a/net/minecraft/world/level/block/RedStoneWireBlock.java
++++ b/net/minecraft/world/level/block/RedStoneWireBlock.java
+@@ -479,6 +479,25 @@ public class RedStoneWireBlock extends Block {
+             } else
+                 // Paper end - optimize redstone (Alternate Current)
+             if (neighborBlock != this || !useExperimentalEvaluator(level)) {
++                // Papo start - batch 128: clean-skip hoisted to notification entry (was in
++                // DefaultRedstoneWireEvaluator since batch 126). A wire notified while no
++                // block transition has occurred in its input closure since its last
++                // evaluation skips the WHOLE notification: canSurvive needs no re-check
++                // (the support block below is inside the Chebyshev-1 closure - "floating
++                // yet clean" is unreachable, a floating wire's below-transition marks it
++                // dirty and the dirty path re-checks survival), and the evaluation itself
++                // is the provably-redundant no-change path (batch 126 construction).
++                // Guarded to the VANILLA implementation + non-experimental evaluator so
++                // AC/EIGENCRAFT/experimental legs are byte-identical to upstream.
++                // updateShape==true (onPlace) never comes through here - the evaluator
++                // keeps its unconditional first-evaluation guarantee.
++                if (level.paperConfig().misc.redstoneImplementation == io.papermc.paper.configuration.WorldConfiguration.Misc.RedstoneImplementation.VANILLA
++                    && !useExperimentalEvaluator(level)
++                    && level.papoWireDirty.evalEntry(pos)) {
++                    io.papermc.paper.util.PapoTickProfile.addCount("rs.wireEvalSkipped", 1);
++                    return;
++                }
++                // Papo end - batch 128
+                 if (state.canSurvive(level, pos)) {
+                     this.updateSurroundingRedstone(level, pos, state, orientation, false); // Paper - Optimize redstone (Eigencraft)
+                 } else {
+diff --git a/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java b/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
+index 5bc66377c2d5a798c89861850e33caabd9d6b7e8..a76864cf66dfddba01a0206659f5c4a270cf3d2c 100644
+--- a/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
++++ b/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
+@@ -25,7 +25,7 @@ public class DefaultRedstoneWireEvaluator extends RedstoneWireEvaluator {
+ 
+     @Override
+     public void updatePowerStrength(Level level, BlockPos pos, BlockState state, @Nullable Orientation orientation, boolean updateShape) {
+-        // Papo start - batch 126 production wire input-dirty skip: when no input of
++        // Papo start - batch 126/128 production wire input-dirty skip: when no input of
+         // this wire has changed since its last evaluation (no block transition in its
+         // input closure - see PapoWireDirtyTracking), calculateTargetStrength is
+         // guaranteed to return the stored POWER and the no-change path below performs
+@@ -38,10 +38,15 @@ public class DefaultRedstoneWireEvaluator extends RedstoneWireEvaluator {
+         // POWER is the placement default, not a computed value, so this evaluation
+         // must ALWAYS proceed (marking is self-excluded since batch 127, and even
+         // before that the placement mark could race ahead of the evaluator).
+-        if (!updateShape && level.papoWireDirty.evalEntry(pos)) {
+-            io.papermc.paper.util.PapoTickProfile.addCount("rs.wireEvalSkipped", 1);
+-            return;
+-        }
++        // Batch 128: the skip itself moved UP to RedStoneWireBlock.neighborChanged
++        // (before canSurvive - JFR showed skipped notifications still paying the
++        // survival check's block read); this evaluator no longer skips, so a dirty
++        // notification that passed the entry check runs unconditionally here. The
++        // removal path (affectNeighborsAfterRemoval, updateShape=false, pos already
++        // air) consequently runs its evaluation again - a steady-state no-op that
++        // also restores the vanilla/CraftBukkit stale-power removal event.
++        // updateShape==true still clears any stale dirty bit: this evaluation
++        // supersedes it.
+         if (updateShape) {
+             level.papoWireDirty.evalEntry(pos); // clear any stale dirty bit: this evaluation supersedes it
+         }
