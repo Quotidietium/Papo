@@ -2583,3 +2583,44 @@ chunk.getBlockState 可把哈希查找从 24 次/mark 降到 ~4-6 次；②方�
 （ZeroColling+SimpleBitStorage ≈9.2%）；③wireEvalRuns 4630.5 中 882 noChange 的
 其余保守位精化（轴向 ±2 与导体棱的读取面复核）。批 130 应先 JFR 重画像确认
 0.78.0 后的分布再定。
+
+---
+
+## 批次 130（2026-09-07）：fan-out 读路径 chunk 解析提升（0.78.0 → 0.79.0）
+
+0.78.0 JFR 栈聚合判决：**MultiNeighborUpdate.runNext 路径 19.5% 样本、其中仅
+4.1% 到达粉通知**——~15% 是无观察者目标的派发机械（每目标 BlockPos 分配 +
+getBlockState 区块哈希查找 + 物理事件门 + 无操作虚派发，~157K 派发/tick）。
+方案筛除三判例入档：section 观察者位图（密集红石区目标 section 必含观察者，
+位恒置位无效）；通知去重（改变物理事件计数与派发序，违反事件流恒等红线）；
+池化（124 批 JIT 判例）。入选＝把每读一次的区块哈希查找折叠为每闭包/每扇出
+一次（124 判例的安全对偶面）：
+
+- **F1（直提交）**：PapoWireDirtyTracking.mark 列固定解析——18 扫描+6 探测
+  +≤6 直通目标全在 x±2/z±2 内 → ≤2×2 chunk 槽，每槽经与 Level.getBlockState
+  内部同一调用（getChunk(FULL,true) 强加载语义保留）解析一次，**每 mark 查找
+  24-30 → ≤4**；captureTreeGeneration/ChunkPos.isValid 前置回退原路径，
+  WorldGenRegion 逐读路径不变。
+- **F2（0265）**：MultiNeighborUpdate 同 chunk 读快路径——runNext 惰性解析源
+  chunk（requireChunk=false 零副作用，ChunkAccess 类型防 currently-loading
+  CCE），同 chunk 目标直读；门＝坐标匹配+!isOutsideBuildHeight(VOID_AIR 对
+  BlockPhysicsEvent 监听器可见性)+!captureTreeGeneration，exotics 逐字节回退。
+  缓存有效性：runUpdates 突发内无 chunk 卸载点（同线程调用栈）。
+
+**宏判决（八腿×120s 细交错，第一套 240s 被共租漂移污染弃用中位）：合并中位
+20959.9 → 18301.2 us/tick（−12.7%），四配对最小窗地板全分离 B<A
+（−1.7%/−11.6%/−9.3%/−19.2%），合并最小窗 −8.0%；12 腿计数器与 127-129
+逐位恒等（441.0/4630.5/882.0/26239.5）**。JFR 机制归因：runNext 家族份额
+55.4%→50.2%；拓扑 10/10 PASS；WireDirtySkipBench 自检 ALL OK（闭包形状未变）。
+判例：①**环境漂移下细交错（120s×8）+ 最小窗地板分离是可复用的判决统计**——
+腿中位在共租机上分钟级漂移面前失效（B2 腿 60% 热窗污染判例）；②**JFR 内联
+归属洗牌**——在热路径加分支会使整链拆帧（handleNeighborChanged 15.2% 自身
+帧拆为 runNext 8.5%+getNode 6.0%），跨版本画像对比必须栈级路径聚合归一，
+不能读表面排名。报告：
+[note/report/perf/2026-09-07-chunk-resolution-hoisting-batch130.md](report/perf/2026-09-07-chunk-resolution-hoisting-batch130.md)。
+
+下一轮前沿（0.79.0 后）：评估器读面（papoCalculateTargetStrength 家族 18.4%
+——6 邻读+导体扇出+变体列可同样经 ≤2×2 槽解析，4630.5 实评×~10-24 读/tick）；
+ChunkHolder.blockChanged 广播记账（2.95%，ShortOpenHashSet 链）；残余
+isRedstoneConductor 4.59%（评估+标记共用底座，或可 per-state 记忆化——需
+vanilla 覆写面 level/pos 参数无用性审计）。
