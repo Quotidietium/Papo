@@ -2554,3 +2554,32 @@ PASS，拓扑 10 探针 PASS。判例：**跳过点前移的等价重心在"被�
 升为第一优化面——候选：精确输入闭包（去 8 角位，26→18 读，需 getSignal/getDirectSignal
 覆写面对角读审计）或列固定 chunk 读取（32 次区块哈希查找→4-6 次）；方块态读取链
 （ZeroColling+SimpleBitStorage ≈ 9.2%）为公共底座。
+
+---
+
+## 批次 129（2026-09-06）：标记闭包精确化——8 角位排除（0.77.0 → 0.78.0）
+
+标记扫描从保守 27 胞立方精确到粉评估真实读取面 **18 位偏移表**（SCAN_D*：6 面 +
+12 棱）。等价性核心：粉评估（papoCalculateTargetStrength）的读取面 = 6 面位（邻位
+信号+isRedstoneConductor）+ 12 棱位（导体扇出 W+d+e、变体列 W+h±v）+ 轴向 ±2 直通，
+**角位 (±1,±1,±1) 无任何读取路径可达**——全部涉及覆写（getSignal/getDirectSignal/
+isRedstoneConductor/canSupportCenter）只读自身位置/状态（逐类审计），且 Paper 服务端
+方块集=vanilla（插件不能注册方块），枚举闭。`src/main/java` 直提交（无补丁号）。
+
+**宏 ABAB 四腿（A=0.77.0）腿中位完全分离（双 B 17484/16989 < 双 A 17981/19289），
+合并中位 −8.4%、稳态地板 p25 −4.4%（保守口径；A 腿热漂移 excursion 抬高中位），
+计数器四腿与 127/128 逐位恒等**（441.0/4630.5/882.0/26239.5）。判例一：
+**预运行机制预测被证伪**——"角位标记消除→runs/noChange 下降"未发生，密集拓扑下
+角位标记被面/棱并集覆盖，收益纯属标记扫描成本削减（27→18 读/mark，markIfWire
+9.33% 首位面的 −1/3 读取量）；剩余 882/tick noChange 归因改判为轴向 ±2/导体扇出
+棱等其余保守位。判例二：`mark()` 的 6 次轴向导体探测与 18 位扫描共享同一
+MutableBlockPos，无分配。报告：
+[note/report/perf/2026-09-06-mark-closure-corners-batch129.md](report/perf/2026-09-06-mark-closure-corners-batch129.md)。
+
+下一轮前沿（0.78.0 后）：标记面已精化到位，剩余 blockTicks 成本分布预期转向
+①**列固定 chunk 读取**——mark/evalEntry 每 mark() 18+6 位扫描跨 ~9 列仍各走
+getBlockState 区块哈希查找（128 报告候选），沿扫描主轴先取 LevelChunk 再
+chunk.getBlockState 可把哈希查找从 24 次/mark 降到 ~4-6 次；②方块态读取公共底座
+（ZeroColling+SimpleBitStorage ≈9.2%）；③wireEvalRuns 4630.5 中 882 noChange 的
+其余保守位精化（轴向 ±2 与导体棱的读取面复核）。批 130 应先 JFR 重画像确认
+0.78.0 后的分布再定。
