@@ -2624,3 +2624,31 @@ getBlockState 区块哈希查找 + 物理事件门 + 无操作虚派发，~157K 
 ChunkHolder.blockChanged 广播记账（2.95%，ShortOpenHashSet 链）；残余
 isRedstoneConductor 4.59%（评估+标记共用底座，或可 per-state 记忆化——需
 vanilla 覆写面 level/pos 参数无用性审计）。
+
+---
+
+## 批次 131（2026-09-07）：评估器读面 chunk 解析（0.79.0 → 0.80.0）
+
+批 130 主题第三读面收尾：papoCalculateTargetStrength 评估读面（6 邻读+导体
+扇出内层+变体列，~10-24 读/实评 × 4630.5/tick）接入 130 的列固定解析共享件
+（papoResolveChunk/papoSlotsValid），**每实评查找 ~10-24 → ≤4**；capture/
+槽位越界回退逐读路径，竖直界免门（AIR/VOID_AIR 对这些读不可区分且无事件
+观察，与 F2 的门必要性形成精确对偶判例）。0266 单补丁。
+
+**判决矩阵三源**：宏八腿合并中位 17557.7 → 16745.5（**−4.6%**）、合并地板
+−5.2%、3/4 对分离（pair1 反向判噪声）；**评估栈墙钟探针 rs.wireEvalStackNs
+2.17ms/tick（4630.5 × 469ns，≈blockTicks 13% 面实证，用后移除）**；JFR 家族
+归因 34.9→34.6% 持平（与 F1 同型——eval-face 18.6% 持平但宏+探针双证收益，
+内联洗牌下路径份额非效应量）。八腿计数器与 127-130 逐位恒等；拓扑 10/10。
+判例：①**探针开窗边界截断伪影**——振荡链跨窗开局窗 blockTicks 可低至
+物理下界以下（blockTickRuns=441 满档时 1.1-5.1ms 必为伪影），>10000us 过滤
+披露入档；②**噪声带效应的判决结构**——单批 −5% 量级效应在共享机上与
+会话间噪声同带，判决须"面实证（探针）+ 合并分离 + 3/4 对分离"三源，
+单源皆不足。报告：
+[note/report/perf/2026-09-07-evaluator-read-face-batch131.md](report/perf/2026-09-07-evaluator-read-face-batch131.md)。
+
+下一轮前沿（0.80.0 后，家族 34.6% 内残余）：runNext 40.2%（F2 后的余额——
+虚派发与事件门机械本身）、mark 28.9%（条带锁+LongOpenHashSet 集合本体与
+18+6 次状态读中的残余读取成本）、eval-face 18.6%（getSignal/getDirectSignal
+覆写与 isRedstoneConductor 底座）；家族外 ChunkHolder.blockChanged 广播记账
+（ShortOpenHashSet 2.95%）与 ZeroColliding 底座 7.4% 为公共面。
