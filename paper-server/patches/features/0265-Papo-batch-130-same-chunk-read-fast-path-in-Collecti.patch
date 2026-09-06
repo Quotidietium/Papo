@@ -1,0 +1,95 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Mon, 7 Sep 2026 00:38:51 +0800
+Subject: [PATCH] Papo: batch 130 same-chunk read fast path in
+ CollectingNeighborUpdater.MultiNeighborUpdate - JFR on 0.78.0 shows the
+ fan-out read chain (MultiNeighborUpdate.runNext) at ~19% of execution samples
+ while only ~4% reaches a wire notification, the bulk being the per-target
+ chunk-map lookup of level.getBlockState; the update now resolves its source
+ chunk once (requireChunk=false pure fullChunks lookup, no load, no side
+ effects; stored as ChunkAccess since the currently-loading fallback may hand
+ out a non-FULL chunk) and reads same-chunk targets directly through
+ chunk.getBlockState, gated on matching chunk coords +
+ !isOutsideBuildHeight(target) + !captureTreeGeneration so every exotic case
+ (chunk boundary, build-height VOID_AIR visibility to BlockPhysicsEvent
+ listeners, captured tree-gen states, unresolved/unloaded source chunk) falls
+ back to the byte-identical vanilla read; cache validity holds because all
+ runNext calls of an update execute inside one runUpdates burst on the owning
+ thread and chunk unload/replace points cannot interleave with it
+
+
+diff --git a/net/minecraft/world/level/redstone/CollectingNeighborUpdater.java b/net/minecraft/world/level/redstone/CollectingNeighborUpdater.java
+index 0a60ff97dc77108997568c75c94327cb6858018f..fe0d4fd4b26e9dfe5bc601aea582738871a7acf3 100644
+--- a/net/minecraft/world/level/redstone/CollectingNeighborUpdater.java
++++ b/net/minecraft/world/level/redstone/CollectingNeighborUpdater.java
+@@ -11,6 +11,8 @@ import net.minecraft.world.flag.FeatureFlags;
+ import net.minecraft.world.level.Level;
+ import net.minecraft.world.level.block.Block;
+ import net.minecraft.world.level.block.state.BlockState;
++import net.minecraft.world.level.chunk.ChunkAccess;
++import net.minecraft.world.level.chunk.status.ChunkStatus;
+ import org.jspecify.annotations.Nullable;
+ import org.slf4j.Logger;
+ 
+@@ -118,6 +120,27 @@ public class CollectingNeighborUpdater implements NeighborUpdater {
+         private @Nullable Orientation orientation;
+         private final @Nullable Direction skipDirection;
+         private int idx = 0;
++        // Papo start - batch 130: same-chunk read cache. The 6 targets of one update
++        // span at most one chunk boundary per axis; resolving the source's chunk once
++        // and reading same-chunk targets directly through chunk.getBlockState
++        // removes the per-target chunk-map lookup (JFR 0.78.0: the runNext read chain
++        // is ~19% of execution samples while only ~4% reaches a wire notification).
++        // Cache validity: an update's runNext calls all execute inside one
++        // runUpdates() burst on the owning thread, and chunk unload/replace points
++        // cannot interleave with that burst, so the resolved reference cannot go
++        // stale mid-update; the cached read is only taken while the target's chunk
++        // coords still match the cached ones. Resolution uses requireChunk=false
++        // (pure fullChunks lookup, no load); a miss leaves the cache disabled and
++        // every read takes the vanilla path with its force-load semantics intact
++        // (the returned ChunkAccess is stored as its interface type - the
++        // currently-loading fallback may hand out a non-LevelChunk chunk, and the
++        // read goes through the same virtual getBlockState the vanilla path uses).
++        // captureTreeGeneration keeps captured pending states visible (the vanilla
++        // read path Level.getBlockState consults them).
++        private @Nullable ChunkAccess papoChunk;
++        private int papoChunkX;
++        private int papoChunkZ;
++        // Papo end - batch 130
+ 
+         MultiNeighborUpdate(BlockPos sourcePos, Block sourceBlock, @Nullable Orientation orientation, @Nullable Direction skipDirection) {
+             this.sourcePos = sourcePos;
+@@ -133,7 +156,32 @@ public class CollectingNeighborUpdater implements NeighborUpdater {
+         public boolean runNext(Level level) {
+             Direction direction = NeighborUpdater.UPDATE_ORDER[this.idx++];
+             BlockPos blockPos = this.sourcePos.relative(direction);
+-            BlockState blockState = level.getBlockState(blockPos);
++            // Papo start - batch 130: same-chunk fast path (see field comment). The
++            // vertical bounds check keeps VOID_AIR (what Level.getBlockState returns
++            // outside the build height) out of the fast path: AIR and VOID_AIR are
++            // both no-op dispatches with zero listeners, but a BlockPhysicsEvent
++            // listener must keep seeing the exact same block data.
++            final BlockState blockState;
++            final ChunkAccess papoCached = this.papoChunk;
++            if (papoCached != null
++                && (blockPos.getX() >> 4) == this.papoChunkX
++                && (blockPos.getZ() >> 4) == this.papoChunkZ
++                && !level.isOutsideBuildHeight(blockPos.getY())
++                && !level.captureTreeGeneration) {
++                blockState = papoCached.getBlockState(blockPos);
++            } else {
++                if (papoCached == null
++                    && !level.isOutsideBuildHeight(this.sourcePos.getY())) {
++                    final ChunkAccess papoResolved = level.getChunk(this.sourcePos.getX() >> 4, this.sourcePos.getZ() >> 4, ChunkStatus.FULL, false);
++                    if (papoResolved != null) {
++                        this.papoChunk = papoResolved;
++                        this.papoChunkX = this.sourcePos.getX() >> 4;
++                        this.papoChunkZ = this.sourcePos.getZ() >> 4;
++                    }
++                }
++                blockState = level.getBlockState(blockPos);
++            }
++            // Papo end - batch 130
+             Orientation orientation = null;
+             if (level.enabledFeatures().contains(FeatureFlags.REDSTONE_EXPERIMENTS)) {
+                 if (this.orientation == null) {

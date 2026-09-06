@@ -3,8 +3,12 @@ package io.papermc.paper.util;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.chunk.status.ChunkStatus;
 
 // Papo start - batch 126: production wire input-dirty tracking (per-Level instance)
 // Model: a redstone wire is "dirty" when any input of it changed since its last
@@ -29,7 +33,8 @@ import net.minecraft.world.level.block.state.BlockState;
 //    (getSignal/getDirectSignal/isRedstoneConductor/canSupportCenter) reads only
 //    its own position or own block state, so no read path ever touches a diagonal
 //    corner; marking a corner wire could only ever produce a redundant no-change
-//    evaluation;
+//    evaluation. Since batch 130 the scan reads through a per-mark 2x2 chunk-slot
+//    cache (see markLevel) instead of one chunk-map lookup per read;
 //  - the straight-through Chebyshev-2 positions: for each axis direction d, if
 //    the block at pos+d is a redstone conductor, the wire at pos+2d reads a
 //    direct signal THROUGH it (strong power from a source behind a block) - the
@@ -116,6 +121,84 @@ public final class PapoWireDirtyTracking {
     // Papo end - batch 129
 
     public void mark(final BlockGetter reader, final BlockPos pos) {
+        // Papo start - batch 130: Level readers take the column-fixed chunk resolution
+        // path (markLevel); every other BlockGetter (WorldGenRegion during generation)
+        // keeps the per-read generic path.
+        if (reader instanceof Level level && !level.captureTreeGeneration) {
+            this.markLevel(level, pos);
+        } else {
+            this.markGeneric(reader, pos);
+        }
+        // Papo end - batch 130
+    }
+
+    // Papo start - batch 130: axial probe directions (x+, x-, y+, y-, z+, z- - the
+    // same sequence the previous explicit six-block form used; probe order does not
+    // matter for set population, kept identical for review symmetry).
+    private static final int[] AX_DX = {1, -1, 0, 0, 0, 0};
+    private static final int[] AX_DY = {0, 0, 1, -1, 0, 0};
+    private static final int[] AX_DZ = {0, 0, 0, 0, 1, -1};
+    // Papo end - batch 130
+
+    // Papo start - batch 130: column-fixed chunk resolution. Every position mark()
+    // reads (18 face+edge scan offsets, 6 axial conductor probes, up to 6
+    // straight-through targets at axial ±2) lies within x±2/z±2 of pos, which spans
+    // at most a 2x2 grid of chunks. Each grid slot is resolved ONCE through the exact
+    // call Level.getBlockState makes internally (getChunk(cx, cz, FULL, true):
+    // fullChunks map get with the force-load fallback preserved), and every read in
+    // that slot goes straight to chunk.getBlockState - the per-read chunk-map lookup
+    // collapses from ~24-30 to <=4 per mark. Equivalence: Level.getBlockState
+    // = captureTreeGeneration check (routed out at mark() entry) + isInValidBounds +
+    // getChunk + chunk.getBlockState; bounds parity holds because VOID_AIR (out of
+    // horizontal bounds) and the section-gap AIR (out of vertical bounds, returned by
+    // LevelChunk.getBlockStateFinal) are never a wire and never a conductor, so the
+    // preflight ChunkPos.isValid check below routes exotic world-border sources to
+    // the generic path and everything else reads bit-identical states.
+    private void markLevel(final Level level, final BlockPos pos) {
+        final int x = pos.getX();
+        final int y = pos.getY();
+        final int z = pos.getZ();
+        final int baseCx = (x - 2) >> 4;
+        final int baseCz = (z - 2) >> 4;
+        if (!ChunkPos.isValid(baseCx, baseCz) || !ChunkPos.isValid(baseCx + 1, baseCz)
+            || !ChunkPos.isValid(baseCx, baseCz + 1) || !ChunkPos.isValid(baseCx + 1, baseCz + 1)) {
+            this.markGeneric(level, pos);
+            return;
+        }
+        final ChunkAccess[] chunks = new ChunkAccess[4]; // slot = ((cx-baseCx)<<1) | (cz-baseCz)
+        final BlockPos.MutableBlockPos scan = new BlockPos.MutableBlockPos();
+        for (int i = 0; i < SCAN_DX.length; i++) {
+            scan.set(x + SCAN_DX[i], y + SCAN_DY[i], z + SCAN_DZ[i]);
+            this.markIfWire(this.papoChunk(level, chunks, baseCx, baseCz, scan.getX(), scan.getZ()).getBlockState(scan), scan);
+        }
+        // straight-through closure: a source behind a conductor feeds the wire two
+        // out along the axis (direct signal through the strongly powered block)
+        for (int d = 0; d < 6; d++) {
+            final int ax = AX_DX[d];
+            final int ay = AX_DY[d];
+            final int az = AX_DZ[d];
+            scan.set(x + ax, y + ay, z + az);
+            if (!this.papoChunk(level, chunks, baseCx, baseCz, scan.getX(), scan.getZ()).getBlockState(scan).isRedstoneConductor(level, scan)) {
+                continue;
+            }
+            scan.set(x + 2 * ax, y + 2 * ay, z + 2 * az);
+            this.markIfWire(this.papoChunk(level, chunks, baseCx, baseCz, scan.getX(), scan.getZ()).getBlockState(scan), scan);
+        }
+    }
+
+    private static ChunkAccess papoChunk(final Level level, final ChunkAccess[] cache, final int baseCx, final int baseCz, final int px, final int pz) {
+        final int slot = (((px >> 4) - baseCx) << 1) | ((pz >> 4) - baseCz);
+        ChunkAccess chunk = cache[slot];
+        if (chunk == null) {
+            chunk = cache[slot] = level.getChunk(px >> 4, pz >> 4, ChunkStatus.FULL, true);
+        }
+        return chunk;
+    }
+    // Papo end - batch 130
+
+    // Papo start - batch 130: the generic per-read path (WorldGenRegion readers and
+    // the world-border/capture exotics) - byte-for-byte the pre-130 scan sequence.
+    private void markGeneric(final BlockGetter reader, final BlockPos pos) {
         final int x = pos.getX();
         final int y = pos.getY();
         final int z = pos.getZ();
@@ -126,44 +209,27 @@ public final class PapoWireDirtyTracking {
         }
         // straight-through closure: a source behind a conductor feeds the wire two
         // out along the axis (direct signal through the strongly powered block)
-        scan.set(x + 1, y, z);
-        if (this.isConductor(reader, scan)) {
-            scan.set(x + 2, y, z);
-            this.markIfWire(reader, scan);
-        }
-        scan.set(x - 1, y, z);
-        if (this.isConductor(reader, scan)) {
-            scan.set(x - 2, y, z);
-            this.markIfWire(reader, scan);
-        }
-        scan.set(x, y + 1, z);
-        if (this.isConductor(reader, scan)) {
-            scan.set(x, y + 2, z);
-            this.markIfWire(reader, scan);
-        }
-        scan.set(x, y - 1, z);
-        if (this.isConductor(reader, scan)) {
-            scan.set(x, y - 2, z);
-            this.markIfWire(reader, scan);
-        }
-        scan.set(x, y, z + 1);
-        if (this.isConductor(reader, scan)) {
-            scan.set(x, y, z + 2);
-            this.markIfWire(reader, scan);
-        }
-        scan.set(x, y, z - 1);
-        if (this.isConductor(reader, scan)) {
-            scan.set(x, y, z - 2);
+        for (int d = 0; d < 6; d++) {
+            final int ax = AX_DX[d];
+            final int ay = AX_DY[d];
+            final int az = AX_DZ[d];
+            scan.set(x + ax, y + ay, z + az);
+            if (!reader.getBlockState(scan).isRedstoneConductor(reader, scan)) {
+                continue;
+            }
+            scan.set(x + 2 * ax, y + 2 * ay, z + 2 * az);
             this.markIfWire(reader, scan);
         }
     }
-
-    private boolean isConductor(final BlockGetter reader, final BlockPos pos) {
-        return reader.getBlockState(pos).isRedstoneConductor(reader, pos);
-    }
+    // Papo end - batch 130
 
     private void markIfWire(final BlockGetter reader, final BlockPos pos) {
-        final BlockState state = reader.getBlockState(pos);
+        this.markIfWire(reader.getBlockState(pos), pos);
+    }
+
+    // Papo start - batch 130: state-based core shared by both paths (the generic
+    // wrapper above keeps the original reader-based signature).
+    private void markIfWire(final BlockState state, final BlockPos pos) {
         if (state.is(Blocks.REDSTONE_WIRE)) {
             final long packed = pos.asLong();
             final int s = stripe(packed);
@@ -175,6 +241,7 @@ public final class PapoWireDirtyTracking {
             }
         }
     }
+    // Papo end - batch 130
 
     /**
      * Wire-evaluation entry. @return true when the wire is clean at entry - the
