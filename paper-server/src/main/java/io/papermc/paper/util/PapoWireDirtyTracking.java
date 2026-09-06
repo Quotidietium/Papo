@@ -160,8 +160,7 @@ public final class PapoWireDirtyTracking {
         final int z = pos.getZ();
         final int baseCx = (x - 2) >> 4;
         final int baseCz = (z - 2) >> 4;
-        if (!ChunkPos.isValid(baseCx, baseCz) || !ChunkPos.isValid(baseCx + 1, baseCz)
-            || !ChunkPos.isValid(baseCx, baseCz + 1) || !ChunkPos.isValid(baseCx + 1, baseCz + 1)) {
+        if (!papoSlotsValid(baseCx, baseCz)) {
             this.markGeneric(level, pos);
             return;
         }
@@ -194,6 +193,21 @@ public final class PapoWireDirtyTracking {
         }
         return chunk;
     }
+
+    // Papo start - batch 131: shared 2x2 chunk-slot resolution for hot read faces.
+    // papoSlotsValid checks the four slots of the grid based at ((x-2)>>4, (z-2)>>4)
+    // (the base covering every read within x±2/z±2 of a position); callers whose
+    // grid is invalid must read through their generic per-read path. Mirrors the
+    // batch 130 markLevel preflight exactly.
+    public static boolean papoSlotsValid(final int baseCx, final int baseCz) {
+        return ChunkPos.isValid(baseCx, baseCz) && ChunkPos.isValid(baseCx + 1, baseCz)
+            && ChunkPos.isValid(baseCx, baseCz + 1) && ChunkPos.isValid(baseCx + 1, baseCz + 1);
+    }
+
+    public static ChunkAccess papoResolveChunk(final Level level, final ChunkAccess[] cache, final int baseCx, final int baseCz, final int px, final int pz) {
+        return papoChunk(level, cache, baseCx, baseCz, px, pz);
+    }
+    // Papo end - batch 131
     // Papo end - batch 130
 
     // Papo start - batch 130: the generic per-read path (WorldGenRegion readers and

@@ -1,0 +1,156 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Mon, 7 Sep 2026 02:26:17 +0800
+Subject: [PATCH] =?UTF-8?q?Papo:=20batch=20131=20column-fixed=20chunk=20re?=
+ =?UTF-8?q?solution=20for=20the=20wire=20evaluator=20read=20face=20-=20eve?=
+ =?UTF-8?q?ry=20position=20the=20merged=20target-strength=20sweep=20reads?=
+ =?UTF-8?q?=20(6=20neighbour=20reads,=20conductor=20fan-out=20inner=20read?=
+ =?UTF-8?q?s=20at=20neighbour=C2=B11,=20variant-column=20reads)=20lies=20w?=
+ =?UTF-8?q?ithin=20x=C2=B12/z=C2=B12=20of=20the=20evaluated=20pos,=20spann?=
+ =?UTF-8?q?ing=20at=20most=20a=202x2=20chunk=20grid;=20each=20grid=20slot?=
+ =?UTF-8?q?=20is=20resolved=20once=20through=20the=20exact=20call=20Level.?=
+ =?UTF-8?q?getBlockState=20makes=20internally=20(getChunk(cx,=20cz,=20FULL?=
+ =?UTF-8?q?,=20true),=20force-load=20fallback=20preserved)=20and=20every?=
+ =?UTF-8?q?=20read=20goes=20through=20the=20shared=20PapoWireDirtyTracking?=
+ =?UTF-8?q?.papoResolveChunk=20slot=20helper=20(batch=20130=20markLevel=20?=
+ =?UTF-8?q?structure),=20collapsing=20per-evaluation=20chunk-map=20lookups?=
+ =?UTF-8?q?=20from=20~10-24=20to=20<=3D4;=20captureTreeGeneration=20and=20?=
+ =?UTF-8?q?an=20invalid=20slot=20grid=20fall=20back=20to=20the=20identical?=
+ =?UTF-8?q?=20per-read=20generic=20path=20(captured=20pending=20tree=20sta?=
+ =?UTF-8?q?tes=20must=20stay=20visible);=20no=20vertical-bounds=20gate=20n?=
+ =?UTF-8?q?eeded=20here:=20AIR=20and=20VOID=5FAIR=20are=20interchangeable?=
+ =?UTF-8?q?=20for=20every=20consumer=20of=20these=20reads=20(getSignal/get?=
+ =?UTF-8?q?DirectSignal=200,=20never=20a=20wire,=20never=20a=20conductor)?=
+ =?UTF-8?q?=20and=20no=20event=20observes=20them;=20read=20order=20and=20t?=
+ =?UTF-8?q?he=2015-early-exit=20structure=20untouched?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+
+diff --git a/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java b/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
+index a76864cf66dfddba01a0206659f5c4a270cf3d2c..32a65de514e2355d9c8d1f0d2b62093c796ac0b7 100644
+--- a/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
++++ b/net/minecraft/world/level/redstone/DefaultRedstoneWireEvaluator.java
+@@ -8,6 +8,7 @@ import net.minecraft.world.level.Level;
+ import net.minecraft.world.level.block.Block;
+ import net.minecraft.world.level.block.RedStoneWireBlock;
+ import net.minecraft.world.level.block.state.BlockState;
++import net.minecraft.world.level.chunk.ChunkAccess;
+ import org.jspecify.annotations.Nullable;
+ 
+ public class DefaultRedstoneWireEvaluator extends RedstoneWireEvaluator {
+@@ -125,7 +126,32 @@ public class DefaultRedstoneWireEvaluator extends RedstoneWireEvaluator {
+     }
+ 
+     // Papo start - batch 125: the merged sweep (see the contract above)
++    // Papo start - batch 131: column-fixed chunk resolution for every position read
++    // of the evaluation (same structure as PapoWireDirtyTracking.markLevel, batch
++    // 130): the 6 neighbour reads, the conductor fan-out inner reads (neighbour±1)
++    // and the variant-column reads all lie within x±2/z±2 of pos, which spans at
++    // most a 2x2 chunk grid. Each grid slot is resolved once through the exact call
++    // Level.getBlockState makes internally (getChunk(cx, cz, FULL, true) with the
++    // force-load fallback preserved); per-read chunk-map lookups collapse from
++    // ~10-24 to <=4 per evaluation. captureTreeGeneration and an invalid slot grid
++    // (world-border exotics) fall back to the generic per-read path - captured
++    // pending tree states must stay visible to the reader. Vertical bounds need no
++    // gate here: AIR and VOID_AIR are interchangeable for every consumer of these
++    // reads (getSignal/getDirectSignal both 0, never a wire, never a conductor) and
++    // no event observes them.
+     private int papoCalculateTargetStrength(final Level level, final BlockPos pos) {
++        final ChunkAccess[] papoChunks;
++        final int papoBaseCx;
++        final int papoBaseCz;
++        if (level.captureTreeGeneration) {
++            papoChunks = null;
++            papoBaseCx = 0;
++            papoBaseCz = 0;
++        } else {
++            papoBaseCx = (pos.getX() - 2) >> 4;
++            papoBaseCz = (pos.getZ() - 2) >> 4;
++            papoChunks = io.papermc.paper.util.PapoWireDirtyTracking.papoSlotsValid(papoBaseCx, papoBaseCz) ? new ChunkAccess[4] : null;
++        }
+         int papoBlockSignal = 0;
+         int papoWireMax = 0;
+         boolean papoAboveIsConductor = false;
+@@ -136,7 +162,7 @@ public class DefaultRedstoneWireEvaluator extends RedstoneWireEvaluator {
+         for (int papoD = 0; papoD < 6; papoD++) {
+             final Direction papoDirection = DIRECTIONS[papoD]; // DOWN, UP, NORTH, SOUTH, WEST, EAST
+             papoNeighbor.setWithOffset(pos, papoDirection);
+-            final BlockState papoState = level.getBlockState(papoNeighbor);
++            final BlockState papoState = this.papoRead(level, papoChunks, papoBaseCx, papoBaseCz, papoNeighbor);
+             final boolean papoConductor = papoState.isRedstoneConductor(level, papoNeighbor);
+ 
+             if (papoState.is(this.wireBlock)) {
+@@ -154,26 +180,26 @@ public class DefaultRedstoneWireEvaluator extends RedstoneWireEvaluator {
+                     // SignalGetter.getDirectSignalTo at this position, wire pulls resolve to 0
+                     int papoDirect = 0;
+                     papoInner.setWithOffset(papoNeighbor, Direction.DOWN);
+-                    papoDirect = Math.max(papoDirect, papoDirectSkippingWire(level, papoInner, Direction.DOWN));
++                    papoDirect = Math.max(papoDirect, this.papoDirectSkippingWire(level, papoChunks, papoBaseCx, papoBaseCz, papoInner, Direction.DOWN));
+                     if (papoDirect < 15) {
+                         papoInner.setWithOffset(papoNeighbor, Direction.UP);
+-                        papoDirect = Math.max(papoDirect, papoDirectSkippingWire(level, papoInner, Direction.UP));
++                        papoDirect = Math.max(papoDirect, this.papoDirectSkippingWire(level, papoChunks, papoBaseCx, papoBaseCz, papoInner, Direction.UP));
+                     }
+                     if (papoDirect < 15) {
+                         papoInner.setWithOffset(papoNeighbor, Direction.NORTH);
+-                        papoDirect = Math.max(papoDirect, papoDirectSkippingWire(level, papoInner, Direction.NORTH));
++                        papoDirect = Math.max(papoDirect, this.papoDirectSkippingWire(level, papoChunks, papoBaseCx, papoBaseCz, papoInner, Direction.NORTH));
+                     }
+                     if (papoDirect < 15) {
+                         papoInner.setWithOffset(papoNeighbor, Direction.SOUTH);
+-                        papoDirect = Math.max(papoDirect, papoDirectSkippingWire(level, papoInner, Direction.SOUTH));
++                        papoDirect = Math.max(papoDirect, this.papoDirectSkippingWire(level, papoChunks, papoBaseCx, papoBaseCz, papoInner, Direction.SOUTH));
+                     }
+                     if (papoDirect < 15) {
+                         papoInner.setWithOffset(papoNeighbor, Direction.WEST);
+-                        papoDirect = Math.max(papoDirect, papoDirectSkippingWire(level, papoInner, Direction.WEST));
++                        papoDirect = Math.max(papoDirect, this.papoDirectSkippingWire(level, papoChunks, papoBaseCx, papoBaseCz, papoInner, Direction.WEST));
+                     }
+                     if (papoDirect < 15) {
+                         papoInner.setWithOffset(papoNeighbor, Direction.EAST);
+-                        papoDirect = Math.max(papoDirect, papoDirectSkippingWire(level, papoInner, Direction.EAST));
++                        papoDirect = Math.max(papoDirect, this.papoDirectSkippingWire(level, papoChunks, papoBaseCx, papoBaseCz, papoInner, Direction.EAST));
+                     }
+                     papoSignal = Math.max(papoSignal, papoDirect);
+                 }
+@@ -193,11 +219,11 @@ public class DefaultRedstoneWireEvaluator extends RedstoneWireEvaluator {
+                 if (papoConductor) {
+                     if (!papoAboveIsConductor) {
+                         papoVariant.setWithOffset(papoNeighbor, Direction.UP);
+-                        papoWireMax = Math.max(papoWireMax, papoWireSignal(level, papoVariant));
++                        papoWireMax = Math.max(papoWireMax, this.papoWireSignal(level, papoChunks, papoBaseCx, papoBaseCz, papoVariant));
+                     }
+                 } else {
+                     papoVariant.setWithOffset(papoNeighbor, Direction.DOWN);
+-                    papoWireMax = Math.max(papoWireMax, papoWireSignal(level, papoVariant));
++                    papoWireMax = Math.max(papoWireMax, this.papoWireSignal(level, papoChunks, papoBaseCx, papoBaseCz, papoVariant));
+                 }
+             }
+         }
+@@ -205,13 +231,20 @@ public class DefaultRedstoneWireEvaluator extends RedstoneWireEvaluator {
+         return papoBlockSignal >= 15 ? 15 : Math.max(papoBlockSignal, Math.max(0, papoWireMax - 1));
+     }
+ 
+-    private int papoDirectSkippingWire(final Level level, final BlockPos papoAt, final Direction papoFrom) {
+-        final BlockState papoState = level.getBlockState(papoAt);
++    private BlockState papoRead(final Level level, final ChunkAccess[] chunks, final int baseCx, final int baseCz, final BlockPos.MutableBlockPos papoAt) {
++        if (chunks == null) {
++            return level.getBlockState(papoAt);
++        }
++        return io.papermc.paper.util.PapoWireDirtyTracking.papoResolveChunk(level, chunks, baseCx, baseCz, papoAt.getX(), papoAt.getZ()).getBlockState(papoAt);
++    }
++
++    private int papoDirectSkippingWire(final Level level, final ChunkAccess[] chunks, final int baseCx, final int baseCz, final BlockPos.MutableBlockPos papoAt, final Direction papoFrom) {
++        final BlockState papoState = this.papoRead(level, chunks, baseCx, baseCz, papoAt);
+         return papoState.is(this.wireBlock) ? 0 : papoState.getDirectSignal(level, papoAt, papoFrom);
+     }
+ 
+-    private int papoWireSignal(final Level level, final BlockPos papoAt) {
+-        final BlockState papoState = level.getBlockState(papoAt);
++    private int papoWireSignal(final Level level, final ChunkAccess[] chunks, final int baseCx, final int baseCz, final BlockPos.MutableBlockPos papoAt) {
++        final BlockState papoState = this.papoRead(level, chunks, baseCx, baseCz, papoAt);
+         return papoState.is(this.wireBlock) ? papoState.getValue(RedStoneWireBlock.POWER) : 0;
+     }
+     // Papo end - batch 125
