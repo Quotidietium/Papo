@@ -2671,3 +2671,42 @@ Level.getBlockState 逐语义等价（横向 = ChunkPos.isValid±30M 非动态�
 （注释修改前后）+ WireDirtySkipBench 自检 ALL OK。R1 三个已接受基线缺陷
 维持（状态核对，未复发未重报）。报告：
 [note/report/2026-09-08-r4-redstone-family-audit-batch132.md](report/2026-09-08-r4-redstone-family-audit-batch132.md)。
+
+---
+
+## 批次 133（2026-09-08）：R1 网络面/登录面家族对抗审计（1 真实缺陷修复，0.80.0 保持）
+
+按"每次覆盖不同方面"换面：R4 红石族 132 已审，本轮对 R1 多核调度与包管线
+家族（0241-0252 + 直提交基建：PapoOrderedFileWrites/PapoParallelism/
+PapoJoinPacketCache、批 79 存档下放、批 82 预取、批 87/88 事件驱动、批 91
+停机加固、0226/0227 join 缓存）十面对抗审计，重点对齐网络服务暴露/不可信
+输入/多用户高频 join-quit/数据操作完整性的流目标。
+
+**唯一真实缺陷（F1，已修）**：`papoStoreChunkPacketCache`（0241）先存
+heightmaps/buffer 后读 `papoChunkDataVersion`——gen 线程在序列化与版本读取
+之间经 WorldGenRegion 结构粘贴同一 FULL chunk（批 132 §1 已实证该路径）时，
+旧载荷被洗白成新版本；0242 共享包层将其放大为**此后所有观众持久收到粘贴前
+的方块状态**（服务端状态正确，客户端可见性缺陷，低概率高影响）。修复：版本
+改为三参传入、由调用方在**序列化前**捕获（ChunkHolder 顶部预读值 +
+papoCreateCached 回退路径新增预读）；窗口内 bump 使缓存失效、下次发送重
+序列化自愈（多失效不少失效，严格保守）。验证：applyPatches 全量重放 EXIT=0
+且三文件与已编译树逐字节一致 + compileJava --rerun-tasks BUILD SUCCESSFUL。
+
+其余九面闭合：共享 wire/encode memo 并发与字节等价（压缩段自描述、撕裂组合
+均合法）；join 静态包缓存失效完备（tags/registry 唯一变化点 reloadTagData、
+recipes 全变异路径经 finalizeRecipeLoading→PlayerList.reloadResources、
+player-info 瞬态）；登录预取生命周期按"消费点-监听器切换点"相对顺序证明
+（advancements 在 ServerPlayer 构造器消费处于配置监听器存续期；placeNewPlayer
+:177 切换到 :208 stats 消费之间断连不泄漏——消费无条件先行于 :249 断连
+早退）；.dat 备份/.offline-read 改名副作用逐分支等价（同步路径本就无
+.dat_old backup 调用）；PapoOrderedFileWrites 链式排序/原子移除/停机降级
+健全；stats/advancements JSON 非原子直写为 vanilla 原生行为非回归（补丁
+基线 `-` 侧实证）；光版本契约（vanilla+moonrise 双引擎全部经
+ServerChunkCache.onLightUpdate 跳主线程→sectionLightChanged→bump，同 tick
+增量修正可达新观众）；不可信输入面零可达（预取键全为服务端权威派生）；
+长期运行内存界无新增无界结构。已接受三缺陷（0267 无界 join 等待/0268
+locale 冻结/0269 缓存常驻）状态核对未复发未重报。审计轮不 bump 不发布。
+三判例入库（版本-缓存对的 stamp 读取点必须先于数据生产起点；生命周期钩子
+完备性按消费点-切换点相对序证明；下放 IO 补丁先 diff 基线写模式再谈回归）。
+报告：
+[note/report/2026-09-08-r1-network-family-audit-batch133.md](report/2026-09-08-r1-network-family-audit-batch133.md)。
