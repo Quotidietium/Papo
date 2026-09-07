@@ -2652,3 +2652,22 @@ vanilla 覆写面 level/pos 参数无用性审计）。
 18+6 次状态读中的残余读取成本）、eval-face 18.6%（getSignal/getDirectSignal
 覆写与 isRedstoneConductor 底座）；家族外 ChunkHolder.blockChanged 广播记账
 （ShortOpenHashSet 2.95%）与 ZeroColliding 底座 7.4% 为公共面。
+
+---
+
+## 批次 132（2026-09-08）：R4 红石家族对抗审计（零缺陷轮，0.80.0 保持）
+
+R4 全部新增面（0253-0266 + 直提交）十面对抗审计：标记钩子完备性（含
+ObserverBlock 覆写不带标记的双重证明——派发前必有转移 / 通知目标不可达
+读取面）、输入闭包独立重证明（角位不可达逐读位验证）、跳过放置点三路
+（入口跳过/onPlace 旁路/移除无条件）、0130/0131 chunk 解析与
+Level.getBlockState 逐语义等价（横向 = ChunkPos.isValid±30M 非动态边界；
+纵向 AIR/VOID_AIR 对消费者同值）、0265 快路径（getChunk(FULL,false) 布尔
+语义实证 + 突发内无卸载交错）、并发与内存界、不可信输入面（R4 触碰文件
+清单无包/命令/聊天——零新增信任面）、存档格式（0256 集合为纯运行时结构）、
+功能完整性。**唯一发现：CAP 泄流阀类注释方向反写**（"清空后全部重评"实为
+"清空后全部视为 clean，突中途清空可能跳过已变输入的评估"）——已如实改写
+（纯注释零行为差异）。验证：compileJava --rerun-tasks 双次 BUILD SUCCESSFUL
+（注释修改前后）+ WireDirtySkipBench 自检 ALL OK。R1 三个已接受基线缺陷
+维持（状态核对，未复发未重报）。报告：
+[note/report/2026-09-08-r4-redstone-family-audit-batch132.md](report/2026-09-08-r4-redstone-family-audit-batch132.md)。
