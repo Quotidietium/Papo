@@ -258,7 +258,7 @@ index 9ffe238c03ab5a2151f89ae3ddea13f151bf4ac2..0a15338c7228ca994523540cd257be09
      public static final StreamCodec<RegistryFriendlyByteBuf, ClientboundLevelChunkWithLightPacket> STREAM_CODEC = Packet.codec(
          ClientboundLevelChunkWithLightPacket::write, ClientboundLevelChunkWithLightPacket::new
      );
-@@ -50,28 +51,40 @@ public class ClientboundLevelChunkWithLightPacket implements Packet<ClientGamePa
+@@ -50,28 +51,45 @@ public class ClientboundLevelChunkWithLightPacket implements Packet<ClientGamePa
      // constructor passes chunkPacketInfo == null, and modifyBlocks(packet, null) is exactly a
      // setReady(true) for both controller implementations (checked ChunkPacketBlockController and
      // ChunkPacketBlockControllerAntiXray), which this constructor replicates directly.
@@ -293,8 +293,13 @@ index 9ffe238c03ab5a2151f89ae3ddea13f151bf4ac2..0a15338c7228ca994523540cd257be09
 -        ClientboundLevelChunkPacketData data = packet.getChunkData();
 -        chunk.papoStoreChunkPacketCache(data.getHeightmaps(), data.papoSerializedBuffer());
 -        return packet;
++        // Papo start - batch 133: capture the version BEFORE serialising so the store stamps the
++        // payload's own version (a concurrent worldgen bump during construction then leaves the
++        // cache invalid instead of stamping old data with a new version)
++        final long papoVersionBeforeSerialization = chunk.papoChunkDataVersion();
 +        ClientboundLevelChunkPacketData papoData = new ClientboundLevelChunkPacketData(chunk, null);
-+        chunk.papoStoreChunkPacketCache(papoData.getHeightmaps(), papoData.papoSerializedBuffer());
++        chunk.papoStoreChunkPacketCache(papoData.getHeightmaps(), papoData.papoSerializedBuffer(), papoVersionBeforeSerialization);
++        // Papo end
 +        return new ClientboundLevelChunkWithLightPacket(pos.x, pos.z, papoData, new ClientboundLightUpdatePacketData(pos, lightEngine, null, null));
 +    }
 +
@@ -332,7 +337,7 @@ index ca0f36cd52b44c52ec216a7b0eadca72252b39d9..3c728b845ca0c5c671be23f22b11c76f
              LevelChunk tickingChunk = this.playersSentChunkTo.size() == 0 ? null : this.getChunkToSend(); // Paper - rewrite chunk system
              if (tickingChunk == null) {
                  return false;
-@@ -272,6 +274,67 @@ public class ChunkHolder extends GenerationChunkHolder implements ca.spottedleaf
+@@ -272,6 +274,69 @@ public class ChunkHolder extends GenerationChunkHolder implements ca.spottedleaf
          return this.hasChangedSections || !this.skyChangedLightSectionFilter.isEmpty() || !this.blockChangedLightSectionFilter.isEmpty();
      }
  
@@ -381,7 +386,9 @@ index ca0f36cd52b44c52ec216a7b0eadca72252b39d9..3c728b845ca0c5c671be23f22b11c76f
 +                chunk.papoPacketHeightmapsCache(), chunk.papoPacketBufferCache(), chunk);
 +        } else {
 +            data = new net.minecraft.network.protocol.game.ClientboundLevelChunkPacketData(chunk, null);
-+            chunk.papoStoreChunkPacketCache(data.getHeightmaps(), data.papoSerializedBuffer());
++            // Papo - batch 133: stamp with the version captured above, BEFORE serialisation - a
++            // concurrent worldgen bump during construction must leave the cache invalid
++            chunk.papoStoreChunkPacketCache(data.getHeightmaps(), data.papoSerializedBuffer(), chunkDataVersion);
 +        }
 +
 +        ClientboundLevelChunkWithLightPacket packet = new ClientboundLevelChunkWithLightPacket(
@@ -404,7 +411,7 @@ diff --git a/net/minecraft/world/level/chunk/LevelChunk.java b/net/minecraft/wor
 index be9b929c792d04c867b41b9d79236b1ca80f0452..722bbb41c38070bfb0b69b4f39c096ab08cc2b88 100644
 --- a/net/minecraft/world/level/chunk/LevelChunk.java
 +++ b/net/minecraft/world/level/chunk/LevelChunk.java
-@@ -127,6 +127,10 @@ public class LevelChunk extends ChunkAccess implements DebugValueSource, ca.spot
+@@ -127,12 +127,24 @@ public class LevelChunk extends ChunkAccess implements DebugValueSource, ca.spot
          return this.papoPacketBufferCache != null && this.papoChunkPacketCacheVersion == this.papoChunkDataVersion.get();
      }
  
@@ -412,6 +419,25 @@ index be9b929c792d04c867b41b9d79236b1ca80f0452..722bbb41c38070bfb0b69b4f39c096ab
 +        return this.papoChunkDataVersion.get();
 +    }
 +
-     public void papoStoreChunkPacketCache(Map<Heightmap.Types, long[]> heightmaps, byte[] buffer) {
-         this.papoPacketHeightmapsCache = heightmaps;
-         this.papoPacketBufferCache = buffer;
++    // Papo start - batch 133: the stored version MUST be the one captured before the caller
++    // serialised the payload, never re-read here. A worldgen thread can paste into a full chunk
++    // (WorldGenRegion.setBlock -> setBlockState -> papoBumpChunkDataVersion) between the caller's
++    // serialisation and this store; re-reading the version at store time would stamp the OLD
++    // payload with the NEW version and serve it to every later viewer until the next bump.
++    // Stamping the pre-serialisation version keeps the mismatch visible: validity fails and the
++    // next send re-serialises.
++    public void papoStoreChunkPacketCache(Map<Heightmap.Types, long[]> heightmaps, byte[] buffer, long versionBeforeSerialization) {
++        this.papoPacketHeightmapsCache = heightmaps;
++        this.papoPacketBufferCache = buffer;
++        this.papoChunkPacketCacheVersion = versionBeforeSerialization;
++    }
++    // Papo end
+-    public void papoStoreChunkPacketCache(Map<Heightmap.Types, long[]> heightmaps, byte[] buffer) {
+-        this.papoPacketHeightmapsCache = heightmaps;
+-        this.papoPacketBufferCache = buffer;
+-        this.papoChunkPacketCacheVersion = this.papoChunkDataVersion.get();
+-    }
+ 
+     public Map<Heightmap.Types, long[]> papoPacketHeightmapsCache() {
+         return this.papoPacketHeightmapsCache;
+     }
