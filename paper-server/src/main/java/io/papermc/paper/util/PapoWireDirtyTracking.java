@@ -62,8 +62,15 @@ import net.minecraft.world.level.chunk.status.ChunkStatus;
 // Level (field Level.papoWireDirty).
 //
 // Bound: entries are only ever wires, cleared at their next evaluation; a leak
-// valve clears everything past a large cap (all wires then simply re-evaluate
-// once dirty).
+// valve clears everything past a large cap. The valve's failure direction is
+// STALENESS, not re-evaluation: cleared wires evaluate as clean, so a clear that
+// lands between a mark and its pending evaluation lets that evaluation skip with
+// a changed input (stored power stays stale until the next transition inside the
+// closure re-marks it). Reaching it requires 2^18 distinct marked-unevaluated
+// wire positions in a single stripe within one burst - orders of magnitude past
+// any realisable contraption - against which the unbounded-set alternative
+// (worldgen-pasted marks that never receive a notification) is the common case
+// the valve exists for.
 public final class PapoWireDirtyTracking {
 
     private static final int STRIPES = 8;
