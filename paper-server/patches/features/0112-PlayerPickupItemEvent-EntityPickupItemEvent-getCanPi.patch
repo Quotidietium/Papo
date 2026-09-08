@@ -8,7 +8,7 @@ diff --git a/net/minecraft/world/entity/item/ItemEntity.java b/net/minecraft/wor
 index d327ffc2e4ccf03961be6df3546e3a3491637875..a125be5969e937467adf2b0c474512f810bfd2ae 100644
 --- a/net/minecraft/world/entity/item/ItemEntity.java
 +++ b/net/minecraft/world/entity/item/ItemEntity.java
-@@ -429,6 +429,20 @@ public class ItemEntity extends Entity implements TraceableEntity {
+@@ -429,6 +429,21 @@ public class ItemEntity extends Entity implements TraceableEntity {
  
              if (this.pickupDelay <= 0 && canHold > 0) {
                  item.setCount(canHold);
@@ -20,6 +20,7 @@ index d327ffc2e4ccf03961be6df3546e3a3491637875..a125be5969e937467adf2b0c474512f8
 +                    && org.bukkit.event.entity.EntityPickupItemEvent.getHandlerList().getRegisteredListeners().length == 0) {
 +                    if (!entity.getBukkitEntity().getCanPickupItems()) {
 +                        item.setCount(count); // SPIGOT-5294 - restore count
++                        entity.take(this, count); // Papo fix - batch 135: the vanilla cancelled branch plays the fly animation (flyAtPlayer defaults true with zero listeners)
 +                        return;
 +                    }
 +                    item.setCount(canHold + remaining); // = i (events cannot swap the stack with no listeners)
