@@ -8,38 +8,49 @@ Content-Transfer-Encoding: 8bit
 
 addVanillaDecorations 每个区块生成都对整个结构注册表做
 stream().collect(groupingBy(step().ordinal()))，结果只依赖不可变的注册表。
-改为 per-ChunkGenerator 缓存（按注册表身份键），volatile 安全发布；良性竞态
-无害（结果确定）。世界生成多线程下省去每区块一次 HashMap 分配。
+改为 per-ChunkGenerator 缓存（按注册表身份键）；(registry, map) 对经单个
+volatile 不可变持有者原子发布——两个独立 volatile 在两次 datapack reload
+与滞留装饰任务交错时可能撕裂（一代注册表的 map 被当作另一代消费，把旧代
+结构装饰进新区块）。残留的良性重算竞态无害（结果确定）。世界生成多线程下
+省去每区块一次 HashMap 分配。
 
 diff --git a/net/minecraft/world/level/chunk/ChunkGenerator.java b/net/minecraft/world/level/chunk/ChunkGenerator.java
 index 7b98964eb77a619bdaaf5a9d331e3cfe080b52a4..c0c54cd39e428ab633e5446eb02ad534a41826da 100644
 --- a/net/minecraft/world/level/chunk/ChunkGenerator.java
 +++ b/net/minecraft/world/level/chunk/ChunkGenerator.java
-@@ -85,6 +85,12 @@ public abstract class ChunkGenerator {
+@@ -85,6 +85,17 @@ public abstract class ChunkGenerator {
      protected final BiomeSource biomeSource;
      private final Supplier<List<FeatureSorter.StepFeatureData>> featuresPerStep;
      public final Function<Holder<Biome>, BiomeGenerationSettings> generationSettingsGetter;
 +    // Papo start - cache the structure→decoration-step grouping; it depends only on the immutable
-+    // structure registry, not on the chunk. volatile for safe publication across worldgen threads
-+    // (a benign recompute race is harmless because the result is deterministic).
-+    private volatile Registry<Structure> papoStructuresByStepRegistry;
-+    private volatile Map<Integer, List<Structure>> papoStructuresByStep;
++    // structure registry, not on the chunk. The (registry, map) pair is published atomically through
++    // a single volatile immutable holder — two separate volatiles could tear under two datapack
++    // reloads racing in-flight decoration (the map computed for one registry generation could be
++    // consumed as if it belonged to another, decorating chunks with old-generation structures).
++    // The benign recompute race that remains is harmless because the result is deterministic.
++    private record PapoStructuresByStep(Registry<Structure> registry, Map<Integer, List<Structure>> map) {
++    }
++
++    private volatile PapoStructuresByStep papoStructuresByStep;
 +    // Papo end
- 
+
      public ChunkGenerator(BiomeSource biomeSource) {
          this(biomeSource, biome -> biome.value().getGenerationSettings());
-@@ -340,7 +346,14 @@ public abstract class ChunkGenerator {
+@@ -340,7 +351,17 @@ public abstract class ChunkGenerator {
              SectionPos sectionPos = SectionPos.of(pos, level.getMinSectionY());
              BlockPos blockPos = sectionPos.origin();
              Registry<Structure> registry = level.registryAccess().lookupOrThrow(Registries.STRUCTURE);
 -            Map<Integer, List<Structure>> map = registry.stream().collect(Collectors.groupingBy(structure1 -> structure1.step().ordinal()));
-+            // Papo start - reuse the cached structure→step grouping keyed by registry identity
-+            Map<Integer, List<Structure>> map = this.papoStructuresByStep;
-+            if (map == null || this.papoStructuresByStepRegistry != registry) {
-+                map = registry.stream().collect(Collectors.groupingBy(structure1 -> structure1.step().ordinal()));
-+                this.papoStructuresByStep = map;
-+                this.papoStructuresByStepRegistry = registry;
++            // Papo start - reuse the cached structure→step grouping keyed by registry identity;
++            // the (registry, map) pair is read and published atomically via the single volatile holder
++            PapoStructuresByStep papoCache = this.papoStructuresByStep;
++            if (papoCache == null || papoCache.registry() != registry) {
++                papoCache = new PapoStructuresByStep(
++                    registry, registry.stream().collect(Collectors.groupingBy(structure1 -> structure1.step().ordinal()))
++                );
++                this.papoStructuresByStep = papoCache;
 +            }
++            Map<Integer, List<Structure>> map = papoCache.map();
 +            // Papo end
              List<FeatureSorter.StepFeatureData> list = this.featuresPerStep.get();
              WorldgenRandom worldgenRandom = new WorldgenRandom(new XoroshiroRandomSource(RandomSupport.generateUniqueSeed()));
