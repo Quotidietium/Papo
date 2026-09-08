@@ -2710,3 +2710,41 @@ locale 冻结/0269 缓存常驻）状态核对未复发未重报。审计轮不 
 完备性按消费点-切换点相对序证明；下放 IO 补丁先 diff 基线写模式再谈回归）。
 报告：
 [note/report/2026-09-08-r1-network-family-audit-batch133.md](report/2026-09-08-r1-network-family-audit-batch133.md)。
+
+---
+
+## 批次 134（2026-09-09）：入站帧化/读侧解码/容器交互家族对抗审计（1 真实缺陷修复，0.80.0 保持）
+
+按"每次覆盖不同方面"第三面换面：132 审 R4 红石族、133 审 R1 出站包管线/
+登录族后，本轮对**入站读侧与容器交互族**（0066-0068/0075/0084/0085/
+0091-0103、0137-0140/0087/0139、0153-0155、0213-0225、0228/0229 + netstat
+直提交）十一面对抗审计，重点对齐修改版客户端不可信输入直击快路径、高频
+点击/拖拽/创造的数据操作完整性、长期高负载解码/池化资源界。
+
+**唯一真实缺陷（F1，已修）**：0154 零监听器点击快路把 craft/smith 重同步
+判据（`getRecipe()/getResult()`）挪到了 `clicked()` **之后**读——原路径在
+事件构造（clicked 前）读取。点击合成/锻造结果槽拿走**最终**成品时
+`clicked()` 恰好耗尽输入使配方/结果翻转 null，原路径判据为真会
+`sendAllDataToRemote()`（自定义配方下客户端预测错位的全量治愈，
+CraftBukkit 该调用的原始动机），快路后读恒假跳过 → 客户端合成格陈旧直到
+重开菜单（服务端状态正确、无复制面；批 133 F1 同级：低概率 × 客户端可见
+性，自定义配方 + 零 InventoryClickEvent 监听器服可复现）。修复：判据
+`papoCraftResync` 前提到 clicked() 之前求值，与原路径事件构造点逐点对齐。
+验证：check_patch_counts ALL OK + applyPatches 全量重放 EXIT=0 源码树同步
++ compileJava --rerun-tasks BUILD SUCCESSFUL。
+
+其余十面闭合：0228 创造快路 copy 恒等（含 EMPTY 单例）与特征/栈界门保
+持；0229 拖拽快路两段 setCarried 保留、DENY 臂零监听器死路、API 无子类；
+0222/0155 入站帧提取对 vanilla 逐路径终态一致（含 CompressionDecoder 收编
+slice 为 cumulation 的结构证明）；0213-0217 出站 headroom 身份匹配单写遍
+历、回退面完备、0215 界数学核验、refcount 每路径恰一次、null-compressor
+构造器死代码；0096/0097/0098/0153/0067/0068 入站解码 ThreadLocal 重入安
+全、ASCII 快路含 0x00 原始字节与 JDK 同判、数组负长度异常上游同型
+（mark/reset 差异不可达记录）；NBT 写侧字节等价复核；0103/0066 单槽池借
+还平衡（double-close 理论场景不可达记录）；交互路径判据时点与监听器集
+无交错；内存界无新增无界结构 + 0267/0268/0269 决断维持未复发 + netstat
+全链接核对。三判例入库（**快路复刻"可观察结果"时判据求值时点本身是可
+观察语义**——批 133 stamp 判例的消费侧对偶；ByteToMessageDecoder 下游收
+编语义是 retainedSlice 安全性的真实依赖；单槽池 close 内归还破坏 close
+幂等性、复用前须核对全部 close 调用点）。审计轮不 bump 不发布。报告：
+[note/report/2026-09-09-inbound-decode-container-audit-batch134.md](report/2026-09-09-inbound-decode-container-audit-batch134.md)。
