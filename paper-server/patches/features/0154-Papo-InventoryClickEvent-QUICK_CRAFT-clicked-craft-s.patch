@@ -8,7 +8,7 @@ diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/ne
 index 9df138083132b072134f2dd3f4756e3f5a6b3bd5..edfcadd1aa60ab0cae9fc8a90aa7b4d944ac3462 100644
 --- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 +++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-@@ -3077,6 +3077,53 @@ public class ServerGamePacketListenerImpl
+@@ -3077,6 +3077,59 @@ public class ServerGamePacketListenerImpl
                      }
  
                      org.bukkit.inventory.InventoryView inventory = this.player.containerMenu.getBukkitView();
@@ -24,7 +24,9 @@ index 9df138083132b072134f2dd3f4756e3f5a6b3bd5..edfcadd1aa60ab0cae9fc8a90aa7b4d9
 +                    // (cancelled == isSpectator, set at :3057 and never reassigned);
 +                    // (2) sendAllDataToRemote when the event would have been a CraftItemEvent
 +                    // (slotNum==0, crafting top, recipe present) or SmithItemEvent (slotNum==3,
-+                    // smithing top, result present); (3) no menu change is possible without a
++                    // smithing top, result present) - the predicate is evaluated BEFORE clicked(),
++                    // matching the original event-construction point (a final craft that empties
++                    // the grid still resyncs there); (3) no menu change is possible without a
 +                    // listener.
 +                    if (InventoryClickEvent.getHandlerList().getRegisteredListeners().length == 0) {
 +                        if (packet.clickType() == net.minecraft.world.inventory.ClickType.QUICK_CRAFT) {
@@ -48,13 +50,17 @@ index 9df138083132b072134f2dd3f4756e3f5a6b3bd5..edfcadd1aa60ab0cae9fc8a90aa7b4d9
 +                            }
 +                            this.player.containerMenu.clicked(slotNum, packet.buttonNum(), packet.clickType(), this.player);
 +                        } else {
++                            org.bukkit.inventory.Inventory papoTop = inventory.getTopInventory();
++                            // evaluate BEFORE clicked(): the original reads recipe/result while
++                            // constructing the event (pre-dispatch), so a final craft that empties
++                            // the grid must still resync - the event already was a CraftItemEvent
++                            boolean papoCraftResync = slotNum == 0 && papoTop instanceof org.bukkit.inventory.CraftingInventory papoCrafting && papoCrafting.getRecipe() != null
++                                || slotNum == 3 && papoTop instanceof org.bukkit.inventory.SmithingInventory papoSmithing && papoSmithing.getResult() != null;
 +                            if (!cancelled) { // setCancelled(false) -> getResult() != DENY
 +                                this.player.containerMenu.clicked(slotNum, packet.buttonNum(), packet.clickType(), this.player);
 +                            }
 +
-+                            org.bukkit.inventory.Inventory papoTop = inventory.getTopInventory();
-+                            if (slotNum == 0 && papoTop instanceof org.bukkit.inventory.CraftingInventory papoCrafting && papoCrafting.getRecipe() != null
-+                                || slotNum == 3 && papoTop instanceof org.bukkit.inventory.SmithingInventory papoSmithing && papoSmithing.getResult() != null) {
++                            if (papoCraftResync) {
 +                                this.player.containerMenu.sendAllDataToRemote();
 +                            }
 +                        }
