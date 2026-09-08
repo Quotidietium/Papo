@@ -2748,3 +2748,47 @@ slice 为 cumulation 的结构证明）；0213-0217 出站 headroom 身份匹配
 编语义是 retainedSlice 安全性的真实依赖；单槽池 close 内归还破坏 close
 幂等性、复用前须核对全部 close 调用点）。审计轮不 bump 不发布。报告：
 [note/report/2026-09-09-inbound-decode-container-audit-batch134.md](report/2026-09-09-inbound-decode-container-audit-batch134.md)。
+
+---
+
+## 批次 135（2026-09-09）：早期分配消除族对抗审计（4 真实缺陷修复，0.80.0 保持）
+
+按"每次覆盖不同方面"第四面收官：132 红石族、133 出站登录族、134 入站解码
+容器族后，本轮对**早期分配消除族**（0040-0065、0069-0074/0076-0083/0086/
+0088-0090、0104-0136、0141-0152、0156-0204，共 145 补丁；0040 与 0066-0103
+中 NBT/网络读写项已在批 134 复核）十二面对抗审计，重点对齐 scratch 复用
+逃逸/重入、零监听器门事件语义等价（含取消分支副作用）、折叠数学逐算子一
+致性、Bukkit HandlerList 门键权威性。至此 0001-0266 全部 Papo 自有补丁四
+家族均获对抗审计覆盖。
+
+**F1（0064，撕裂发布对）**：ChunkGenerator 结构分组缓存的 registry/map 双
+volatile 非原子写入——两次 datapack reload 与滞留装饰任务交错时一代注册表
+的 groupingBy 结果可被当作另一代消费，把旧代结构装饰进新区块（世界生成数
+据完整性；批 133 F1 版本-缓存对判例的结构缓存侧）。修复=单个 volatile 不
+可变 record 持有者原子发布。
+
+**F2（0172，坐标域越界）**：钓鱼开放水域扫描命令式改写把
+betweenClosedStream(两角同 y，每层 25 块) 写成 minY..minY+4 五层——水面附
+近上四层空气使 INSIDE_WATER 折叠 INVALID，calculateOpenWater 系统性翻
+false，开放水域宝藏判定丢失。修复=x/z 双循环固定单层。
+
+**F3（0179，覆写旁路）**：checkInsideBlocks 的 AABB 折叠绕过
+makeBoundingBox(VecP) 的 Interaction/Shulker/AbstractWindCharge 三处覆写，
+潜影贝/风弹的方块内效果扫描用错盒子。修复=回退保留虚调用，补丁留注释档。
+
+**F4（0112，取消分支副作用）**：零监听器拾取快路 !getCanPickupItems()
+（bukkitPickUpLoot 对玩家插件可写）取消分支漏 vanilla 会执行的
+entity.take() 飞行动画。修复=补 take 与原路径逐句对齐（0107 早期自修的
+flyAtPlayer 初值对偶）。
+
+其余八面闭合：零监听器门键权威性逐表定性（无自有表子类按父表、AT 变体按
+自有表，22 门全部正确）；0051/0110 门控判据与被调内部判据逐字同一；0044
+size()>1 跳 removeAll 经"列表无 null 插入"全库核对；0106 state 复用经两
+调用点即取即用证明；0132 标量公式与 absSnapTo 逐项对账；expandTowards
+三元形/PistonMath 操作数序逐字节一致；RegistryOps 缓存并发安全；0203 平
+局不可观察论证；0129 Deflater 池沿批 134 §8 判例。内存界无新增无界结构；
+0267/0268/0269 决断维持未复发；不可信输入面零新增。三判例入库（折叠虚调
+用链前核对类层次覆写面；命令式重写流式遍历时坐标域逐点对账——注释数字
+会说谎；零监听器快路取消分支同样承载可观察副作用）。审计轮不 bump 不发
+布。报告：
+[note/report/2026-09-09-early-allocation-family-audit-batch135.md](report/2026-09-09-early-allocation-family-audit-batch135.md)。
