@@ -27,20 +27,28 @@ index f312a7f5b1b2a777ab36b94ce7cbf3873f5e88bc..553361fa6d0519f7fcea584c84df32f1
  
      public ServerEntityLookup(final ServerLevel world, final LevelCallback<Entity> worldCallback) {
          super(world, worldCallback);
-@@ -81,6 +85,12 @@ public final class ServerEntityLookup extends EntityLookup {
+@@ -81,6 +85,20 @@ public final class ServerEntityLookup extends EntityLookup {
              this.removeEnderPearl(CoordinateUtils.getChunkKey(oldSectionX, oldSectionZ));
              this.addEnderPearl(CoordinateUtils.getChunkKey(newSectionX, newSectionZ));
          }
-+        // Papo start - per-chunk ItemEntity count: adjust counters on cross-chunk move
++        // Papo start - per-chunk ItemEntity count: adjust counters on cross-chunk move. The old-key
++        // decrement mirrors removeEntityCallback below (fastutil addTo returns the OLD value; old <= 1
++        // means the new value is <= 0, so the entry is removed): zero-valued entries must not linger
++        // in the map - the enderPearlChunkCount reference removes at zero on every decrement path, and
++        // a long-running server would otherwise accumulate one stale entry per chunk whose last item
++        // moved away rather than being removed.
 +        if (entity instanceof ItemEntity && (oldSectionX != newSectionX || oldSectionZ != newSectionZ)) {
-+            this.papoItemEntityChunkCount.addTo(CoordinateUtils.getChunkKey(oldSectionX, oldSectionZ), -1);
++            final long papoItemOldKey = CoordinateUtils.getChunkKey(oldSectionX, oldSectionZ);
++            if (this.papoItemEntityChunkCount.addTo(papoItemOldKey, -1) <= 1) {
++                this.papoItemEntityChunkCount.remove(papoItemOldKey);
++            }
 +            this.papoItemEntityChunkCount.addTo(CoordinateUtils.getChunkKey(newSectionX, newSectionZ), 1);
 +        }
 +        // Papo end - per-chunk ItemEntity count
          PlatformHooks.get().entityMove(
              entity,
              CoordinateUtils.getChunkSectionKey(oldSectionX, oldSectionY, oldSectionZ),
-@@ -96,6 +106,11 @@ public final class ServerEntityLookup extends EntityLookup {
+@@ -96,6 +114,11 @@ public final class ServerEntityLookup extends EntityLookup {
          if (entity instanceof ThrownEnderpearl enderpearl) {
              this.addEnderPearl(CoordinateUtils.getChunkKey(enderpearl.chunkPosition()));
          }
@@ -52,7 +60,7 @@ index f312a7f5b1b2a777ab36b94ce7cbf3873f5e88bc..553361fa6d0519f7fcea584c84df32f1
          entity.registerScheduler(); // Paper - optimise Folia entity scheduler
      }
  
-@@ -107,6 +122,14 @@ public final class ServerEntityLookup extends EntityLookup {
+@@ -107,6 +130,14 @@ public final class ServerEntityLookup extends EntityLookup {
          if (entity instanceof ThrownEnderpearl enderpearl) {
              this.removeEnderPearl(CoordinateUtils.getChunkKey(enderpearl.chunkPosition()));
          }
@@ -67,7 +75,7 @@ index f312a7f5b1b2a777ab36b94ce7cbf3873f5e88bc..553361fa6d0519f7fcea584c84df32f1
      }
  
      @Override
-@@ -164,4 +187,10 @@ public final class ServerEntityLookup extends EntityLookup {
+@@ -164,4 +195,10 @@ public final class ServerEntityLookup extends EntityLookup {
          ((ChunkSystemServerLevel)this.serverWorld).moonrise$getChunkTaskScheduler().chunkHolderManager
              .removeTicketAtLevel(ENDER_PEARL_TICKER, coordinate, ChunkHolderManager.ENTITY_TICKING_TICKET_LEVEL, null);
      }
