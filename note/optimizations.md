@@ -2759,7 +2759,9 @@ slice 为 cumulation 的结构证明）；0213-0217 出站 headroom 身份匹配
 中 NBT/网络读写项已在批 134 复核）十二面对抗审计，重点对齐 scratch 复用
 逃逸/重入、零监听器门事件语义等价（含取消分支副作用）、折叠数学逐算子一
 致性、Bukkit HandlerList 门键权威性。至此 0001-0266 全部 Papo 自有补丁四
-家族均获对抗审计覆盖。
+家族均获对抗审计覆盖。（**批 136 勘误**：本句"全覆盖"表述与四家族报告的
+显式范围清单核对不实——0205-0212 与 0230-0240 共 19 个补丁从未落入 132/
+133/134/135 任一家族的审计范围；批 136 补审并全部闭合。）
 
 **F1（0064，撕裂发布对）**：ChunkGenerator 结构分组缓存的 registry/map 双
 volatile 非原子写入——两次 datapack reload 与滞留装饰任务交错时一代注册表
@@ -2792,3 +2794,53 @@ size()>1 跳 removeAll 经"列表无 null 插入"全库核对；0106 state 复�
 会说谎；零监听器快路取消分支同样承载可观察副作用）。审计轮不 bump 不发
 布。报告：
 [note/report/2026-09-09-early-allocation-family-audit-batch135.md](report/2026-09-09-early-allocation-family-audit-batch135.md)。
+
+---
+
+## 批次 136（2026-09-09）：网络 pivot/防护与刷怪/战斗管线族对抗审计（4 真实缺陷修复，0.80.0 保持）
+
+按"每次覆盖不同方面"第五面：对四家族报告显式范围清单核对后发现**覆盖缺口**
+——0205-0212（fingerprint 加固 brand/ServerEntity 配对延后/出站 pivot×2/
+per-chunk 物品上限/记分板等值门×3）与 0230-0240（寻路内联/Present 原始读/
+红石消费×3/刷怪 despawn merge×3/战斗事件门控×3）共 19 补丁 + 4 处直提交
+从未落入 132-135 任一家族；批 135 收官句"0001-0266 全覆盖"表述不实（两处
+已就地勘误）。十二面对抗审计，重点对齐多用户高频 join 下出站并发正确性、
+长期运行内存界、配置错误面可用性、零监听器门事件语义、随机序列红线。
+
+**A1（0205+直提交，配置→编码器悬崖）**：brand custom-value 超长（>
+FriendlyByteBuf.MAX_STRING_LENGTH=32767 字符）时 BrandPayload 出站
+writeUtf 抛 EncoderException→每个加入者配置阶段断连（全服不可用，报错不指
+向配置项）。修复=resolve 层按编码器常量截断。
+
+**A2（0207，consume-once 破坏——本轮最高严重度）**：AtomicBoolean→boolean
+降级前提"processQueue 单线程 per Connection"漏掉迁移窗口——登录/配置阶段
+netty 线程在 synchronized 分支处理队列的同时，主线程 tick 经 addPending 同
+tick 将连接入列并 tick（flushQueue 主线程分支无锁）；isPending 翻转与
+monitor 获取间无 happens-before，两线程可并发 processQueue，CAS 是 accept()
+恰好一次的唯一屏障；普通 boolean 下双处理器双 accept→出站包重复写/排队动作
+双执行，多玩家 join 突发放大。修复=恢复 AtomicBoolean（保留 lambda 消除，
+3→2 对象），系列态行号机械重算+前向逐字节往返验证。
+
+**A3（0209，计数残留）**：entitySectionChangeCallback 递减不删归零表项
+（参考实现 enderPearlChunkCount 两条递减路径均归零 remove），最后一件物品
+跨块移走即残留 value=0 项，长期运行按差异区块数单调累积。修复=同构
+remove-at-zero（addTo 返回旧值 ≤1 即 remove，旧值 0 自愈清理）。
+
+**A4（0230，取反不保 NaN）**：距离门 `>= 4.0` 与原 `!closerThan`（= `!(x<4)`）
+在 NaN 分道（原版 return false、改写越入 canMoveDirectly(NaN)），补丁注释
+"NaN 流穿不变"与实现不符。修复=精确取反 `!(x < 2.0*2.0)`。
+
+其余八面闭合：fingerprint 四直提交 REAL 等价/回退完备（reloadPermissions
+再应用路径为重载语义本身）；0206 配对现算=末次刷新且只会更新鲜；0208
+instanceof 路由逐字；0210-0212 同实例重设保广播/null 归一化在门内/去重不动
+setDirty；0231 三态塌缩等价+record 不可子类；0232 桶序数学从原理逐项对上
+（hash/spread/7<12/7<8/桶升序+插入序）；0235-0237 零随机消耗+fill 变体同路
+径+全类别播种同点重建；0238-0240 四组门逐字（含 stab 取反形）+DamageSource
+全 final 只读+API Preconditions 异常/消息/求值序逐字。不可信输入面零新增
+（19 补丁无一处读客户端包）；内存界 A3 外无新增无界结构；0267/0268/0269
+决断维持。验证：check_patch_counts 全 918 文件 ALL OK + applyPatches 全量
+重放 EXIT=0 源码树同步（四处修复逐一在树核对）+ compileJava --rerun-tasks
+BUILD SUCCESSFUL。四判例入库（线程封闭论证必须覆盖状态迁移窗口；取反改写
+不保 NaN；照抄参考实现要每条路径同构清理语义；配置直通编码器的自由文本
+必须过编码器上限）。审计轮不 bump 不发布。报告：
+[note/report/2026-09-09-network-pivot-protection-spawn-combat-audit-batch136.md](report/2026-09-09-network-pivot-protection-spawn-combat-audit-batch136.md)。
