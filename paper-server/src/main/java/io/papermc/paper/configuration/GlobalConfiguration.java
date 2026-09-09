@@ -93,10 +93,20 @@ public class GlobalConfiguration extends ConfigurationPart {
             @Comment("Brand sent when mode = CUSTOM. Falls back to REAL if empty.")
             public String customValue = "";
 
-            /** Returns the brand to send, applying the configured mode (unknown mode falls back to REAL). */
+            /** Returns the brand to send, applying the configured mode (unknown mode falls back to REAL).
+             * CUSTOM values are clamped to FriendlyByteBuf.MAX_STRING_LENGTH: BrandPayload encodes with
+             * writeUtf(String), whose length limit throws EncoderException during outbound encoding —
+             * an over-long config value would otherwise disconnect every client in the configuration phase. */
             public String resolve(final String realBrand) {
                 if ("VANILLA".equals(this.mode)) return "vanilla";
-                if ("CUSTOM".equals(this.mode)) return (this.customValue != null && !this.customValue.isEmpty()) ? this.customValue : realBrand;
+                if ("CUSTOM".equals(this.mode)) {
+                    if (this.customValue != null && !this.customValue.isEmpty()) {
+                        return this.customValue.length() > net.minecraft.network.FriendlyByteBuf.MAX_STRING_LENGTH
+                            ? this.customValue.substring(0, net.minecraft.network.FriendlyByteBuf.MAX_STRING_LENGTH)
+                            : this.customValue;
+                    }
+                    return realBrand;
+                }
                 return realBrand;
             }
         }
