@@ -126,7 +126,7 @@ index b38fcabedc5b6f3c25e6623a530bee7f1e585b04..f649faddf14fe3f94de591dd40a8f70c
 +            double papoDx = papoCurX - pos.x;
 +            double papoDy = papoCurY - pos.y;
 +            double papoDz = papoCurZ - pos.z;
-+            if (papoDx * papoDx + papoDy * papoDy + papoDz * papoDz >= 2.0 * 2.0) {
++            if (!(papoDx * papoDx + papoDy * papoDy + papoDz * papoDz < 2.0 * 2.0)) { // Papo - exact negation !(x < c) of closerThan, NOT x >= c: NaN < c is false, so NaN returns false here exactly like !closerThan did
                  return false;
 -            } else if (this.canMoveDirectly(pos, this.path.getNextEntityPos(this.mob))) {
 +            }
