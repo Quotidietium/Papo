@@ -9,7 +9,7 @@ diff --git a/net/minecraft/server/level/ChunkMap.java b/net/minecraft/server/lev
 index 1076ff789e673a43ec30e9224cd275105571211f..1d0a89b70d2603c8bcc19bba5f055a3ca5ea3231 100644
 --- a/net/minecraft/server/level/ChunkMap.java
 +++ b/net/minecraft/server/level/ChunkMap.java
-@@ -1476,9 +1476,19 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
+@@ -1476,9 +1476,35 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
          public void updatePlayers(List<ServerPlayer> playersList) {
              // Papo - hoist the sweep-invariant getEffectiveRange() (see moonrise$tick)
              int papoEffectiveRange = this.getEffectiveRange();
@@ -19,13 +19,29 @@ index 1076ff789e673a43ec30e9224cd275105571211f..1d0a89b70d2603c8bcc19bba5f055a3c
 +            // registration runs addPairing for several players back-to-back with no entity state
 +            // change in between, so viewers receive byte-identical pairing packets (see
 +            // ServerEntity.addPairing)
++            // Batch 137 hardening: the "no entity state change mid-sweep" invariant is only
++            // guaranteed when the sweep is plugin-callback-free. PlayerTrackEntityEvent (fired
++            // before addPairing in updatePlayer) and PlayerUntrackEntityEvent (removePlayer ->
++            // removePairing -> stopSeenByPlayer) are the only Bukkit events reachable inside the
++            // sweep, and a handler may legally mutate pairing-relevant entity state (leash links
++            // have no per-tick self-heal broadcast, metadata/equipment do) between two viewers'
++            // pairings - vanilla rebuilds per viewer, so a cached replay would serve later viewers
++            // stale bytes. Share only when BOTH events have zero listeners; any listener on either
++            // restores vanilla fresh builds.
++            final boolean papoSharePairings =
++                io.papermc.paper.event.player.PlayerTrackEntityEvent.getHandlerList().getRegisteredListeners().length == 0
++                && io.papermc.paper.event.player.PlayerUntrackEntityEvent.getHandlerList().getRegisteredListeners().length == 0;
++            if (papoSharePairings) {
 +            this.serverEntity.papoBeginPairingShare();
++            }
 +            try {
 +                for (ServerPlayer serverPlayer : playersList) {
 +                    this.updatePlayer(serverPlayer, papoEffectiveRange); // Papo - hoisted range
 +                }
 +            } finally {
++                if (papoSharePairings) {
 +                this.serverEntity.papoEndPairingShare();
++                }
              }
 +            // Papo end - pairing packet sharing across this one continuous sweep
          }
@@ -35,7 +51,7 @@ diff --git a/net/minecraft/server/level/ServerEntity.java b/net/minecraft/server
 index c622d07f8fa13216132fff5021273e89c67b89c3..a80b8394b01d0d29fce7bf3d2511af805725d791 100644
 --- a/net/minecraft/server/level/ServerEntity.java
 +++ b/net/minecraft/server/level/ServerEntity.java
-@@ -357,13 +357,52 @@ public class ServerEntity {
+@@ -357,13 +357,54 @@ public class ServerEntity {
          // Papo start - pre-size the pairing packet list: sendPairingData produces 2-4 packets for the
          // common entity shapes (spawn/typed data/passengers/equipment), and the default capacity of 10
          // wastes allocation on every tracked-entity pairing (chunk-load bursts).
@@ -44,8 +60,10 @@ index c622d07f8fa13216132fff5021273e89c67b89c3..a80b8394b01d0d29fce7bf3d2511af80
 +        List<Packet<? super ClientGamePacketListener>> list;
 +        // Papo start - share pairing packets across viewers within one continuous sweep
 +        // Inside a single TrackedEntity.updatePlayers(List) sweep (new-entity registration), several
-+        // players pair back-to-back with no entity state change in between (single-threaded loop,
-+        // no callback into entity ticking; sendPairingData reads entity state only - the
++        // players pair back-to-back with no entity state change in between (single-threaded loop;
++        // sharing is enabled only when the sweep is plugin-callback-free - ChunkMap.updatePlayers
++        // gates on PlayerTrackEntityEvent/PlayerUntrackEntityEvent having zero listeners, see the
++        // batch 137 note there; sendPairingData reads entity state only - the
 +        // entity.getId()==player.getId() attributes branch is unreachable on this path because
 +        // updatePlayer guards player != entity), so every viewer receives byte-identical packets.
 +        // Build them once per sweep and replay the same instances (packet sharing across players is
