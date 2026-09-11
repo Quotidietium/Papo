@@ -2093,6 +2093,7 @@ compileJava + 全量 test 全绿；JMH 报告：[note/report/perf/2026-08-02-jmh
 - **基准**：PairingShareBench（五段构造模型 × 4 观众）：sweep 692.413 ± 11.853 → 0.564 ± 0.184 ns/op（模型复用为纯引用读，1227× 为模型夸张上界；真实收益=每观众省 (K-1)/K 的 pairing 构造，getNonDefaultValues 扫描+equipment copy+5 包对象 µs 级）。满负荷刷怪 30 新实体/tick × 2-4 观众 → 每 tick 数十次重复构造消除。
 - **风险**：低（窗口纪律 try/finally + 深度钳制；自检 4 观众包序列逐项一致；全量 test 绿）。
 - **留档**：玩家移动进入范围场景不共享（sweep 段间可能夹实体 tick，tick 内顺序无局部可证性，保守排除）——**配对域封闭**。
+- **批 137 勘误补审**：本节"sendPairingData 全部内容仅依赖实体状态，窗口内不变"的论证只排除了实体 tick 交错，漏了 sweep 内两个插件事件回调点（PlayerTrackEntityEvent/PlayerUntrackEntityEvent）——插件在事件里变更实体状态（拴绳类无自愈广播）时缓存回放给后位观众陈旧字节，与 vanilla 不等价；已修为两事件均零监听器才启用共享（见批次 137 B1）。
 
 ---
 
@@ -2844,3 +2845,47 @@ BUILD SUCCESSFUL。四判例入库（线程封闭论证必须覆盖状态迁移�
 不保 NaN；照抄参考实现要每条路径同构清理语义；配置直通编码器的自由文本
 必须过编码器上限）。审计轮不 bump 不发布。报告：
 [note/report/2026-09-09-network-pivot-protection-spawn-combat-audit-batch136.md](report/2026-09-09-network-pivot-protection-spawn-combat-audit-batch136.md)。
+
+## 批次 137（2026-09-12）：跨家族交互面 + 0247/0248 补审 + 直提交清点对抗审计（1 真实行为偏差修复，0.80.0 保持）
+
+全新审计面（与 132-136 五族互异）：①**跨家族交互面**——脚本枚举被 ≥2 个已审
+家族共触的全部 33 个文件，重点核对同方法叠栈（逐族审计的结构性盲区）；
+②**范围头 vs 显式段落核对**——发现批 133 头声明 0241-0252 中 0247/0248 无任何
+审计段落（136 勘误只核对了 132-135 四家显式清单、未复核 133 自身映射），
+本轮首次真审；③**直提交清点**——src/main 树 19 个标记文件逐一映射，批 5
+CraftEntity 枚举缓存补审闭合；④**功能完整性核验**——netstat/compressionLevel/
+itemEntityLimitPerChunk/PapoTickProfile 门控全部接线一致。
+
+### B1（0248，插件回调窗口）——本轮唯一代码修复
+
+0248 的"窗口内实体状态不变"原始论证只排除了实体 tick 交错，漏了 sweep 内两个
+**插件事件回调点**：PlayerTrackEntityEvent（updatePlayer 内、addPairing 前，每
+新配对观众触发）与 PlayerUntrackEntityEvent（removePlayer→removePairing→
+stopSeenByPlayer）。插件在事件里合法变更配对相关实体状态时，vanilla 后位观众
+新鲜构建能看到变更，0248 缓存回放则给变更前字节；元数据/装备 ≤1 tick 自愈，
+**拴绳无周期广播**（ClientboundSetEntityLinkPacket 仅状态变化时发给当时已在
+seenBy 的观众），陈旧显示可持续到下次拴绳变化/重新配对——插件可达的持久客户
+端可见偏差，触碰 API/行为兼容红线。
+
+修复：共享仅在 sweep **插件回调封闭**时启用——updatePlayers 顶部检查两事件
+HandlerList 均零监听器才 papoBeginPairingShare()；任一有监听器即恢复 vanilla
+逐观众新鲜构建。无此类插件时优化保持；sweep 内其余代码逐点核对无回调
+（updateDataBeforeSync 两覆写者纯数据、onPlayerAdd 仅置标志、WitherBoss 仅
+boss 条 UI、send 异步入队），零监听器下"字节相同"绝对成立。ServerEntity 侧
+注释同步改写（原"no callback into entity ticking"表述不完整）。判例重演一次：
+手改 hunk 计数差 1（2→4 行误记 2→5）即 corrupt patch，首次重放失败后精数修正。
+
+其余十一面闭合：0247 十二门控点全部门外推进状态（papoHasViewers 快照经
+updateDataBeforeSync 纯数据证明）；配对四补丁栈/网络编码栈/容器物品栈/红石
+叠栈/区块发送族/实体域全部同方法叠栈点组合不变量核对（collectChunksToSend
+三补丁栈 + floor≥1 边界证明、GameEventDispatcher.post 三补丁栈 visitor 无共享
+状态、LevelChunk.setBlockState 双钩子派发前簿记互不依赖）；不可信输入面零新增
+（0247/0248/k-nearest 均不触客户端可控数据）；内存界无新增无界结构
+（papoPairingShareCache 瞬态且修复后仅在回调封闭窗口存在）；0267/0268/0269
+决断维持。验证：check_patch_counts ALL OK + applyPatches 全量重放 EXIT=0
+（重生成 ChunkMap/ServerEntity 与手改树逐字节一致）+ compileJava
+--rerun-tasks BUILD SUCCESSFUL。三判例入库（闭环判定须逐补丁对显式段落映射
+——范围头声明不可作依据；共享/缓存优化的窗口不变前提必须按事件可达性证明
+——门控挂在事件自身零监听器检查上；"后审家族已读终态"≠"组合语义已证"）。
+审计轮不 bump 不发布。报告：
+[note/report/2026-09-12-cross-family-interaction-audit-batch137.md](report/2026-09-12-cross-family-interaction-audit-batch137.md)。
