@@ -2920,3 +2920,37 @@ compileJava --rerun-tasks BUILD SUCCESSFUL EXIT=0（src/main-only，补丁树零
 欺骗；回移植前 merge-base 查重；异步写反转窗口以调用方可达性收口）。审计轮
 不 bump 不发布。报告：
 [note/report/2026-09-12-fork-baseline-modification-audit-batch138.md](report/2026-09-12-fork-baseline-modification-audit-batch138.md)。
+
+## 批次 139（2026-09-13）：继承导入面对抗审计（零缺陷轮，0.80.0 保持）
+
+第八面（与 132-138 七面互异）：**继承导入面**——features 0001-0035 号补丁
+（fork 基线前已存在的上游 Paper 系导入）及其实现半边的**首次内容真审**。
+批 138 的净 diff 面只覆盖 6 个被修改者的净改 hunk 与新增 0036-0039，内容本体
+从未被审；批 135 收官句早已勘误为仅 0040-0266 真审。实现半边同步入面：
+src/main antixray 引擎（0029 的 677 行主文件，继承未改）首次真审；src/main
+其余 1150 个继承文件为 stock Moonrise/工具类按 provenance 级处理。
+
+**纯导入硬证据**：`grep -l "Papo" features/00[0-3]*.patch` 仅命中 0020
+（批 79 hunk 已审）/0036-0039（138 已审）——0001-0035 除 0020 外零 fork
+自著 hunk。**零行为缺陷、零修复**；四项上游继承观察维持（0019 重算路径
+Files.list 未关、Cleaner 自愈；0006 setupCompression 二次调用弃新压缩器、
+稀有；antixray obfuscate 理论异常致队列阻塞、无可达抛出路径；0028 死代码
+allMatch/anyMatch 零调用）。
+
+关键闭合证明：0029 位布局对 1.21.11 对齐格式（SimpleBitStorage
+valuesPerLong=64/bits 不跨 long）恒等——BitStorageWriter 跨 long 重对齐在
+旧格式下必错、新格式下逐点一致；antixray×Papo 0241/0242 缓存交互正确分叉
+（shouldModify=true 逐玩家新鲜构造旁路缓存；ready 语义三控制器全立即置位，
+无冻结路径）；0020 增量区块保存链存在性证明（ChunkMap.processUnloads 每
+tick → ChunkHolderManager.autoSave）；0024 keepalive 攻击面有界（首错即踢、
+pending ≤30、除数恒 ≥1）；0034×0002 异步 init 竞态以 JVM 类初始化锁收口
+（MCTypeRegistry.init 空方法触发 static 块 / DataFixers.DATA_FIXER
+static final）；红石三态门（VANILLA/EIGENCRAFT/ALTERNATE_CURRENT）与 R4
+优化 VANILLA 门互斥核对（AC/EIGENCRAFT 路径与上游逐字节一致）；功能完整
+性 35 补丁 subject×实现全表一致；不可信输入面零新增（0029 全出站）；
+0267/0268/0269 决断维持。只读轮免重放（批 132 判例，工作树 clean）。四判例
+入库（净 diff 面盲区=继承未改内容，面枚举须三分净改/净增/继承未改；继承导入
+纯度用标记 grep 硬证明；位级写器正确性先锚定格式代际；异步 init 以类初始化
+锁收口）。至此 **0001-0266+直提交+继承面全部获得对抗审计覆盖**。审计轮不
+bump 不发布。报告：
+[note/report/2026-09-13-inherited-imports-audit-batch139.md](report/2026-09-13-inherited-imports-audit-batch139.md)。
