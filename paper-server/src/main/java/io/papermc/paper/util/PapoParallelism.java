@@ -47,8 +47,11 @@ public final class PapoParallelism {
      * auto value, overridable by the existing -D flag). The historical moonrise default is
      * cores/4, sized to leave room for netty/IO/main on shared hosts. On dedicated hosts
      * the worker pool (parallel gen/load/light/compression/save) is the throughput
-     * bottleneck during exploration bursts while cores idle; workers run at NORM priority
-     * under the NORM+2 main tick thread, so scaling them up does not steal tick time.
+     * bottleneck during exploration bursts while cores idle. Workers run at default NORM
+     * priority — the same priority as the main tick thread (nothing elevates it), so
+     * smoothness rests on the pools' queue-hold scheduling and idle-parked threads, not
+     * on priority separation; batch 80 validated tick smoothness empirically (tick probes
+     * identical between the two curves).
      * Formula: cores/2, clamped to [2, 12].
      */
     public static int workerThreadCount() {

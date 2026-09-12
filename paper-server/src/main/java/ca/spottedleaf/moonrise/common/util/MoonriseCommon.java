@@ -38,8 +38,11 @@ public final class MoonriseCommon {
         // Papo start - core-aware auto worker thread count (batch 80)
         // Historical moonrise curve is cores/4 (cores/2 halved again) to leave room for
         // netty/IO/main on shared hosts. PapoParallelism.workerThreadCount raises the
-        // dedicated-host default to cores/2 clamp [2,12]; workers stay at NORM priority
-        // under the NORM+2 tick thread, so tick smoothness is not traded for throughput.
+        // dedicated-host default to cores/2 clamp [2,12]. These workers run at default NORM
+        // priority — the same priority as the main tick thread (nothing elevates it; only
+        // Util's own background pool threads are deprioritized) — so tick smoothness rests
+        // on the pool's queue-hold scheduling and was validated empirically by batch 80's
+        // tick probes (identical between the two curves).
         // Explicit config and the -D WorkerThreadCount override keep winning.
         int defaultWorkerThreads = io.papermc.paper.util.PapoParallelism.workerThreadCount();
         // Papo end - core-aware auto worker thread count (batch 80)
