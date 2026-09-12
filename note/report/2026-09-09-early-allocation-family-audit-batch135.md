@@ -1,5 +1,14 @@
 # 早期分配消除族对抗审计（批次 135，2026-09-09）
 
+> **批 138 勘误（2026-09-12）**：本报告范围头声明 0156-0204 全覆盖，但
+> **0186（ItemStack encode 走 ItemObfuscationSession.withItemStack）不在任何
+> 分组清单/段落内**（§10 网络侧微优化清单为 0052/0053/0127/0133/0134/0141/
+> 0146/0187/0203，无 0186；其余分组亦无）。批 137 §9 曾将 ItemObfuscationSession
+> 错误映射到"本报告 §9 已审"。0186 及其 src/main 侧改动（withItemStack 直路 +
+> start() 每级别上下文缓存）已由批 138 首次真审闭合（零缺陷：no-op 分支/新鲜
+> 上下文/switch-restore 逐句恒等，record 不可变 + per-thread 无共享）。
+> 见 [2026-09-12-fork-baseline-modification-audit-batch138.md](2026-09-12-fork-baseline-modification-audit-batch138.md)。
+
 > 范围：批 132（R4 红石族）、批 133（R1 出站包管线/登录族）、批 134（入站读侧/
 > 容器交互族）之后的第四面——**早期分配消除族**共 145 个补丁：0040-0065
 > （NBT/实体/区块/事件分配消除；0040 已入批 134 §7 复核）、0069-0074/0076-0083/

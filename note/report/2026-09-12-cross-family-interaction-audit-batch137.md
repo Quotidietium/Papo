@@ -1,5 +1,15 @@
 # 跨家族交互面与配对共享补审对抗审计（批次 137，2026-09-12）
 
+> **批 138 勘误（2026-09-12）**：本报告 §9 直提交映射表两处不实——
+> ①"ItemObfuscationSession=135 §9 已审"：批 135 报告全文无 sanitizer/withItemStack/
+> startContexts 任何段落（§9 实为事件路径命令式改写 0069/0070/0127/0157/0158/0172/
+> 0188/0117），且其调用点补丁 **0186 不在批 135 任何分组清单内**（0156-0204 范围
+> 声明遗漏，同批 136 揭露的"范围头≠显式段落"模式）；②"PapoParallelism/
+> SpigotConfig（netty sizing）/MoonriseCommon=133 已审"：批 133 仅范围头列出
+> PapoParallelism，正文无池 sizing 任何段落（§5 只覆盖 PapoOrderedFileWrites 与
+> .dat/stats/adv 管线）。两者均已由批 138 首次真审闭合（零缺陷）。
+> 见 [2026-09-12-fork-baseline-modification-audit-batch138.md](2026-09-12-fork-baseline-modification-audit-batch138.md)。
+
 > 范围：五个已审家族（132 红石 / 133 出站登录 / 134 入站解码容器 / 135 早期分配 /
 > 136 缺口闭合）之外的**全新面**——
 > ①**跨家族交互面**：被 ≥2 个审计家族的补丁共触的全部 33 个文件（脚本全量

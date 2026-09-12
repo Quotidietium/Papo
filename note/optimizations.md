@@ -2889,3 +2889,34 @@ updateDataBeforeSync 纯数据证明）；配对四补丁栈/网络编码栈/容
 ——门控挂在事件自身零监听器检查上；"后审家族已读终态"≠"组合语义已证"）。
 审计轮不 bump 不发布。报告：
 [note/report/2026-09-12-cross-family-interaction-audit-batch137.md](report/2026-09-12-cross-family-interaction-audit-batch137.md)。
+
+## 批次 138（2026-09-12）：fork 基线修改面对抗审计（1 注释勘误修复，0.80.0 保持）
+
+第七面（与 132-137 六面互异）：**fork 基线修改面**——以净 diff vs 上游基线
+（c5eb0790f1 = 首个 Papo 提交之父）为权威面枚举，覆盖 Papo 对上游既有文件的一切
+改动：features/ 修改 6（0001/0002/0005/0020/0025/0028 内嵌 hunk）+ 新增
+0036-0039（Pufferfish 移植，此前无任何审计段落）、sources/ 17 文件（批 79/80
+内嵌 ×6、7 月回移植 ×5、上游樱桃挑选 ×6）、src/main 19 改 5 增中的未真审者
+（ItemObfuscationSession+0186、池族、V5 半边、品牌化、构建修复）、paper-api
+8 改 1 删、gradle/build。触发：批 133 范围头列批 79 但**批 80 零审计段落**、
+批 135 声明 0156-0204 却漏 0186、批 137 §9 两处映射不实（均就地勘误注记）。
+
+**零行为缺陷**；唯一修复 C1（docs-only）：MoonriseCommon/PapoParallelism 注释
+"workers run at NORM priority under the NORM+2 main tick thread" 失实（主线程
+无提权、Moonrise 池线程亦默认 NORM，仅 Util 自有池降权）——流畅性实证结论保持，
+机制描述改为如实（池队列 hold 调度 + 批 80 tick 探针）。
+
+关键闭合证明：批 80 level.dat 下放读侧交错（restoreLevelDataFromOld 仅 boot；
+makeWorldBackup/deleteLevel/rename* 专用服务端零调用方——理论反转窗口以
+可达性收口）；0036 窒息节律恒等（%10 采样与 invulnerableTime==10 窗口精确
+重合）；0037 雷击构造器全覆盖（3 构造器汇流统一初始化，无"加载区块风暴首
+tick 齐击"；init 硬编码 100000 记 Pufferfish 原样观察项）；#13886 取消后
+loot 表保留调用点唯一；#14080 非基线祖先（merge-base 证）；池族三曲线/优先级
+声明/物化提示全部表述-实现一致；不可信输入面零新增；内存界无新增无界结构
+（CombatTracker 上限化为无界→有界改善）；0267/0268/0269 决断维持。验证：
+compileJava --rerun-tasks BUILD SUCCESSFUL EXIT=0（src/main-only，补丁树零
+触碰，沿批 132 纯注释判例）。四判例入库（范围头/结论表引用不可传递信任——
+须对正文段落文本级核对；净 diff vs 基线是唯一可信面枚举——按号追踪被重排
+欺骗；回移植前 merge-base 查重；异步写反转窗口以调用方可达性收口）。审计轮
+不 bump 不发布。报告：
+[note/report/2026-09-12-fork-baseline-modification-audit-batch138.md](report/2026-09-12-fork-baseline-modification-audit-batch138.md)。
