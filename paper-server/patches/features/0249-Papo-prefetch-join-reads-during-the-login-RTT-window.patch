@@ -16,18 +16,18 @@ issues the reads onto the per-target ordered write chains in that window:
   consume-once take + disconnect discard hooks
 - login/configuration listeners: trigger at startClientVerification (all auth
   modes converge there), discard on disconnect
-- reads run at Priority.BLOCKING (the priority vanilla sync-loads use), so a
-  saturated IO pool still schedules the main-thread join ahead of queued
-  region IO
+- reads run at Priority.NORMAL (strictly additive: they never preempt queued
+  region IO), escalated to BLOCKING only at the consume point when the main
+  thread is about to wait (PapoOrderedFileWrites.enqueueRead)
 
-Fallback: no prefetch / pool halted / body failure -> original synchronous
-path byte-for-byte unchanged.
+Fallback: no prefetch / pool halted / body failure / bounded-wait timeout ->
+original synchronous path byte-for-byte unchanged.
 
 diff --git a/net/minecraft/server/PlayerAdvancements.java b/net/minecraft/server/PlayerAdvancements.java
 index e22a887e01e898d6101de2bc64c8a7eda327c540..dfcaf577ae66323ae8df4656d5607f129edf1eab 100644
 --- a/net/minecraft/server/PlayerAdvancements.java
 +++ b/net/minecraft/server/PlayerAdvancements.java
-@@ -110,19 +110,44 @@ public class PlayerAdvancements {
+@@ -110,19 +110,52 @@ public class PlayerAdvancements {
      }
  
      private void load(ServerAdvancementManager manager) {
@@ -48,7 +48,15 @@ index e22a887e01e898d6101de2bc64c8a7eda327c540..dfcaf577ae66323ae8df4656d5607f12
 +            if (!papoPrefetched.future().isDone()) {
 +                papoPrefetched.raiseToBlocking(); // main thread is about to wait
 +            }
-+            papoJson = papoPrefetched.future().join();
++            // Bounded wait, same 60s budget as the .dat consume
++            // (PlayerDataStorage.papoConsumePrefetch): a wedged IO stage or a post-halt
++            // never-scheduled task degrades to the synchronous path instead of hanging
++            // the main thread forever.
++            try {
++                papoJson = papoPrefetched.future().get(60, java.util.concurrent.TimeUnit.SECONDS);
++            } catch (final Exception papoWaitFailed) {
++                papoJson = null;
++            }
 +        } else {
 +            papoJson = null;
 +        }
@@ -228,7 +236,7 @@ diff --git a/net/minecraft/stats/ServerStatsCounter.java b/net/minecraft/stats/S
 index 4942b5a16db53712716bcbb9c7a9e05791ce7b53..a5f0fd0c6bc619d7754bf92f2bd64318fa7b4840 100644
 --- a/net/minecraft/stats/ServerStatsCounter.java
 +++ b/net/minecraft/stats/ServerStatsCounter.java
-@@ -65,17 +65,38 @@ public class ServerStatsCounter extends StatsCounter {
+@@ -65,17 +65,46 @@ public class ServerStatsCounter extends StatsCounter {
  
      public ServerStatsCounter(MinecraftServer server, Path file) {
          this.file = file;
@@ -254,7 +262,15 @@ index 4942b5a16db53712716bcbb9c7a9e05791ce7b53..a5f0fd0c6bc619d7754bf92f2bd64318
 +            if (!papoPrefetched.future().isDone()) {
 +                papoPrefetched.raiseToBlocking(); // main thread is about to wait
 +            }
-+            papoJson = papoPrefetched.future().join();
++            // Bounded wait, same 60s budget as the .dat consume
++            // (PlayerDataStorage.papoConsumePrefetch): a wedged IO stage or a post-halt
++            // never-scheduled task degrades to the synchronous path instead of hanging
++            // the main thread forever.
++            try {
++                papoJson = papoPrefetched.future().get(60, java.util.concurrent.TimeUnit.SECONDS);
++            } catch (final Exception papoWaitFailed) {
++                papoJson = null;
++            }
 +        } else {
 +            papoJson = null;
 +        }
@@ -299,7 +315,7 @@ index 7e24ed5090f8e69b6e61cf5f9c9a250621c5dad0..f4fd6fe4dd962414fd572c3b75d0b164
  import org.slf4j.Logger;
  
  public class PlayerDataStorage {
-@@ -73,6 +76,108 @@ public class PlayerDataStorage {
+@@ -73,6 +76,110 @@ public class PlayerDataStorage {
          }
      }
  
@@ -323,8 +339,10 @@ index 7e24ed5090f8e69b6e61cf5f9c9a250621c5dad0..f4fd6fe4dd962414fd572c3b75d0b164
 +
 +    /**
 +     * Kicks off the async READ for a joining player; idempotent per UUID. Read side only
-+     * (file read + gzip + NBT parse, IO pool, chained after pending writes, BLOCKING
-+     * priority). The datafix deliberately stays on the main thread at the consume point,
++     * (file read + gzip + NBT parse, IO pool, chained after pending writes; NORMAL
++     * priority, escalated to BLOCKING only when the consume point is about to wait -
++     * see PapoOrderedFileWrites.enqueueRead). The datafix deliberately stays on the
++     * main thread at the consume point,
 +     * byte-identical to the synchronous path: the burst verification round showed that
 +     * moving the CPU-heavy fix onto the IO pool starves region-file reads (spawn chunk
 +     * loads) and onto the worker pool it contends with chunk deserialization - either way

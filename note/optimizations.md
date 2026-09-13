@@ -2954,3 +2954,38 @@ static final）；红石三态门（VANILLA/EIGENCRAFT/ALTERNATE_CURRENT）与 R
 锁收口）。至此 **0001-0266+直提交+继承面全部获得对抗审计覆盖**。审计轮不
 bump 不发布。报告：
 [note/report/2026-09-13-inherited-imports-audit-batch139.md](report/2026-09-13-inherited-imports-audit-batch139.md)。
+
+## 批次 140（2026-09-14）：生命周期与时序面对抗审计（1 行为缺陷 + 1 注释勘误修复，0.80.0 保持）
+
+第九面（与 132-139 八面互异）：**生命周期与时序面**——前八面审计稳态语义，本轮审计
+正交维度：断连/实体移除/区块卸载/关停/异常路径下所有 Papo 长生命周期状态的清理一致性、
+等待界与长期高负载内存界。盘点：全树 grep 枚举约 300 个 papo 标识符归类 15 个状态机族
+逐一核对（创建点/所有权/清理点/异常收尾/单调增长）。
+
+**F1（0249，唯一行为缺陷）**：stats/advancements 预取消费点用无界 `future().join()`，
+而同族 .dat 侧消费是 60s 有界 get（papoConsumePrefetch 明文契约"wedge 降级同步路径
+而非挂死主线程"）——同族兄弟路径等待契约漂移。批 91 已证 halt(false) 残留窗口
+queueTask 返回永不调度的 Task → future 永不完成 → ServerPlayer 构造器永久挂死主线程
+（严格劣于 vanilla 同步读；非数据丢失等价物）。修复=同构 60s get，超时/异常落原同步
+路径（其 awaitPending 亦有界）。全树 grep 证实无界 join 仅此两处。
+
+**F2（0249，docs）**：burst 验证轮把预取读从 BLOCKING 改为 NORMAL+消费点升级后，补丁
+正文与方法注释两处 "Priority.BLOCKING" 表述未跟随——就地勘误为如实机制描述；fallback
+行补 bounded-wait timeout。
+
+其余十四族闭合：PapoOrderedFileWrites TAILS 两相一致/pending 对称；登录预取族触发界
+（post-auth、键=UUID）≤并发连接数、丢弃链（双 listener onDisconnect，authenticatedProfile
+先于预取置位）、消费链（ServerPlayer 构造器 474-475 无条件创建 stats/adv——NPC 非持久
+玩家泄漏场景由此排除；.dat 在 PrepareSpawnTask）、并发重登录孤儿 future 自清、.dat_old
+读序经 .dat 链覆盖、数据操作副作用全收敛主线程消费点；共享区块包缓存随 chunk/holder
+生死单槽覆写；配对共享 try/finally 括号完整（异常不残留 depth>0）；压缩器池 close
+finally 归还+嵌套 displaced 丢弃；关停顺序 saveAll/saveAllChunks→awaitAll→haltExecutors；
+netstat 随连接生死；wire 跟踪条带阀失败方向=stalness；0230 计数器归零 remove；会话/
+诊断类闭合。不可信输入面零新增；内存界无新增无界结构；0267/0268/0269 决断维持。
+观察两条入库（papoConsumePrefetch 吞中断标志；离线统计查询消费在飞预取致同步回退）。
+验证：check_patch_counts 单文件+全仓 918 ALL OK + applyPatches 全量重放 EXIT=0（重生成
+树含修复）+ compileJava --rerun-tasks BUILD SUCCESSFUL EXIT=0；手改 hunk 计数再差 2、
+计数器兜住修正（批 137 判例重演）。三判例入库（同族兄弟路径横向对齐等待契约；"future
+永不完成"是一等挂死类——消费点默认有界；行为调优后文档双向跟随——核查范围含补丁正文
+本体）。审计轮不 bump 不发布。报告：
+[note/report/2026-09-14-lifecycle-timing-audit-batch140.md](report/2026-09-14-lifecycle-timing-audit-batch140.md)。
