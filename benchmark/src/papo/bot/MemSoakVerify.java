@@ -48,6 +48,10 @@ public final class MemSoakVerify {
         "net.minecraft.network.protocol.game.ClientboundLightUpdatePacketData",
         "net.minecraft.network.PapoSharedWireMemo",
         "net.minecraft.world.level.chunk.PalettedContainer",
+        "net.minecraft.world.level.levelgen.NoiseChunk", // 批次143（R5 轮3）
+        "net.minecraft.world.level.levelgen.DensityFunctions$HolderHolder",
+        "net.minecraft.core.Holder$Direct",
+        "net.minecraft.util.CubicSpline$Multipoint",
         "net.minecraft.world.level.chunk.status.ChunkStepBudget", // 可能不存在，容错
     };
 

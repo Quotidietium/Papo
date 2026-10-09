@@ -3054,3 +3054,24 @@ ChunkAccess 的 ShortList 是 fastutil 接口另一物）。
 补认后复跑绿门——宿主并发构建的 fork 压力会污染浸泡门。
 报告：
 [note/report/perf/2026-10-09-memsoak-r5-batch142.md](report/perf/2026-10-09-memsoak-r5-batch142.md)。
+
+## 批次 143（2026-10-09）：R5 轮3——NoiseChunk 后置释放（0.82.0 → 0.83.0）
+
+轮2 后画像随区块线性放大的 worldgen 对象族追因（全源码持有链盘点）：
+`ChunkAccess.noiseChunk`（BIOMES 步创建）持有映射 DF 子树
+（NoiseChunk.wrapped 键=HolderHolder{Holder.Direct} + CubicSpline
+Multipoint/Coordinate + MulOrAdd）+ 插值器 double[] + 含水层缓存；唯一读者
+=BIOMES/NOISE/SURFACE/CARVERS 四步；FULL 转换本就丢弃，但 carvers→FULL
+之间状态的区块（features/light/spawn 环，持有数实测≈full 区块数）留整棵树
+到卸载。修复（0268）：generateCarvers 末尾 `papoReleaseNoiseChunk()` 置
+null——字段本为 @Nullable 惰性重建设计（行为中立），步骤按区块严格串行
+（写不与读者竞争）。
+
+验证：rebuildPatches 0268 + applyPatches 全量重放 EXIT=0 + compileJava
+--rerun-tasks + test BUILD SUCCESSFUL + 0.83.0 jar；浸泡两腿（0.82.0 vs
+0.83.0，6,064 vs 6,112 区块配对，门全绿）：堆 941.2→876.2MB（**−6.9%**），
+DF/Holder/样条簇实例 −65.5%，**插值器 double[] −61%**（41.8→16.2MB），
+堆降额 65.1MB 与该簇+邻接对象归因闭合；残留 372 NoiseChunk=carvers 前活环
+（仍需读取）保留正确。R5 三轮累计 ≈ −23.4%。
+报告：
+[note/report/perf/2026-10-09-memsoak-r5-batch143.md](report/perf/2026-10-09-memsoak-r5-batch143.md)。
