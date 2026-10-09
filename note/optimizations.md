@@ -3027,3 +3027,30 @@ A 的 0.48/区块）。验证：rebuildPatches 0267 生成 + applyPatches
 BUILD SUCCESSFUL + :paper-server:test BUILD SUCCESSFUL EXIT=0 + 三腿浸泡门全绿（logErrors=0 exit=0）+ check_patch_counts 全仓 ALL OK。
 报告：
 [note/report/perf/2026-10-09-memsoak-r5-batch141.md](report/perf/2026-10-09-memsoak-r5-batch141.md)。
+
+## 批次 142（2026-10-09）：R5 轮2——每 section 随机刻列表惰性化（0.81.0 → 0.82.0）
+
+轮1 画像异常追因：Short2ShortOpenHashMap 实例数 299,568 == LevelChunkSection
+实例数（逐个对应）——Moonrise `ShortList`（LevelChunkSection.tickingBlocks，
+随机刻方块位置表）构造器急切 `new Short2ShortOpenHashMap()`（容量 16：map
+对象 + short[16] 键 + short[16] 值），自然地形绝大多数 section 随机刻方块数
+为零（石头/深板岩/空气/水不随机刻），空表付全价：~83MB/4.4k 区块
+（[S] 64.1MB 的绝大部分 + map 19.2MB，堆的 ~9.7%）。
+
+修复（src/main 直提交，无补丁号）：`map` 惰性化——null 直到首次 `add()`；
+`remove`/`clear` 的 null 态与空 map 态逐位同构；`setMinCapacity` 的
+ensureCapacity 仅已分配时执行（唯一调用点后紧跟 add 序列，无行为差）；
+size/getRaw 本就读字段。消费面全树盘点闭合（填充=section 重算+setBlockState
+翻转；读取=ServerLevel 随机刻循环，外层已有 isRandomlyTickingBlocks 门；
+ChunkAccess 的 ShortList 是 fastutil 接口另一物）。
+
+验证：ShortListVerify 语义差分（插入序+末位交换删除 ArrayList 参照模型；
+空态 remove/clear/setMinCapacity、首 add、remove 到空复活边界 + 20 万随机
+指令全量快照逐位断言）ALL OK + compileJava/test BUILD SUCCESSFUL + 浸泡两腿
+（绿门复跑，6,088 vs 6,055 区块配对，无关类 ±1%）：堆 1,034.7→933.9MB
+（**−9.7%**）；Short2Short map 395,712→15,163（**96% section 本就空表**），
+[S] short[] 85.0→17.8MB（−67.2MB）；该簇合计 −91.5MB 与堆降额同量级归因
+闭合。判例：首跑门被 WSAECONNABORTED 文案变体击中（bot 关断竞争），门过滤
+补认后复跑绿门——宿主并发构建的 fork 压力会污染浸泡门。
+报告：
+[note/report/perf/2026-10-09-memsoak-r5-batch142.md](report/perf/2026-10-09-memsoak-r5-batch142.md)。
