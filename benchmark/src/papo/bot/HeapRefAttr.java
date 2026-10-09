@@ -15,7 +15,8 @@ import java.util.Map;
  * 批次144（R5 轮4）：HPROF 堆转储持有链归因器。
  *
  * 用途：对 MemSoakVerify -Dmemsoak.dump=true 产出的 heap.hprof 回答——
- *  (1) byte[] 的驻留由哪些类的实例字段持有（按引用类归类字节数 Top25）；
+ *  (1) byte[]/long[]/Object[] 的驻留由哪些类的实例字段持有（按引用类归类
+ *      字节数 Top30；数组取首个命中引用者，防重复计账）；
  *  (2) java.util.HashMap$Node 簇归谁：经 Node[] 表数组反查持有实例的类
  *      （Top25），并按 (key 类 × value 类) 对统计语义成分 Top25。
  *
@@ -79,24 +80,58 @@ public final class HeapRefAttr {
         // Node 解析（仅 java.util.HashMap$Node 本体字段布局固定：hash(int) next key value）
         long nodeClsId = -1;
         int nodeKeyOff = -1, nodeValOff = -1;
+        long stringClsId = -1;
+        int strValOff = -1, strCoderOff = -1;
+        // String 重复值普查：value 数组 id -> 内容（latin1 假设，仅用于等值判别）
+        final Map<Long, String> strVals = new HashMap<>();
 
         // P2 产物
-        final LongSet byteIds;
-        final LongLong byteLen;
+        static final class PrimInv {
+            final LongSet ids;
+            final LongLong len;
+            final Map<String, long[]> byReferrer = new HashMap<>();
+            // watch 名单内引用者的元素数直方（size -> count），辨同类的混合成分
+            final Map<String, LongLong> hist = new HashMap<>();
+            long arrays, bytes, attributedBytes, attributedArrays, unattributedBytes;
+
+            PrimInv(final int cap) {
+                this.ids = new LongSet(cap);
+                this.len = new LongLong(cap);
+            }
+        }
+
+        static boolean watchSize(final String cn) {
+            return "net.minecraft.util.SimpleBitStorage".equals(cn)
+                || "net.minecraft.world.ticks.PapoPosTypeSet".equals(cn)
+                || "net.minecraft.world.level.chunk.PalettedContainer$Data".equals(cn);
+        }
+
+        final PrimInv byteInv = new PrimInv(1 << 21);   // [B
+        final PrimInv longInv = new PrimInv(1 << 19);   // [J
+        final PrimInv objInv = new PrimInv(1 << 20);    // [Ljava.lang.Object;（元素按 4B 压缩指针估）
+        final PrimInv[] invs = {this.byteInv, this.longInv, this.objInv};
         final LongSet tableIds;
         final LongLong tableCount;   // 表数组 id -> 非空元素数
         final LongLong idToClass;    // key/value 目标 id -> 类 id
         long[] nodeKeys = new long[1 << 20];
         long[] nodeVals = new long[1 << 20];
         int nodePairCount;
-        long totalByteArrays, totalBytes, nodeTotal, nodesInTables;
+        long totalByteArrays, totalBytes, nodeTotal, nodesInTables, stringInstances;
+        long nib2048, nib2048Uniform, nib2048Uniform0, nib2048UniformFF;
+
+        static String decodeLatin1(final byte[] b) {
+            final char[] c = new char[b.length];
+            for (int i = 0; i < b.length; i++) {
+                c[i] = (char) (b[i] & 0xFF);
+            }
+            return new String(c);
+        }
 
         // P3 产物
-        final Map<String, long[]> bytesByReferrer = new HashMap<>();
         final Map<String, long[]> nodesByOwner = new HashMap<>();
         final Map<String, long[]> keyValPairs = new HashMap<>();
         final Map<Long, String> tableOwner = new HashMap<>();
-        long attributedBytes, attributedArrays, unattributedBytes, unattributedNodes;
+        long unattributedNodes;
 
         Hprof(final String path) throws IOException {
             this.path = path;
@@ -113,8 +148,6 @@ public final class HeapRefAttr {
                     throw new IOException("not an hprof dump: " + ver);
                 }
             }
-            this.byteIds = new LongSet(1 << 20);
-            this.byteLen = new LongLong(1 << 20);
             this.tableIds = new LongSet(1 << 14);
             this.tableCount = new LongLong(1 << 14);
             this.idToClass = new LongLong(1 << 20);
@@ -329,7 +362,22 @@ public final class HeapRefAttr {
                     }
                 }
             }
-            // Node 本体与字段偏移
+            // String 与 Node 的字段偏移
+            for (final Cls c : this.classById.values()) {
+                if ("java.lang.String".equals(c.name)) {
+                    this.stringClsId = c.id;
+                    int off = 0;
+                    for (int i = 0; i < c.fieldTypes.size(); i++) {
+                        final String fn = str(c.fieldNames.get(i));
+                        if ("value".equals(fn)) {
+                            this.strValOff = off;
+                        } else if ("coder".equals(fn)) {
+                            this.strCoderOff = off;
+                        }
+                        off += typeLen(c.fieldTypes.get(i));
+                    }
+                }
+            }
             for (final Cls c : this.classById.values()) {
                 if ("java.util.HashMap$Node".equals(c.name)) {
                     this.nodeClsId = c.id;
@@ -393,11 +441,12 @@ public final class HeapRefAttr {
                         i.readInt();
                         final int n = i.readInt();
                         final int t = i.read();
-                        if (t == 8) {
-                            if (this.byteIds.add(id)) {
-                                this.byteLen.put(id, n);
-                                this.totalByteArrays++;
-                                this.totalBytes += n;
+                        if (t == 8 || t == 11) {
+                            final PrimInv inv = t == 8 ? this.byteInv : this.longInv;
+                            if (inv.ids.add(id)) {
+                                inv.len.put(id, n);
+                                inv.arrays++;
+                                inv.bytes += (long) n * primLen(t);
                             }
                         }
                         skipFully(i, (long) n * primLen(t));
@@ -437,6 +486,11 @@ public final class HeapRefAttr {
                         i.readInt();
                         final int n = i.readInt();
                         final long arrCls = readId(i);
+                        if ("[Ljava.lang.Object;".equals(classNameOf(arrCls)) && this.objInv.ids.add(id)) {
+                            this.objInv.len.put(id, n);
+                            this.objInv.arrays++;
+                            this.objInv.bytes += 16L + 4L * n; // 头 16B + 压缩指针元素 4B 估
+                        }
                         if ("[Ljava.util.HashMap$Node;".equals(classNameOf(arrCls))) {
                             long cnt = 0;
                             for (int k = 0; k < n; k++) {
@@ -494,13 +548,94 @@ public final class HeapRefAttr {
                     return skipSub(tag, i);
                 });
             }
+            // 2c：String 重复值普查（value 内容 latin1/utf16 等值判别 + 引用计数）
+            final Map<String, long[]> valCounts = new HashMap<>();
+            try (DataInputStream in = open()) {
+                walk(in, (tag, len, i) -> false, (tag, i) -> {
+                    if (tag == TAG_PRIM_ARRAY) {
+                        final long id = readId(i);
+                        i.readInt();
+                        final int n = i.readInt();
+                        final int t = i.read();
+                        if (t == 8 && n <= 4096) {
+                            final byte[] b = new byte[n];
+                            i.readFully(b);
+                            this.strVals.put(id, decodeLatin1(b));
+                            if (n == 2048) {
+                                this.nib2048++;
+                                boolean uni = true;
+                                for (int k = 1; k < n; k++) {
+                                    if (b[k] != b[0]) { uni = false; break; }
+                                }
+                                if (uni) {
+                                    this.nib2048Uniform++;
+                                    if (b[0] == 0) {
+                                        this.nib2048Uniform0++;
+                                    } else if (b[0] == -1) {
+                                        this.nib2048UniformFF++;
+                                    }
+                                }
+                            }
+                            return this.idSize + 9 + (long) n;
+                        }
+                        skipFully(i, (long) n * primLen(t));
+                        return this.idSize + 9 + (long) n * primLen(t);
+                    }
+                    return skipSub(tag, i);
+                });
+            }
+            try (DataInputStream in = open()) {
+                walk(in, (tag, len, i) -> false, (tag, i) -> {
+                    if (tag != TAG_INSTANCE) {
+                        return skipSub(tag, i);
+                    }
+                    readId(i);
+                    i.readInt();
+                    final long clsId = readId(i);
+                    final int n = i.readInt();
+                    if (clsId == this.stringClsId && n > this.strValOff) {
+                        final byte[] b = new byte[n];
+                        i.readFully(b);
+                        final long valId = readIdAt(b, this.strValOff);
+                        final String v = this.strVals.get(valId);
+                        if (v != null) {
+                            final long[] c = valCounts.computeIfAbsent(v, x -> new long[1]);
+                            c[0]++;
+                            this.stringInstances++;
+                        }
+                    } else {
+                        skipFully(i, n);
+                    }
+                    return 2L * this.idSize + 8 + n;
+                });
+            }
+            this.strVals.clear();
+            long dupInstances = 0;
+            final List<Map.Entry<String, long[]>> sl = new ArrayList<>(valCounts.entrySet());
+            sl.sort((a, c) -> Long.compare(c.getValue()[0], a.getValue()[0]));
+            for (final Map.Entry<String, long[]> e : sl) {
+                if (e.getValue()[0] > 1) {
+                    dupInstances += e.getValue()[0] - 1;
+                }
+            }
+            System.out.println("==== byte[2048] census total=" + this.nib2048 + " uniform=" + this.nib2048Uniform
+                + " (uniform0=" + this.nib2048Uniform0 + " uniformFF=" + this.nib2048UniformFF + ") ====");
+            System.out.println("==== String census instances=" + this.stringInstances
+                + " distinctValues=" + valCounts.size() + " dupRedundant=" + dupInstances + " ====");
+            System.out.println("---- dup top 25 (value -> count) ----");
+            for (int i = 0; i < Math.min(25, sl.size()); i++) {
+                final String v = sl.get(i).getKey();
+                System.out.printf("Dup %-60.60s count=%,d%n", v, sl.get(i).getValue()[0]);
+            }
             for (int i = 0; i < this.nodePairCount; i++) {
                 final String k = classOfEncoded(this.nodeKeys[i]);
                 final String v = classOfEncoded(this.nodeVals[i]);
                 final long[] c = this.keyValPairs.computeIfAbsent(k + " -> " + v, x -> new long[1]);
                 c[0]++;
             }
-            System.out.println("byte[] arrays=" + this.totalByteArrays + " bytes=" + this.totalBytes);
+            System.out.println("byte[] arrays=" + this.byteInv.arrays + " bytes=" + this.byteInv.bytes);
+            System.out.println("long[] arrays=" + this.longInv.arrays + " bytes=" + this.longInv.bytes);
+            System.out.println("Object[] arrays=" + this.objInv.arrays + " estBytes=" + this.objInv.bytes);
             System.out.println("nodes=" + this.nodeTotal + " inTables=" + this.nodesInTables
                 + " tables=" + this.tableIds.size() + " pairs=" + this.nodePairCount);
         }
@@ -554,19 +689,28 @@ public final class HeapRefAttr {
                     if (b != null) {
                         i.readFully(b);
                     }
-                    long bytesHere = 0, arraysHere = 0;
                     if (b != null) {
                         for (int off = 0; off + this.idSize <= n; off++) {
                             final long id = readIdAt(b, off);
                             if (id == 0) {
                                 continue;
                             }
-                            if (this.byteIds.contains(id)) {
-                                final long l = this.byteLen.get(id, -1);
-                                if (l >= 0) {
-                                    bytesHere += l;
-                                    arraysHere++;
-                                    this.byteIds.remove(id);
+                            for (final PrimInv inv : this.invs) {
+                                if (inv.ids.contains(id)) {
+                                    final long l = inv.len.get(id, -1);
+                                    if (l >= 0) {
+                                        final long[] v = inv.byReferrer.computeIfAbsent(cn, x -> new long[2]);
+                                        v[0] += l;
+                                        v[1]++;
+                                        inv.attributedBytes += l;
+                                        inv.attributedArrays++;
+                                        inv.ids.remove(id);
+                                        if (watchSize(cn)) {
+                                            final LongLong h = inv.hist.computeIfAbsent(cn, x -> new LongLong(64));
+                                            h.put(l, h.get(l, 0) + 1);
+                                        }
+                                    }
+                                    break;
                                 }
                             }
                             if (this.tableIds.contains(id) && !this.tableOwner.containsKey(id)) {
@@ -574,20 +718,14 @@ public final class HeapRefAttr {
                             }
                         }
                     }
-                    if (bytesHere > 0) {
-                        final long[] v = this.bytesByReferrer.computeIfAbsent(cn, x -> new long[2]);
-                        v[0] += bytesHere;
-                        v[1] += arraysHere;
-                        this.attributedBytes += bytesHere;
-                        this.attributedArrays += arraysHere;
-                    }
                     return 2L * this.idSize + 8 + n;
                 });
             }
-            // 未被实例字段引用的 byte[]（静态/局部/仅数组持有）
-            this.unattributedBytes = 0;
-            for (final long id : this.byteIds.toArray()) {
-                this.unattributedBytes += this.byteLen.get(id, 0);
+            // 未被实例字段引用的数组（静态/局部/仅数组持有）
+            for (final PrimInv inv : this.invs) {
+                for (final long id : inv.ids.toArray()) {
+                    inv.unattributedBytes += inv.len.get(id, 0);
+                }
             }
             // Node 归属
             for (final Map.Entry<Long, String> e : this.tableOwner.entrySet()) {
@@ -600,9 +738,23 @@ public final class HeapRefAttr {
                     this.unattributedNodes += this.tableCount.get(id, 0);
                 }
             }
-            System.out.println("==== byte[] attributed=" + this.attributedBytes + " (" + this.attributedArrays
-                + " arrays) unattributed=" + this.unattributedBytes + " ====");
-            dumpTop(this.bytesByReferrer, true);
+            System.out.println("==== byte[] attributed=" + this.byteInv.attributedBytes + " (" + this.byteInv.attributedArrays
+                + " arrays) unattributed=" + this.byteInv.unattributedBytes + " ====");
+            dumpTop(this.byteInv.byReferrer, true);
+            System.out.println("==== long[] attributed=" + this.longInv.attributedBytes + " (" + this.longInv.attributedArrays
+                + " arrays) unattributed=" + this.longInv.unattributedBytes + " ====");
+            dumpTop(this.longInv.byReferrer, true);
+            System.out.println("==== Object[] attributed(est)=" + this.objInv.attributedBytes + " (" + this.objInv.attributedArrays
+                + " arrays) unattributed(est)=" + this.objInv.unattributedBytes + " ====");
+            dumpTop(this.objInv.byReferrer, true);
+            for (final PrimInv inv : this.invs) {
+                for (final Map.Entry<String, LongLong> e : inv.hist.entrySet()) {
+                    System.out.println("---- size-hist " + e.getKey() + " ----");
+                    for (final long k : e.getValue().keySetSnapshot()) {
+                        System.out.printf("SizeHist %-52s elems=%-8d arrays=%d%n", e.getKey(), k, e.getValue().get(k, 0));
+                    }
+                }
+            }
             System.out.println("==== HashMap$Node inTables=" + this.nodesInTables + " unattributed=" + this.unattributedNodes + " ====");
             dumpTop(this.nodesByOwner, false);
             System.out.println("---- nodeKeyValPairs top ----");
@@ -814,6 +966,18 @@ public final class HeapRefAttr {
 
         int size() {
             return this.size;
+        }
+
+        long[] keySetSnapshot() {
+            final long[] out = new long[this.size];
+            int j = 0;
+            for (int i = 0; i <= this.mask; i++) {
+                if (this.used[i]) {
+                    out[j++] = this.keys[i];
+                }
+            }
+            java.util.Arrays.sort(out);
+            return out;
         }
 
         void grow() {

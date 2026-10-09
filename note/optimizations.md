@@ -3109,3 +3109,25 @@ R5 内存主线正式收束：四轮累计 0.80.0→0.83.0 = 1,154,349→873,548
 合法产出。
 报告：
 [note/report/perf/2026-10-09-memsoak-r5-batch144.md](report/perf/2026-10-09-memsoak-r5-batch144.md)。
+
+## 批次 145（2026-10-10）：R6 轮1——常量容器载荷消除（0.83.0 → 0.84.0）
+
+批次144 收束 R5 后其归因工具继续扩展（[J/[Object 三类归因 + String 重复值普查 +
+均匀 nibble 普查），在已收束画像上发现两个安全回收项，内存主线以 R6 延续（R5
+判例全部维持）。普查定性：[J 活跃 129.8MB 主项=方块 palette/高度图内容本体（红
+线）+碰撞 BitSet（boot）+自建 PapoPosTypeSet 6.0MB+fastutil/光照活数据；[Object
+85.5MB 高度碎片化无单一簇；**String 386k 实例 47.6% 冗余（−7~9MB，轮2 立项）**；
+均匀 nibble 26.2%（15.8MB）判例出局（光照并发读协议改造不值 1.8%）。落地
+（0269）：**ZeroBitStorage 按尺寸共享**（构造后不可变、copy() 本就返回 this、无
+身份比较；570k→2 实例）+ **PapoPosTypeSet 惰性分配**（自然地形多数区块永不调度
+刻，192B/容器急切对改首 add 分配，空态短路）。验证：PapoPosTypeSetLazyTest（20
+万随机指令 HashSet 模型对拍，含空态/引用语义/resize 交织）+ ZeroBitStorage 共享
+契约测试——经新增 PapoRegressionTestSuite 聚合（测试任务只收 *TestSuite 且
+bukkit suite 不选 net.minecraft 树）；对拍首版未对齐两侧 add 返回值约定
+（HashSet=新插入 true vs Papo=已存在 true，142 判例重演）修正后 8/8 全绿；
+rebuildPatches 0269 + applyPatches 重放 EXIT=0 + compileJava --rerun-tasks + 全量
+test BUILD SUCCESSFUL + check_patch_counts ALL OK。浸泡两腿（6,064 vs 6,089 区块
+配对，门全绿）：堆 876,325→869,221 KB（**−6.94MB/−0.81%**），ZeroBitStorage 从
+top-20（570,518 实例/9.1MB）跌出 top-25，降额与簇归因闭合。
+报告：
+[note/report/perf/2026-10-10-memsoak-r6-batch145.md](report/perf/2026-10-10-memsoak-r6-batch145.md)。
