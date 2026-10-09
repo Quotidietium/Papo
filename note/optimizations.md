@@ -3252,3 +3252,50 @@ rebuildPatches 0272+applyPatches EXIT=0+compileJava --rerun-tasks+counts ALL OK+
 （**−374.3MB/−32.4%**，会话链 ±2% 漂移判例内）。
 报告：
 [note/report/perf/2026-10-10-memsoak-r9-batch149.md](report/perf/2026-10-10-memsoak-r9-batch149.md)。
+
+## 批次 150（2026-10-10）：R10——结构模板驻留解耦（0.87.0 → 0.88.0）
+
+0.87.0 树重基线化（同会话配对浸泡 A-087 782,611KB/6,096 块 + 转储普查）后残余非
+内容簇归因：voxel shape 族（AABB 345,829 + ArrayVoxelShape 141,516 +
+BitSetDiscreteVoxelShape 140,060 + CachedToAABBs 141,161 ≈ 51.4MB）三数相同 =
+每 BlockStateBase$Cache（29,492）~4.8 形状的**注册表界 vanilla 恒定成本**，红线
+判负出局；结构模板簇（495,771 StructureBlockInfo 11.9MB + ~495k BlockPos
+11.9MB + palette/列表/NBT ≈ 26-28MB）由仅 412 个 StructureTemplate 持有、挂全服
+单例管理器无界映射——**随探索单调增长**，入选。钉扎审计（实现前完成）：单纯上
+界无效——TemplateStructurePiece 强持 template 字段而 piece→StructureStart→常驻
+区块。0273 双修：① piece 惰性取（manager+Identifier 现取，字段本不序列化=盘格式
+零变化，postProcess 每 pass 单实例，放置期模板不可变故 miss 重载恒等；六处直接
+字段访问改访问器——实现期编译抓漏 RuinedPortalPiece:146，首查 grep 被 head 截
+断）；② PapoStructureCache（运行时类型替换，声明字段保 `Map` 描述符=插件二进制
+兼容）：120s idle-TTL + tickServer 每 512 tick 清扫 + **put 即保护**（vanilla
+getOrCreate 先 get/tryLoad 只在无源可载才 put——保护域恰为不可重载来源全集：
+getOrCreate 新建空模板 + Bukkit register/load-with-register；tryLoad 背书永远可
+驱逐）+ **全读路径打戳**（get/containsKey/computeIfAbsent/entrySet/values 迭代
+——Bukkit getStructure/getStructures 轮询插件语义逐字节不变，缓存驱逐只影响
+"无人读过 120s"的条目）+ 256 可驱逐上限最老先逐 + reload clear 连保护域清。
+验证：PapoStructureTemplateCacheTest 10 项（注入时钟：TTL 驱逐/put 保护扛
+10,000s/访问戳热窗/clear 重置保护/entrySet+get 打戳保真/上限序（300→256+保护
+者，首插先逐）/驱逐后透明重载/Map 契约同实例/背靠背幂等）+ 全链 rebuildPatches
+0273+applyPatches EXIT=0+counts ALL OK+compileJava --rerun-tasks+8,952 测试全
+绿+0.88.0 jar javap 复核。浸泡：门对 782,611→757,348KB（−24.7MB/−3.23%，区块
+6,096 vs 6,046 −0.82% 门内零错误）；同会话转储对（A 复跑 775,404/6,048 vs B
+757,348/6,046 近完美配对，A 腿会话内复跑 ±0.9% 漂移）**−18.1MB/−2.33% 保守取
+值**；归因：StructureBlockInfo −227,169/BlockPos −222,500/Object[] −1.69MB/
+类级净 −15.4MB ≈ 85% 闭合（余为堆填充与独类抖动）；残留 268k infos = TTL 热窗
+边界（测量点驻留+120s 恰逢 TTL，末段生成/驻留早段精炼重戳在窗内）；**无玩家稳
+态腿（MEASURE_AT=240s>DWELL，bot 断开后 60s 无玩家区块尽卸）：B-088 转储模板
+簇全零行（缓存清扫至空、保护域亦空=412 全 tryLoad 背书自证），0.87.0 对照仍持
+全部 412 模板/495,771 infos（堆 271,526 vs 243,125KB）= −28.4MB 全簇释放**——
+长跑无界增长闭环证明。B 腿 logErrors=3 溯源为 bot 断开与 system_chat 收尾写的
+WSAECONNABORTED 良性竞争（latest.log 明文可证；批142 过滤器漏 U+FFFD 替换字符
+形态——打印成 ？ 非 ASCII ?，已就地补 BurstJoinVerify.isBenignCloseRace）。判
+例：grep 枚举不许截断（head 漏类编译才抓到，审计面完备性不能靠采样）/加界前先
+找钉扎链（上界收益=可驱逐集真实可达性，holder 图审计必须先于实现；本场景 dump
+piece 恰零常驻但真实服务器常驻非空 start 会让纯映射上界归零——惰性取是上界生效
+前提而非锦上添花）/保护域按进入路径划不按内容猜（put 即保护精确捕获不可重载来
+源，无需内容启发式）/读路径打戳是原始映射暴露面的保真义务（插件可拿原始 Map，
+每个缓存优化都须假设有轮询者）/TTL 与测量点的相位（驻留型基准测量延迟=TTL 时残
+留恰为热窗半衰减，稳态结论需延迟≥TTL+清扫间隔的补充腿）。内存主线
+0.80.0→0.88.0 = 1,154.3→757.3MB（**−397.0MB/−34.4%**，±2% 漂移判例内）。
+报告：
+[note/report/perf/2026-10-10-memsoak-r10-batch150.md](report/perf/2026-10-10-memsoak-r10-batch150.md)。
