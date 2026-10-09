@@ -1,0 +1,187 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 10 Oct 2026 02:37:25 +0800
+Subject: [PATCH] Papo: batch 147 (R7) share the canonical single-value Data
+ across constant paletted containers - the re-baselined 0.84.0 soak census
+ (6,059 chunks, 861.6MB) measured 394,848 LevelChunkSections of which 87% hold
+ single-value block palettes, plus 232,765 single-value biome containers: 576k
+ trivial containers each paying Data(32B) + SingleValuePalette(24B) + the
+ moonrise$palette/rawPalette Object[1](24B) ~= 80B of state that depends only
+ on (strategy, value). Each preset-free constant container now shares one
+ canonical Data per (strategy, registry id) - the value is keyed by its
+ registry id so the canonical instance IS the interned registry value and
+ SingleValuePalette.idFor's reference comparison behaves identically. Safety
+ contract, audited against every mutation path: a published shared Data is
+ never structurally mutated - growth replaces the owning container's data
+ field with a private Data (onResize), the only in-place palette writes are
+ the reference-idempotent idFor(same value) assignments,
+ Data.copy()/palette.copy() stay read-only or route through the same
+ container-level swap, and the FriendlyByteBuf read() path (the one in-place
+ palette rewrite, SingleValuePalette.read - server chunks load via the NBT
+ codec, never this path) is guarded to allocate private data for both the
+ shared Data and the shared-palette-through-copy shapes. The cache lives on
+ the Strategy instance (collected with an unloaded level, bounded by registry
+ size, no user-data growth); unregistered values never share. Two hooks cover
+ every birth site: the generation-path public constructor
+ (PalettedContainerFactory.createForBlockStates/createForBiomes) and the
+ disk-decode private constructor (codec unpack) which canonicalizes
+ single-value decodes (null-valued corrupt palettes keep private data).
+ Coverage: PapoPalettedSharedDataTest (sharing + per-strategy isolation,
+ idempotent-write keeps shared data, growth detaches without touching sharers,
+ codec decode canonicalizes with byte-identical pack, copy/recreate
+ independence, unregistered values never share, buffer-read forces private
+ data for both guard shapes, 8-thread creation convergence)
+
+
+diff --git a/net/minecraft/world/level/chunk/PalettedContainer.java b/net/minecraft/world/level/chunk/PalettedContainer.java
+index e41fbcd6a2e929d3ff611dadd2cd7dcd8afa1453..d4a4ae9aefa61efd47154203022b54e672905ec8 100644
+--- a/net/minecraft/world/level/chunk/PalettedContainer.java
++++ b/net/minecraft/world/level/chunk/PalettedContainer.java
+@@ -70,6 +70,53 @@ public class PalettedContainer<T> implements PaletteResize<T>, PalettedContainer
+             .comapFlatMap(packedData -> unpacker.read(strategy, (PalettedContainerRO.PackedData<T>)packedData), container -> container.pack(strategy));
+     }
+ 
++    // Papo start - batch 147 (R7): canonical shared Data for single-value containers.
++    // The 0.84.0 soak census measured 576k live single-value containers (87% of all chunk
++    // sections are constant - air above terrain, uniform biomes), each paying
++    // Data(32B) + SingleValuePalette(24B) + the shared moonrise$palette/rawPalette
++    // Object[1] (24B) ~= 80B of state that only depends on (strategy, value). All of it
++    // collapses to one instance per (strategy, registry id); the ZeroBitStorage payload is
++    // already shared by size (batch 145).
++    //
++    // Safety contract:
++    //  - the shared value is keyed by its registry id, so the canonical instance IS the
++    //    interned registry instance and `SingleValuePalette.idFor`'s reference comparison
++    //    (value != state) behaves exactly as on a private palette;
++    //  - a published shared Data is never structurally mutated: growth replaces the
++    //    OWNING container's data field with a private Data (onResize -> this.data = data1),
++    //    the only in-place palette writes are the reference-idempotent idFor(same)/rawPalette
++    //    assignments (benign race, same reference either way), and Data.copy()/palette.copy()
++    //    either stay read-only or route through the same container-level swap;
++    //  - the FriendlyByteBuf read() path, the one place that rewrites a palette in place
++    //    (SingleValuePalette.read), is guarded to allocate private data first - the server
++    //    reads chunks through the NBT codec, never this path;
++    //  - the per-strategy cache lives on the Strategy instance itself, so an unloaded
++    //    level's cache is garbage-collected with it, and its size is bounded by the
++    //    strategy's registry size (no user-data-driven growth).
++    private static <T> PalettedContainer.Data<T> papoSharedSingleValueData(final Strategy<T> strategy, final T value) {
++        if (value == null) {
++            return null;
++        }
++        final int id = strategy.globalMap().getId(value);
++        if (id < 0) {
++            return null; // unregistered value: stay per-container
++        }
++        final java.util.concurrent.ConcurrentHashMap<Integer, Object> cache = strategy.papoSharedSingleValues;
++        final Object cached = cache.get(id);
++        if (cached != null) {
++            return (PalettedContainer.Data<T>) cached;
++        }
++        final SingleValuePalette<T> palette = new SingleValuePalette<>(List.of(value));
++        final PalettedContainer.Data<T> built = new PalettedContainer.Data<>(
++            Strategy.ZERO_BITS, ZeroBitStorage.papoShared(strategy.entryCount()), palette);
++        built.moonrise$setPalette(palette.moonrise$getRawPalette(built));
++        built.papoShared = true;
++        palette.papoShared = true;
++        final Object winner = cache.putIfAbsent(id, built);
++        return (PalettedContainer.Data<T>) (winner != null ? winner : built);
++    }
++    // Papo end - batch 147 (R7)
++
+     // Paper start - optimise palette reads
+     private void updateData(final PalettedContainer.Data<T> data) {
+         if (data != null) {
+@@ -127,6 +174,25 @@ public class PalettedContainer<T> implements PaletteResize<T>, PalettedContainer
+             }
+         }
+         // Paper end
++        // Papo start - batch 147 (R7): single-value containers decoded from disk share the
++        // canonical Data (identical safety contract as the generation-path constructor hook)
++        if (presetValues == null && palette.getSize() == 1 && storage instanceof ZeroBitStorage) {
++            T papoSingle = null;
++            try {
++                papoSingle = palette.valueFor(0);
++            } catch (final IllegalStateException ignored) {
++                // null-valued palette (empty palette list on corrupt input): vanilla
++                // tolerates it until first read - keep the private data, share nothing
++            }
++            if (papoSingle != null) {
++                final PalettedContainer.Data<T> papoShared = papoSharedSingleValueData(strategy, papoSingle);
++                if (papoShared != null) {
++                    this.data = papoShared;
++                    return;
++                }
++            }
++        }
++        // Papo end - batch 147 (R7)
+         this.updateData(this.data); // Paper - optimise palette reads
+     }
+ 
+@@ -146,6 +212,15 @@ public class PalettedContainer<T> implements PaletteResize<T>, PalettedContainer
+         this.presetValues = presetValues;
+         // Paper end - Anti-Xray
+         this.strategy = strategy;
++        // Papo start - batch 147 (R7): a preset-free constant container shares the canonical Data
++        if (presetValues == null) {
++            final PalettedContainer.Data<T> papoShared = papoSharedSingleValueData(strategy, defaultValue);
++            if (papoShared != null) {
++                this.data = papoShared;
++                return;
++            }
++        }
++        // Papo end - batch 147 (R7)
+         this.data = this.createOrReuseData(null, 0);
+         this.data.palette.idFor(defaultValue, this);
+         this.updateData(this.data); // Paper - optimise palette reads
+@@ -268,6 +343,14 @@ public class PalettedContainer<T> implements PaletteResize<T>, PalettedContainer
+         try {
+             int _byte = buffer.readByte();
+             PalettedContainer.Data<T> data = this.createOrReuseData(this.data, _byte);
++            // Papo start - batch 147 (R7): this is the one path that rewrites a palette in
++            // place (SingleValuePalette.read) - it must never touch shared canonical state,
++            // neither the shared Data itself nor a shared palette reachable through
++            // Data.copy() of a shared source
++            if (data.papoShared || data.palette instanceof SingleValuePalette<?> papoPalette && papoPalette.papoShared) {
++                data = this.createOrReuseData(null, _byte);
++            }
++            // Papo end - batch 147 (R7)
+             data.palette.read(buffer, this.strategy.globalMap());
+             buffer.readFixedSizeLongArray(data.storage.getRaw());
+             this.data = data;
+@@ -439,6 +522,7 @@ public class PalettedContainer<T> implements PaletteResize<T>, PalettedContainer
+         private final Palette<T> palette;
+ 
+         private T[] moonrise$palette;
++        boolean papoShared; // Papo - batch 147 (R7): canonical shared instance - see papoSharedSingleValueData
+ 
+         public Data(final Configuration configuration, final BitStorage storage, final Palette<T> palette) {
+             this.configuration = configuration;
+diff --git a/net/minecraft/world/level/chunk/SingleValuePalette.java b/net/minecraft/world/level/chunk/SingleValuePalette.java
+index e0ed8499a90eb350cc483001ea10f2c8e9173875..3edc6c5eb8c08a39a50c4b2ef415cb3f7b1e2b31 100644
+--- a/net/minecraft/world/level/chunk/SingleValuePalette.java
++++ b/net/minecraft/world/level/chunk/SingleValuePalette.java
+@@ -10,6 +10,7 @@ import org.jspecify.annotations.Nullable;
+ 
+ public class SingleValuePalette<T> implements Palette<T>, ca.spottedleaf.moonrise.patches.fast_palette.FastPalette<T> { // Paper - optimise palette reads
+     private @Nullable T value;
++    boolean papoShared; // Papo - batch 147 (R7): canonical shared instance - see PalettedContainer.papoSharedSingleValueData
+ 
+     // Paper start - optimise palette reads
+     private T[] rawPalette;
+diff --git a/net/minecraft/world/level/chunk/Strategy.java b/net/minecraft/world/level/chunk/Strategy.java
+index 787f5173425f617a89033e5b76256688be36b31d..8ff73a8f3715bf4adeac0dc18193e7dbf5915cb2 100644
+--- a/net/minecraft/world/level/chunk/Strategy.java
++++ b/net/minecraft/world/level/chunk/Strategy.java
+@@ -30,6 +30,12 @@ public abstract class Strategy<T> {
+         this.entryCount = 1 << bitsPerAxis * 3;
+     }
+ 
++    // Papo start - batch 147 (R7): per-strategy canonical single-value Data cache. Lives on
++    // the strategy so an unloaded level's cache is collected with it; bounded by the
++    // strategy's registry size (see PalettedContainer.papoSharedSingleValueData).
++    final java.util.concurrent.ConcurrentHashMap<Integer, Object> papoSharedSingleValues = new java.util.concurrent.ConcurrentHashMap<>();
++    // Papo end - batch 147 (R7)
++
+     public static <T> Strategy<T> createForBlockStates(IdMap<T> globalMap) {
+         return new Strategy<T>(globalMap, 4) {
+             @Override

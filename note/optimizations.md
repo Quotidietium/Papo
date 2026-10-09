@@ -3160,3 +3160,26 @@ compile/test 全绿（批145 8 项维持）三证收口。测量判例：首腿 
 函数 → 直接置 harness java 命令行）。String 规范化角度关闭。
 报告：
 [note/report/perf/2026-10-10-memsoak-r6-batch146.md](report/perf/2026-10-10-memsoak-r6-batch146.md)。
+
+## 批次 147（2026-10-10）：R7 轮1——单值 PalettedContainer 规范 Data 共享（0.84.0 → 0.85.0）
+
+批次146 负结果收束后重基线 0.84.0（1,205MB 转储全量普查；勘误：0.83.0 时代普查腿实为
+~4.4k 区块的慢机插曲，跨代对比按区块数归一后逐项一致）。最大非内容簇=常量节容器三层
+状态：394,848 节中 87% 单值（343,650 方块 + 232,765 生物群系容器），各 80B
+（Data+SingleValuePalette+moonrise$palette Object[1]）仅依赖 (strategy, 值)。落地
+（0270）：**每 (strategy, 注册表 id) 一个规范共享 Data**——键选注册表 id（规范实例即
+驻留实例，idFor 引用比较逐位不变）；发布后永不结构突变（增长换属主容器 data、就地写
+仅引用幂等、唯一就地重写的 buffer-read 路径守卫私有化且服务端不走）；缓存挂 Strategy
+实例字段（随 level 卸载回收、上界=注册表大小）；出生点双钩（生成路径公共构造器 +
+codec 解码规范化，损坏空 palette 保持私有）；Anti-Xray preset 容器自然跳过。验证：
+PapoPalettedSharedDataTest 8 项（合成 IdMap 无需 bootstrap：共享/隔离/同值写不脱离/
+增长脱离共享者无扰/codec 规范化+pack 恒等/copy 独立/未注册值直通/buffer-read 双形态
+守卫/8 线程收敛）+ 批145 两套件维持；rebuildPatches 0270 + applyPatches 重放 EXIT=0 +
+compileJava --rerun-tasks + check_patch_counts 918 ALL OK；浸泡两腿（6,072 vs 6,114
+区块配对，门全绿）：堆 865,311→831,599 KB（**−33.7MB/−3.90%**，B 多 42 块，区块调整
+后净 ≈−37MB）；普查归因闭合：单值缓存数组 **569,100→11**、多值档逐档不变、容器实例
+数不变。判例：共享审计以"发布后结构突变"为判据（惰性缓存须预构建于发布前）/共享键选
+注册表 id 消灭等值异引用/缓存挂属主字段收口泄漏与上界/跨代普查必须按区块数归一/配对
+差分先做区块调整。内存主线 0.80.0→0.85.0 = 1,154.3→831.6MB（**−28.0%**）。
+报告：
+[note/report/perf/2026-10-10-memsoak-r7-batch147.md](report/perf/2026-10-10-memsoak-r7-batch147.md)。
