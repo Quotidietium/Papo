@@ -3299,3 +3299,37 @@ piece 恰零常驻但真实服务器常驻非空 start 会让纯映射上界归�
 0.80.0→0.88.0 = 1,154.3→757.3MB（**−397.0MB/−34.4%**，±2% 漂移判例内）。
 报告：
 [note/report/perf/2026-10-10-memsoak-r10-batch150.md](report/perf/2026-10-10-memsoak-r10-batch150.md)。
+
+## 批次 151（2026-10-10）：R11——残余画像常驻性审计与收敛论证（审计轮，0.88.0 保持）
+
+以 B-088 驻留转储（6,046 块 757,348KB）对同二进制无玩家稳态转储（区块尽卸
+243,125KB）差分为常驻性示差器，新工具 **papo.bot.ShellRefAttr**（壳实例持有链归
+因：两遍流式扫描——HPROF 无拓扑序收集/扫描必须分遍；四目标实例数与 jcmd 直方图
+逐位对账 291,843/29,813/37,741/140,109；开发期修三处自身缺陷均有定位证据链：
+CLASS_DUMP 实例字段误跳值字节/readIdAt 8 字节端序反/LOAD_CLASS serial 按 id 误读）。
+指令点名簇全数归因判负：**DoubleArrayList 291,843 → ArrayVoxelShape 424,515 引用**
+（xs/ys/zs 载荷，形状族=每注册方块状态碰撞/遮挡缓存，注册表界）；**[J 281,720 →
+BitSet 词位 140,109 + CachedShapeData 140,060 + 光引擎/传播器/队列固定缓冲**（配置
+定容）；**Object2ObjectOpenHashMap 29,813 → CompoundTag 底衬映射 29,525**（注册表/
+数据包 NBT 内容，dwell 增量 18,880 随区块=方块实体内容）；连带 BitSet→形状族+
+RegionBitmap、Object2ObjectArrayMap→DFU codec 树、StringTag 63,844→CompoundTag 映
+射表、ArrayList 150,919→**CachedToAABBs 141,156**、HashMap$Node 133,570 键值对全为
+String→DFU Schema λ（34.5k）/ResourceKey→Holder$Reference（18.9k）/NBTMapType 链
+——永久集=JVM+注册表+DFU+固定缓冲，与区块/玩家/时长全无关。区块驱动集分解：
+palette 位存储 ~135MB 与光照 61.4MB=内容红线；壳层已批142-149 四轮最小化；
+**heightmap 新证据=LevelChunk 晋升只留 FINAL 四型（LevelChunk.java:295 逐条过滤，
+vanilla 本就修剪，否决 WG 残留猜想）**；HashMap +109,120（18/块）=方块实体/刻/POI
+映射内容邻近；调度状态 ChunkCompletion 86,176 随 holder 生死（moonrise 内部件稳
+定性风险≫2.1MB 收益，审慎判负）。收敛论证三轴封闭：时间轴（模板批150/包缓存批
+141 后无第三类无界簇，永久集跨腿恒定 243.1MB）、区块轴（125.2KB/块中红线内容占
+主体，结构壳已最小化，heightmap/刻/POI=内容或已修剪）、玩家轴（贡献全在区块轴
+内）。结论：**"结果一致"约束下内存主线收敛**——后续收益仅可能来自内容表示改写
+（palette/光照编码，恒等语义红线）或注册表结构重铸（DFU/形状缓存，注册表语义红
+线），均出授权。无补丁无版本 bump（审计轮惯例同批132-140）；服务端零变更，批150
+全链门维持。判例：无玩家稳态腿是常驻性的干净示差器（同二进制内差=区块+玩家全体
+贡献）/壳簇归因必须落到持有者类（"fastutil 容器多"不是判定，持有者是谁才是——
+同一 DoubleArrayList 在不同宿主下判负/可攻两论）/工具先对账再使用（实例数与直方
+图逐位一致才可信，工具自身缺陷三处全靠交叉证据链定位）/审计轮交付=证据而非代码
+（收敛论证的强度=每簇持有者证据×三轴封闭）。
+报告：
+[note/report/perf/2026-10-10-memsoak-r11-batch151-residual-convergence.md](report/perf/2026-10-10-memsoak-r11-batch151-residual-convergence.md)。
