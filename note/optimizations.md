@@ -3183,3 +3183,36 @@ compileJava --rerun-tasks + check_patch_counts 918 ALL OK；浸泡两腿（6,072
 差分先做区块调整。内存主线 0.80.0→0.85.0 = 1,154.3→831.6MB（**−28.0%**）。
 报告：
 [note/report/perf/2026-10-10-memsoak-r7-batch147.md](report/perf/2026-10-10-memsoak-r7-batch147.md)。
+
+## 批次 148（2026-10-10）：R8——SWMRNibbleArray 紧凑 uniform 表示（0.85.0 → 0.86.0）
+
+重开批144 均匀 nibble 判例：否决前提双双失效（占比 1.8%→2.65% 翻倍；审计 441 行全类
+确认存储字段全私有、所有读写经类方法路由——"无数组"表示不经由当时恐惧的"共享数组"
+路径，并发读协议原样）。落地（0271）：整节 4096 nibble 全 0/全 15 的节两个存储数组
+保持 null，值承载于 SWMR 同款纪律的 uniform 字段对（写者 plain updatingUniform +
+读者 volatile visibleUniform；不变量 uniform≠0 ⇒ storage==null ∧ state∈{INIT,HIDDEN}；
+载荷打包格式 u|u<<4）。六个值等价缝逐缝证明：读者 null 存储读 uniform；干净 null 上
+setFull/setZero 翻转不分配（真值变化独立置 dirty——翻转不变 state，"state 差异⇒发布"
+会静默丢发布）；首写物化围绕 uniform 打包填充（全亮节边缘写不丢其余 15）；发布对沉降
+数组 isAllZero/isAllFull 扫描紧缩回 uniform（256 long 比它替代的 2048 字节拷贝便宜）；
+extrude 的 null 源解析 setFull/setZero（调用方先 setNonNull，状态编排同数组路径）；
+toVanillaNibble/getSaveState 物化回数组（**盘上格式与跨版本世界兼容字节恒等**）、
+盘载双构造器规范化全 0xFF 回 uniform（全零保留物化形保 INIT-with-zero/UNINIT 可分）。
+出航前随机差分（200 轮×500 操作 vs 物化镜像模型）抓到两个写者协议洞：uniform 翻转的
+dirty+null 中间态上 set()（仅 !dirty 时物化）与 extrudeLower dirty 复用分支写穿 null
+数组——三处守卫统一"存储缺失即物化"（swap 提前返回放宽为 dirty&&storage!=null；
+extrude 物化分支保留翻转态 INIT/HIDDEN 仅干净 UNINIT/NULL 提升 INIT），确定性回归
+一一对应入库。验证：PapoSWMRUniformNibbleTest 11 项全绿（批145/147 三套件维持）；
+rebuildPatches 0271 + applyPatches 重放 EXIT=0 + compileJava --rerun-tasks +
+check_patch_counts ALL OK；0.86.0 jar 内嵌字节码 javap 复核；浸泡两腿（6,086 vs
+6,145 块配对，门全绿）：堆 817,354→801,373 KB（**−15.98MB/−1.96%**，B 多 59 块，
+区块调整后净 ≈−21.1MB）；普查归因精确闭合：SWMRNibbleArray byte[]
+84.15→62.36MB（**−21.79MB**）、均匀数组 **10,836→4**（残 4=瞬态）、非均匀每块率
+4.95/块不变、long[] +0.87MB（=59 块增量）、String/容器持平。判例：否决判例复检以
+"否决前提是否还成立"为准/私有存储+全方法路由的类可做表示层替换（六缝等价清单即
+审计模板）/紧凑表示发布须显式 dirty/随机差分须覆盖新中间态的后继操作（set-after-
+flip 最小复现+确定性回归一一对应）/跨会话绝对值漂移 ±2%（同二进制两会话 831.6 vs
+817.4MB——绝对水平只会话内可比，主线以配对差链陈述）。内存主线 0.80.0→0.86.0 =
+1,154.3→801.4MB（**−352.9MB/−30.6%**）。
+报告：
+[note/report/perf/2026-10-10-memsoak-r8-batch148.md](report/perf/2026-10-10-memsoak-r8-batch148.md)。

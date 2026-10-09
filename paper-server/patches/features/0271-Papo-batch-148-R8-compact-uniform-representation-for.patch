@@ -1,0 +1,383 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 10 Oct 2026 03:06:17 +0800
+Subject: [PATCH] Papo: batch 148 (R8) compact uniform representation for
+ SWMRNibbleArray - re-opening the batch-144 verdict on two changed grounds:
+ the reclaimable population doubled in relative terms (uniform nibbles 22.0MB
+ of the re-baselined 831.6MB heap = 2.65%, vs 15.8MB/1.8% at the time of the
+ veto) and a full audit of the 441-line class shows the surgery is contained -
+ both storage fields are private with every read/write routed through class
+ methods, so the concurrent-read protocol is untouched. A nibble whose whole
+ 4096-nibble payload is 0 or 15 (the two constants the engines produce at
+ scale: full-bright sky sections above the heightmap, block-light sections
+ that settle to zero) now keeps BOTH storage arrays null and carries the value
+ in uniform fields that follow the same SWMR discipline (writer-owned plain
+ updatingUniform, volatile visibleUniform; invariant: uniform != 0 => storage
+ == null && state in {INIT, HIDDEN}). Value-equivalence is provable at every
+ seam: readers resolve the uniform (0 for UNINIT/NULL through the same
+ expression by invariant); setFull/setZero flip the uniform without allocation
+ on clean null storage (a real value change marks dirty so publication cannot
+ be skipped when the state field alone is unchanged); first writes materialise
+ AROUND the uniform (swapUpdatingAndMarkDirty fills updatingUniform, so a
+ full-bright section keeps its 15s when a propagation edge writes one nibble);
+ publish deflates settled arrays (isAllZero/isAllFull scan is cheaper than the
+ 2048-byte copy it can replace, and frees the arrays to the existing pool);
+ extrudeLower resolves uniform sources to setFull/setZero (the caller runs
+ setNonNull first, making the state choreography equal to the array path);
+ vanilla conversion and the save path MATERIALISE uniform back, so the on-disk
+ format and cross-version world compat are byte-identical; disk loads
+ canonicalise all-full payloads back to uniform in both the SaveUtil and
+ fromVanilla constructor shapes (all-zero payloads keep today's materialised
+ form so INIT-with-zero and UNINIT stay engine-distinct). Expected effect: the
+ 10,737 uniform byte[2048] arrays (22.0MB) in the soak census collapse to
+ zero; per-nibble cost is one byte of uniform state. Coverage:
+ PapoSWMRUniformNibbleTest (uniform-until-written +
+ materialise-around-uniform, flip publication without state change,
+ uniform-zero save semantics, save format materialisation proof, load
+ canonicalisation + write-through, extrude from
+ uniform-full/UNINIT/uniform-zero sources, hidden uniform round-trip, vanilla
+ conversion materialisation, publish deflation of settled arrays, and a
+ 200-round x 500-op randomized differential against a materialised-array
+ mirror model across set/setFull/setZero/updateVisible/read) Two
+ writer-protocol holes the randomized differential caught before ship: a
+ uniform flip leaves updatingDirty set with null storage, so set() (which only
+ materialised when clean) and extrudeLower's dirty-reuse branch (into =
+ storageUpdating = null) would write through a null array - both now
+ materialise whenever storage is absent (swapUpdatingAndMarkDirty early-return
+ relaxed to dirty-with-non-null-storage; extrudeLower's materialise branch
+ keeps the flip state's INIT/HIDDEN instead of forcing INIT). Coverage
+ extended: set-after-unpublished-flip (full and zero flips) +
+ extrude-into-flip tests added (PapoSWMRUniformNibbleTest now 11 tests).
+
+
+diff --git a/ca/spottedleaf/moonrise/patches/starlight/light/SWMRNibbleArray.java b/ca/spottedleaf/moonrise/patches/starlight/light/SWMRNibbleArray.java
+index 5c7b3804cdbcb0a873a0d195325c2658760a8914..9733e19ed23ca54d0ca2e0eca4ea22a16e3c2a0c 100644
+--- a/ca/spottedleaf/moonrise/patches/starlight/light/SWMRNibbleArray.java
++++ b/ca/spottedleaf/moonrise/patches/starlight/light/SWMRNibbleArray.java
+@@ -59,6 +59,21 @@ public final class SWMRNibbleArray {
+     private boolean updatingDirty; // only returns whether storageUpdating is dirty
+     private volatile byte[] storageVisible;
+ 
++    // Papo start - batch 148 (R8): compact uniform representation. A nibble whose whole
++    // 4096-nibble payload is one value (0 or 15 - the two constants the sky/block engines
++    // produce at scale: full-bright sections above the heightmap, sourceless block-light
++    // sections) stores that value here and keeps BOTH storage arrays null. The uniform
++    // fields follow the same SWMR discipline as the storage fields: updatingUniform is
++    // writer-owned plain, visibleUniform is the volatile reader view.
++    // Invariant: uniform != 0 => storage == null && state in {INIT, HIDDEN}; whenever
++    // storage materialises (first write / extrude copy / save conversion) the uniform
++    // fields reset to 0, so null-storage UNINIT/NULL nibbles read as 0 through the same
++    // expression. The save format is unchanged: uniform payloads materialise on save and
++    // canonicalise back on load (getSaveState / constructors below).
++    private byte updatingUniform;
++    private volatile byte visibleUniform;
++    // Papo end - batch 148 (R8)
++
+     public SWMRNibbleArray() {
+         this(null, false); // lazy init
+     }
+@@ -73,6 +88,12 @@ public final class SWMRNibbleArray {
+         }
+         this.stateVisible = this.stateUpdating = bytes == null ? (isNullNibble ? INIT_STATE_NULL : INIT_STATE_UNINIT) : INIT_STATE_INIT;
+         this.storageUpdating = this.storageVisible = bytes;
++        // Papo start - batch 148 (R8): an all-full payload becomes the uniform representation
++        if (bytes != null && isAllFull(bytes)) {
++            this.storageUpdating = this.storageVisible = null;
++            this.updatingUniform = this.visibleUniform = 15;
++        }
++        // Papo end - batch 148 (R8)
+     }
+ 
+     public SWMRNibbleArray(final byte[] bytes, final int state) {
+@@ -84,6 +105,14 @@ public final class SWMRNibbleArray {
+         }
+         this.stateUpdating = this.stateVisible = state;
+         this.storageUpdating = this.storageVisible = bytes;
++        // Papo start - batch 148 (R8): all-full payloads canonicalise regardless of the
++        // declared state (state itself is preserved); all-zero payloads keep today's
++        // materialised form so INIT-with-zero-content and UNINIT stay engine-distinct
++        if (bytes != null && isAllFull(bytes)) {
++            this.storageUpdating = this.storageVisible = null;
++            this.updatingUniform = this.visibleUniform = 15;
++        }
++        // Papo end - batch 148 (R8)
+     }
+ 
+     @Override
+@@ -125,7 +154,13 @@ public final class SWMRNibbleArray {
+                 }
+             }
+         } else {
+-            stringBuilder.append("null");
++            // Papo start - batch 148 (R8): name the compact representation in debug output
++            if (this.stateVisible == INIT_STATE_INIT || this.stateVisible == INIT_STATE_HIDDEN) {
++                stringBuilder.append("uniform ").append(this.visibleUniform);
++            } else {
++                stringBuilder.append("null");
++            }
++            // Papo end - batch 148 (R8)
+         }
+ 
+         return stringBuilder.toString();
+@@ -141,6 +176,18 @@ public final class SWMRNibbleArray {
+             if (state == INIT_STATE_UNINIT) {
+                 return new SaveState(null, state);
+             }
++            // Papo start - batch 148 (R8): uniform nibbles materialise on save - the on-disk
++            // format is byte-identical to the array representation (uniform-0 already maps
++            // to the existing all-zero rule; uniform-15 writes a full 0xFF payload)
++            if (data == null) {
++                if (this.visibleUniform == 15) {
++                    final byte[] full = new byte[ARRAY_SIZE];
++                    Arrays.fill(full, (byte)-1);
++                    return new SaveState(full, state);
++                }
++                return state == INIT_STATE_INIT ? new SaveState(null, INIT_STATE_UNINIT) : null;
++            }
++            // Papo end - batch 148 (R8)
+             final boolean zero = isAllZero(data);
+             if (zero) {
+                 return state == INIT_STATE_INIT ? new SaveState(null, INIT_STATE_UNINIT) : null;
+@@ -164,6 +211,20 @@ public final class SWMRNibbleArray {
+         return true;
+     }
+ 
++    // Papo start - batch 148 (R8): mirror of isAllZero for the full-bright constant
++    private static boolean isAllFull(final byte[] data) {
++        final int len = data.length / Long.BYTES; // assume divisible
++
++        for (int i = 0; i < len; ++i) {
++            if (-1L != (long)LONG_VIEW.get(data, i << 3)) {
++                return false;
++            }
++        }
++
++        return true;
++    }
++    // Papo end - batch 148 (R8)
++
+     // operation type: updating on src, updating on other
+     public void extrudeLower(final SWMRNibbleArray other) {
+         if (other.stateUpdating == INIT_STATE_NULL) {
+@@ -171,6 +232,21 @@ public final class SWMRNibbleArray {
+         }
+ 
+         if (other.storageUpdating == null) {
++            // Papo start - batch 148 (R8): a null-storage source is either UNINIT/NULL (all
++            // zero - today's branch) or the compact uniform representation. Extruding a
++            // uniform source's bottom layer 16x yields exactly that uniform value, which is
++            // what setFull()/setZero() produce (the caller runs setNonNull() first, so this'
++            // state here is UNINIT/INIT and the setFull/setZero state choreography matches
++            // the array path's)
++            if (other.stateUpdating == INIT_STATE_INIT || other.stateUpdating == INIT_STATE_HIDDEN) {
++                if (other.updatingUniform == 15) {
++                    this.setFull();
++                } else {
++                    this.setZero();
++                }
++                return;
++            }
++            // Papo end - batch 148 (R8)
+             this.setUninitialised();
+             return;
+         }
+@@ -178,13 +254,16 @@ public final class SWMRNibbleArray {
+         final byte[] src = other.storageUpdating;
+         final byte[] into;
+ 
+-        if (!this.updatingDirty) {
++        if (!this.updatingDirty || this.storageUpdating == null) { // Papo - batch 148 (R8): a uniform flip is dirty with null storage - materialise it too (the extrude loop below overwrites the full array, so no fill is needed)
+             if (this.storageUpdating != null) {
+                 into = this.storageUpdating = allocateBytes();
+             } else {
+                 this.storageUpdating = into = allocateBytes();
+-                this.stateUpdating = INIT_STATE_INIT;
++                if (!this.updatingDirty) { // Papo - batch 148 (R8): clean null storage is UNINIT/NULL -> INIT (pre-existing); a uniform flip already carries its INIT/HIDDEN state
++                    this.stateUpdating = INIT_STATE_INIT;
++                }
+             }
++            this.updatingUniform = 0; // Papo - batch 148 (R8): storage materialised
+             this.updatingDirty = true;
+         } else {
+             into = this.storageUpdating;
+@@ -204,7 +283,22 @@ public final class SWMRNibbleArray {
+         if (this.stateUpdating != INIT_STATE_HIDDEN) {
+             this.stateUpdating = INIT_STATE_INIT;
+         }
++        // Papo start - batch 148 (R8): clean null storage flips the uniform value - the
++        // result is value-identical to allocating and filling 0xFF (readers, save state
++        // and vanilla conversion all resolve the uniform), and first writes materialise.
++        // An actual value change must mark dirty so updateVisible() publishes it (the
++        // state field alone does not change on a uniform flip).
++        if (!this.updatingDirty && this.storageUpdating == null) {
++            if (this.updatingUniform == 15) {
++                return;
++            }
++            this.updatingUniform = 15;
++            this.updatingDirty = true;
++            return;
++        }
++        // Papo end - batch 148 (R8)
+         Arrays.fill(this.storageUpdating == null || !this.updatingDirty ? this.storageUpdating = allocateBytes() : this.storageUpdating, (byte)-1);
++        this.updatingUniform = 0; // Papo - batch 148 (R8): storage materialised
+         this.updatingDirty = true;
+     }
+ 
+@@ -213,7 +307,19 @@ public final class SWMRNibbleArray {
+         if (this.stateUpdating != INIT_STATE_HIDDEN) {
+             this.stateUpdating = INIT_STATE_INIT;
+         }
++        // Papo start - batch 148 (R8): mirror of setFull's uniform flip (no-op when the
++        // nibble is already uniform-zero; a real change marks dirty for publication)
++        if (!this.updatingDirty && this.storageUpdating == null) {
++            if (this.updatingUniform == 0 && this.stateUpdating == INIT_STATE_INIT) {
++                return;
++            }
++            this.updatingUniform = 0;
++            this.updatingDirty = true;
++            return;
++        }
++        // Papo end - batch 148 (R8)
+         Arrays.fill(this.storageUpdating == null || !this.updatingDirty ? this.storageUpdating = allocateBytes() : this.storageUpdating, (byte)0);
++        this.updatingUniform = 0; // Papo - batch 148 (R8): storage materialised
+         this.updatingDirty = true;
+     }
+ 
+@@ -237,6 +343,7 @@ public final class SWMRNibbleArray {
+         }
+         this.storageUpdating = null;
+         this.updatingDirty = false;
++        this.updatingUniform = 0; // Papo - batch 148 (R8): uniform only exists for INIT/HIDDEN
+     }
+ 
+     // operation type: updating
+@@ -247,6 +354,7 @@ public final class SWMRNibbleArray {
+         }
+         this.storageUpdating = null;
+         this.updatingDirty = false;
++        this.updatingUniform = 0; // Papo - batch 148 (R8): uniform only exists for INIT/HIDDEN
+     }
+ 
+     // operation type: updating
+@@ -308,16 +416,26 @@ public final class SWMRNibbleArray {
+ 
+     // operation type: updating
+     private void swapUpdatingAndMarkDirty() {
+-        if (this.updatingDirty) {
++        // Papo start - batch 148 (R8): a uniform flip leaves updatingDirty set with null
++        // storage - that state still needs materialisation, not reuse
++        if (this.updatingDirty && this.storageUpdating != null) {
+             return;
+         }
++        // Papo end - batch 148 (R8)
+ 
+         if (this.storageUpdating == null) {
+             this.storageUpdating = allocateBytes();
+-            Arrays.fill(this.storageUpdating, (byte)0);
++            // Papo start - batch 148 (R8): materialising a uniform nibble must preserve its
++            // pre-existing values (e.g. full-bright sky before a propagation edge write).
++            // The payload is PACKED - two nibbles per byte - so the uniform level u fills
++            // as (u | u << 4) per byte (uniform 15 -> 0xFF, uniform 0 -> 0x00)
++            final int papoUniform = this.updatingUniform & 0xF;
++            Arrays.fill(this.storageUpdating, (byte)(papoUniform | (papoUniform << 4)));
++            // Papo end - batch 148 (R8)
+         } else {
+             System.arraycopy(this.storageUpdating, 0, this.storageUpdating = allocateBytes(), 0, ARRAY_SIZE);
+         }
++        this.updatingUniform = 0; // Papo - batch 148 (R8): storage materialised
+ 
+         if (this.stateUpdating != INIT_STATE_HIDDEN) {
+             this.stateUpdating = INIT_STATE_INIT;
+@@ -334,7 +452,33 @@ public final class SWMRNibbleArray {
+         synchronized (this) {
+             if (this.stateUpdating == INIT_STATE_NULL || this.stateUpdating == INIT_STATE_UNINIT) {
+                 this.storageVisible = null;
++                // Papo start - batch 148 (R8): publish the compact representation
++                this.visibleUniform = 0;
++                // Papo end - batch 148 (R8)
++            } else if (this.storageUpdating == null) {
++                // Papo start - batch 148 (R8): uniform INIT/HIDDEN publishes without an array
++                this.storageVisible = null;
++                this.visibleUniform = this.updatingUniform;
++                // Papo end - batch 148 (R8)
+             } else {
++                // Papo start - batch 148 (R8): deflate-on-publish - a payload that settled to
++                // all-zero or all-full frees its arrays and publishes the uniform value
++                // instead. The 256-long scan is cheaper than the 2048-byte copy it can
++                // replace, and the save path materialises uniform back (format unchanged).
++                if (isAllZero(this.storageUpdating)) {
++                    if (this.storageUpdating != this.storageVisible) {
++                        freeBytes(this.storageUpdating);
++                    }
++                    this.storageUpdating = this.storageVisible = null;
++                    this.updatingUniform = this.visibleUniform = 0;
++                } else if (isAllFull(this.storageUpdating)) {
++                    if (this.storageUpdating != this.storageVisible) {
++                        freeBytes(this.storageUpdating);
++                    }
++                    this.storageUpdating = this.storageVisible = null;
++                    this.updatingUniform = this.visibleUniform = 15;
++                } else {
++                // Papo end - batch 148 (R8)
+                 if (this.storageVisible == null) {
+                     this.storageVisible = this.storageUpdating.clone();
+                 } else {
+@@ -347,6 +491,8 @@ public final class SWMRNibbleArray {
+                     freeBytes(this.storageUpdating);
+                 }
+                 this.storageUpdating = this.storageVisible;
++                this.updatingUniform = this.visibleUniform = 0; // Papo - batch 148 (R8): arrays published
++                } // Papo - batch 148 (R8)
+             }
+             this.updatingDirty = false;
+             this.stateVisible = this.stateUpdating;
+@@ -365,6 +511,17 @@ public final class SWMRNibbleArray {
+                 case INIT_STATE_UNINIT:
+                     return new DataLayer();
+                 case INIT_STATE_INIT:
++                    // Papo start - batch 148 (R8): uniform nibbles materialise for the
++                    // vanilla view (uniform-0 is value-identical to the empty DataLayer)
++                    if (this.storageVisible == null) {
++                        if (this.visibleUniform == 0) {
++                            return new DataLayer();
++                        }
++                        final byte[] full = new byte[ARRAY_SIZE];
++                        Arrays.fill(full, (byte)-1);
++                        return new DataLayer(full);
++                    }
++                    // Papo end - batch 148 (R8)
+                     return new DataLayer(this.storageVisible.clone());
+                 default:
+                     throw new IllegalStateException();
+@@ -384,7 +541,7 @@ public final class SWMRNibbleArray {
+         // indices range from 0 -> 4096
+         final byte[] bytes = this.storageUpdating;
+         if (bytes == null) {
+-            return 0;
++            return this.updatingUniform; // Papo - batch 148 (R8): 0 for UNINIT/NULL by invariant
+         }
+         final byte value = bytes[index >>> 1];
+ 
+@@ -403,7 +560,7 @@ public final class SWMRNibbleArray {
+         // indices range from 0 -> 4096
+         final byte[] visibleBytes = this.storageVisible;
+         if (visibleBytes == null) {
+-            return 0;
++            return this.visibleUniform; // Papo - batch 148 (R8): 0 for UNINIT/NULL by invariant
+         }
+         final byte value = visibleBytes[index >>> 1];
+ 
+@@ -419,9 +576,12 @@ public final class SWMRNibbleArray {
+ 
+     // operation type: updating
+     public void set(final int index, final int value) {
+-        if (!this.updatingDirty) {
++        // Papo start - batch 148 (R8): a uniform flip leaves updatingDirty set with null
++        // storage - materialise whenever storage is absent, not only when clean
++        if (this.storageUpdating == null || !this.updatingDirty) {
+             this.swapUpdatingAndMarkDirty();
+         }
++        // Papo end - batch 148 (R8)
+         final int shift = (index & 1) << 2;
+         final int i = index >>> 1;
+ 
