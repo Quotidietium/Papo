@@ -3216,3 +3216,39 @@ flip 最小复现+确定性回归一一对应）/跨会话绝对值漂移 ±2%�
 1,154.3→801.4MB（**−352.9MB/−30.6%**）。
 报告：
 [note/report/perf/2026-10-10-memsoak-r8-batch148.md](report/perf/2026-10-10-memsoak-r8-batch148.md)。
+
+## 批次 149（2026-10-10）：R9——常量节规范化共享（0.86.0 → 0.87.0）
+
+节/容器实例层（残余画像最大非内容簇）：398,976 节壳 40B + 792k 双容器壳 48B/节 +
+398,976 ShortList 壳 24B（批142 已惰性化）+ 私有 uniform 容器双 Data 壳 64B 与单条
+目 palette 壳 48B ≈ 224B/节。0272 落地：整内容=单一非随机刻/非流体刻/非特殊碰撞方
+块状态+uniform 注册 biome 且计数解析一致的节坍缩为每 (方块全局 id, biome 注册表
+id) 每注册表一个规范实例（缓存挂 biome Strategy 随 level 回收，批147 判例③；复合
+键跨世界不碰撞；容器经批147 钩子与全服共享 Data；计数解析式 + 谓词防御性核验）。
+关键设计修正（首 soak 判负腿定位）：均匀性以格子判不以 palette 型判——世界生成经
+写路径构造均匀节（biome 容器首写非默认 biome 即扩容单条目 LinearPalette；整节写
+石头同理；dump 直方图全服 SingleValuePalette 仅 11 个=批147 共享集），
+papoUniformValue() 零位快路径→raw long 全等否决→等词逐格裁决。写者面全树枚举收口
+六门（LevelChunk/ProtoChunk.setBlockState 均在 air-into-air no-op 后、setBiome、
+fillBiomesFromNoise、doFill 双获取点、OreFeature 经新增 BulkSectionAccess
+getWritableSection 含缓存 canonical 项置换与 acquire 转移）+ 客户端 read/readBiomes
+索引门 + 每个节变更器响亮金丝雀（漏门写者崩溃而非跨 chunk 静默腐蚀）；旧 Bukkit
+生成器整槽置换私有 scratch 节核安全免门。规范化单点=LevelChunk 主构造器扫描（晋升
+/盘载两路），level 长寿命 factory 保证缓存按世界命中；规范节以 vanilla 单值
+palette 编码落盘（逐格恒等、更小、全版本可解码）。验证：
+PapoSharedConstantSectionTest 11 项全绿（Bootstrap 真实方块+合成 biome IdMap；
+uniform-写路径坍缩回归=首 soak 缺陷确定性复现；300 轮×120 写差分对拍）；全链
+rebuildPatches 0272+applyPatches EXIT=0+compileJava --rerun-tasks+counts ALL OK+
+0.87.0 jar javap 复核。浸泡三跑：首跑谓词缺陷（坍缩 1.4%）→ dump 直方图证伪修
+正；二跑 B 区块 −29.6% 配对门破（boot 15.9 vs 16.6s 零错误排除服务端）→ 批146
+判例复跑；三跑门绿（6,080 vs 6,098 块 +0.30%）：堆 797,078→780,005 KB
+（**−16.7MB/−2.14%**，区块调整 ≈−18.2MB）；普查归因：节 −76,126（−19.2%）/
+容器 −152,252/Data 222k→150k，76,126×224B=17.0MB 闭合；内容面 SWMR byte[] 每
+区块 4.939 vs 4.946 持平、long[] −1.6MB=释放微型均匀存储非内容。判例：复合谓词
+可行率按分量交集预估（87% 方块侧单值 → 双均匀实测 19.2%，外推动辐 4 倍）/均匀性
+以格子判不以表示型判（dump 直方图是谓词假设直接证伪面）/响亮金丝雀优于静默防御
+（浸泡=全写路径回归）/配对门破先复跑再归因（第三次应用）/实例层收益按随宿主死掉
+的全部壳计（112B 立项 → 224B 实账）。内存主线 0.80.0→0.87.0 = 1,154.3→780.0MB
+（**−374.3MB/−32.4%**，会话链 ±2% 漂移判例内）。
+报告：
+[note/report/perf/2026-10-10-memsoak-r9-batch149.md](report/perf/2026-10-10-memsoak-r9-batch149.md)。
