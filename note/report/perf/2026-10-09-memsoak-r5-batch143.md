@@ -60,6 +60,31 @@ NOISE/SURFACE，后续步骤仍要读）——释放点只作用于过 carvers �
 ## 5. 结论
 
 轮3 达成：worldgen 环的 NoiseChunk 驻留在 carvers 步末释放，配对场景堆
-**−6.9%**（其中插值器 double[] −61%）。R5 三轮累计（同场景类）：
-轮1 −9.0% × 轮2 −9.7% × 轮3 −6.9% ≈ **累计 −23.4%**。**0.82.0 →
-0.83.0 发布。**
+**−6.9%**（其中插值器 double[] −61%）。**R5 终测头条（0.80.0 vs 0.83.0
+同场景配对腿，6,081 vs 6,112 区块，门全绿）：1,154,349 → 873,548 KB =
+−280.8MB（−24.3%）**——轮1 −9.0% × 轮2 −9.7% × 轮3 −6.9% 的复利
+（≈−23.4%）与终测一致。**0.82.0 → 0.83.0 发布。**
+
+## 6. 后续目标评估（未采纳，判例归档）
+
+三轮后画像的剩余大户逐一评估，结论=保留（红线优先）：
+
+- **碰撞形状簇 ~66MB（boot 常量，141k ArrayVoxelShape/345k AABB/140k
+  CachedShapeData+BitSet 等）**：BlockStateBase.initCache 注册期物化，
+  occlusionShape/face 数组被光照引擎**工作线程**常读——惰性化需引入
+  volatile/锁于热路径或冒半初始化数据竞争，红线上不稳。实测确认该簇
+  数量与区块数无关（4.4k 与 6k 腿均 141,509-141,520），不属"多区块加载
+  放大"画像。不动。
+- **单值 PalettedContainer 三件套（Data+SingleValuePalette+ZeroBitStorage，
+  ~45MB 潜力）**：interning（同值共享）被 `PalettedContainer.read` 否决——
+  createOrReuseData 同配置**复用现有 Data** 后 `palette.read(buffer)` 就地
+  改写 palette 值（ChunkStatusTasks 之外的 wire 读路径），共享实例会跨
+  section 串改。判例：**容器对象可 intern 的前提是全 Mutation 面只走
+  COW 替换，就地读改写路径（read/copyFrom 之外的隐藏写）必须逐一排除**。
+- **StructurePiece 块表簇（StructureBlockInfo 496k + 其 BlockPos ≈24MB+）**：
+  生成后仍被区块保存序列化消费（autosave 走对象模型重序列化），惰性化
+  需存储原始 NBT 并保证 save 恒等回写——保存路径风险不值。不动。
+
+剩余大项（[J 184MB 位存储/heightmap、[B ~117MB 光照 nibble、Object[]
+104MB palette 骨架）为**活数据**（区块内容本体表示），结构性压缩=表示
+重设计，超出红线收益比。
