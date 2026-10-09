@@ -3131,3 +3131,32 @@ test BUILD SUCCESSFUL + check_patch_counts ALL OK。浸泡两腿（6,064 vs 6,08
 top-20（570,518 实例/9.1MB）跌出 top-25，降额与簇归因闭合。
 报告：
 [note/report/perf/2026-10-10-memsoak-r6-batch145.md](report/perf/2026-10-10-memsoak-r6-batch145.md)。
+
+## 批次 146（2026-10-10）：R6 轮2——String 反序列化规范化三准入设计实测判负，运行时回退（0.84.0 保持，负结果）
+
+批次145 §1.3 立项的 String 冗余（386k 实例 47.6% 冗余 ≈ −7~9MB）作为独立完整
+角度做完：在 CompoundTag.papoReadUtf（compound 键 + StringTag 值唯一读取路径）
+与 AdvancementProgress.CODEC apply（判据键）两个选择点接入有界规范化池，连续
+实现三个准入设计并全链验证（单测 6 项 ×3 版、rebuildPatches + applyPatches 重放
++ compileJava --rerun-tasks + check_patch_counts 918 ALL OK ×2 版）：**v1 先到先得**
+（池被 worldgen/启动一次性串冻结于垃圾词汇，−22,897 实例均为边缘种群）、**v2
+4-bit 计数草图**（被自身单测证伪：碰撞误收 2,773 个一次性串 + 持续流量饱和退化为
+准入恒真，未浸泡即弃）、**v3 精确近期窗口**（2,048 首见整窗轮转 + 窗口内二见
+准入；配对浸泡 −21,773 实例与 v1 统计等效 ≈ −1MB，但 1,016MB 转储逐值普查证明
+Name ×6,964 / has_the_recipe ×2,916 / north ×3,149 / true+false ×8,983 与无池
+基线逐字一致——论文目标种群零命中，冗余比例变化全由区块数缩放解释）。机制：
+并发首见洪峰（12 并发 .dat + worldgen 模板 NBT）下共享 2k 窗口转速快于任何
+跨源复发间隔，二见永远落空。**算术闭包**：接住跨源复发所需状态（窗口 ≈50~100k
+瞬态 + 池 ≈64k × 完整 worldgen 词汇 ≈8~9MB）≈ 论文目标本身——任何"正确"的
+通用设计净收益趋零，设计空间整体判负。可达面拆账：boot 常量（DFU/反射，
+非反序列化产物）不可达、方块状态属性值在 worldgen 热路径、join-only 判据键
+41,724 中冗余 ≈38.7k ≈ 2.2MB（0.25%）低于行动线。**处置：运行时全部回退**
+（内仓 reset 回批次145、版本回 0.84.0、0.85.0 jar 删除未发布）；回退触发
+paperweight 直接文件机制新增合成 0001-paper-File-Patches（PaperHooks 独立化）
++ 原 269 补丁顺移，以逐 hunk 字节等价 + 全量重放 EXIT=0 + 918 ALL OK +
+compile/test 全绿（批145 8 项维持）三证收口。测量判例：首腿 B 区块 −28%/终点
+×0.75 曾疑 v3 热路径回归，复跑配对（6,154/6,092）证为环境噪声插曲（批85 判例
+重演——单腿异常先复跑再归因）；memsoak B 腿转储开关修复（env 前缀不达 bash
+函数 → 直接置 harness java 命令行）。String 规范化角度关闭。
+报告：
+[note/report/perf/2026-10-10-memsoak-r6-batch146.md](report/perf/2026-10-10-memsoak-r6-batch146.md)。

@@ -6,7 +6,7 @@ Subject: [PATCH] Papo: per-connection wire byte accounting threaded through
 
 
 diff --git a/net/minecraft/network/Connection.java b/net/minecraft/network/Connection.java
-index b42ae2eb993b887f7d54d86984ba4438f832c5f5..05af3554118f0db85b3f1a58ad2b6d16cd2e7083 100644
+index cabc0c32d2b19380b6adfa368cd06c679735ff80..5edad39cd42ff1ed4ac707d4d4677b9154056a3a 100644
 --- a/net/minecraft/network/Connection.java
 +++ b/net/minecraft/network/Connection.java
 @@ -82,6 +82,18 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {

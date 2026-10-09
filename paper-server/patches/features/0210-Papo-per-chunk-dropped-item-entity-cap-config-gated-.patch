@@ -6,7 +6,7 @@ Subject: [PATCH] Papo: per-chunk dropped item entity cap (config-gated,
 
 
 diff --git a/ca/spottedleaf/moonrise/patches/chunk_system/level/entity/server/ServerEntityLookup.java b/ca/spottedleaf/moonrise/patches/chunk_system/level/entity/server/ServerEntityLookup.java
-index f312a7f5b1b2a777ab36b94ce7cbf3873f5e88bc..553361fa6d0519f7fcea584c84df32f17e88fd3a 100644
+index f312a7f5b1b2a777ab36b94ce7cbf3873f5e88bc..090e15830143e69623643acc92bcc8ad3a67c510 100644
 --- a/ca/spottedleaf/moonrise/patches/chunk_system/level/entity/server/ServerEntityLookup.java
 +++ b/ca/spottedleaf/moonrise/patches/chunk_system/level/entity/server/ServerEntityLookup.java
 @@ -14,6 +14,7 @@ import net.minecraft.server.level.ServerLevel;

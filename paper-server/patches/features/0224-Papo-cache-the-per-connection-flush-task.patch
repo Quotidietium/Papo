@@ -5,7 +5,7 @@ Subject: [PATCH] Papo: cache the per-connection flush task
 
 
 diff --git a/net/minecraft/network/Connection.java b/net/minecraft/network/Connection.java
-index 4925bb96feb0a30f74463ad1ec61b5d9e507115e..b012498104b0859522b9b8f7dd98fadd71f8e0af 100644
+index b2cf8510c06f5d148412043b7ba5573b1c747cd0..20179d5f6eb377f33e2d6b794820ac4abaf0aba6 100644
 --- a/net/minecraft/network/Connection.java
 +++ b/net/minecraft/network/Connection.java
 @@ -499,11 +499,20 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {

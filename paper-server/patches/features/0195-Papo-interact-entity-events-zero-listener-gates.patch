@@ -5,7 +5,7 @@ Subject: [PATCH] Papo: interact entity events zero-listener gates
 
 
 diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-index e4f2628d6781e0ec86bbcbfcbe050d40841e3eb7..40f149726a91fd8e804cc3a17b4b949edf5ca5a6 100644
+index 9c64e9262aa0cda8a0ff4b359aeec1d9e36d54eb..40d8edbb56a4d5b38a4c51a7a04b849f6dd1c467 100644
 --- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 +++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 @@ -2893,10 +2893,16 @@ public class ServerGamePacketListenerImpl

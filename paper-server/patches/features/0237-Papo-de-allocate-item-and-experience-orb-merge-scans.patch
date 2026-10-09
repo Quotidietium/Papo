@@ -41,7 +41,7 @@ index 01a0cbb5718cc0b8f45bf116787a00754bfa24d3..40abef00f6eb94b744e2b3a0e0822953
      public static void award(ServerLevel level, Vec3 pos, int amount) {
          awardWithDirection(level, pos, Vec3.ZERO, amount);
 diff --git a/net/minecraft/world/entity/item/ItemEntity.java b/net/minecraft/world/entity/item/ItemEntity.java
-index a125be5969e937467adf2b0c474512f810bfd2ae..c6979d10ee2fd215ea55624ee158e912bb2652e4 100644
+index 7d1b4062fea3cd64d68da8d17d7da9d73f421a5b..d78273d59f9a92ddab7d872e8463b62b4652a02b 100644
 --- a/net/minecraft/world/entity/item/ItemEntity.java
 +++ b/net/minecraft/world/entity/item/ItemEntity.java
 @@ -242,28 +242,46 @@ public class ItemEntity extends Entity implements TraceableEntity {
