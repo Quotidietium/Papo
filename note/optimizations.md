@@ -2989,3 +2989,41 @@ netstat 随连接生死；wire 跟踪条带阀失败方向=stalness；0230 计�
 永不完成"是一等挂死类——消费点默认有界；行为调优后文档双向跟随——核查范围含补丁正文
 本体）。审计轮不 bump 不发布。报告：
 [note/report/2026-09-14-lifecycle-timing-audit-batch140.md](report/2026-09-14-lifecycle-timing-audit-batch140.md)。
+
+## 批次 141（2026-10-09）：R5 轮1——区块包缓存 TTL 驱逐 + 内存浸泡测量基建（0.80.0 → 0.81.0）
+
+R5（内存占用主线）轮1：**0241/0242 多观众区块包缓存由终身驻留改为 TTL 驱逐**
+（已接受缺陷 0269 在 R5 目标下转 fix）。0267 补丁三文件：ChunkHolder 打戳
+（papoGetSharedChunkPacket 命中/填充都经首行）+ `papoEvictStaleChunkPacketCaches`
+（清共享包 + 经 getChunkToSend 清 LevelChunk payload；区块实体区块只有 payload
+一层，经同一 holder 戳独立清空）；LevelChunk `papoEvictChunkPacketCache`；
+ServerChunkCache.tick 每 TTL/2 game tick 扫全 holder，默认 TTL 600 tick，
+`-Dpapo.chunkPacketCacheTtlTicks` 可调（≤0 禁用=诊断腿复现 0.80.0 驻留）。
+正确性：缓存读写全主线程、在飞发送持自有引用、过期观众走 0241 前的全新序列化
+路径、版本计数器不动（批 133 判例兼容）、命中也打戳（活跃窗口不驱逐）。
+
+测量基建（新增）：`benchmark/src/papo/bot/MemSoakVerify`——真服（-Xms4G -Xmx4G
+固定种子 papo90，view=10）+ 12 bot 完整协议径向行走 150s + 驻留 180s 持票，
+驻留第 120s jcmd 双 Full GC → heap_info + class_histogram（WATCH 表含
+LevelChunk/共享包实例/byte[] 等）；`benchmark/memsoak-legs.sh` 三腿编排
+（A=0.80.0 / B=0.81.0 默认 / C=0.81.0 TTL=0 同二进制对照）。
+
+bot 栈三处修复（报告 §5 判例）：(1) **double 小端 bug**——手写 wire 双端端序
+不一致时解码为次正规数 ≈0.0（不抛异常），三坐标恒 (0,0,0) 触发每 tick
+moved-too-quickly 纠偏；(2) **spectator**——内存基准 bot 用 gamemode=spectator
+豁免全部移动验证（noPhysics），加载票据同制，消除地形交互类不确定性；
+(3) PLAYER_POSITION（C 0x46：varint id+3+3 double+2 float+int mask）采纳 +
+ACCEPT_TELEPORTATION（S 0x00）回确认；MOVE_PLAYER_POS（S 0x1D）尾部为
+**单字节打包双布尔**（1.21.2+ 代际）。**勘误**：批 90/93-96 TickSurveyBench
+的"行走 bot"前提从未成立（该轮 bot 从未发送 MOVE 包）——tick 数字有效但
+不得引用为行走负载证据；MemSoakVerify 为首个真行走 bot 栈。
+
+结果（12 bot × 150s 行走 + 180s 驻留，4.4k 区块，双 Full GC 后）：B(0.81.0)
+vs A(0.80.0) 堆 941.0→856.1MB（**−9.0%**），byte[] 176.8→94.4MB（−46.6%），
+缓存共享包 2,108→0；byte[] 降额 82.4MB ≈ 堆降额——收益全落缓存 payload，
+归因闭合。C(TTL=0) 同二进制复原驻留（2,741 包/5,564 区块 = 0.49/区块 ≈
+A 的 0.48/区块）。验证：rebuildPatches 0267 生成 + applyPatches
+全量重放 EXIT=0（内部仓重建 HEAD=batch141）+ compileJava --rerun-tasks
+BUILD SUCCESSFUL + :paper-server:test BUILD SUCCESSFUL EXIT=0 + 三腿浸泡门全绿（logErrors=0 exit=0）+ check_patch_counts 全仓 ALL OK。
+报告：
+[note/report/perf/2026-10-09-memsoak-r5-batch141.md](report/perf/2026-10-09-memsoak-r5-batch141.md)。

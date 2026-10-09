@@ -42,6 +42,17 @@ public final class OfflineJoinBot {
     private OutputStream out;
     private int compressionThreshold = -1;
 
+    // 批次141（R5）：服务器权威位置跟踪。PLAY 0x45 PLAYER_POSITION（varint teleportId +
+    // 6×double(x,y,z,dx,dy,dz) + 2×float(yaw,pitch) + int 亲属位掩码，X/Y/Z=0x01/02/04）
+    // 携带真实出生/纠偏坐标——walk 原先写死 (0.5,100,0.5) 起点，与实际 world spawn（本种子
+    // 在 z≈420）相距 400+ 格，首个移动包即被 "moved too quickly" 拒绝，"行走 bot" 实际从未
+    // 离开过出生点（TickSurveyBench 批90/93-96 的隐性缺陷，本批顺带修复）。收到 0x45 即采纳
+    // 坐标（按亲属位增量/绝对）并回 ACCEPT_TELEPORTATION(S 0x00, varint id)。
+    private double posX, posY, posZ;
+    private boolean posKnown;
+    private int traceHex;   // 诊断探针（批次141）：0x46 转储计数
+    private int traceMoves; // 诊断探针（批次141）：移动包转储计数
+
     // 批次87：分段计时——每个收到的包记录 (状态, packetId, 自 connect 起毫秒)
     private final java.util.List<String> phaseTrace = new java.util.ArrayList<>();
 
@@ -49,8 +60,17 @@ public final class OfflineJoinBot {
         return this.phaseTrace;
     }
 
+    // 批次141（R5）：服务器权威终位（harness 打印验证行走扩散真实生效）
+    public double getPosX() { return this.posX; }
+    public double getPosZ() { return this.posZ; }
+
     private void trace(final String state, final int packetId, final long t0) {
         this.phaseTrace.add(state + ":0x" + Integer.toHexString(packetId) + ":" + (System.nanoTime() - t0) / 1_000_000 + "ms");
+    }
+
+    // 批次141（R5）：带载荷长度的追踪（未压缩包长度可直接用于包型识别）
+    void traceLen(final String state, final int packetId, final int payloadLen, final long t0) {
+        this.phaseTrace.add(state + ":0x" + Integer.toHexString(packetId) + ":len=" + payloadLen + ":" + (System.nanoTime() - t0) / 1_000_000 + "ms");
     }
 
     public OfflineJoinBot(final String host, final int port, final String name) {
@@ -86,17 +106,53 @@ public final class OfflineJoinBot {
         return t;
     }
 
+    // Papo batch 141 (R5 内存浸泡)：行走扩散后在原地驻留（持续回 keepalive 保持连接与
+    // 区块票据），供 harness 在驻留窗口内做 jcmd 堆测量——bot 断开会丢票据/卸区块。
+    public long[] joinWalkDwellAndDisconnect(final long spreadMs, final double dxPerTick, final double dzPerTick,
+                                             final long dwellMs) throws IOException {
+        final long[] t = this.doJoin(100);
+        this.walk(spreadMs, dxPerTick, dzPerTick);
+        if (dwellMs > 0) {
+            this.walk(dwellMs, 0, 0); // 原地踏步：同坐标位置包 + keepalive 排水
+        }
+        this.socket.close();
+        return t;
+    }
+
     private void walk(final long durationMs, final double dxPerTick, final double dzPerTick) throws IOException {
-        double x = 0.5, y = 100.0, z = 0.5;
+        // 批次141（R5）：等待首个位置同步（placeNewPlayer 后服务端必发 0x45）
+        final long knowBy = System.currentTimeMillis() + 10_000;
+        this.socket.setSoTimeout(20);
+        while (!this.posKnown) {
+            if (System.currentTimeMillis() > knowBy) {
+                throw new IOException("no PLAYER_POSITION sync within 10s");
+            }
+            this.drainPlayInbound();
+            if (!this.posKnown) {
+                try {
+                    Thread.sleep(20);
+                } catch (final InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+        }
         final long deadline = System.currentTimeMillis() + durationMs;
-        this.socket.setSoTimeout(20); // 短超时读入站（keepalive/ping）
         while (System.currentTimeMillis() < deadline) {
-            x += dxPerTick;
-            z += dzPerTick;
+            // 从（可能被服务端纠偏过的）当前坐标推进，碰撞/纠偏经 0x46 采纳后自然收敛；
+            // gamemode=spectator：noPhysics 豁免 moved-wrongly/CLIPPED_INTO_BLOCK，y 恒定
+            // 直穿地形（批次141 判例：survival 下 +0.5/tick 爬升撞山面必触发纠偏循环）
+            this.posX += dxPerTick;
+            this.posZ += dzPerTick;
+            if (this.traceMoves < 6) { // 诊断探针（批次141）：前 6 个移动包坐标
+                System.out.println("TRACE[" + this.name + "] move#" + this.traceMoves
+                    + " x=" + this.posX + " y=" + this.posY + " z=" + this.posZ);
+                this.traceMoves++;
+            }
             final ByteArrayOutputStream b = new ByteArrayOutputStream(25);
-            b.write(longBytes(Double.doubleToLongBits(x)));
-            b.write(longBytes(Double.doubleToLongBits(y)));
-            b.write(longBytes(Double.doubleToLongBits(z)));
+            b.write(longBytes(Double.doubleToLongBits(this.posX)));
+            b.write(longBytes(Double.doubleToLongBits(this.posY)));
+            b.write(longBytes(Double.doubleToLongBits(this.posZ)));
             b.write(0x01); // onGround=true, horizontalCollision=false
             this.sendPacket(0x1D, b.toByteArray()); // MOVE_PLAYER_POS
             this.drainPlayInbound();
@@ -110,16 +166,67 @@ public final class OfflineJoinBot {
         this.socket.setSoTimeout(0);
     }
 
+    /** 非阻塞处理入站 keepalive/ping/位置同步（其他包跳读）。返回是否为已识别包。 */
+    private boolean handlePlayFrame(final Frame f) throws IOException {
+        switch (f.packetId()) {
+            case 0x2B -> this.sendPacket(0x1B, f.payload); // keepalive echo（long）
+            case 0x3B -> this.sendPacket(0x2B, f.payload); // ping → pong（int）
+            case 0x46 -> { // PLAYER_POSITION：采纳坐标 + 回传送确认（id=0x46 经验实证：
+                // 注册序推算 0x45 差一，实测 join burst 中唯一 len=61 的包恰为 varint+48B+8B+4B 结构）
+                if (this.traceHex < 8) { // 诊断探针（批次141）：前 8 个 0x46 原样十六进制转储
+                    System.out.println("TRACE[" + this.name + "] 0x46 len=" + f.payload().length + " hex=" + hex(f.payload()));
+                }
+                this.traceHex++;
+                final int[] p = {0};
+                final int teleportId = readVarintAt(f.payload(), p);
+                final double x = Double.longBitsToDouble(readLongAt(f.payload(), p));
+                final double y = Double.longBitsToDouble(readLongAt(f.payload(), p));
+                final double z = Double.longBitsToDouble(readLongAt(f.payload(), p));
+                readLongAt(f.payload(), p); // deltaMovement x/y/z 不消费
+                readLongAt(f.payload(), p);
+                readLongAt(f.payload(), p);
+                p[0] += 4; // yaw float
+                p[0] += 4; // pitch float
+                int mask = 0;
+                for (int i = 3; i >= 0; i--) { // int 大端
+                    mask = (mask << 8) | (f.payload()[p[0] + i] & 0xFF);
+                }
+                if ((mask & 0x01) != 0) { this.posX += x; } else { this.posX = x; }
+                if ((mask & 0x02) != 0) { this.posY += y; } else { this.posY = y; }
+                if ((mask & 0x04) != 0) { this.posZ += z; } else { this.posZ = z; }
+                this.posKnown = true;
+                final ByteArrayOutputStream acc = new ByteArrayOutputStream(6);
+                writeVarint(acc, teleportId);
+                this.sendPacket(0x00, acc.toByteArray()); // ACCEPT_TELEPORTATION
+            }
+            default -> { return false; }
+        }
+        return true;
+    }
+
+    private static String hex(final byte[] data) { // 诊断探针（批次141）
+        final StringBuilder sb = new StringBuilder(data.length * 3);
+        for (final byte b : data) {
+            sb.append(String.format("%02X ", b));
+        }
+        return sb.toString().trim();
+    }
+
+    private static long readLongAt(final byte[] data, final int[] pos) {
+        long v = 0;
+        for (int i = 0; i < 8; i++) {
+            v = (v << 8) | (data[pos[0] + i] & 0xFFL);
+        }
+        pos[0] += 8;
+        return v;
+    }
+
     /** 非阻塞处理入站 keepalive/ping（其他包跳读）。 */
     private void drainPlayInbound() {
         try {
             while (true) {
                 final Frame f = this.readFrame();
-                switch (f.packetId) {
-                    case 0x2B -> this.sendPacket(0x1B, f.payload); // keepalive echo（long）
-                    case 0x3B -> this.sendPacket(0x2B, f.payload); // ping → pong（int）
-                    default -> { }
-                }
+                this.handlePlayFrame(f);
             }
         } catch (final Exception expected) {
             // SocketTimeout / EOF（EOF=被断开，由调用方发现）
@@ -127,9 +234,12 @@ public final class OfflineJoinBot {
     }
 
     private static byte[] longBytes(final long v) {
+        // 大端（网络序）：Minecraft FriendlyByteBuf.writeLong/writeDouble 语义，
+        // 批次141 判例：此处曾按 b[i]=v>>>(8*i) 产出小端，服务端按大端解码得次正规数
+        // ≈0.0 —— 三个坐标恒 (0,0,0)，"moved too quickly" 每tick纠偏回出生点的根因
         final byte[] b = new byte[8];
-        for (int i = 7; i >= 0; i--) {
-            b[i] = (byte) (v >>> (8 * i));
+        for (int i = 0; i < 8; i++) {
+            b[i] = (byte) (v >>> (8 * (7 - i)));
         }
         return b;
     }
@@ -199,7 +309,7 @@ public final class OfflineJoinBot {
 
         // --- PLAY 状态：首个 play 包 = placeNewPlayer 完成 ---
         final Frame firstPlay = this.readFrame();
-        this.trace("PLAY", firstPlay.packetId(), t0);
+        this.traceLen("PLAY", firstPlay.packetId(), firstPlay.payload().length, t0);
         final long tSpawn = System.nanoTime();
         if (firstPlay == null) {
             throw new EOFException("no play packet after configuration");
@@ -209,7 +319,8 @@ public final class OfflineJoinBot {
             this.socket.setSoTimeout(5);
             for (int i = 0; i < 12; i++) {
                 final Frame f = this.readFrame();
-                this.trace("PLAY", f.packetId(), t0);
+                this.traceLen("PLAY", f.packetId(), f.payload().length, t0);
+                this.handlePlayFrame(f); // 批次141（R5）：首个位置同步在此窗口内即被采纳
             }
         } catch (final java.net.SocketTimeoutException expected) {
             // 突发读完（或 5ms 无更多）——正常

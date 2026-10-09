@@ -5,7 +5,7 @@ Subject: [PATCH] Papo InventoryClickEvent QUICK_CRAFT clicked craft s
 
 
 diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-index 9df138083132b072134f2dd3f4756e3f5a6b3bd5..edfcadd1aa60ab0cae9fc8a90aa7b4d944ac3462 100644
+index 9df138083132b072134f2dd3f4756e3f5a6b3bd5..21a4946ee3ca861d5428712b3f6729ec1e03f611 100644
 --- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 +++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 @@ -3077,6 +3077,59 @@ public class ServerGamePacketListenerImpl
@@ -68,7 +68,7 @@ index 9df138083132b072134f2dd3f4756e3f5a6b3bd5..edfcadd1aa60ab0cae9fc8a90aa7b4d9
                      SlotType type = inventory.getSlotType(slotNum);
  
                      InventoryClickEvent event;
-@@ -3362,6 +3409,7 @@ public class ServerGamePacketListenerImpl
+@@ -3362,6 +3415,7 @@ public class ServerGamePacketListenerImpl
                              this.player.containerMenu.sendAllDataToRemote();
                          }
                      }

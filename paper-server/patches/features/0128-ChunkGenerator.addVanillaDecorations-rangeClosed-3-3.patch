@@ -5,10 +5,10 @@ Subject: [PATCH] ChunkGenerator.addVanillaDecorations rangeClosed 3 3
 
 
 diff --git a/net/minecraft/world/level/chunk/ChunkGenerator.java b/net/minecraft/world/level/chunk/ChunkGenerator.java
-index c0c54cd39e428ab633e5446eb02ad534a41826da..d981bb4e657423d1949375aeeb879fb285a77163 100644
+index 5a8e7e21cc3ca87158565d821b5383cd72697c8c..a3a5291c38714c0a3aa7b4d790666e3a726428df 100644
 --- a/net/minecraft/world/level/chunk/ChunkGenerator.java
 +++ b/net/minecraft/world/level/chunk/ChunkGenerator.java
-@@ -358,13 +358,20 @@ public abstract class ChunkGenerator {
+@@ -366,13 +366,20 @@ public abstract class ChunkGenerator {
              WorldgenRandom worldgenRandom = new WorldgenRandom(new XoroshiroRandomSource(RandomSupport.generateUniqueSeed()));
              long l = worldgenRandom.setDecorationSeed(level.getSeed(), blockPos.getX(), blockPos.getZ());
              Set<Holder<Biome>> set = new ObjectArraySet<>();

@@ -1,0 +1,53 @@
+server cmd: F:/Java/21/bin/java.exe -Xms4G -Xmx4G -Dfile.encoding=UTF-8 -jar server.jar nogui
+boot: [20:24:06 INFO]: Done (16.390s)! For help, type "help"
+walk phase started (1 bots x 30000ms spread)
+TRACE[MemB00] 0x46 len=61 hex=01 40 16 00 00 00 00 00 00 40 51 C0 00 00 00 00 00 40 79 E8 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+TRACE[MemB00] move#0 x=5.5 y=71.5 z=414.75
+TRACE[MemB00] move#1 x=5.5 y=72.0 z=415.0
+TRACE[MemB00] move#2 x=5.5 y=72.5 z=415.25
+TRACE[MemB00] move#3 x=5.5 y=73.0 z=415.5
+TRACE[MemB00] move#4 x=5.5 y=73.5 z=415.75
+TRACE[MemB00] move#5 x=5.5 y=74.0 z=416.0
+TRACE[MemB00] 0x46 len=61 hex=02 40 16 00 00 00 00 00 00 40 51 C0 00 00 00 00 00 40 79 E8 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+TRACE[MemB00] 0x46 len=61 hex=03 40 16 00 00 00 00 00 00 40 51 C0 00 00 00 00 00 40 79 E8 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+TRACE[MemB00] 0x46 len=61 hex=04 40 16 00 00 00 00 00 00 40 51 C0 00 00 00 00 00 40 79 E8 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+TRACE[MemB00] 0x46 len=61 hex=05 40 16 00 00 00 00 00 00 40 51 C0 00 00 00 00 00 40 79 E8 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+TRACE[MemB00] 0x46 len=61 hex=06 40 16 00 00 00 00 00 00 40 51 C0 00 00 00 00 00 40 79 E8 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+TRACE[MemB00] 0x46 len=61 hex=07 40 16 00 00 00 00 00 00 40 51 C0 00 00 00 00 00 40 79 E8 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+TRACE[MemB00] 0x46 len=61 hex=08 40 16 00 00 00 00 00 00 40 51 C0 00 00 00 00 00 40 79 E8 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+MemSoak.botFinalPos MemB00 x=5 z=414
+MemSoak.heapUsedKb=389379
+MemSoak.histogramRows=19550
+MemSoak.cls net.minecraft.world.level.chunk.LevelChunk instances=625 bytes=125000
+MemSoak.cls net.minecraft.world.level.chunk.LevelChunkSection instances=68016 bytes=2720640
+MemSoak.cls net.minecraft.server.level.ChunkHolder instances=2209 bytes=194392
+MemSoak.cls net.minecraft.network.PapoSharedWireMemo instances=25 bytes=1000
+MemSoak.cls net.minecraft.world.level.chunk.PalettedContainer instances=136033 bytes=3264792
+---- class_histogram top 25 ----
+MemSoak.top 1:        493712       45592080  [Ljava.lang.Object; (java.base@21.0.10)
+MemSoak.top 2:        403128       41368992  [B (java.base@21.0.10)
+MemSoak.top 3:        322494       36966800  [J (java.base@21.0.10)
+MemSoak.top 4:        343559       21987776  net.minecraft.world.phys.AABB
+MemSoak.top 5:         84467       14878392  [D (java.base@21.0.10)
+MemSoak.top 6:        141484       14714336  net.minecraft.world.phys.shapes.ArrayVoxelShape
+MemSoak.top 7:        140271       13888176  [S (java.base@21.0.10)
+MemSoak.top 8:        419711       10073064  net.minecraft.core.BlockPos
+MemSoak.top 9:        393203        9436872  net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate$StructureBlockInfo
+MemSoak.top 10:        288415        9229280  java.util.HashMap$Node (java.base@21.0.10)
+MemSoak.top 11:        373234        8957616  java.lang.String (java.base@21.0.10)
+MemSoak.top 12:        140034        7841904  ca.spottedleaf.moonrise.patches.collisions.shape.CachedShapeData
+MemSoak.top 13:        140034        7841904  net.minecraft.world.phys.shapes.BitSetDiscreteVoxelShape
+MemSoak.top 14:        291765        7002360  it.unimi.dsi.fastutil.doubles.DoubleArrayList
+MemSoak.top 15:        141155        6775440  ca.spottedleaf.moonrise.patches.collisions.shape.CachedToAABBs
+MemSoak.top 16:         18930        5206008  [I (java.base@21.0.10)
+MemSoak.top 17:          9010        5183248  [Ljava.util.HashMap$Node; (java.base@21.0.10)
+MemSoak.top 18:        136033        4353056  net.minecraft.world.level.chunk.PalettedContainer$Data
+MemSoak.top 19:         68016        4353024  it.unimi.dsi.fastutil.shorts.Short2ShortOpenHashMap
+MemSoak.top 20:         29671        4272624  net.minecraft.world.level.block.state.BlockState
+MemSoak.top 21:         33053        3941840  java.lang.Class (java.base@21.0.10)
+MemSoak.top 22:        163947        3934728  java.util.ArrayList (java.base@21.0.10)
+MemSoak.top 23:        114868        3675776  ca.spottedleaf.moonrise.patches.starlight.light.SWMRNibbleArray
+MemSoak.top 24:        144683        3472392  java.util.BitSet (java.base@21.0.10)
+MemSoak.top 25:        136033        3264792  net.minecraft.world.level.chunk.PalettedContainer
+bots done
+MemSoak.gate logErrors=0 exited=true

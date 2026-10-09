@@ -5,10 +5,10 @@ Subject: [PATCH] Papo: zero-listener fast path for InventoryCreativeEvent
 
 
 diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-index b7c6d237aa5606515f633ac4508d98491d5650ad..a3e756b77c52e88d87a2a6dc3c65f1eb572d0dea 100644
+index 64d15ad5a0b5b88b5e1c1325f7f08b7e377b6e1b..c72f28d1f24ce09c935f0a4e254eca126eece6b1 100644
 --- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 +++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-@@ -3577,7 +3577,20 @@ public class ServerGamePacketListenerImpl
+@@ -3583,7 +3583,20 @@ public class ServerGamePacketListenerImpl
              boolean flag1 = packet.slotNum() >= 1 && packet.slotNum() <= 45;
              boolean flag2 = itemStack.isEmpty() || itemStack.getCount() <= itemStack.getMaxStackSize();
              if (flag || (flag1 && !ItemStack.matches(this.player.inventoryMenu.getSlot(packet.slotNum()).getItem(), packet.itemStack()))) { // Insist on valid slot
@@ -29,7 +29,7 @@ index b7c6d237aa5606515f633ac4508d98491d5650ad..a3e756b77c52e88d87a2a6dc3c65f1eb
                  org.bukkit.inventory.InventoryView inventory = this.player.inventoryMenu.getBukkitView();
                  org.bukkit.inventory.ItemStack item = CraftItemStack.asBukkitCopy(packet.itemStack());
  
-@@ -3611,6 +3624,7 @@ public class ServerGamePacketListenerImpl
+@@ -3617,6 +3630,7 @@ public class ServerGamePacketListenerImpl
                          }
                          return;
                  }

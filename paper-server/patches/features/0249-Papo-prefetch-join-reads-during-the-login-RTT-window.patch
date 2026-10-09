@@ -24,7 +24,7 @@ Fallback: no prefetch / pool halted / body failure / bounded-wait timeout ->
 original synchronous path byte-for-byte unchanged.
 
 diff --git a/net/minecraft/server/PlayerAdvancements.java b/net/minecraft/server/PlayerAdvancements.java
-index e22a887e01e898d6101de2bc64c8a7eda327c540..dfcaf577ae66323ae8df4656d5607f129edf1eab 100644
+index e22a887e01e898d6101de2bc64c8a7eda327c540..dbc66731ef45d697308e09b089348c710db0a47b 100644
 --- a/net/minecraft/server/PlayerAdvancements.java
 +++ b/net/minecraft/server/PlayerAdvancements.java
 @@ -110,19 +110,52 @@ public class PlayerAdvancements {
@@ -233,7 +233,7 @@ index 22b886c14d5eb10ee8585b69e95fa9aaf5be6a22..c40056e092ff3d8b84e6e17b1b0ae33f
      protected void save(ServerPlayer player) {
          if (!player.getBukkitEntity().isPersistent()) return; // CraftBukkit
 diff --git a/net/minecraft/stats/ServerStatsCounter.java b/net/minecraft/stats/ServerStatsCounter.java
-index 4942b5a16db53712716bcbb9c7a9e05791ce7b53..a5f0fd0c6bc619d7754bf92f2bd64318fa7b4840 100644
+index 4942b5a16db53712716bcbb9c7a9e05791ce7b53..2e7b776bc35d3593c0433fe9921bcf89b741eea5 100644
 --- a/net/minecraft/stats/ServerStatsCounter.java
 +++ b/net/minecraft/stats/ServerStatsCounter.java
 @@ -65,17 +65,46 @@ public class ServerStatsCounter extends StatsCounter {
@@ -295,7 +295,7 @@ index 4942b5a16db53712716bcbb9c7a9e05791ce7b53..a5f0fd0c6bc619d7754bf92f2bd64318
          }
          // Paper start - Moved after stat fetching for player state file
 diff --git a/net/minecraft/world/level/storage/PlayerDataStorage.java b/net/minecraft/world/level/storage/PlayerDataStorage.java
-index 7e24ed5090f8e69b6e61cf5f9c9a250621c5dad0..f4fd6fe4dd962414fd572c3b75d0b1647227c9ed 100644
+index 7e24ed5090f8e69b6e61cf5f9c9a250621c5dad0..306fbbeca2211dc95b2f5c8ec8d3b71de9eebc06 100644
 --- a/net/minecraft/world/level/storage/PlayerDataStorage.java
 +++ b/net/minecraft/world/level/storage/PlayerDataStorage.java
 @@ -8,6 +8,8 @@ import java.nio.file.Path;
@@ -426,7 +426,7 @@ index 7e24ed5090f8e69b6e61cf5f9c9a250621c5dad0..f4fd6fe4dd962414fd572c3b75d0b164
      private Optional<CompoundTag> load(NameAndId nameAndId, String suffix) {
          // Papo start - batch 79: a quick re-join can race the async .dat write; wait for it so
          // the read always observes the latest save, exactly like the synchronous code did.
-@@ -81,6 +186,19 @@ public class PlayerDataStorage {
+@@ -81,6 +188,19 @@ public class PlayerDataStorage {
                  this.playerDir.toPath().resolve(nameAndId.id().toString() + ".dat"));
          }
          // Papo end - batch 79: read-after-write visibility for the async .dat write
@@ -446,7 +446,7 @@ index 7e24ed5090f8e69b6e61cf5f9c9a250621c5dad0..f4fd6fe4dd962414fd572c3b75d0b164
          File file = new File(this.playerDir, nameAndId.id() + suffix);
          // Spigot start
          boolean usingWrongFile = false;
-@@ -96,20 +214,29 @@ public class PlayerDataStorage {
+@@ -96,20 +216,29 @@ public class PlayerDataStorage {
              try {
                  // Spigot start
                  Optional<CompoundTag> optional = Optional.of(NbtIo.readCompressed(file.toPath(), NbtAccounter.unlimitedHeap()));

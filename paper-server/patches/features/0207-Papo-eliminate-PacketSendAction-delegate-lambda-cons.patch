@@ -1,15 +1,15 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Zurker <91011862+hershate@users.noreply.github.com>
 Date: Sun, 2 Aug 2026 18:42:03 +0800
-Subject: [PATCH] Papo: eliminate PacketSendAction delegate lambda (consume-once
- AtomicBoolean kept)
+Subject: [PATCH] Papo: eliminate PacketSendAction delegate lambda
+ (consume-once AtomicBoolean kept)
 
 
 diff --git a/net/minecraft/network/Connection.java b/net/minecraft/network/Connection.java
-index 19ec939529eb638bdc4d7fd9260f161fae118314..90bcd40d182ccf5465a3c6913f13dd5fb2b51907 100644
+index 19ec939529eb638bdc4d7fd9260f161fae118314..1534834506d222d176e78a85d439644321ba8126 100644
 --- a/net/minecraft/network/Connection.java
 +++ b/net/minecraft/network/Connection.java
-@@ -916,10 +916,11 @@
+@@ -916,10 +916,11 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
      }
  
      private static class WrappedConsumer implements Consumer<Connection> {
@@ -23,7 +23,7 @@ index 19ec939529eb638bdc4d7fd9260f161fae118314..90bcd40d182ccf5465a3c6913f13dd5f
              this.delegate = delegate;
          }
  
-@@ -939,10 +940,30 @@
+@@ -939,10 +940,30 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
  
      private static final class PacketSendAction extends WrappedConsumer {
          private final Packet<?> packet;
