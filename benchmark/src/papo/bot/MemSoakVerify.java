@@ -144,6 +144,12 @@ public final class MemSoakVerify {
                 Thread.sleep(wait);
             }
             measure(server.pid(), outDir);
+            // 批次144（R5 轮4）：可选堆转储（-Dmemsoak.dump=true），供 HeapRefAttr 持有链归因
+            if (Boolean.getBoolean("memsoak.dump")) {
+                final long t0 = System.nanoTime();
+                final String dumpOut = run(server.pid(), "GC.heap_dump " + outDir.toAbsolutePath().resolve("heap.hprof"));
+                System.out.println("MemSoak.heapDump " + dumpOut.trim() + " tookMs=" + (System.nanoTime() - t0) / 1_000_000);
+            }
 
             for (final CompletableFuture<Void> f : futures) {
                 f.get(spreadMs + dwellMs + 120, TimeUnit.SECONDS);

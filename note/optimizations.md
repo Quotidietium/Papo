@@ -3085,3 +3085,27 @@ DF/Holder/样条簇实例 −65.5%，**插值器 double[] −61%**（41.8→16.2
 palette 改写否决——可 intern 前提=COW 替换独占 mutation 面）；StructurePiece
 块表 24MB+（保存路径重序列化消费）。剩余大项（[J/[B/palette Object[]）
 为区块内容活数据本体。详见轮3 报告 §6。
+
+## 批次 144（2026-10-09）：R5 轮4——HPROF 持有链归因，HashMap$Node 簇与 byte[] 逐项确证，R5 收束（0.83.0 保持）
+
+轮3 后画像两大未归因簇（HashMap$Node ~118/区块、[B 成分）的持有链归因轮。
+工具：MemSoakVerify 加 `-Dmemsoak.dump=true`（测量点 GC.heap_dump）+ 新增
+HeapRefAttr（HPROF 三遍流式解析器，982MB/10s，段内子记录字节级对账 fail-loud；
+Node 归属走 Node[] 表持有者而非 next 链，语义层=键值类对统计）。对 0.83.0
+绿门浸泡转储（12 bot 径向+驻留，982MB）归因：byte[] 84.9MB 中 70.8% 为
+Starlight SWMRNibbleArray 光照半字节表（29,322×2048B，逐 section 活数据，
+光照正确性红线）、14.7% String 本体、~12% zip 读缓存（boot 常量）；Node
+363,420 个零未归因——区块缩放成分=NoiseChunk DF 包装簇 ~118.8k（已被
+0268 界定为 carvers 前活环，轮3 实证 −65.5%），其余为玩家缩放进度
+（advancements ~83.4k，存档性）、boot 常量 DFU schema ~54k、注册表 Holder
+~18.9k。**逐项确证无下一个红线内可安全回收的区块缩放驻留 → 依指令判例归档，
+R5 内存主线正式收束：四轮累计 0.80.0→0.83.0 = 1,154,349→873,548 KB
+（−280.8MB，−24.3%，同场景配对腿）**。
+
+判例：HPROF 以 heapDumper.cpp 实值为准（根子记录编号偏移+堆数据全在 0x1C
+段内，规格文本先验会静默错位）；尺寸表缺项（primLen 漏 int）病征是错位点后
+数 MB 伪合法记录——自描述长度流中错位可自愈，唯字节级对账能在本地暴露；
+"返回消费长度"必须与读操作逐字节同源；归因轮确证无可回收项时收束本身是
+合法产出。
+报告：
+[note/report/perf/2026-10-09-memsoak-r5-batch144.md](report/perf/2026-10-09-memsoak-r5-batch144.md)。
