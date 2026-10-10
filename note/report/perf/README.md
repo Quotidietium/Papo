@@ -37,6 +37,7 @@ jcmd heap_info 活集；配对纪律=同会话相邻二进制、LevelChunk ±1% 
 | R16 | 156 | →0.89.0 | shape 族规范共享（"有界≠不可约"证伪） | −40.1MB（−6.52% 保守） | [shape-intern-r16-…](2026-10-10-shape-intern-r16-batch156.md) |
 | R17 | 157 | →0.90.0 | 静态形状表收割（getShapeForEachState 咽喉点） | −14.2MB（−2.12%，族累计 −94%） | [shape-static-tables-r17-…](2026-10-10-shape-static-tables-r17-batch157.md) |
 | R18 | 158 | →0.91.0 | SWMR 冻结壳规范共享（3 单例+COW+定居交换+sweep） | SWMR 类 −10.8MB（−81%，三对 census 复验）；每区块全堆 −3.0%（中位） | [swmr-shared-shells-r18-…](2026-10-10-swmr-shared-shells-r18-batch158.md) |
+| R19 | 159 | 0.91.0 | 残余收敛审计+主线收官直对（0.80 vs 0.91） | 正面判负（内容主导）；每区块 189.3→121.3KB=**−35.9%**（同会话直对） | [residual-audit-r19-…](2026-10-10-residual-audit-r19-batch159.md) |
 
 ## 终局状态
 
