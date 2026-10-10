@@ -1,0 +1,36 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 10 Oct 2026 11:16:10 +0800
+Subject: [PATCH] Papo: batch 157
+
+
+diff --git a/net/minecraft/world/level/block/Block.java b/net/minecraft/world/level/block/Block.java
+index 94b4143449c99ee35db44ab8e2a766d924aa6410..dae33e2ffcd742690e55bf6e214754f0f6546cd0 100644
+--- a/net/minecraft/world/level/block/Block.java
++++ b/net/minecraft/world/level/block/Block.java
+@@ -69,6 +69,7 @@ import net.minecraft.world.level.storage.loot.parameters.LootContextParamSets;
+ import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
+ import net.minecraft.world.phys.Vec3;
+ import net.minecraft.world.phys.shapes.BooleanOp;
++import net.minecraft.world.phys.shapes.PapoShapeCache; // Papo - batch 157 (R17)
+ import net.minecraft.world.phys.shapes.Shapes;
+ import net.minecraft.world.phys.shapes.VoxelShape;
+ import org.jspecify.annotations.Nullable;
+@@ -615,7 +616,7 @@ public class Block extends BlockBehaviour implements ItemLike {
+     }
+ 
+     protected Function<BlockState, VoxelShape> getShapeForEachState(Function<BlockState, VoxelShape> shapeGetter) {
+-        return this.stateDefinition.getPossibleStates().stream().collect(ImmutableMap.toImmutableMap(Function.identity(), shapeGetter))::get;
++        return this.stateDefinition.getPossibleStates().stream().collect(ImmutableMap.toImmutableMap(Function.identity(), state -> PapoShapeCache.papoCanonical(shapeGetter.apply(state))))::get; // Papo - batch 157 (R17): canonical per-state shape tables
+     }
+ 
+     protected Function<BlockState, VoxelShape> getShapeForEachState(Function<BlockState, VoxelShape> shapeGetter, Property<?>... properties) {
+@@ -625,7 +626,7 @@ public class Block extends BlockBehaviour implements ItemLike {
+             .getPossibleStates()
+             .stream()
+             .filter(state -> map.entrySet().stream().allMatch(entry -> state.getValue((Property<?>)entry.getKey()) == entry.getValue()))
+-            .collect(ImmutableMap.toImmutableMap(Function.identity(), shapeGetter));
++            .collect(ImmutableMap.toImmutableMap(Function.identity(), state -> PapoShapeCache.papoCanonical(shapeGetter.apply(state)))); // Papo - batch 157 (R17): canonical per-state shape tables
+         return state -> {
+             for (Entry<? extends Property<?>, Object> entry : map.entrySet()) {
+                 state = setValueHelper(state, (Property<?>)entry.getKey(), entry.getValue());

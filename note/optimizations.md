@@ -3447,3 +3447,27 @@ ArrayVoxelShape −72.6%/BitSetDiscreteVoxelShape −73.3%/DoubleArrayList −70
 主线：0.80.0→0.89.0 跨会话链 ≈1,154.3→~720MB（−37.6%+），shape 族移出判负清单。
 报告：
 [note/report/perf/2026-10-10-shape-intern-r16-batch156.md](report/perf/2026-10-10-shape-intern-r16-batch156.md)。
+
+## 批次 157（2026-10-10）：R17——shape 族静态形状表收割，咽喉点外科手术（0.89.0→0.90.0，0275）
+
+R16 后残余归因（B-089 转储双层）：规范表仅 **517 条目**（26,753 状态→517 碰撞
+几何）；ImmutableMapEntry 持有 10,887 引用=块类每状态形状表+惰性派生≈31k 实例=
+残余主体；实体动态 ~770。R16 风险记档"Shapes 工厂拦截需瞬态排除"实测后整个
+消失——**块类每状态形状表全部经 Block.getShapeForEachState 两重载建造**（17
+文件调用，引导期一次性，ImmutableMap 随块永久持有）：建造点即长寿命持有点，
+瞬态从不流经。0275=两 collect 值包 papoCanonical（+导入），零其他改动；HopperBlock
+手搓表（~15 形状）留档。单测补 2 项（跨楼梯类型视觉形状 assertSame=强判别器+
+栅栏跨木种+楼梯 half 各异，总 9 项）；test 全绿六套件维持；重放 EXIT=0+counts
+ALL OK（0275）+compile --rerun-tasks+jar 0.90.0。配对浸泡（A-089→B-090 带转储，
+**双门绿、区块 +0.60% 门内**）：684,904@6,043 vs 670,399@6,079=**原始 −14.2MB
+（−2.12% 保守向）**、每区块 113.3→110.3KB、boot 无回退。census 闭合：AABB
+345,808→71,467→**20,333（−94.1%）**、ArrayVoxelShape→**8,064（−94.3%）**、
+BitSetDiscreteVoxelShape→**7,842（−94.4%）**、DoubleArrayList→**16,640（−94.3%）**；
+族 ~51MB→~4-6MB（两轮配对 −54.3MB 跨窗互证）；残余重复率 99.1%→84.0%=地板
+（3,251 几何+根面向形状二阶重复 <1MB 判不值得+实体+hopper）。判例：**咽喉点
+搜索先于风险设计（风险记档随测量更新）/"建造点=长寿命持有点"是最强 intern
+挂点/转储腿可与门腿合并（冻结伪影负载相关非必然）**。主线 0.80.0→0.90.0：
+每区块 189.5→110.3KB（−41.8%），总堆 ≈−42%（链式）。palette/光照变长编码
+（红线相邻）按目标新条款呈报用户决策。
+报告：
+[note/report/perf/2026-10-10-shape-static-tables-r17-batch157.md](report/perf/2026-10-10-shape-static-tables-r17-batch157.md)。

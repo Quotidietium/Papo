@@ -82,6 +82,26 @@ public class PapoShapeInternTest {
     }
 
     @Test
+    void perStateShapeTablesShareAcrossBlockTypes() {
+        // 批 157：getShapeForEachState 两重载（楼梯/栅栏/墙/挂牌等的每状态形状表）
+        // 引导期一次性建造——跨块类型等几何坍缩。视觉形状（getShape）与碰撞形状
+        //（批 156 Cache 根）分别路由，这里验视觉表。
+        final var oak = Blocks.OAK_STAIRS.defaultBlockState().getShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO, CollisionContext.empty());
+        final var cobble = Blocks.COBBLESTONE_STAIRS.defaultBlockState().getShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO, CollisionContext.empty());
+        Assertions.assertSame(oak, cobble);
+        final var oakFence = Blocks.OAK_FENCE.defaultBlockState().getShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO, CollisionContext.empty());
+        final var spruceFence = Blocks.SPRUCE_FENCE.defaultBlockState().getShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO, CollisionContext.empty());
+        Assertions.assertSame(oakFence, spruceFence);
+    }
+
+    @Test
+    void perStateShapeTableVariantsStayDistinct() {
+        final var bottom = Blocks.OAK_STAIRS.defaultBlockState().getShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO, CollisionContext.empty());
+        final var top = Blocks.OAK_STAIRS.defaultBlockState().setValue(net.minecraft.world.level.block.StairBlock.HALF, net.minecraft.world.level.block.state.properties.Half.TOP).getShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO, CollisionContext.empty());
+        Assertions.assertNotSame(bottom, top);
+    }
+
+    @Test
     void sharedShapeGeometryIsByteIdentical() {
         final VoxelShape oak = Blocks.OAK_STAIRS.defaultBlockState().getCollisionShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO, CollisionContext.empty());
         final VoxelShape cobble = Blocks.COBBLESTONE_STAIRS.defaultBlockState().getCollisionShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO, CollisionContext.empty());
