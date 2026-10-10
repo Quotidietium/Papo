@@ -41,6 +41,7 @@ jcmd heap_info 活集；配对纪律=同会话相邻二进制、LevelChunk ±1% 
 | R20 | 160/161 | →0.92.0 | R19 判定对抗复核+两残余面收割（NoiseChunk 停机释放+blockEntities 懒分配） | 同窗每区块 190.4→101.4KB=**−46.7%**；census：[[D/NoiseChunk 归零、[D −96.5%、O2O 空图 −13,316（Imposter→0） | [residual-harvest-r20-…](2026-10-11-residual-harvest-r20-batch160-161.md) |
 | R21 | 162 | 0.92.0 | 0.92.0 基线残余归因审计（三面全判负，状态级/公式级证据升级） | O2O 空率 0.6% 实测；[J 构成 85.1%+残余闭合，SBS ceil 公式恒等（320 档缺席）；逐区块差分 31 类全负向 | [residual-attribution-r21](2026-10-11-residual-attribution-r21.md) |
 | R22 | 163 | 0.92.0 | 0.92.0 长时生长复验（R12 方法论）+转码视图对抗复核 | 活集同相位 ±0.4-0.7%（优于 R12）；批158-161 机制周期负载零回归；Dynamic/NBTMapType=静态扁平化表（双重定位+十采样逐位恒定） | [longrun-r22](2026-10-12-longrun-r22-batch163.md) |
+| R23 | 164 | 0.92.0 | 0.92.0 延迟守护复验（批158-161 机制 MSPT 面终验，红线两轴双闭合） | 六腿三序（含同序第三对）：池化 +0.8% 亚噪声、run2/run3 B≤A、boot 同带 | [mspt-guard-r23](2026-10-12-mspt-guard-r23-batch164.md) |
 
 ## 终局状态
 
