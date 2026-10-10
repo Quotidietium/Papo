@@ -3635,3 +3635,31 @@ R22 长跑），延迟面自 R15（0.88.0）后未复验——本轮补 0.92.0 �
 应用加强。分辨率如实陈述：本会话跨腿散布 ±0.6-0.7ms（R15 时 ≤0.3ms），对 <0.5ms 系统差
 分辨率有限但距可感知阈值两个量级。零代码变更零补丁零版本 bump。报告：
 [note/report/perf/2026-10-12-mspt-guard-r23-batch164.md](report/perf/2026-10-12-mspt-guard-r23-batch164.md)。
+
+## 批次 165（2026-10-12）：R24——堆外归因判负 + 分配源归因收割：SurfaceRules 热路径零分配化（0.92.0→0.93.0，0279）
+
+内存主线四层穷尽后的两个未量化面：(a) 堆外/直接内存从未归因；(b) R22 年轻代再填充突发
+（±41% raw used、eden 扩张 >1GB）的分配源从未站点级归因——分配率同时服务内存（瞬态/GC
+自适应）与 CPU（GC 工时）两面。**方法**：alloccensus-r24.sh（MemSoakVerify 同场景 +
+NMT summary/diff + Metaspace + Thread.print + 流送峰窗 JFR ObjectAllocationSample
+threshold=1ms 60s，9,252 事件三键聚合）。**面 (a) 判负**：Class/Metadata +71MB 全为惰性
+类加载、Code +65MB JIT 封顶内、129-130 线程=R1 形态、Other（Netty direct）~13.5MB——无
+可收敛堆外驻留。**面 (b) 普查**：worker 占 90%+；计数口径 top：updateY memoize 族 14.3%+
+SequenceRule ArrayItr 8.5%（**SurfaceRules 逐方块求值，22.8% trips**）、密度树 mapAll 拷贝
+族 20.7%（vanilla 架构判负：Marker 逐区块绑定、组合节点大多在 Marker 上、驻留零收益+MSPT
+无痛点）、fillArray/RNG/流族 vanilla 语义。**巨权伪影判例**：tick:848 fastIterator 权重口径
+596MB 实为单个 595.7MB 事件（线程自上次过界全部分配涂到过界站点）——站点可信度以计数+阈值
+（≥20）为准，权重只作区间（原始/净化双口径）。**收割（0279，单文件封闭）**：Context.updateY
+的 Supplier<Holder> biome → 手工 memoization（biome()+computed 标志；惰性/每窗口至多一次/
+坐标首用时读取与 vanilla λ 延迟 apply 同构/抛出重试=Guava 语义；两调用点 updateXZ→updateY→
+tryApply 窗口内字段无突变故字段值≡捕获参数）+ SequenceRule.tryApply 增强 for → 索引循环。
+单测 PapoSurfaceRulesAllocTest 5 用例入套件全绿。**验证**：目标族归零（Context$Lambda
+733→0/memoize 590→0/Supplier 590→0/ArrayItr 786→33 残为非本面站点）；总 trips 9,252→8,123
+（−12.2% 无偏计数），估重 26,681→16,866MB（原始 −36.8%/净化 −35.3%）；**世界生成恒等**：
+密度树驻留 HolderHolder 1,098/Holder$Direct 1,665/Multipoint 525 两腿逐位相等；内存对旧代
+活集 675,083→674,201KB（−0.13%），Metaspace 同量；**MSPT 四段证据链**：三跑两序 +0.34ms 同向复现→零生成对照排除（补丁不运行时倒序 5/5 槽逐位相等）→GC 窗 B 严格更优（young 7→5/STW −31%）→**钉 NewSize=1G 隔离 G1 自适应 eden 分叉（A 535 区 vs B 1,127 区）后 B 六槽全快（−0.45ms）**——未钉配置的 +0.34=分配削减后 G1 吞吐启发式扩 eden 的摊销效应非补丁成本，TPS 恒 20.0。指令预期
+候选对账：包序列化=残量 68MB/60s（批 141 已收主体）、光照=计数口径 absent（批 148/149
+旁证）、DFU=absent（全新生成窗+R22 已证常量表）。判例：JFR 单站点巨权不可归因（计数为准）/
+计数与权重双估计器（方向一致才硬）/分配收割立项三门槛（封闭单文件+恒等可证+簇级份额）/
+种子派生链是绝对红线（RNG 构造分配与份额无关直接出局）。版本 0.93.0。报告：
+[note/report/perf/2026-10-12-allocsource-r24-batch165.md](report/perf/2026-10-12-allocsource-r24-batch165.md)。

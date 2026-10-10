@@ -1,0 +1,142 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sun, 11 Oct 2026 02:59:35 +0800
+Subject: [PATCH] Papo: batch 165 - allocation-free surface rule evaluation hot
+ paths
+
+SurfaceRules$Context.updateY allocated a capturing lambda plus a
+Suppliers.memoize wrapper on every call (once per block of the surface
+column loop) and SequenceRule.tryApply allocated a fresh list iterator
+per rule evaluation. R24 JFR census (9,252 ObjectAllocationSample
+events, count-based attribution): these two sites account for ~27% of
+all allocation-sampler trips during streaming worldgen.
+
+- Context: replace the Supplier<Holder<Biome>> biome field with a
+  manually memoized Holder<Biome> + computed flag; biome() computes at
+  first use after each updateY with identical deferral semantics
+  (coords read at first call, exactly when the vanilla lambda's apply
+  would run; blockY is assigned from the same updateY parameter and
+  blockX/blockZ are stable for the whole column evaluation; the flag
+  is set only after a successful biomeGetter.apply so a throwing
+  getter retries on the next call, matching Guava memoize). Both
+  in-file consumers updated; no external references to the package-
+  private field exist.
+- SequenceRule.tryApply: enhanced-for replaced by an indexed loop with
+  identical order and short-circuit behavior; get(i) is O(1) for every
+  List implementation that reaches here.
+
+Zero behavioral difference; pure allocation elimination.
+
+diff --git a/net/minecraft/world/level/levelgen/SurfaceRules.java b/net/minecraft/world/level/levelgen/SurfaceRules.java
+index c19a6843ba53d5c1850b45b82a967b9dd397e6b8..4779cb5b2b614fbee2ff7b19efec88c2b5df56bf 100644
+--- a/net/minecraft/world/level/levelgen/SurfaceRules.java
++++ b/net/minecraft/world/level/levelgen/SurfaceRules.java
+@@ -1,6 +1,5 @@
+ package net.minecraft.world.level.levelgen;
+ 
+-import com.google.common.base.Suppliers;
+ import com.google.common.collect.ImmutableList;
+ import com.google.common.collect.ImmutableList.Builder;
+ import com.mojang.serialization.Codec;
+@@ -11,7 +10,6 @@ import java.util.List;
+ import java.util.Set;
+ import java.util.function.Function;
+ import java.util.function.Predicate;
+-import java.util.function.Supplier;
+ import net.minecraft.core.BlockPos;
+ import net.minecraft.core.Holder;
+ import net.minecraft.core.Registry;
+@@ -185,7 +183,7 @@ public class SurfaceRules {
+ 
+                 @Override
+                 protected boolean compute() {
+-                    return this.context.biome.get().is(BiomeConditionSource.this.biomeNameTest);
++                    return this.context.biome().is(BiomeConditionSource.this.biomeNameTest); // Papo - batch 165 (R24)
+                 }
+             }
+ 
+@@ -281,7 +279,13 @@ public class SurfaceRules {
+         private int minSurfaceLevel;
+         long lastUpdateY = -9223372036854775807L;
+         final BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+-        Supplier<Holder<Biome>> biome;
++        // Papo start - batch 165 (R24): updateY allocated a capturing lambda + a
++        // Suppliers.memoize wrapper on every call (per block of the surface column loop);
++        // manual memoization keeps the exact vanilla contract - lazy, computed at most once
++        // per updateY window, pos/coords read at first use like the deferred lambda apply().
++        Holder<Biome> biome;
++        boolean biomeComputed;
++        // Papo end - batch 165 (R24)
+         public int blockY;
+         int waterHeight;
+         int stoneDepthBelow;
+@@ -314,13 +318,31 @@ public class SurfaceRules {
+ 
+         protected void updateY(int stoneDepthAbove, int stoneDepthBelow, int waterHeight, int blockX, int blockY, int blockZ) {
+             this.lastUpdateY++;
+-            this.biome = Suppliers.memoize(() -> this.biomeGetter.apply(this.pos.set(blockX, blockY, blockZ)));
++            this.biomeComputed = false; // Papo - batch 165 (R24): invalidate; biome() recomputes lazily
+             this.blockY = blockY;
+             this.waterHeight = waterHeight;
+             this.stoneDepthBelow = stoneDepthBelow;
+             this.stoneDepthAbove = stoneDepthAbove;
+         }
+ 
++        // Papo start - batch 165 (R24): replaces the per-updateY Suppliers.memoize supplier.
++        // Coordinates are read at first call, exactly when the vanilla lambda's deferred
++        // apply() would run - this.blockY is assigned from the same parameter inside updateY
++        // and this.blockX/blockZ are stable for the whole column's rule evaluation, so the
++        // values are identical to the ones vanilla captured. The flag is set only after a
++        // successful apply so a throwing biomeGetter retries on the next call, matching
++        // Guava memoize.
++        protected Holder<Biome> biome() {
++            if (!this.biomeComputed) {
++                Holder<Biome> computed = this.biomeGetter.apply(this.pos.set(this.blockX, this.blockY, this.blockZ));
++                this.biome = computed;
++                this.biomeComputed = true;
++                return computed;
++            }
++            return this.biome;
++        }
++        // Papo end - batch 165 (R24)
++
+         protected double getSurfaceSecondary() {
+             if (this.lastSurfaceDepth2Update != this.lastUpdateXZ) {
+                 this.lastSurfaceDepth2Update = this.lastUpdateXZ;
+@@ -424,8 +446,7 @@ public class SurfaceRules {
+             @Override
+             protected boolean compute() {
+                 return this.context
+-                    .biome
+-                    .get()
++                    .biome() // Papo - batch 165 (R24)
+                     .value()
+                     .coldEnoughToSnow(this.context.pos.set(this.context.blockX, this.context.blockY, this.context.blockZ), this.context.getSeaLevel());
+             }
+@@ -580,14 +601,24 @@ public class SurfaceRules {
+     record SequenceRule(List<SurfaceRules.SurfaceRule> rules) implements SurfaceRules.SurfaceRule {
+         @Override
+         public @Nullable BlockState tryApply(int x, int y, int z) {
+-            for (SurfaceRules.SurfaceRule surfaceRule : this.rules) {
+-                BlockState blockState = surfaceRule.tryApply(x, y, z);
++            // Papo start - batch 165 (R24): the enhanced-for over the (immutable) rule list
++            // allocates a fresh iterator on every evaluation (per block, nested per sequence
++            // level); an indexed loop is allocation-free with identical order and
++            // short-circuit behavior. get(i) is O(1) for every List implementation that
++            // reaches here (Guava ImmutableList from the builder path, ListN/ArrayList via
++            // the codec path).
++            List<SurfaceRules.SurfaceRule> rules = this.rules;
++            int size = rules.size();
++
++            for (int i = 0; i < size; i++) {
++                BlockState blockState = rules.get(i).tryApply(x, y, z);
+                 if (blockState != null) {
+                     return blockState;
+                 }
+             }
+ 
+             return null;
++            // Papo end - batch 165 (R24)
+         }
+     }
+ 
