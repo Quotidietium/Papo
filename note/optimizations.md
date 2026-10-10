@@ -3751,3 +3751,22 @@ tick）全绿；8,994 套件绿；链门全过。配对腿（同源世界降 346
 面需专用腿/物化-需求差收割范式（先问消费方要什么）/旧实现留树作 oracle=零成本最强恒等证据。
 第二面 CompoundTag 流式 O2O 增长链判负（NBT 流式无计数字段，格式即红线）。版本 0.95.0。
 报告：[note/report/perf/2026-10-12-blockcount-r29-batch170.md](report/perf/2026-10-12-blockcount-r29-batch170.md)。
+
+## 批次 171（2026-10-12）：R30——NBT 读取通路：papoReadUtf 零分配重写收割（→0.96.0）
+
+R29 B 腿 JFR 残余簇帧级归因：LongArrayTag.copy 113MB=56/56 全走 MoonriseRegionIO
+InProgressRead.complete 防御性深拷贝（读共享设计结构性代价，并发所有权改写触稳定性红线
+判负留观察）；O2O ctor 149MB=流式无计数固有再散列（loadCompound 已 (8,0.8f)、copy 已按
+size 预容，判负维持）；unpack 5 trips<20 阈判负；papoReadUtf 83.5MB/94 trips 立项——
+每次调用 new byte[len]+new String，而 NBT 键/id 值词汇表极小且海量重复。收割（补丁
+0282）：线程局部读 scratch（镜像 papoWriteUtf 模式，8KB 起按需倍增）+≤48B 短 ASCII 串
+4,096 槽直接映射有界去重（碰撞替换，重复读返回同一不可变 String——语义恒等：NBT 全程
+equals/hashCode，写侧按值编码）+非 ASCII 回退原位前缀移位。恒等单测 6 件（oracle=JDK
+modified-UTF-8 编解码往返：ASCII 长度族跨边界/多字节 NUL/assertSame 去重/>48B 旁路/
+替换风暴逐值精确）绿+全套 EXIT=0+链门全过。第三腿实测：papoReadUtf 面 94 trips/
+83.5MB→2 trips/2.0MB（**−97.9%**），窗总量 −17.6%；驻留 String −5.4k/[B −8.1MB（覆盖
+还少 35%）；缓存本体有界 ≤0.5MB；启动常量第四腿逐位相同；R29 面维持 0。判例：读侧物化
+三重奏（scratch 消载体+去重消重复值+原位前缀消回退副本）/不可变值共享是零语义面收割
+（前提=逐点排除身份依赖）/有界缓存须自证三性质（定尺寸+入口门+发布安全）。实现勘误
+（自查捕获）：去重比较须区间 Arrays.equals，全数组比较在 scratch 增长后永假。版本 0.96.0。
+报告：[note/report/perf/2026-10-12-nbtread-r30-batch171.md](report/perf/2026-10-12-nbtread-r30-batch171.md)。

@@ -48,6 +48,7 @@ jcmd heap_info 活集；配对纪律=同会话相邻二进制、LevelChunk ±1% 
 | R27 | 168 | 0.94.0 | 高并发玩家面画像（60 bot；harness commonPool 裂批缺陷修复） | 判负：状态本体 45KB/玩家 vs 边际 6.9MB=99% 内容；[LServerPlayer; 归因 NearbyPlayers 内容缩放；在线数验收判例 | [playerface-r27](2026-10-12-playerface-r27-batch168.md) |
 | R28 | 169 | 0.94.0 | DFU 盘载旧数据转码面（RegionDowngrade 10,296 块降 3465 + DfuSoakCensus 12 bot + JFR） | 判负：templates ≈151k 簇与未执行基线位相同=启动常量，零增量驻留；DFU 归因分配 66MB/1.7% 全瞬时；重写触旧世界兼容红线；NBT 宽度表勘误判例 | [dfuface-r28](2026-10-12-dfuface-r28-batch169.md) |
 | R29 | 170 | →0.95.0 | 盘载反序列化分配面收割（R28 JFR 归因→物化-需求差） | recalcBlockCounts 计数重写：countEntries 坐标列表物化 366 trips/815.8MB（窗 21.2%）→**0**（新面 6.1MB）；两遍 int[] 计数+仅 ticking 态延迟收集；恒等单测对拍旧 oracle；驻留零变化 | [blockcount-r29](2026-10-12-blockcount-r29-batch170.md) |
+| R30 | 171 | →0.96.0 | NBT 读取通路（残余簇归因：copy=Moonrise 防御拷贝判负/O2O=流式判负/unpack<阈判负） | papoReadUtf 零分配重写：TL scratch+≤48B 有界去重（同一不可变 String），面 94 trips/83.5MB→**2 trips/2.0MB（−97.9%）**；驻留 String −5.4k/[B −8.1MB；判例：读侧物化三重奏/不可变值共享零语义面/有界缓存三性质 | [nbtread-r30](2026-10-12-nbtread-r30-batch171.md) |
 
 ## 终局状态
 
