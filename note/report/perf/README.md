@@ -46,6 +46,7 @@ jcmd heap_info 活集；配对纪律=同会话相邻二进制、LevelChunk ±1% 
 | R25 | 166 | 0.94.0 | 实体密集面画像（唯一未演习轴；spectator 触发刷怪实证）+寻路滞留收割 | BinaryHeap.clear 不清引用：Node −38%（26,683→16,476，残差=Path 自有）；实体图 0.75% 堆全表语义判负 | [entityface-r25](2026-10-12-entityface-r25-batch166.md) |
 | R26 | 167 | 0.94.0 | "clear 只置零"反例族全仓清扫（R25 判例落地） | 判负：7 位点 6 处已正确清引用，唯一纯置零=原生 long[] 无害；族穷尽（三例已收 160/165/166） | [clearfamily-sweep-r26](2026-10-12-clearfamily-sweep-r26-batch167.md) |
 | R27 | 168 | 0.94.0 | 高并发玩家面画像（60 bot；harness commonPool 裂批缺陷修复） | 判负：状态本体 45KB/玩家 vs 边际 6.9MB=99% 内容；[LServerPlayer; 归因 NearbyPlayers 内容缩放；在线数验收判例 | [playerface-r27](2026-10-12-playerface-r27-batch168.md) |
+| R28 | 169 | 0.94.0 | DFU 盘载旧数据转码面（RegionDowngrade 10,296 块降 3465 + DfuSoakCensus 12 bot + JFR） | 判负：templates ≈151k 簇与未执行基线位相同=启动常量，零增量驻留；DFU 归因分配 66MB/1.7% 全瞬时；重写触旧世界兼容红线；NBT 宽度表勘误判例 | [dfuface-r28](2026-10-12-dfuface-r28-batch169.md) |
 
 ## 终局状态
 
@@ -57,8 +58,9 @@ jcmd heap_info 活集；配对纪律=同会话相邻二进制、LevelChunk ±1% 
   boot 带内、绝对 5-8ms@12 玩家流送距 50ms 预算一个量级（R15）。
 - **残余判负**（红线内无下一角度）：方块 palette 全质量 4-bit 地板（103MB，
   变长编码踩 getBlockState 热路径）、非均匀光照 62MB（真实内容）、shape 族静态
-  表残余 ~16-20MB（R16 后注册表固定量，Shapes 工厂拦截留档）、NBT/DFU（注册表
-  内容）、无玩家底座 243MB（JVM/注册表固定）。
+  表残余 ~16-20MB（R16 后注册表固定量，Shapes 工厂拦截留档）、NBT/DFU（启动 schema
+  常量+注册表内容，R28 盘载旧数据腿位相同直方图实测零增量驻留）、无玩家底座 243MB
+  （JVM/注册表固定）。
 - **判例总集**：各批条目内联于 [optimizations.md](../../optimizations.md)
   （内存主线判例集中于批 141-155 条目）。
 

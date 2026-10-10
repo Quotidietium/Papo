@@ -3716,3 +3716,20 @@ NearbyPlayers.TrackedChunk**（每跟踪区块×6 视图类型 ReferenceList 类
 结构指纹（[LServerPlayer;→ReferenceList 后备→语义三步链可复用）。零服务器代码变更零补丁
 零版本 bump。报告：
 [note/report/perf/2026-10-12-playerface-r27-batch168.md](report/perf/2026-10-12-playerface-r27-batch168.md)。
+
+## 批次 169（2026-10-12）：R28——DFU 盘载旧数据转码面实测，判负（版本保持 0.94.0）
+
+历轮浸泡均为全新生成窗，数据修复转码路径从未执行。本轮构造盘载旧数据重载腿：
+RegionDowngrade（.mca 原位 DataVersion 降级器；**勘误判例：NBT 宽度表 Long/Double=8B**，
+4B 误跳=根遍历错位）把 R25 残留世界 16 region/10,296 区块全部降 3465（1.20.1，跨数百
+schema），DfuSoakCensus 12 bot 专用池复走同款走廊+60s JFR，门全绿（logErrors=0）。
+**驻留面位相同证据**：驻留末首见 com.mojang.datafixers.types.templates.* ≈151k 实例
+4.4MB（Product/Sum/Tag/Const/Named），与 R27 未执行转码基线（bot 数、世界内容均不同）
+**逐位相同**——纯启动 schema 注册常量，DFU 执行零增量驻留；DCF 侧零驻留。**分配面**：
+JFR 60s 窗采样 3,842MB 中 DFU 归因 66.0MB（1.7%），大头为 NBT→codec 反序列化机器
+（DataResult$Success.map 389MB 等）全瞬时。判定：**判负**——无收割面（常量+零增量+瞬态
+微量）；重写引擎/缓存模板（已是常量）/复用 DataResult（不可变值语义）均触旧世界兼容
+红线。判例：①位相同直方图行=零增量驻留最强廉价证据；②NBT 宽度表勘误；③旧数据腿先验
+降版覆盖率再起服。零服务器代码变更零补丁零版本 bump；RegionDowngrade.java+
+DfuSoakCensus.java 入库。报告：
+[note/report/perf/2026-10-12-dfuface-r28-batch169.md](report/perf/2026-10-12-dfuface-r28-batch169.md)。
