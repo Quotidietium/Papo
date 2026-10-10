@@ -3686,3 +3686,15 @@ Node[32] 同族；合计 2.2MB@679mob（3.2KB/mob，随 mob 数与搜索长度�
 census 后立项/vanilla "clear 只置零"保留反例族系统性存在（遇 clear/reset 只置零默认怀疑）/
 清引用前先证序列化调试面隔离/spectator 触发刷怪协议实证。版本 0.94.0。报告：
 [note/report/perf/2026-10-12-entityface-r25-batch166.md](report/perf/2026-10-12-entityface-r25-batch166.md)。
+
+## 批次 167（2026-10-12）：R26——"clear 只置零"反例族全仓清扫，判负（版本保持 0.94.0）
+
+R25 判例指出该反例族系统性存在（NoiseChunk 停车/批160、SurfaceRules 分配/批165、
+BinaryHeap/批166 三例同族已收）。本轮体级静态清扫全仓（clear/reset 体含计数器置零且无
+null/clear()/fill）：**7 处 size-置零位点中 6 处 vanilla/Paper 已正确清引用**（SortedArraySet
+等即范例），**唯一纯置零位点 LocalSampleLogger.reset()（debugchart）后备为原生 long[]——
+无引用滞留语义，判负**；扩大名变体（invalidate/rewind/drain/truncate）无新位点。运行时交叉：
+R21 区块面 [J/[B/[Object 全归因 + R24 JFR + R25 实体直方图四面无未归因容量/滞留壳，静态与
+运行时互证。**族判定：穷尽**。判例：怀疑清单快速分诊序=①原生后备立即判负②引用数组+计数界
+读面走 R25 恒等三件套③无后备无面。零代码变更零补丁零版本 bump。报告：
+[note/report/perf/2026-10-12-clearfamily-sweep-r26-batch167.md](report/perf/2026-10-12-clearfamily-sweep-r26-batch167.md)。
