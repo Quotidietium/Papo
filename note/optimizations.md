@@ -3733,3 +3733,21 @@ JFR 60s 窗采样 3,842MB 中 DFU 归因 66.0MB（1.7%），大头为 NBT→code
 降版覆盖率再起服。零服务器代码变更零补丁零版本 bump；RegionDowngrade.java+
 DfuSoakCensus.java 入库。报告：
 [note/report/perf/2026-10-12-dfuface-r28-batch169.md](report/perf/2026-10-12-dfuface-r28-batch169.md)。
+
+## 批次 170（2026-10-12）：R29——盘载反序列化分配面：recalcBlockCounts 计数重写收割（→0.95.0）
+
+R28 JFR 首照盘载窗，帧级归因出第一分配面非 DFU 引擎而是区块加载计数重建：SimpleBitStorage
+.moonrise$countEntries 为每 palette id 物化坐标 ShortArrayList（air/stone 大列表 64→4096
+倍增链），366 trips/815.8MB=60s 窗 21.2%；消费方 recalcBlockCounts 只需每 id 计数，坐标
+仅 randomly-ticking 态需要。收割（补丁 0281，四处）：接口加 countByIndex（计数-only 遍历，
+与旧遍历同形）+collectIndices（单 id 延迟收集）；SimpleBitStorage 实现；ZeroBitStorage 全零
+快路径；recalcBlockCounts 改两遍法——flat int[paletteSize] 计数（唯一小分配）+仅 totalTicking
+≠0 时对 ticking id 收坐标（ShortList 精确预容）。恒等：四计数器交换求和恒等；tick 列表集恒等
+（唯一消费方均匀随机索引，序不可感知）；FULL_LIST 分支原样。验证：恒等单测 4 件（旧实现保留为
+oracle 同树对拍+混合 section 与 setBlockState 增量簿记一致——勘误 lava BlockState 本身随机
+tick）全绿；8,994 套件绿；链门全过。配对腿（同源世界降 3465×2）：A=0.94.0 旧面 366 trips/
+815.8MB → B=0.95.0 **0 trips/0MB**（面消灭，新面 6 trips/6.1MB）；驻留零变化（差分全内容
+缩放，ShortList↔Section 增量 1:1）；启动常量第三腿逐位相同；门双绿。判例：盘载窗是独立分配
+面需专用腿/物化-需求差收割范式（先问消费方要什么）/旧实现留树作 oracle=零成本最强恒等证据。
+第二面 CompoundTag 流式 O2O 增长链判负（NBT 流式无计数字段，格式即红线）。版本 0.95.0。
+报告：[note/report/perf/2026-10-12-blockcount-r29-batch170.md](report/perf/2026-10-12-blockcount-r29-batch170.md)。
