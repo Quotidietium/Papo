@@ -119,6 +119,23 @@ public final class OfflineJoinBot {
         return t;
     }
 
+    // Papo batch 152（R12 长时生长审计）：同一径向往返循环行走——出腿把出发区域
+    // 甩出视距（卸载），回腿重访（盘载重载路径），制造 加载→卸载→重载 周期，
+    // 供 LongRunGrowth 按腿采样检测随周期累积的慢增长簇。
+    public long[] joinWalkCyclesAndDisconnect(final long totalMs, final double dxPerTick, final double dzPerTick,
+                                              final long legMs) throws IOException {
+        final long[] t = this.doJoin(100);
+        final long deadline = System.currentTimeMillis() + totalMs;
+        boolean outbound = true;
+        while (System.currentTimeMillis() < deadline) {
+            final long left = deadline - System.currentTimeMillis();
+            this.walk(Math.min(legMs, left), outbound ? dxPerTick : -dxPerTick, outbound ? dzPerTick : -dzPerTick);
+            outbound = !outbound;
+        }
+        this.socket.close();
+        return t;
+    }
+
     private void walk(final long durationMs, final double dxPerTick, final double dzPerTick) throws IOException {
         // 批次141（R5）：等待首个位置同步（placeNewPlayer 后服务端必发 0x45）
         final long knowBy = System.currentTimeMillis() + 10_000;
