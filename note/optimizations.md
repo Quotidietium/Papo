@@ -3663,3 +3663,26 @@ tryApply 窗口内字段无突变故字段值≡捕获参数）+ SequenceRule.tr
 计数与权重双估计器（方向一致才硬）/分配收割立项三门槛（封闭单文件+恒等可证+簇级份额）/
 种子派生链是绝对红线（RNG 构造分配与份额无关直接出局）。版本 0.93.0。报告：
 [note/report/perf/2026-10-12-allocsource-r24-batch165.md](report/perf/2026-10-12-allocsource-r24-batch165.md)。
+
+## 批次 166（2026-10-12）：R25——实体密集面画像与寻路滞留收割（0.93.0→0.94.0，0280）
+
+R1-R24 全场景 peaceful+spectator，实体对象图从未被内存画像（唯一未演习轴）。新工具
+EntitySoakCensus（逐字同 MemSoakVerify 协议，仅 difficulty=normal+spawn-monsters=true，
+驻留 300s；**首要发现：spectator bot 同样触发自然刷怪**，实体面轮可直接复用）。census：
+~679 mob，实体前缀 61,810 实例/2.84MB+支撑结构 ≈6MB=**0.75% 堆——量级面立判**；全表
+语义判定（Brain 7 张 codec 驱动 map/属性/goal/控制对象/DataItem 跟踪=内容本体；懒化候选
+pathfindingMalus+附魔 EnumMap ~250KB@700mob 低于簇级份额门槛）。**唯一结构异常**：
+pathfinder.Node 26,683 实例/1.71MB 对账 Path 仅 78 条（39/mob）——源码归因
+**BinaryHeap.clear() 只置 size=0 不清引用**（frontier+历史增长尾槽滞留）+ PathFinder.neighbors
+Node[32] 同族；合计 2.2MB@679mob（3.2KB/mob，随 mob 数与搜索长度无界放大）——"最后读者后
+释放"第三例（NoiseChunk 停车/SurfaceRules 分配同族）。**恒等三件套**：堆数组 size 外槽位
+搜索逻辑从不读/getHeap() 返回 copyOf 快照使 DebugData 调试面免疫（先证隔离再动刀）/neighbors
+以返回计数为界全量重写。实现=clear() 全数组 fill(null)+findPath 出口 neighbors 清（每次寻路
+≤4KB memset，较搜索本体四个数量级以下）。PapoBinaryHeapReleaseTest 4 用例（跨 clear 堆序
+逐位/快照隔离/反射直读全槽位无引用/增长容量尾槽）。**A/B**：Node 26,683→16,476（−10,207/
+−653KB=−38.3%），残差=当前 Path 自有节点（677×~24 对账），容量壳保留（scratch 先例）；
+两腿门绿、实体群同量级；raw heapUsed 差=相位窗负载（R22 判例）。延迟面不设独立对（主线程
+零触点+成本四个数量级以下，R15 场景复用前提不满足——比例性说明入报告）。判例：新场景轴先
+census 后立项/vanilla "clear 只置零"保留反例族系统性存在（遇 clear/reset 只置零默认怀疑）/
+清引用前先证序列化调试面隔离/spectator 触发刷怪协议实证。版本 0.94.0。报告：
+[note/report/perf/2026-10-12-entityface-r25-batch166.md](report/perf/2026-10-12-entityface-r25-batch166.md)。

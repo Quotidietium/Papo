@@ -43,6 +43,7 @@ jcmd heap_info 活集；配对纪律=同会话相邻二进制、LevelChunk ±1% 
 | R22 | 163 | 0.92.0 | 0.92.0 长时生长复验（R12 方法论）+转码视图对抗复核 | 活集同相位 ±0.4-0.7%（优于 R12）；批158-161 机制周期负载零回归；Dynamic/NBTMapType=静态扁平化表（双重定位+十采样逐位恒定） | [longrun-r22](2026-10-12-longrun-r22-batch163.md) |
 | R23 | 164 | 0.92.0 | 0.92.0 延迟守护复验（批158-161 机制 MSPT 面终验，红线两轴双闭合） | 六腿三序（含同序第三对）：池化 +0.8% 亚噪声、run2/run3 B≤A、boot 同带 | [mspt-guard-r23](2026-10-12-mspt-guard-r23-batch164.md) |
 | R24 | 165 | 0.93.0 | 堆外面归因（判负：类/JIT/线程/Netty 无可收敛驻留）+分配源归因（JFR 计数口径）与收割 | SurfaceRules updateY memoize+SequenceRule 迭代器（22.8% trips）→0：总 trips −12.2%、估重净化 −35%、密度树驻留逐位恒等、旧代 −0.13%；巨权伪影判例（计数为准） | [allocsource-r24](2026-10-12-allocsource-r24-batch165.md) |
+| R25 | 166 | 0.94.0 | 实体密集面画像（唯一未演习轴；spectator 触发刷怪实证）+寻路滞留收割 | BinaryHeap.clear 不清引用：Node −38%（26,683→16,476，残差=Path 自有）；实体图 0.75% 堆全表语义判负 | [entityface-r25](2026-10-12-entityface-r25-batch166.md) |
 
 ## 终局状态
 
