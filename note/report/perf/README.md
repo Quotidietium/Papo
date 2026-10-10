@@ -34,6 +34,7 @@ jcmd heap_info 活集；配对纪律=同会话相邻二进制、LevelChunk ±1% 
 | R13 | 153 | 0.88.0 | palette 判负勘误+位宽实证（R11 §5） | 4-bit 地板实证 | 同 R11 报告 |
 | R14 | 154 | 0.88.0 | 首尾同会话直对（收官测量） | −31.2% 保守 / 每区块 −32.7% | [campaign-final-paired](2026-10-10-memsoak-campaign-final-paired.md) |
 | R15 | 155 | 0.88.0 | tick 性能与交互延迟守护（CPU 面终验） | 槽位配对≈零差 | [mspt-load-guard-r15-…](2026-10-10-mspt-load-guard-r15-batch155.md) |
+| R16 | 156 | →0.89.0 | shape 族规范共享（"有界≠不可约"证伪） | −40.1MB（−6.52% 保守） | [shape-intern-r16-…](2026-10-10-shape-intern-r16-batch156.md) |
 
 ## 终局状态
 
@@ -44,8 +45,9 @@ jcmd heap_info 活集；配对纪律=同会话相邻二进制、LevelChunk ±1% 
 - **延迟轴**：MsptLoadProbe 双序配对，槽位差 ≤0.2ms、池化 +1.0%（0.06ms）亚噪声、
   boot 带内、绝对 5-8ms@12 玩家流送距 50ms 预算一个量级（R15）。
 - **残余判负**（红线内无下一角度）：方块 palette 全质量 4-bit 地板（103MB，
-  变长编码踩 getBlockState 热路径）、非均匀光照 62MB（真实内容）、shape 族 51MB
-  （注册表界）、NBT/DFU（注册表内容）、无玩家底座 243MB（JVM/注册表固定）。
+  变长编码踩 getBlockState 热路径）、非均匀光照 62MB（真实内容）、shape 族静态
+  表残余 ~16-20MB（R16 后注册表固定量，Shapes 工厂拦截留档）、NBT/DFU（注册表
+  内容）、无玩家底座 243MB（JVM/注册表固定）。
 - **判例总集**：各批条目内联于 [optimizations.md](../../optimizations.md)
   （内存主线判例集中于批 141-155 条目）。
 

@@ -3417,3 +3417,33 @@ B 17.16-17.72s 带内无差；开荒尖峰 621-695ms 同量级；绝对 5-8ms @ 
 无补丁无版本 bump；服务端零变更。
 报告：
 [note/report/perf/2026-10-10-mspt-load-guard-r15-batch155.md](report/perf/2026-10-10-mspt-load-guard-r15-batch155.md)。
+
+## 批次 156（2026-10-10）：R16——shape 族规范共享，"注册表界恒定成本"判据证伪与收割（0.88.0→0.89.0，0274）
+
+R10/R11 的 shape 族判负用的是**有界**判据而非**不可约**判据——族内结构重复率从未
+量化。新工具 ShapeDupCensus（解析核心逐字复制 ShellRefAttr）：B-088 转储 AABB
+345,808 实例仅 **3,256 个不同几何=99.1% 结构重复**（Top=栅栏柱×74,022/墙柱×
+65,832/全立方×7,643）；持有链双层归因=全部质量随 ArrayVoxelShape 生死（Object[]
+toAabbs 背板 20.9 万+字段 14.7 万），形状挂点=面向惰性数组 43.4 万引用+每状态
+Cache/occlusionShape+块类静态表。0274：PapoShapeCache（CHM<结构键,VoxelShape>；
+仅 ArrayVoxelShape+BitSet 背书参与；**只挂长寿命缓存点绝不挂构造点**（瞬态不入
+表，表大小被注册表不同几何数上界）；Shapes.empty()/block() 单例永不被替换）+
+BlockBehaviour 两挂点（Cache ctor collisionShape、initCache occlusionShape）——
+两根规范后 faces[6]/toAabbs/CachedShapeData/mergedORCache 全部惰性子结构随规范
+根每几何一份。验证：PapoShapeInternTest 7 项（**楼梯跨类型共享**=改动前异实例
+几何恒等的强判别器；首跑两败=测试输入退化（全立方 OR 被 join 短路成单例），换
+非退化输入）+ :paper-server:test 8,960 全绿；重放 EXIT=0+counts ALL OK+compile
+--rerun-tasks+jar 0.89.0。浸泡三试（晨窗机器负载致同二进制区块装载 ±11% 漂移）：
+rep3 双门绿 A-088 630,304KB@4,384 vs B-089 589,259KB@4,522（B 多载 3.15% 保守
+向）=**原始 −41,045KB（−40.1MB/−6.52%）**、每区块 143.8→130.3KB（−9.4%）、boot
+无回退；rep2 转储腿门败 422（实为 3 个）经盘上取证=44.2s dump STW 冻结与终存
+竞争的瞬态自愈（文件齐全+All dimensions are saved+exit 0），非服务端缺陷。
+归因 census（逐位确定、机器无关）：AABB −79.3%（每区块 57.2→15.8）/
+ArrayVoxelShape −72.6%/BitSetDiscreteVoxelShape −73.3%/DoubleArrayList −70.4%；
+族 ~51MB→残余 ~16-20MB；残余 96.4% 重复=块类静态形状表（注册表固定量，留档
+后续角度）。判例：**"有界"≠"不可约"，族级判负必须测结构重复率/解析器复制不
+重写（两遍手写皆错位，纯复制一次过）/转储腿门败先盘上取证后定罪（自愈三证据
+齐=伪影，不入良性过滤器）/机器晨窗漂移下复跑到同向+保守向+census 互证即收**。
+主线：0.80.0→0.89.0 跨会话链 ≈1,154.3→~720MB（−37.6%+），shape 族移出判负清单。
+报告：
+[note/report/perf/2026-10-10-shape-intern-r16-batch156.md](report/perf/2026-10-10-shape-intern-r16-batch156.md)。
