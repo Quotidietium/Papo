@@ -136,8 +136,8 @@ public class CraftChunk implements Chunk {
         int index = 0;
         ChunkAccess chunk = this.getHandle(ChunkStatus.FULL);
 
-        BlockState[] states = new BlockState[chunk.blockEntities.size()];
-        for (BlockPos pos : chunk.blockEntities.keySet()) {
+        BlockState[] states = new BlockState[chunk.papoBlockEntitiesView().size()]; // Papo - batch 161 (R20): null == empty
+        for (BlockPos pos : chunk.papoBlockEntitiesView().keySet()) {
             states[index++] = CraftBlock.at(this.level, pos).getState(useSnapshot);
         }
 
@@ -154,7 +154,7 @@ public class CraftChunk implements Chunk {
         ChunkAccess chunk = this.getHandle(ChunkStatus.FULL);
 
         List<BlockState> states = new ArrayList<>();
-        for (BlockPos pos : chunk.blockEntities.keySet()) {
+        for (BlockPos pos : chunk.papoBlockEntitiesView().keySet()) { // Papo - batch 161 (R20): null == empty
             Block block = CraftBlock.at(this.level, pos);
             if (blockPredicate.test(block)) {
                 states.add(block.getState(useSnapshot));

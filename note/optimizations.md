@@ -3534,3 +3534,34 @@ Holder 族 5.5MB=每世界密度函数图常量；ShortList 壳/载荷=批142 �
 交付=证据。主线 0.80.0→0.91.0 于"结果一致"约束下收敛终局封存。
 报告：
 [note/report/perf/2026-10-10-residual-audit-r19-batch159.md](report/perf/2026-10-10-residual-audit-r19-batch159.md)。
+
+## 批次 160/161（2026-10-11）：R20——R19 判定对抗复核闭合+两残余面收割（0.92.0）
+
+对抗复核推翻 R19 两处弱归因并收割：(1) **[D 12.3MB 缺口 97% 是仪器盲区**——HeapRefAttr
+只扫两类对象数组元素边，类型化引用数组（[[D 外层）整体漏网；新工具 PapoStaticRefCensus
+（静态交叉+根直指+全类型元素边+逐字节滑窗持有者归因+类探针）三层闭合后锁定：10.58MB =
+**318 个 pre-carver 停机 ProtoChunk** 持有的 NoiseChunk 树（2544 interpolator×2 切片=5088
+[[D 外层分毫不差）；静态仅 0.17MB、根直指 0、活集口径直方图与转储 [D 计数逐个相等。
+批次143 钩子在 carvers 出口，pre-carver 环永远到不了——批次160：主线程每 2048 tick
+（~102s，-Dpapo.noiseParkSweepTicks 可诊断禁用）对停机 ProtoChunk（排除 Imposter）周期
+释放 noiseChunk。**恒等三件套**：跨步读面仅 preliminarySurfaceLevel（纯记忆化）+aquifer
+（确定性记忆化），切片仅 doFill 消费；Blender.of 与区域半径无关（固定 ±7 环）+Beardifier
+种子确定 → 任意步闭包重建等价；在途步骤持局部引用 → 竞态无害。(2) **O2O 弱归因拆解**：
+ChunkAccess.java:79 blockEntities 每 chunk 急切分配（LevelChunk 4947+ProtoChunk 3916+
+Imposter 4947，~8.9k 永空含 imposter 继承死字段）——批次161：字段 @Nullable 懒分配，
+papoBlockEntitiesView()（不可变空视图，写穿透即抛=金丝雀）/Writable()（首变更分配），
+19 触点全改（ChunkAccess/LevelChunk 8/ProtoChunk 4/CraftChunk 2/CraftWorld 1）。单测
+PapoNoiseChunkParkReleaseTest 4 项+PapoLazyBlockEntitiesTest 5 项入套件。
+**验证（同窗配对双门绿+类级 census）**：A-080 1,159,239KB@6,085 vs B-092 620,102KB@6,114
+（配对 0.48%<1%）：raw −46.5%、每区块 190.4→101.4KB=**−46.7%**（R19 的 −35.9% 因 B 腿
+低载窗为保守方向，本对两腿同 ~6.1k 制式为干净数）；census：[[D 外层 5088→**0**、
+NoiseChunk 318→**0**、元素边→[D 10.58MB→**0**、[D 直方图 11.79→0.41MB（−96.5%）、
+O2O 45,899→32,583（LevelChunk 4947→462 仅真 BE、Imposter 4947→**0**、Proto 3916→23）、
+CompoundTag 内容态不变。链全绿：rebuildPatches（0277/0278）/applyPatches 重放/compile
+--rerun-tasks/套件/createPapoJar 0.92.0。判例：归因闭合三口径（静态/根/实例合计仍缺→先
+疑仪器）/HPROF 滑窗两坑（1B 字段错位须逐字节、idAt 必须大端）/释放恒等三件套（读面盘点→
+闭包差异消除→竞态无害化）/继承死字段是包装类双倍静默税。工程事故：fastutil sources 缓存
+一年前截断（jar tf 过 zipfs 不过，FROM-CACHE 还原损坏需 --rerun-tasks 绕过+手动 curl
+续传取整 22.6MB）+downloadMappings 网络截断，同源本机网络大文件单连接截断。
+报告：
+[note/report/perf/2026-10-11-residual-harvest-r20-batch160-161.md](report/perf/2026-10-11-residual-harvest-r20-batch160-161.md)。

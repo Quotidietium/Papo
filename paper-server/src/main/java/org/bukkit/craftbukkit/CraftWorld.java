@@ -230,7 +230,7 @@ public class CraftWorld extends CraftRegionAccessor implements World {
             if (chunk == null) {
                 continue;
             }
-            size += chunk.blockEntities.size();
+            size += chunk.papoBlockEntitiesView().size(); // Papo - batch 161 (R20): null == empty
         }
         return size;
     }

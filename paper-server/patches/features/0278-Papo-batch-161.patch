@@ -1,0 +1,186 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 10 Oct 2026 23:41:39 +0800
+Subject: [PATCH] Papo: batch 161
+
+
+diff --git a/net/minecraft/world/level/chunk/ChunkAccess.java b/net/minecraft/world/level/chunk/ChunkAccess.java
+index 70b017a607ab07caf23a601b57a105c7b90ee623..f08acef2a3154cf486935cc26955427b1ff642c1 100644
+--- a/net/minecraft/world/level/chunk/ChunkAccess.java
++++ b/net/minecraft/world/level/chunk/ChunkAccess.java
+@@ -76,7 +76,21 @@ public abstract class ChunkAccess implements BiomeManager.NoiseBiomeSource, Ligh
+     private final Map<Structure, StructureStart> structureStarts = Maps.newHashMap();
+     private final Map<Structure, LongSet> structuresRefences = Maps.newHashMap();
+     protected final Map<BlockPos, CompoundTag> pendingBlockEntities = Maps.newHashMap();
+-    public final Map<BlockPos, BlockEntity> blockEntities = new Object2ObjectOpenHashMap<>();
++    // Papo start - batch 161 (R20): lazy block-entities map. Every ChunkAccess used to pay an
++    // eagerly-allocated fastutil Object2ObjectOpenHashMap (map header + Object[16] keys +
++    // Object[16] values, ~210B) at construction, yet in natural terrain the overwhelming
++    // majority of chunks never hold a single block entity (stone/deepslate/water/air carry
++    // none) - measured 13,810 live maps against 4,947 loaded chunks at 12 bots / vd10, i.e.
++    // ~8.9k permanently-empty maps (~1.9MB), including the 4,947 ImposterProtoChunk instances
++    // whose inherited map is provably never touched (all their block-entity accessors
++    // delegate to the wrapped LevelChunk). null is the new empty state; readers route through
++    // papoBlockEntitiesView() (immutable empty view, observably identical for the audited
++    // read-only call sites: size/keySet/values/containsKey/get) and the two put-sites through
++    // papoBlockEntitiesWritable(). All direct field users live in this package plus
++    // org.bukkit.craftbukkit (CraftChunk/CraftWorld, reads only) - audited batch 161.
++    @Nullable
++    public Map<BlockPos, BlockEntity> blockEntities;
++    // Papo end - batch 161 (R20)
+     protected final LevelHeightAccessor levelHeightAccessor;
+     protected final LevelChunkSection[] sections;
+     // CraftBukkit start - SPIGOT-6814: move to IChunkAccess to account for 1.17 to 1.18 chunk upgrading.
+@@ -219,10 +233,27 @@ public abstract class ChunkAccess implements BiomeManager.NoiseBiomeSource, Ligh
+ 
+     public Set<BlockPos> getBlockEntitiesPos() {
+         Set<BlockPos> set = Sets.newHashSet(this.pendingBlockEntities.keySet());
+-        set.addAll(this.blockEntities.keySet());
++        set.addAll(this.papoBlockEntitiesView().keySet()); // Papo - batch 161 (R20): null == empty
+         return set;
+     }
+ 
++    // Papo start - batch 161 (R20): block-entities map accessors for the lazy field; see the
++    // field comment for the residency rationale. View never allocates; writable allocates on
++    // the first mutation only. getBlockEntities() callers across the server are read-only
++    // (audited), so the immutable empty-map view is observably identical.
++    public final Map<BlockPos, BlockEntity> papoBlockEntitiesView() {
++        return this.blockEntities == null ? Collections.<BlockPos, BlockEntity>emptyMap() : this.blockEntities;
++    }
++
++    public final Map<BlockPos, BlockEntity> papoBlockEntitiesWritable() {
++        Map<BlockPos, BlockEntity> map = this.blockEntities;
++        if (map == null) {
++            this.blockEntities = map = new Object2ObjectOpenHashMap<>();
++        }
++        return map;
++    }
++    // Papo end - batch 161 (R20)
++
+     public LevelChunkSection[] getSections() {
+         return this.sections;
+     }
+@@ -390,7 +421,7 @@ public abstract class ChunkAccess implements BiomeManager.NoiseBiomeSource, Ligh
+ 
+     public void setBlockEntityNbt(CompoundTag tag) {
+         BlockPos posFromTag = BlockEntity.getPosFromTag(this.chunkPos, tag);
+-        if (!this.blockEntities.containsKey(posFromTag)) {
++        if (!this.papoBlockEntitiesView().containsKey(posFromTag)) { // Papo - batch 161 (R20): null == empty
+             this.pendingBlockEntities.put(posFromTag, tag);
+         }
+     }
+diff --git a/net/minecraft/world/level/chunk/LevelChunk.java b/net/minecraft/world/level/chunk/LevelChunk.java
+index f923d4c0c0f810d0ee88c1a33ca44f871d029035..1d10ff4562a575fbaa6a48ea63dab17d559650ae 100644
+--- a/net/minecraft/world/level/chunk/LevelChunk.java
++++ b/net/minecraft/world/level/chunk/LevelChunk.java
+@@ -275,7 +275,7 @@ public class LevelChunk extends ChunkAccess implements DebugValueSource, ca.spot
+             postLoad,
+             chunk.getBlendingData()
+         );
+-        if (!Collections.disjoint(chunk.pendingBlockEntities.keySet(), chunk.blockEntities.keySet())) {
++        if (!Collections.disjoint(chunk.pendingBlockEntities.keySet(), chunk.papoBlockEntitiesView().keySet())) { // Papo - batch 161 (R20): null == empty
+             LOGGER.error("Chunk at {} contains duplicated block entities", chunk.getPos());
+         }
+ 
+@@ -581,7 +581,7 @@ public class LevelChunk extends ChunkAccess implements DebugValueSource, ca.spot
+         // CraftBukkit start
+         BlockEntity blockEntity = this.level.capturedTileEntities.get(pos);
+         if (blockEntity == null) {
+-            blockEntity = this.blockEntities.get(pos);
++            blockEntity = this.papoBlockEntitiesView().get(pos); // Papo - batch 161 (R20): null == empty
+         }
+         // CraftBukkit end
+         if (blockEntity == null) {
+@@ -602,7 +602,9 @@ public class LevelChunk extends ChunkAccess implements DebugValueSource, ca.spot
+                 }
+             }
+         } else if (blockEntity.isRemoved()) {
+-            this.blockEntities.remove(pos);
++            if (this.blockEntities != null) { // Papo - batch 161 (R20): null == empty
++                this.blockEntities.remove(pos);
++            }
+             return null;
+         }
+ 
+@@ -662,7 +664,7 @@ public class LevelChunk extends ChunkAccess implements DebugValueSource, ca.spot
+ 
+             blockEntity.setLevel(this.level);
+             blockEntity.clearRemoved();
+-            BlockEntity blockEntity1 = this.blockEntities.put(blockPos.immutable(), blockEntity);
++            BlockEntity blockEntity1 = this.papoBlockEntitiesWritable().put(blockPos.immutable(), blockEntity); // Papo - batch 161 (R20): lazy alloc
+             if (blockEntity1 != null && blockEntity1 != blockEntity) {
+                 blockEntity1.setRemoved();
+             }
+@@ -700,7 +702,7 @@ public class LevelChunk extends ChunkAccess implements DebugValueSource, ca.spot
+     public void removeBlockEntity(BlockPos pos) {
+         this.papoBumpChunkDataVersion(); // Papo - serialized chunk payload changed (block entity set; over-bump is safe)
+         if (this.isInLevel()) {
+-            BlockEntity blockEntity = this.blockEntities.remove(pos);
++            BlockEntity blockEntity = this.blockEntities == null ? null : this.blockEntities.remove(pos); // Papo - batch 161 (R20): null == empty
+             // CraftBukkit start - SPIGOT-5561: Also remove from pending map
+             if (!this.pendingBlockEntities.isEmpty()) {
+                 this.pendingBlockEntities.remove(pos);
+@@ -876,7 +878,7 @@ public class LevelChunk extends ChunkAccess implements DebugValueSource, ca.spot
+     }
+ 
+     public Map<BlockPos, BlockEntity> getBlockEntities() {
+-        return this.blockEntities;
++        return this.papoBlockEntitiesView(); // Papo - batch 161 (R20): audited read-only callers; empty view when unallocated
+     }
+ 
+     public void postProcessGeneration(ServerLevel level) {
+@@ -993,14 +995,16 @@ public class LevelChunk extends ChunkAccess implements DebugValueSource, ca.spot
+     }
+ 
+     public void clearAllBlockEntities() {
+-        this.blockEntities.values().forEach(BlockEntity::setRemoved);
+-        this.blockEntities.clear();
++        this.papoBlockEntitiesView().values().forEach(BlockEntity::setRemoved); // Papo - batch 161 (R20): null == empty
++        if (this.blockEntities != null) {
++            this.blockEntities.clear();
++        }
+         this.tickersInLevel.values().forEach(ticker -> ticker.rebind(NULL_TICKER));
+         this.tickersInLevel.clear();
+     }
+ 
+     public void registerAllBlockEntitiesAfterLevelLoad() {
+-        this.blockEntities.values().forEach(blockEntity -> {
++        this.papoBlockEntitiesView().values().forEach(blockEntity -> { // Papo - batch 161 (R20): null == empty
+             if (this.level instanceof ServerLevel serverLevel) {
+                 this.addGameEventListener(blockEntity, serverLevel);
+             }
+diff --git a/net/minecraft/world/level/chunk/ProtoChunk.java b/net/minecraft/world/level/chunk/ProtoChunk.java
+index 4de10fd5e3bcc2b8bbad9e8dac1a5a6035241072..cd40dc18f966084594c73f6b7a2c6e727948b99b 100644
+--- a/net/minecraft/world/level/chunk/ProtoChunk.java
++++ b/net/minecraft/world/level/chunk/ProtoChunk.java
+@@ -190,16 +190,16 @@ public class ProtoChunk extends ChunkAccess {
+     @Override
+     public void setBlockEntity(BlockEntity blockEntity) {
+         this.pendingBlockEntities.remove(blockEntity.getBlockPos());
+-        this.blockEntities.put(blockEntity.getBlockPos(), blockEntity);
++        this.papoBlockEntitiesWritable().put(blockEntity.getBlockPos(), blockEntity); // Papo - batch 161 (R20): lazy alloc
+     }
+ 
+     @Override
+     public @Nullable BlockEntity getBlockEntity(BlockPos pos) {
+-        return this.blockEntities.get(pos);
++        return this.papoBlockEntitiesView().get(pos); // Papo - batch 161 (R20): null == empty
+     }
+ 
+     public Map<BlockPos, BlockEntity> getBlockEntities() {
+-        return this.blockEntities;
++        return this.papoBlockEntitiesView(); // Papo - batch 161 (R20): audited read-only callers; empty view when unallocated
+     }
+ 
+     public void addEntity(CompoundTag tag) {
+@@ -299,7 +299,9 @@ public class ProtoChunk extends ChunkAccess {
+ 
+     @Override
+     public void removeBlockEntity(BlockPos pos) {
+-        this.blockEntities.remove(pos);
++        if (this.blockEntities != null) { // Papo - batch 161 (R20): null == empty
++            this.blockEntities.remove(pos);
++        }
+         this.pendingBlockEntities.remove(pos);
+     }
+ 

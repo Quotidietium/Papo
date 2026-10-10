@@ -1,0 +1,103 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 10 Oct 2026 22:32:30 +0800
+Subject: [PATCH] Papo: batch 160
+
+
+diff --git a/net/minecraft/server/level/ServerChunkCache.java b/net/minecraft/server/level/ServerChunkCache.java
+index 5588499aaa83f905c1ce2d7480f850ea28793e38..3551ef187398dfbb1da727de361fe81153657bb5 100644
+--- a/net/minecraft/server/level/ServerChunkCache.java
++++ b/net/minecraft/server/level/ServerChunkCache.java
+@@ -493,6 +493,7 @@ public class ServerChunkCache extends ChunkSource implements ca.spottedleaf.moon
+         this.chunkMap.tick(hasTimeLeft);
+         profilerFiller.pop();
+         this.papoEvictChunkPacketCaches(); // Papo - batch 141 (R5): TTL sweep of chunk packet caches
++        this.papoReleaseParkedNoiseChunks(); // Papo - batch 160 (R20): parked pre-carver NoiseChunk sweep
+         this.clearCache();
+     }
+ 
+@@ -532,6 +533,45 @@ public class ServerChunkCache extends ChunkSource implements ca.spottedleaf.moon
+     }
+     // Papo end - batch 141 (R5)
+ 
++    // Papo start - batch 160 (R20): periodic release of NoiseChunk trees retained by chunks
++    // parked below the CARVERS step. Batch 143 already releases at the carvers exit (the last
++    // noiseChunk reader), but the pre-carver status ring - chunks generated to BIOMES/NOISE/
++    // SURFACE and then parked waiting on neighbour dependencies, or parked after cancelled
++    // generation - never passes that hook, so each keeps its whole per-chunk worldgen cache
++    // (~36KB: interpolator slices, mapped density subtree, aquifer) for the holder lifetime.
++    // Measured at 12 bots / vd10 steady state: 318 live NoiseChunk trees / ~11.4MB; the mass
++    // scales with the pre-carver ring perimeter, not the loaded area. The sweep nulls the
++    // field on parked ProtoChunks; behaviour-neutrality (recreation identity, race safety)
++    // is proven in ChunkAccess#papoReleaseParkedNoiseChunk. Cadence 2048 game ticks (~102s):
++    // gen rings settle within seconds of movement, so this bounds residency to one window.
++    // ImposterProtoChunk is excluded: it wraps an already-finished LevelChunk and its own
++    // inherited field is never populated. Main-thread only, like the batch 141 sweep.
++    // -Dpapo.noiseParkSweepTicks=N overrides the cadence for diagnosis (<=0 disables the
++    // sweep, reproducing the pre-160 residency behaviour on the same binary).
++    private static final long PAPO_NOISE_PARK_SWEEP_TICKS = Long.getLong("papo.noiseParkSweepTicks", 2048L);
++    private long papoNextNoiseParkSweepGameTime = Long.MIN_VALUE;
++
++    private void papoReleaseParkedNoiseChunks() {
++        if (PAPO_NOISE_PARK_SWEEP_TICKS <= 0) {
++            return; // sweep disabled (diagnostic leg)
++        }
++        final long now = this.level.getGameTime();
++        if (now < this.papoNextNoiseParkSweepGameTime) {
++            return;
++        }
++        this.papoNextNoiseParkSweepGameTime = now + PAPO_NOISE_PARK_SWEEP_TICKS;
++        for (final ChunkHolder holder : ((ca.spottedleaf.moonrise.patches.chunk_system.level.ChunkSystemServerLevel)this.level)
++            .moonrise$getChunkTaskScheduler().chunkHolderManager.getOldChunkHoldersIterable()) {
++            final net.minecraft.world.level.chunk.ChunkAccess chunk = ((ca.spottedleaf.moonrise.patches.chunk_system.level.chunk.ChunkSystemChunkHolder)(Object)holder)
++                .moonrise$getRealChunkHolder().getCurrentChunk();
++            if (chunk instanceof net.minecraft.world.level.chunk.ProtoChunk
++                && !(chunk instanceof net.minecraft.world.level.chunk.ImposterProtoChunk)) {
++                chunk.papoReleaseParkedNoiseChunk();
++            }
++        }
++    }
++    // Papo end - batch 160 (R20)
++
+     private void tickChunks() {
+         long gameTime = this.level.getGameTime();
+         long l = gameTime - this.lastInhabitedUpdate;
+diff --git a/net/minecraft/world/level/chunk/ChunkAccess.java b/net/minecraft/world/level/chunk/ChunkAccess.java
+index a47008b34dab8f71f241253ec8dbfa24959a4054..70b017a607ab07caf23a601b57a105c7b90ee623 100644
+--- a/net/minecraft/world/level/chunk/ChunkAccess.java
++++ b/net/minecraft/world/level/chunk/ChunkAccess.java
+@@ -515,6 +515,34 @@ public abstract class ChunkAccess implements BiomeManager.NoiseBiomeSource, Ligh
+     }
+     // Papo end - batch 143 (R5)
+ 
++    // Papo start - batch 160 (R20): parked-chunk release. The batch 143 hook runs at the CARVERS
++    // exit, so chunks parked BELOW carvers (the pre-carver status ring around loaded areas,
++    // waiting on neighbour dependencies, or parked after cancelled generation) retain the whole
++    // NoiseChunk tree for as long as their holder lives: ~36KB each (interpolator double[][]
++    // slices, mapped density-function subtree, aquifer caches) - measured 318 live instances /
++    // ~11.4MB at 12 bots / vd10, and the mass scales with the pre-carver ring (player edge
++    // length, not area). A periodic main-thread sweep (ServerChunkCache) calls this for parked
++    // ProtoChunks. Identity proof for a later recreation: the only cross-step reads are
++    // preliminarySurfaceLevel (pure memoised function of the noise router, see NoiseChunk) and
++    // the aquifer (deterministic memoised noise queries); the interpolator slices are consumed
++    // exclusively inside doFill, which either already ran on the original instance or will fill
++    // a fresh one identically. Every step's getOrCreateNoiseChunk closure builds through
++    // Blender.of(region), whose result is region-radius-independent (isOldChunkAround consults
++    // the chunk map over a fixed +/-7 ring and the BlendingData collection loop is a fixed
++    // radius), and the Beardifier inputs are seed-deterministic structure data - so a chunk
++    // that resumes generation rebuilds an equivalent NoiseChunk through its own step's closure.
++    // The plain reference write cannot race a worker harmfully: an in-flight step holds its
++    // reference in a local, and a not-yet-started step simply recreates (this mirrors the
++    // batch 143 sequencing argument, extended by the read-equivalence above).
++    public boolean papoReleaseParkedNoiseChunk() {
++        if (this.noiseChunk == null) {
++            return false;
++        }
++        this.noiseChunk = null;
++        return true;
++    }
++    // Papo end - batch 160 (R20)
++
+     @Deprecated
+     public BiomeGenerationSettings carverBiome(Supplier<BiomeGenerationSettings> caverBiomeSettingsSupplier) {
+         if (this.carverBiomeSettings == null) {
