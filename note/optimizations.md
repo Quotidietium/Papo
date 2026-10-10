@@ -3698,3 +3698,21 @@ R21 区块面 [J/[B/[Object 全归因 + R24 JFR + R25 实体直方图四面无�
 运行时互证。**族判定：穷尽**。判例：怀疑清单快速分诊序=①原生后备立即判负②引用数组+计数界
 读面走 R25 恒等三件套③无后备无面。零代码变更零补丁零版本 bump。报告：
 [note/report/perf/2026-10-12-clearfamily-sweep-r26-batch167.md](report/perf/2026-10-12-clearfamily-sweep-r26-batch167.md)。
+
+## 批次 168（2026-10-12）：R27——高并发玩家面画像，判负 + 测量工具并发缺陷修复（版本保持 0.94.0）
+
+历轮全部浸泡 ≤12 bot，每玩家状态图从未在规模下画像。**首跑暴露 harness 并发裂批**：60 bot
+直方图每玩家类=31，服务端日志证明裂成 31+29 两批（第二批在首批断开后才启动）——
+runAsync 走 commonPool（并行度≈31）阻塞任务超限排队且门照常全绿（bot 全部最终完成）。
+修复=专用定长线程池；**历史有效性核验**：历轮 bots≤12≤31 全并发不受影响。判例：bot 池并发
+上限必须显式，规模腿必要门=测量点在线数（joined−left=bots）验收。60/60 census（门绿，
+heap 1,013,123KB，区块内容主导 5,681 区块）：每玩家图全语义（ServerPlayer 1,248B/
+监听器 328B/Connection 176B/加载器 136B/GameMode 72B/进度 64B/Inventory 40B/配方书
+32B——壳候选全量 <50B/玩家远低于三门槛）；**[LServerPlayer; 33,748 数组/3.19MB 归因
+NearbyPlayers.TrackedChunk**（每跟踪区块×6 视图类型 ReferenceList 类型化后备，31→60 人
+数组 1.36×/字节 1.78× 内容缩放，Moonrise 核心结构）；waypoint EntityChunkConnection
+52/玩家语义。**每玩家边际 6.9MB 拆解**：走廊新区块≈99%，**状态本体 ≈45KB/玩家（0.65%）**
+——拆分后判负成立。判例：每玩家边际必须拆状态/内容（原始边际会误立项）/类型化数组行是
+结构指纹（[LServerPlayer;→ReferenceList 后备→语义三步链可复用）。零服务器代码变更零补丁
+零版本 bump。报告：
+[note/report/perf/2026-10-12-playerface-r27-batch168.md](report/perf/2026-10-12-playerface-r27-batch168.md)。

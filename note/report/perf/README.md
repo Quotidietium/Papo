@@ -45,6 +45,7 @@ jcmd heap_info 活集；配对纪律=同会话相邻二进制、LevelChunk ±1% 
 | R24 | 165 | 0.93.0 | 堆外面归因（判负：类/JIT/线程/Netty 无可收敛驻留）+分配源归因（JFR 计数口径）与收割 | SurfaceRules updateY memoize+SequenceRule 迭代器（22.8% trips）→0：总 trips −12.2%、估重净化 −35%、密度树驻留逐位恒等、旧代 −0.13%；巨权伪影判例（计数为准） | [allocsource-r24](2026-10-12-allocsource-r24-batch165.md) |
 | R25 | 166 | 0.94.0 | 实体密集面画像（唯一未演习轴；spectator 触发刷怪实证）+寻路滞留收割 | BinaryHeap.clear 不清引用：Node −38%（26,683→16,476，残差=Path 自有）；实体图 0.75% 堆全表语义判负 | [entityface-r25](2026-10-12-entityface-r25-batch166.md) |
 | R26 | 167 | 0.94.0 | "clear 只置零"反例族全仓清扫（R25 判例落地） | 判负：7 位点 6 处已正确清引用，唯一纯置零=原生 long[] 无害；族穷尽（三例已收 160/165/166） | [clearfamily-sweep-r26](2026-10-12-clearfamily-sweep-r26-batch167.md) |
+| R27 | 168 | 0.94.0 | 高并发玩家面画像（60 bot；harness commonPool 裂批缺陷修复） | 判负：状态本体 45KB/玩家 vs 边际 6.9MB=99% 内容；[LServerPlayer; 归因 NearbyPlayers 内容缩放；在线数验收判例 | [playerface-r27](2026-10-12-playerface-r27-batch168.md) |
 
 ## 终局状态
 

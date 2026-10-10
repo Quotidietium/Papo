@@ -11,6 +11,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -113,6 +115,11 @@ public final class MemSoakVerify {
         Thread.sleep(2000);
 
         try {
+            // 批次168（R27）：runAsync 走 commonPool（并行度≈核数-1），bots 超过它时任务
+            // 分批排队（60 bot 实测裂成 31+29 两批，第二批在首批全部断开后才启动）——
+            // 测量点在线数与 bots 参数不符。专用定长线程池使 bots 数即并发在线数；
+            // bots≤并行度时与 commonPool 行为等价（12 bot 历史全并发）。
+            final ExecutorService botPool = Executors.newFixedThreadPool(bots);
             final CountDownLatch go = new CountDownLatch(1);
             final List<CompletableFuture<Void>> futures = new ArrayList<>();
             for (int i = 0; i < bots; i++) {
@@ -130,7 +137,7 @@ public final class MemSoakVerify {
                     } catch (final Exception e) {
                         throw new RuntimeException("bot " + name + " failed: " + e, e);
                     }
-                }));
+                }, botPool));
             }
             final long walksStartWall = System.currentTimeMillis();
             go.countDown();
@@ -155,6 +162,7 @@ public final class MemSoakVerify {
                 f.get(spreadMs + dwellMs + 120, TimeUnit.SECONDS);
             }
             System.out.println("bots done");
+            botPool.shutdown();
         } finally {
             server.getOutputStream().write("stop\n".getBytes(StandardCharsets.UTF_8));
             server.getOutputStream().flush();
