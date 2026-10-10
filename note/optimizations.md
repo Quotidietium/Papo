@@ -3593,3 +3593,27 @@ link:2 字段 10 分钟排障）/SBS ceil 公式+长度指纹=palette 位宽容�
 189.5→101.4KB（−46.5%），"结果一致"约束下结构收割面穷尽（R11 三轴+R19 直对+R20 盲区修复
 +R21 状态级复核四层）。零代码变更零补丁零版本 bump。报告：
 [note/report/perf/2026-10-11-residual-attribution-r21.md](report/perf/2026-10-11-residual-attribution-r21.md)。
+
+## 批次 163（2026-10-12）：R22——0.92.0 长时生长复验+转码视图对抗复核（版本保持 0.92.0）
+
+R12 方法论在 0.92.0 复跑（LongRunGrowth 12bot×40min 往复循环、每腿末双 Full GC 采样、
+同相位比对；WATCH 扩容 Dynamic/NBTMapType/CompoundTag）。**门全绿（活集口径）**：远端
+同相位活集 779/788/782/790MB ±0.7%、老年代 ±0.4%（优于 R12 ±1.25%）；origin 活集 ±0.6%
+（R12 ±1.9%）；LevelChunk/ChunkHolder/NewChunkHolder 逐位复现（origin 2,447×2→2,448×3）；
+RegionFile 68 后九采样一字不动；模板有界振荡（origin 全 0=TTL 彻底驱逐）；**批158-161 机制
+周期负载专项**：NoiseChunk 腿末全 0（sweep 生效，生成风暴瞬态 515→25→0→18→0 不跨腿累积）、
+O2O ±0.1%（懒 map）、SWMR 每区块 10.97→11.79 增量递减非单调（收敛动力学 +64KB）、[B +0.24%。
+**远端 heapUsed ±41% 之谜破案**：全为 young 区再填充（3 秒采样窗撞上重访重流送突发 444MB），
+老年代/活集持平——判例：同相位堆门必须用老年代或直方图活集，raw used 的持平是时序巧合。
+**对抗复核（R21 最薄面）推翻主体解读并更强判负**：新工具 HolderProbe（数组类+静态字段+根
+三支持，补 ShellRefAttr 数组类洞）静态定位 [MapType×2←HelperBlockFlatteningV1450.FLATTENED_
+BY_ID/BLOCK_DEFAULTS（4096 硬上界 1.13 扁平化查表）+ [Dynamic×2←vanilla BlockStateData——
+包装视图主体是两张 boot 常量表（~1.9MB，两表并存=上游架构事实）；动态直测 Dynamic 7,183/
+NBTMapType 6,956 十采样逐位一字不动，双定位互证；连带修正 R21(a)：30,452 张 CompoundTag 中
+~4,318（14%）为表条目常量，判负更保守。**origin 老年代 +4MB 定性**：Moonrise TickTime
+9,754→18,000 恰好=15 分钟窗上限（收敛签名）+LongAdder/CHM 配套+spark 栈缓存预热，零慢增长。
+判例四条：同相位堆门用老年代/活集（raw used 平持=巧合）/静态常量表双重定位法（静态字段+时序
+逐位互证）/滚动统计窗到顶签名（恰好=上限值是充填收敛决定性判据）/HPROF OBJ_ARRAY 的
+numElements 先于 classOID（与 INSTANCE 分支必须分开写）。时间轴在 0.92.0 二次闭合。零代码
+变更零补丁零版本 bump。报告：
+[note/report/perf/2026-10-12-longrun-r22-batch163.md](report/perf/2026-10-12-longrun-r22-batch163.md)。

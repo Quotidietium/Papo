@@ -51,6 +51,10 @@ public final class LongRunGrowth {
         "ca.spottedleaf.moonrise.patches.chunk_system.scheduling.NewChunkHolder$ChunkCompletion",
         "net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate$StructureBlockInfo",
         "net.minecraft.world.level.chunk.storage.RegionFile",
+        // R22：转码在途视图常驻性对抗面（R21 判负证据最薄处）——若随周期单调增长即为泄漏
+        "com.mojang.serialization.Dynamic",
+        "ca.spottedleaf.dataconverter.types.nbt.NBTMapType",
+        "net.minecraft.nbt.CompoundTag",
     };
 
     public static void main(final String[] args) throws Exception {
