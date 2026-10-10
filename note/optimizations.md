@@ -3565,3 +3565,31 @@ CompoundTag 内容态不变。链全绿：rebuildPatches（0277/0278）/applyPat
 续传取整 22.6MB）+downloadMappings 网络截断，同源本机网络大文件单连接截断。
 报告：
 [note/report/perf/2026-10-11-residual-harvest-r20-batch160-161.md](report/perf/2026-10-11-residual-harvest-r20-batch160-161.md)。
+
+## 批次 162（2026-10-11）：R21——0.92.0 基线残余归因审计轮（版本保持 0.92.0）
+
+三候选面全部判负，每面把既有判负理由从相关性升级为状态级/公式级硬证据。基线=
+0.92.0 收官转储（620,102KB@6,114 区块），对照=同会话 A-080 腿（6,128 区块，配对 0.23%）。
+新工具 PapoO2OStateCensus（O2O 状态普查+[J 构成归因+字段级采样三合一，fastutil-8.5.18
+控制转储 {0,3,38} 三尺寸实证 size 声明序偏移后放行）。**(a) CompoundTag O2O 30,452 张**：
+空率实测 **0.6%**（187 张，成本 0.04MB），中位 2-3 条=真实 NBT 内容；持有者=[Object 嵌套树
+14,893+Dynamic 7,182/NBTMapType 6,956 转码在途视图（与 NewChunkHolder 批量 1:1）+
+NewChunkHolder 4,312 全部指向共享空实例（Moonrise 自带共享空表示）；每区块 5.23→4.98 稳定；
+表示改写（intern/COW）触可变 NBT 热路径=R6 负结果判例+别名化红线 → 判负维持 R11。
+**(b) [J 175.4MB 构成**：85.1% 直接归因（SBS 139.5MB+BitSet 9.7MB）+残余 26.2MB 滑窗闭合
+（PapoPosTypeSet 7.4MB=计划刻真内容[批123/145 自有]、fastutil linked-map link[] 7.3MB
+[link 字段本身是 long[]，2^k+1 容量指纹]、光引擎/传播器/netty 常量 ~5MB）；**R13 边界以
+valuesPerLong 公式恒等重验**：SBS 存储长=ceil(size/(64/bits)) 不跨 long 边界——4-bit=256×
+50,951=105.6MB（每区块 17.3KB，B-088 时 23.0KB 下降）、5-bit=342×7,464=20.7MB（字段级
+解码 bits=5/mask=0x1F/size=4096 实证；B-088 时 ≈0 → 世界内容成熟化队列，17-32 态真混合段）、
+heightmap=37×28,402 与 R13 的 28,141 逐位级一致、biome 1/2-bit ×129k、**跨边界 320 档恰好
+缺席=公式恒等证明**；变长编码=用户终局（R17 裁定不做）维持。**(c) 逐区块差分 A-080 vs
+B-092**：31 个达标类**全部负向**（[B −22.9KB/区块、[S −11.0、[D −6.8、[Object −5.8、
+[J −3.0、shape 族 −3.4~−1.0……），零正回归零新热点，0.80→0.92 收割弧线类粒度单调。
+判例四条入库：hprof 实例 blob 序=CLASS_DUMP 声明序非内存布局序（oop 宽=idSize，idSize=8 时
+data@0 后 bits 在 @8；CLASS_DUMP 可重复出现须去重）/字段级采样优于猜测（sampleCls 定位
+link:2 字段 10 分钟排障）/SBS ceil 公式+长度指纹=palette 位宽容备识别器（320 缺席即证明）/
+审计轮价值形态=判负结论的证据等级须高于立项。主线终态：0.80.0→0.92.0 每区块
+189.5→101.4KB（−46.5%），"结果一致"约束下结构收割面穷尽（R11 三轴+R19 直对+R20 盲区修复
++R21 状态级复核四层）。零代码变更零补丁零版本 bump。报告：
+[note/report/perf/2026-10-11-residual-attribution-r21.md](report/perf/2026-10-11-residual-attribution-r21.md)。

@@ -39,6 +39,7 @@ jcmd heap_info 活集；配对纪律=同会话相邻二进制、LevelChunk ±1% 
 | R18 | 158 | →0.91.0 | SWMR 冻结壳规范共享（3 单例+COW+定居交换+sweep） | SWMR 类 −10.8MB（−81%，三对 census 复验）；每区块全堆 −3.0%（中位） | [swmr-shared-shells-r18-…](2026-10-10-swmr-shared-shells-r18-batch158.md) |
 | R19 | 159 | 0.91.0 | 残余收敛审计+主线收官直对（0.80 vs 0.91） | 正面判负（内容主导）；每区块 189.3→121.3KB=**−35.9%**（同会话直对） | [residual-audit-r19-…](2026-10-10-residual-audit-r19-batch159.md) |
 | R20 | 160/161 | →0.92.0 | R19 判定对抗复核+两残余面收割（NoiseChunk 停机释放+blockEntities 懒分配） | 同窗每区块 190.4→101.4KB=**−46.7%**；census：[[D/NoiseChunk 归零、[D −96.5%、O2O 空图 −13,316（Imposter→0） | [residual-harvest-r20-…](2026-10-11-residual-harvest-r20-batch160-161.md) |
+| R21 | 162 | 0.92.0 | 0.92.0 基线残余归因审计（三面全判负，状态级/公式级证据升级） | O2O 空率 0.6% 实测；[J 构成 85.1%+残余闭合，SBS ceil 公式恒等（320 档缺席）；逐区块差分 31 类全负向 | [residual-attribution-r21](2026-10-11-residual-attribution-r21.md) |
 
 ## 终局状态
 
