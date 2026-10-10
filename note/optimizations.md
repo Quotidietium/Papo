@@ -3476,3 +3476,43 @@ BitSetDiscreteVoxelShape→**7,842（−94.4%）**、DoubleArrayList→**16,640�
 （~−30MB）两个红线相邻提案已于 2026-10-10 按目标新条款（先询问）呈报用户，
 用户裁定**均不做**（采纳推荐：热路径 CPU 交换与写路径抖动的交互体验风险）。
 两角度自此为用户决策终局，非仅工程判负。
+
+## 批次 158（2026-10-10）：R18——SWMRNibbleArray 冻结壳规范共享，三迭代+census 状态普查驱动（0.90.0→0.91.0，0276）
+
+批 157 收官 census 的下一质量：SWMRNibbleArray **539,188 壳×32B=17.3MB vs 30,276
+真实载荷**（壳/载荷 18:1）——94% 是"生而冻结、从未写入"的空壳。出生面全库枚举：
+getFilledEmptyLight 每 chunk 每节填 NULL 壳（质量主体）+SaveUtil 空数据段+fromVanilla；
+写者面 11 站点/3 文件（批 149 六门同量级）。设计三件套：**3 不可变单例**
+（NULL/UNINIT/INIT_FULL——后者声明必须晚于 LONG_VIEW，静态初始化文本序判例）+
+**源数组追踪 COW**（setNibblesForChunkInCache 记录喂给缓存的每 chunk 数组，统一
+chunk 活表/light() 局部/relight 工作数组三类持有者；身份守卫跳过 cache-only 惰性
+建点）+**全变更器身份 canary**。INIT-uniform-0 与 HIDDEN×{0,15} 刻意无单例
+（谓词独占：isInitialised*()读 true/vanilla 视图转 null，引擎恰在这些差异上分支）。
+
+三迭代实证链：v1 出生点收敛+写路径 COW→B 腿 census 308,078（−43%）；v2 补
+updateVisible 双出口定居交换（dirty 槽发布后换回单例）→**计数不动**——写
+SWMRStateCensus（HPROF 行走复制 ShellRefAttr+CLASS_DUMP 字段布局+逐实例状态组合）
+直测 308k 分布：175,499 NULL-clean+90,632 UNINIT-clean+7,617 INIT-15 = 27 万清洁
+私有壳泄漏（extrudeLower→setUninitialised 直出 clean/rewriteNibbleCacheForSkylight
+逐节发布在定居点外/存档往返材质化再载回私有）；v3 population sweep（灌入点全扫
+clean 等值壳）+载入 all-full→INIT_FULL——**canary 立即抓到 performLightIncrease/
+Decrease 4 个直接 .set 站点**（站点普查 grep 变量名大小写陷阱判例：`nibble\.set(`
+漏 `currentNibble.set(`）；v4 四站点惰性 COW（仅真写时提升，读密集 continue 路径
+零 churn）→全绿。单测 PapoSWMRSharedNibbleTest 12 项（读面出生恒等/9 变更器
+canary/clone 私有化/定居契约四项含谓词独占态留私有/INIT_FULL 完整契约含存档往返）；
+SharedConstants.tryDetectVersion 必须先于 Bootstrap.bootStrap 否则级联毒化套件 JVM
+判例。全链：0276/重放 282 提交/counts/compile --rerun-tasks/test 六套件（Paletted
+并发测试一次瞬态重跑绿）/jar 0.91.0；**rebuildPatches 与 applyPatches 不得链式
+单调用**（未声明输出依赖+UP-TO-DATE→内部仓库重置中断，--rerun-tasks 强制重生成）。
+
+配对浸泡六对（v1×1/v2×1/v3×1 红门抓漏/v4×3 绿门），±1% 区块配对门被本会话机器
+负载窗（4.2k~6.1k 摆动）全部践踏——R8 先例双口径收口：**census 主口径（机器无关，
+v4 三对独立复验）SWMR 每区块 95.x→18.x 实例（−80~−82%）、类字节 −10.7~−11.0MB、
+A 侧 415k~423k/B 侧 77k~88k 跨对恒稳、byte[2048] 载荷侧不变**；区块调整辅助口径
+每区块全堆 −3.0%（中位；+0.2%/−3.0%/−6.5%，末对保守向 B 多载 13.4% 仍更轻）。
+残差 77k=21,093 载荷+2,047 INIT-0（判 23k 不可约地板）+53.9k sweep 滞后（静默
+chunk 值恒等未坍缩，持续游戏收敛）；save 侧清扫经评估放弃（与光照线程 updating
+字段竞态，~1.6MB 不值红线风险）。判例：**状态普查先于机制猜测/canary 是共享设计的
+运行时验证器/单写者探针不得漂移线程/census 是负载窗不稳时的硬归因口径**。
+报告：
+[note/report/perf/2026-10-10-swmr-shared-shells-r18-batch158.md](report/perf/2026-10-10-swmr-shared-shells-r18-batch158.md)。

@@ -109,7 +109,9 @@ public final class HeapRefAttr {
         final PrimInv byteInv = new PrimInv(1 << 21);   // [B
         final PrimInv longInv = new PrimInv(1 << 19);   // [J
         final PrimInv objInv = new PrimInv(1 << 20);    // [Ljava.lang.Object;（元素按 4B 压缩指针估）
-        final PrimInv[] invs = {this.byteInv, this.longInv, this.objInv};
+        final PrimInv dblInv = new PrimInv(1 << 16);   // [D（批 158/R18 残余归因）
+        final PrimInv intInv = new PrimInv(1 << 17);  // [I
+        final PrimInv[] invs = {this.byteInv, this.longInv, this.objInv, this.dblInv, this.intInv};
         final LongSet tableIds;
         final LongLong tableCount;   // 表数组 id -> 非空元素数
         final LongLong idToClass;    // key/value 目标 id -> 类 id
@@ -441,8 +443,8 @@ public final class HeapRefAttr {
                         i.readInt();
                         final int n = i.readInt();
                         final int t = i.read();
-                        if (t == 8 || t == 11) {
-                            final PrimInv inv = t == 8 ? this.byteInv : this.longInv;
+                        if (t == 8 || t == 11 || t == 7 || t == 10) {
+                            final PrimInv inv = t == 8 ? this.byteInv : (t == 7 ? this.dblInv : (t == 10 ? this.intInv : this.longInv));
                             if (inv.ids.add(id)) {
                                 inv.len.put(id, n);
                                 inv.arrays++;
@@ -635,6 +637,8 @@ public final class HeapRefAttr {
             }
             System.out.println("byte[] arrays=" + this.byteInv.arrays + " bytes=" + this.byteInv.bytes);
             System.out.println("long[] arrays=" + this.longInv.arrays + " bytes=" + this.longInv.bytes);
+            System.out.println("double[] arrays=" + this.dblInv.arrays + " bytes=" + this.dblInv.bytes);
+            System.out.println("int[] arrays=" + this.intInv.arrays + " bytes=" + this.intInv.bytes);
             System.out.println("Object[] arrays=" + this.objInv.arrays + " estBytes=" + this.objInv.bytes);
             System.out.println("nodes=" + this.nodeTotal + " inTables=" + this.nodesInTables
                 + " tables=" + this.tableIds.size() + " pairs=" + this.nodePairCount);
@@ -743,6 +747,12 @@ public final class HeapRefAttr {
             dumpTop(this.byteInv.byReferrer, true);
             System.out.println("==== long[] attributed=" + this.longInv.attributedBytes + " (" + this.longInv.attributedArrays
                 + " arrays) unattributed=" + this.longInv.unattributedBytes + " ====");
+            System.out.println("==== double[] attributed=" + this.dblInv.attributedBytes + " (" + this.dblInv.attributedArrays
+                + " arrays) unattributed=" + this.dblInv.unattributedBytes + " ====");
+            dumpTop(this.dblInv.byReferrer, true);
+            System.out.println("==== int[] attributed=" + this.intInv.attributedBytes + " (" + this.intInv.attributedArrays
+                + " arrays) unattributed=" + this.intInv.unattributedBytes + " ====");
+            dumpTop(this.intInv.byReferrer, true);
             dumpTop(this.longInv.byReferrer, true);
             System.out.println("==== Object[] attributed(est)=" + this.objInv.attributedBytes + " (" + this.objInv.attributedArrays
                 + " arrays) unattributed(est)=" + this.objInv.unattributedBytes + " ====");
