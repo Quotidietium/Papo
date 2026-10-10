@@ -3471,3 +3471,8 @@ BitSetDiscreteVoxelShape→**7,842（−94.4%）**、DoubleArrayList→**16,640�
 （红线相邻）按目标新条款呈报用户决策。
 报告：
 [note/report/perf/2026-10-10-shape-static-tables-r17-batch157.md](report/perf/2026-10-10-shape-static-tables-r17-batch157.md)。
+
+**批 157 补记（用户裁定）**：palette 变长编码（~−50MB）与光照 nibble 变长表示
+（~−30MB）两个红线相邻提案已于 2026-10-10 按目标新条款（先询问）呈报用户，
+用户裁定**均不做**（采纳推荐：热路径 CPU 交换与写路径抖动的交互体验风险）。
+两角度自此为用户决策终局，非仅工程判负。
