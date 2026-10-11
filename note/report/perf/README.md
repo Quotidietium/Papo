@@ -53,6 +53,7 @@ jcmd heap_info 活集；配对纪律=同会话相邻二进制、LevelChunk ±1% 
 | R32 | 173 | →0.98.0 | 批172 MSPT 守护（三对符号乱翻=噪声地板，机械不在 tick 路径零回归）+稳态普查复验→新晋面收割 | palette 重编码 int[4096] 消面：两阶段保序（升序填充 id 分配=线字节恒等+序无关打包），面 316 trips/429.1MB→**0/0**；两次自查纠偏（空 palette 崩/降序访格 id 重分配）；判例：线格式是 id 分配序的函数/急切求值隐藏依赖/符号翻转判别式 | [reencode-r32](2026-10-12-reencode-r32-batch173.md) |
 | R33 | 174 | →0.99.0 | 0.98.0 普查残余帧级归因（立项 2 判负 4）→双小面收割 | Climate search TL scratch（只读输入无重入）+ Beardifier 索引循环：**165→0 + 228→0 双面消灭**；判负维持：StructureTemplate 族/OreFeature/散布 BlockPos/NoiseChunk wrap-mapAll；判例：assertSame 级 oracle 输入须破平局/公式复刻逐调用同形（pow(E,·)≠exp 位级）/双 switch 臂错位逐臂断言 | [climatescratch-beardifier-r33](2026-10-12-climatescratch-beardifier-r33-batch174.md) |
 | R34 | 175 | →0.100.0 | 批174 三序守护（主 3/6·倒 4/6·钉 5/6 含 dwell 全优，槽3 同号无通道=噪声）+残余归因→流形态消面 | CubicSpline.Multipoint 簇 ≈459 trips→**0**（mapAll 流机械+create 迭代器；替代仅 47 ArrayList）；判例：同号但幅度<腿内摆幅且无机械通道=仍噪声/代表栈外推=截断陷阱（in-stack 是下界）/PlacementModifier 流契约族新判负 | [splinemapall-r34](2026-10-12-splinemapall-r34-batch175.md) |
+| R35 | 176 | →0.101.0 | 批175 三序守护（无三序同号劣化槽，R34 槽3 跨轮反号=噪声佐证）+流契约族接口级收割 | PlacementModifier.forEachPosition 双路（默认桥接插件兼容+11 override 收 3 组）+DFS 走查驱动：placement 流机械 ≈370 trips→**0**（Head 235→0/StreamBuilder 74→0），替代仅 15 walk；判例：流契约零分配三件套/多重发射随机时序不变量（全采样先于首发射）/套件外新测试=未执行 | [placementwalk-r35](2026-10-12-placementwalk-r35-batch176.md) |
 
 ## 终局状态
 

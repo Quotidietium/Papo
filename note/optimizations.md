@@ -3858,3 +3858,32 @@ ImmutableList 故具体 List 实现非可观察契约）；判负维持 NoiseChu
 85→0/NodeBuilder 40→0/toArray 49→0），替代 ArrayList 47 trips，合法结果对象 71→88 配对
 波动，无 ≥20 新面，门双绿。版本 0.100.0。
 报告：[note/report/perf/2026-10-12-splinemapall-r34-batch175.md](report/perf/2026-10-12-splinemapall-r34-batch175.md)。
+
+## 批次 176（2026-10-12）：R35——批175 三序守护→PlacementModifier 流契约族接口级收割（→0.101.0）
+
+红线轴：0.99 vs 0.100 主/倒/钉三对：地板 B≤A 3/6、3/6（翻号重）、4/6（≤0.6），无三序同号
+劣化槽；R34 记录的 stream 槽3 同号模式本轮主序反号——噪声判读获跨轮佐证（判例：跨轮不
+重现的同号=噪声，单轮三序同号才构成候选信号还须机制）；批175 全在 gen worker 无 tick 通道
+→零回归。立项复审（R34 判负面按指令做接口级评估）：PlacementModifier.getPositions 流契约族
+236 Head——封闭性成立（全仓唯一调用者=PlacedFeature.placeWithContext flatMap 链；19 实现单包；
+codec 面零触碰；抽象类加具体方法=二进制兼容）；恒等可证（flatMap 顺序语义=深度优先+每修饰器
+随机量调用时急切采样，DFS 驱动逐镜像；关键不变量：多重发射修饰器全部随机量先于首个发射——
+vanilla Stream.builder/IntStream.range 在 getPositions 内急切构建）；判负维持 Ap2.fillArray/
+wrap λ/HolderDirect-Marker 族/Xoroshiro-Gaussian 族。收割（补丁 0288）：forEachPosition
+(ctx,random,pos,Consumer) 双路——默认=getPositions().forEach（插件兼容路径）+11 处 override
+收束 3 组（PlacementFilter final emit-if 盖 5 过滤器零分配复用输入/RepeatingPlacement 循环
+盖 4 计数族 count 先采样/7 直接子类逐一镜像：CountOnEveryLayer 先全采样后发射、EnvironmentScan
+控制流谓词序同形发 mutable 同别名）+ PlacedFeature 驱动 flatMap 链→PapoPlacementWalk DFS 走查
+（每放置调用一对象、每发射零驱动侧分配；顺序发射契约下单实例 depth 记账安全）。恒等单测 2 件：
+驱动序等价（fake 只 override getPositions 走默认路+内联 vanilla 链 oracle：发射序列逐位相等+
+跑后随机残余态 nextLong 对拍；空链/各 arity/多重发射居中/三层×多 seed）——自查纠偏 2 项（fake
+计数器须双建实例/硬编码叶数按单 origin 首档位展开=3 非 4，红灯暴露测试自身）；逐 impl 对拍
+（同 seed 双随机 forEach 表==流表⇒随机消费等价；HeightRange 用 absolute 锚 null context 安全）
++结构性收束匿名子类+默认路径委托+混合链。链门全 EXIT=0——自查纠偏：首轮 test 绿是假绿（新
+测试未注册进 *TestSuite 聚合器；判例：套件外的新测试=未执行），补注册重跑全绿。普查配对腿：
+placement 流机械归零（Head-in-stack 235→0/StreamBuilder 74→0/Spliterator 31→0/InSquare
+getPositions 面 28→0），替代 PapoPlacementWalk 仅 15，唯一新面=BlockPos 值位点平移 28→26
+（数据非机械），placement-in-stack 627→301 残余为数据面，无 ≥20 新机械面，门双绿。判例：流
+契约接口零分配收割三件套（不动旧签名+遍历双路默认桥接+驱动换走查）/多重发射随机时序不变量/
+套件外新测试=未执行/跨轮不重现同号=噪声。版本 0.101.0。
+报告：[note/report/perf/2026-10-12-placementwalk-r35-batch176.md](report/perf/2026-10-12-placementwalk-r35-batch176.md)。
