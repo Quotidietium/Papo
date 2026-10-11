@@ -3943,3 +3943,34 @@ in-stack 112→1、Climate.sample 88→2、computeSubstance 134→10 上游塌�
 判例：所有权即线程 confinement/结果对象 vs 查询载体/第二腿劣势伪影/Paper
 MutableBlockPos 防御性覆写返回新 immutable。版本 0.103.0。
 报告：[note/report/perf/2026-10-12-aquifercontext-r37-batch178.md](report/perf/2026-10-12-aquifercontext-r37-batch178.md)。
+
+## 批次 179（2026-10-12）：R38——批178 三序守护→Ap2(ADD) fillArray 组合温度数组收割（→0.104.0）
+
+红线轴：0.103 vs 0.104 主/倒/钉三序+**钉死同序复跑**（win5s=min 地板）：主序 **B≤A 6/6**
+（−0.4..−3.0，boot 20.1→18.6s）、倒序 **5/6**（槽1 boot 坡 +0.8 翻号、其余全优）、钉死
+对1 0/6（+0.4..+2.0）**同序复跑不重现**——钉死对2 反转 **6/6 全优**（复跑窗整机更慢、A
+自身槽2 4.3→6.6 漂移，窗内 B 仍全槽更优）→连续重腿后的整机漂移瞬态（判例：真系统差同序
+必复现+同二进制跨腿摆幅 2.9ms 覆盖钉死差+无 tick 机械通道）；无任何槽两对以上同号劣化→
+**零回归成立且方向性改善**（GC 机制同向）。立项：R37 判负维持的 Ap2 面以新机制角度重开
+（判例：**判负面重开判据=新机制通道+恒等论证升级+面占普查首位**）——ADD 臂组合临时数组
+配对腿实测 **1,347 trips/60s 窗、filtered 1,405.9MB=榜首面大于其余机械面之和**；它是
+"同调用消费的查询载体"非"结果对象"（argument2.fillArray 全写+同调用消费+不逃逸，R37
+判别式正面应用）；唯一别名险=密度树嵌套 Ap2(ADD) 于 argument2 内层→**每线程每深度槽栈**
+（`PapoAddTempStack`：double[][] slots 按需增长+深度记账；**push 对已用前缀
+Arrays.fill(0,length,0.0)=新鲜数组逐位恒等**——违约未写索引两态都读 0.0；try/finally
+pop=异常解栈）。MUL/MIN/MAX 臂逐点 compute 无临时数组，面完备无同型遗漏。判负维持：
+wrap 782/mapAll 全族/Xoroshiro 513+Legacy 166（RNG 红线）/allocateSlice 125/PacketEncoder
+105（memo 代价面）/OreFeature 90/StructureTemplate 族/carveEllipsoid 65/findEligibleGroups
+37/BlockPos 散布/数据面。恒等单测 PapoAp2FillArrayTest 6 用例（精确组合、序贯无残留、7
+层嵌套树独立 temp、深槽短请求前缀清零、argument2 抛异常解栈、SparseFill 违约零前缀平权）
+注册套件实测执行；链门 applyPatches/test --rerun-tasks（9,054 tests 0 fail）/compileJava
+全 EXIT=0+BUILD SUCCESSFUL；0.104.0 出包（嵌套 jar javap 验在包）。普查配对腿
+（alloccensus-r38legs.sh+新聚合器 **benchmark/allocsum.py** 入库——先对 0.103 既有腿复现
+基线再启用）：`Ap2.fillArray←selectCellYZ`
+**1,347→0**、in-stack 双归零、替代面 PapoAddTempStack **0 trips**（槽分配一次性低于阈
+值）、事件 7,411→6,491（−12.4%）、raw 权重 −14.6%、无 ≥20 新面；驻留按区块归一
+103.3→103.8KB（+0.4% 噪声内，B 同窗多载 1.9% 区块=生成吞吐略升旁证）。判例：判负面
+重开判据/每深度槽栈=嵌套自递归复用通式/同序复跑不重现=瞬态/工具先对账再使用。版本
+0.104.0。
+
+报告：[note/report/perf/2026-10-12-ap2tempstack-r38-batch179.md](report/perf/2026-10-12-ap2tempstack-r38-batch179.md)。

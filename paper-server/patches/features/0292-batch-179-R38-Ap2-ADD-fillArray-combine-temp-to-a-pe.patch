@@ -1,0 +1,93 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sun, 11 Oct 2026 22:24:17 +0800
+Subject: [PATCH] batch 179 (R38): Ap2(ADD) fillArray combine temp to a
+ per-thread per-depth slot stack
+
+The ADD arm allocated a fresh double[array.length] per fillArray call - one per
+cell per ADD node during chunk noise fill, the single largest allocation face
+of the streaming census (~943MB per 60s window). The temp is fully written by
+argument2.fillArray and consumed in the same call; nested Ap2(ADD) trees need
+their own live temp per depth, so a depth-indexed slot stack with per-push
+zeroing of the used prefix (bit-identical to fresh-array semantics) replaces
+the allocation.
+
+diff --git a/net/minecraft/world/level/levelgen/DensityFunctions.java b/net/minecraft/world/level/levelgen/DensityFunctions.java
+index c8694b27dbd059cf17b8641e9007fe7a25892e38..5a6e69e920f31d45ff8b64fc536c6e1635a7f0b7 100644
+--- a/net/minecraft/world/level/levelgen/DensityFunctions.java
++++ b/net/minecraft/world/level/levelgen/DensityFunctions.java
+@@ -260,6 +260,41 @@ public final class DensityFunctions {
+         return new DensityFunctions.FindTopSurface(density, upperBound, lowerBound, cellHeight);
+     }
+ 
++    // Papo start - batch 179 (R38): per-thread, per-depth reusable temps for the
++    // Ap2 ADD combine (see Ap2.fillArray). Slots grow on demand (max live depth of
++    // a density tree is bounded by its shape) and each slot grows to the largest
++    // array length requested at that depth; every push zeroes the used prefix so a
++    // consumer reads exactly what a fresh array would have held.
++    static final class PapoAddTempStack {
++        private static final ThreadLocal<PapoAddTempStack> STACK = ThreadLocal.withInitial(PapoAddTempStack::new);
++        private double[][] slots = new double[8][];
++        private int depth;
++
++        private PapoAddTempStack() {}
++
++        static double[] push(int length) {
++            return STACK.get().pushAtDepth(length);
++        }
++
++        static void pop() {
++            STACK.get().depth--;
++        }
++
++        private double[] pushAtDepth(int length) {
++            if (this.depth == this.slots.length) {
++                this.slots = Arrays.copyOf(this.slots, this.depth * 2);
++            }
++            double[] slot = this.slots[this.depth];
++            if (slot == null || slot.length < length) {
++                slot = this.slots[this.depth] = new double[length];
++            }
++            Arrays.fill(slot, 0, length, 0.0);
++            this.depth++;
++            return slot;
++        }
++    }
++    // Papo end - batch 179 (R38)
++
+     record Ap2(
+         @Override DensityFunctions.TwoArgumentSimpleFunction.Type type,
+         @Override DensityFunction argument1,
+@@ -284,12 +319,27 @@ public final class DensityFunctions {
+             this.argument1.fillArray(array, contextProvider);
+             switch (this.type) {
+                 case ADD:
+-                    double[] doubles = new double[array.length];
+-                    this.argument2.fillArray(doubles, contextProvider);
+-
+-                    for (int i = 0; i < array.length; i++) {
+-                        array[i] += doubles[i];
++                    // Papo start - batch 179 (R38): depth-indexed thread-local temp instead of a
++                    // fresh double[array.length] per call. The ADD arm's combine temp is fully
++                    // written by argument2.fillArray and consumed in the loop below, never
++                    // escaping - but a density tree can nest Ap2(ADD) inside argument2, so
++                    // nested calls need their own live temps: a per-depth slot stack. Each push
++                    // zeroes the used prefix, matching the fresh-array guarantee bit-for-bit
++                    // (an argument that leaves an index unwritten reads 0.0 either way). This
++                    // arm is the single largest allocation face of the streaming census
++                    // (~943MB per 60s window - one temp per cell per ADD node during chunk
++                    // noise fill), all of it young-gen churn.
++                    double[] doubles = PapoAddTempStack.push(array.length);
++                    try {
++                        this.argument2.fillArray(doubles, contextProvider);
++
++                        for (int i = 0; i < array.length; i++) {
++                            array[i] += doubles[i];
++                        }
++                    } finally {
++                        PapoAddTempStack.pop();
+                     }
++                    // Papo end - batch 179 (R38)
+                     break;
+                 case MUL:
+                     for (int i1 = 0; i1 < array.length; i1++) {

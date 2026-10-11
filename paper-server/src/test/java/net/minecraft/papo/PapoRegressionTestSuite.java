@@ -22,6 +22,7 @@ import net.minecraft.world.level.levelgen.placement.PapoPlacementDriverEquivalen
 import net.minecraft.world.level.levelgen.placement.PapoModifierForEachTest;
 import net.minecraft.world.level.levelgen.blockpredicates.PapoBlockPredicateScratchTest;
 import net.minecraft.world.level.levelgen.PapoContextScratchTest;
+import net.minecraft.world.level.levelgen.PapoAp2FillArrayTest;
 import net.minecraft.util.PapoCubicSplineMapAllTest;
 import net.minecraft.world.level.levelgen.structure.templatesystem.PapoStructureTemplateCacheTest;
 import net.minecraft.world.phys.shapes.PapoShapeInternTest;
@@ -43,7 +44,8 @@ import org.junit.platform.suite.api.SuiteDisplayName;
     PapoPlacementDriverEquivalenceTest.class,
     PapoModifierForEachTest.class,
     PapoBlockPredicateScratchTest.class,
-    PapoContextScratchTest.class})
+    PapoContextScratchTest.class,
+    PapoAp2FillArrayTest.class})
 public class PapoRegressionTestSuite {
 }
 // Papo end - batch 145 (R6)
