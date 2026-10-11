@@ -3833,3 +3833,28 @@ Beardifier ListItr 228→0（两面消灭；ListItr 总量 372→124 残余属�
 零采样；无 ≥20 新面；门双绿。判例：assertSame 级 oracle 要求输入无精确平局/公式复刻
 逐调用同形（pow(E,·)≠exp 位级）/双 switch 臂错位须逐臂断言。版本 0.99.0。
 报告：[note/report/perf/2026-10-12-climatescratch-beardifier-r33-batch174.md](report/perf/2026-10-12-climatescratch-beardifier-r33-batch174.md)。
+
+## 批次 175（2026-10-12）：R34——批174 三序守护→CubicSpline 流形态消面收割（→0.100.0）
+
+红线轴：0.98 vs 0.99 主/倒/钉三对（msptload-r34legs.sh 新增 pinned 模式入库）：地板 B≤A
+主序 3/6、倒序 4/6、钉死 5/6 含全部 dwell 槽；唯一同号 stream 槽3（min +2.1/+1.0/+1.0、avg
+仅 +0.2~0.7）无 tick 路径机械通道（批174 全在 gen worker 严格减分配）且幅度<腿内摆幅 1.5ms
+——噪声地板+良性相位效应（gen 吞吐略升→流送窗竞争略强，dwell 全优佐证），零回归成立、槽3
+如实入档。判例补全：符号翻转跨序=噪声；同号但幅度<腿内摆幅且无机械通道+多数槽反向=仍噪声
+（R24 #5 真回归全条件=同号+复现+机制）。0.99.0 普查残余归因：CubicSpline$Multipoint 单簇
+≈459 trips 立项（ListItr 97+流机械 Head/$3/NodeBuilder/toArray/Spliterator——mapAll 的
+values().stream().map().toList() + create() enhanced-for，每生成区块重包密度树时每样条节点
+重建一次；封闭单文件+恒等可证：列表内容序不变、record 只读持有、codec 路径本用 Guava
+ImmutableList 故具体 List 实现非可观察契约）；判负维持 NoiseChunk wrap/HolderDirect/Marker
+族（per-chunk 树重物化架构）、Xoroshiro/Gaussian 469（SurfaceRules 逐列 at() 种子红线）；
+新判负 PlacementModifier.getPositions 流契约族（HeightRange/InSquare/Filter/RandomOffset
+逐位 Stream.of(pos)——B 腿残余 236 Head 全部来源，接口契约散射）；Aquifer 72<阈。工具判例：
+单代表栈外推会被栈截断误导（in-stack 计数是下界非全量；"Head 301 全属 CubicSpline"初判实为
+~99 可见+截断隐藏，簇精确边界以配对腿差分定）。收割（补丁 0287）：mapAll 填定容 ArrayList
+（同序同元素）+ create 索引循环。恒等单测 3 用例一次全绿：legacy 流形式 oracle 逐项
+（parityString/min/max/apply×10 含嵌套区间）+双 mapAll 复合（第二遍跑在新 ArrayList 上=
+实现变化不可观察）+原树不变；CoordFunc 内容 toString 保 parityString 可比。链门全 EXIT=0；
+0.100.0 出包。普查配对腿：簇全灭（ListItr 97→0/Head-in-stack 99→0/Spliterator 34→0/$3
+85→0/NodeBuilder 40→0/toArray 49→0），替代 ArrayList 47 trips，合法结果对象 71→88 配对
+波动，无 ≥20 新面，门双绿。版本 0.100.0。
+报告：[note/report/perf/2026-10-12-splinemapall-r34-batch175.md](report/perf/2026-10-12-splinemapall-r34-batch175.md)。

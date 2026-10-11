@@ -18,6 +18,7 @@ import net.minecraft.world.level.chunk.PapoReencodeIdentityTest;
 import net.minecraft.world.level.chunk.PapoBlockCountRecalcIdentityTest;
 import net.minecraft.world.level.biome.PapoClimateScratchTest;
 import net.minecraft.world.level.levelgen.PapoBeardifierIndexedLoopTest;
+import net.minecraft.util.PapoCubicSplineMapAllTest;
 import net.minecraft.world.level.levelgen.structure.templatesystem.PapoStructureTemplateCacheTest;
 import net.minecraft.world.phys.shapes.PapoShapeInternTest;
 import net.minecraft.world.ticks.PapoPosTypeSetLazyTest;
@@ -33,7 +34,8 @@ import org.junit.platform.suite.api.SuiteDisplayName;
     PapoPackedDataAliasTest.class,
     PapoReencodeIdentityTest.class,
     PapoClimateScratchTest.class,
-    PapoBeardifierIndexedLoopTest.class})
+    PapoBeardifierIndexedLoopTest.class,
+    PapoCubicSplineMapAllTest.class})
 public class PapoRegressionTestSuite {
 }
 // Papo end - batch 145 (R6)

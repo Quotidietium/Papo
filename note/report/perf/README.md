@@ -52,6 +52,7 @@ jcmd heap_info 活集；配对纪律=同会话相邻二进制、LevelChunk ±1% 
 | R31 | 172 | →0.97.0 | 盘载窗第三面+红线轴闭环（批170/171 MSPT 守护双序 B≤A：主序 −18%/倒序 −7%） | PackedData storage long[] 化+NBT 别名直取（unpack toArray 重复物化）：unpack 框内 51/109.7MB→**14/11.8MB（−89%）**；assertSame 别名铁证单测；LongArrayTag 零滞留；判例：流形态=隐藏拷贝/别名三问/守护腿串行纪律 | [packeddata-r31](2026-10-12-packeddata-r31-batch172.md) |
 | R32 | 173 | →0.98.0 | 批172 MSPT 守护（三对符号乱翻=噪声地板，机械不在 tick 路径零回归）+稳态普查复验→新晋面收割 | palette 重编码 int[4096] 消面：两阶段保序（升序填充 id 分配=线字节恒等+序无关打包），面 316 trips/429.1MB→**0/0**；两次自查纠偏（空 palette 崩/降序访格 id 重分配）；判例：线格式是 id 分配序的函数/急切求值隐藏依赖/符号翻转判别式 | [reencode-r32](2026-10-12-reencode-r32-batch173.md) |
 | R33 | 174 | →0.99.0 | 0.98.0 普查残余帧级归因（立项 2 判负 4）→双小面收割 | Climate search TL scratch（只读输入无重入）+ Beardifier 索引循环：**165→0 + 228→0 双面消灭**；判负维持：StructureTemplate 族/OreFeature/散布 BlockPos/NoiseChunk wrap-mapAll；判例：assertSame 级 oracle 输入须破平局/公式复刻逐调用同形（pow(E,·)≠exp 位级）/双 switch 臂错位逐臂断言 | [climatescratch-beardifier-r33](2026-10-12-climatescratch-beardifier-r33-batch174.md) |
+| R34 | 175 | →0.100.0 | 批174 三序守护（主 3/6·倒 4/6·钉 5/6 含 dwell 全优，槽3 同号无通道=噪声）+残余归因→流形态消面 | CubicSpline.Multipoint 簇 ≈459 trips→**0**（mapAll 流机械+create 迭代器；替代仅 47 ArrayList）；判例：同号但幅度<腿内摆幅且无机械通道=仍噪声/代表栈外推=截断陷阱（in-stack 是下界）/PlacementModifier 流契约族新判负 | [splinemapall-r34](2026-10-12-splinemapall-r34-batch175.md) |
 
 ## 终局状态
 
