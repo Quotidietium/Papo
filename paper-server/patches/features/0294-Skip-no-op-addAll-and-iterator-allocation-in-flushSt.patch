@@ -1,0 +1,55 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Mon, 12 Oct 2026 02:57:05 +0800
+Subject: [PATCH] Skip no-op addAll and iterator allocation in
+ flushStep/applyAndClear
+
+The step-based inside-block effect collector runs for every entity move
+segment, and nearly always collects nothing. Two mechanical allocations
+per move were removed:
+
+- flushStep(): ArrayList.addAll unconditionally calls source.toArray()
+  before checking the element count, allocating 14 x 2 fresh zero-length
+  arrays per flush even with no effects recorded. Guard both merges with
+  isEmpty(); an empty addAll is unobservable here (return value is
+  discarded) and clear() still runs so modCount semantics match vanilla.
+  R41 dwell-window census showed this as the largest real game face
+  (34 trips/60s with a dozen idle bots; scales with entity movement).
+
+- applyAndClear(): enhanced-for over finalEffects allocated an ArrayList
+  Itr per move segment. Indexed loop, same order and elements (nothing
+  structurally modifies the list mid-iteration - consumers are vanilla
+  inside-block appliers). R41 verification pair surfaced the residual
+  iterator face (8 trips) after the addAll fix.
+
+diff --git a/net/minecraft/world/entity/InsideBlockEffectApplier.java b/net/minecraft/world/entity/InsideBlockEffectApplier.java
+index 934bebe2fc044d9c206d7e328e5c273b56ffbb2f..ce102766f11f069d8f7340837019c1789a7416cb 100644
+--- a/net/minecraft/world/entity/InsideBlockEffectApplier.java
++++ b/net/minecraft/world/entity/InsideBlockEffectApplier.java
+@@ -53,7 +53,8 @@ public interface InsideBlockEffectApplier {
+         public void applyAndClear(Entity entity) {
+             this.flushStep();
+ 
+-            for (Consumer<Entity> consumer : this.finalEffects) {
++            for (int i = 0, effectCount = this.finalEffects.size(); i < effectCount; i++) { // Papo - indexed loop: ArrayList enhanced-for allocates an Itr per move segment even when nothing was collected
++                Consumer<Entity> consumer = this.finalEffects.get(i);
+                 if (!entity.isAlive()) {
+                     break;
+                 }
+@@ -68,14 +69,14 @@ public interface InsideBlockEffectApplier {
+         private void flushStep() {
+             for (InsideBlockEffectType insideBlockEffectType : APPLY_ORDER) {
+                 List<Consumer<Entity>> list = this.beforeEffectsInStep.get(insideBlockEffectType);
+-                this.finalEffects.addAll(list);
++                if (!list.isEmpty()) this.finalEffects.addAll(list); // Papo - skip no-op addAll: ArrayList.addAll unconditionally calls toArray(), allocating even for an empty source
+                 list.clear();
+                 if (this.effectsInStep.remove(insideBlockEffectType) instanceof final Consumer<Entity> recordedEffect) { // Paper - track position inside effect was triggered on - better than null check to avoid diff.
+                     this.finalEffects.add(recordedEffect); // Paper - track position inside effect was triggered on
+                 }
+ 
+                 List<Consumer<Entity>> list1 = this.afterEffectsInStep.get(insideBlockEffectType);
+-                this.finalEffects.addAll(list1);
++                if (!list1.isEmpty()) this.finalEffects.addAll(list1); // Papo - skip no-op addAll: ArrayList.addAll unconditionally calls toArray(), allocating even for an empty source
+                 list1.clear();
+             }
+         }

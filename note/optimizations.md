@@ -4026,3 +4026,30 @@ mapAll 架构改写（超等价红线授权）、RNG（绝对红线）、数据�
 0.105.0。
 
 报告：[note/report/perf/2026-10-12-allocarc-final-r40-batch181.md](report/perf/2026-10-12-allocarc-final-r40-batch181.md)。
+
+## 批次 182（2026-10-12）：R41——驻留稳态 tick 窗分配普查→InsideBlockEffectApplier 双机械面收割（→0.106.0）
+
+新窗口轮：R24-R40 十六轮分配普查窗全在流送段，**驻留稳态 tick 窗（12 bot 在线、无流送、
+纯稳态 tick）从未被普查**。发现腿（B-105，驻留 25-85s JFR 窗，1,432 事件/60s=流送窗
+23%）：spark 后台采样器族 639/44.6%（上游诊断，Windows 无 async-profiler 走 Java 引擎
+持续采样）+ **JFR 自观测伪影 92/6.4%**（JfrProfiler.networkStatFor 每包 toString 链——
+我们录制 JFR 激活的服务器内建网络统计=观测者自付成本，**归因前必须剥离**，否则 ~100
+trips 假面霸榜）+ 实体面散布全 <20 阈（makeBoundingBox 27←checkInsideBlocks=AABB 值
+货币 final 字段不可 scratch 化、AABB.move 14、randomTick offset 16、Vec3 21 均结果对象
++tick 红线路径）。**立项收割：StepBasedCollector.flushStep 空 addAll**——ArrayList.addAll
+无条件先 source.toArray()（新零长数组），14 型×2 表=**每实体每移动段 28 个空数组**，
+34 trips≥20；守卫 `!isEmpty()`（空集 addAll 返回值被弃、目标零变更=无观察差；clear()
+保留无条件=modCount 语义逐位一致）+applyAndClear 增强 for→索引循环（配对腿在主面修复
+后浮出同族残余 8 trips——R39 同族完成判例：不留半脸）。恒等单测 4 用例（Mockito verify
+recorded applier/步界到达序非声明序/APPLY_ORDER 合并/空循环后可用）注册套件实测 4/0/0，
+自查纠偏一次（verifyNoMoreInteractions 撞 isAlive() 桩=测试自身）；链门 rebuild
+（0294）/apply/test（**9,067/0/0** 恰=9,063+4）/compile 全 EXIT=0，0.106.0 出包。
+MSPT 三序（最终二进制六腿）：主 2/6·倒 5/6·钉 4/6；唯一跨序同号槽 s2 逐腿复核=主序
+A 腿整腿异常快的外离（六槽全低于其余 A 腿带宽），十二腿合池中位差 0.05ms=噪声+无生成
+通道（R34 判例应用）；驻留槽（改动自身路径）B 持平略优→**零回归**。驻留配对腿：
+copyOf←toArray **30→0**（三腿复现带 26/30/34→0）·迭代器 **8→0**·替代面 0·两腿 gate
+全绿。判例四条：驻留窗观测者伪影剥离/空容器机械面通式（"什么都不做的路径也要分配"
+族在低速率窗权重放大）/同族阈下完成沿用/外离腿识别（单腿整腿偏移驱动假同号，合池即
+消失）。每实体移动段空情形分配 29 件→0。版本 0.106.0。
+
+报告：[note/report/perf/2026-10-12-dwellwindow-r41-batch182.md](report/perf/2026-10-12-dwellwindow-r41-batch182.md)。
