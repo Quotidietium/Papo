@@ -4053,3 +4053,29 @@ copyOf←toArray **30→0**（三腿复现带 26/30/34→0）·迭代器 **8→0
 消失）。每实体移动段空情形分配 29 件→0。版本 0.106.0。
 
 报告：[note/report/perf/2026-10-12-dwellwindow-r41-batch182.md](report/perf/2026-10-12-dwellwindow-r41-batch182.md)。
+
+## 批次 183（2026-10-12）：R42——实体密集+保存窗分配普查→packed long[] 编码 NBT 快路（→0.107.0）
+
+新窗口轮：R25 场景只普查过驻留从未普查分配；alloccensus-r42entity.sh（EntitySoakCensus
+12 bot 驻留 150-210s JFR 窗）**同腿成像保存窗**（uptime 325-385s 跨 5 分钟自动保存）。
+发现腿 1,416 事件分层判定：NBT 内容构造/DFU DataResult 族=数据面+上游架构；makeBoundingBox/
+Vec3=结果对象维持；LongArrayTag.write=**既优化代价面维持**（R32 bulk buf，重开须证净赢）；
+MoonriseRegionFileIO 写完成深拷贝（R30 留观察项定性收束=上游异步写架构）；节快照
+SimpleBitStorage.copy=Paper/Moonrise 异步保存线程安全架构；RegionFile IO 基建；spark/JFR
+观测面剥离（R41 判例）。**立项收割 0295：PAP0_LONG_ARRAY.encode NBT 快路**——
+`ops.createLongList(Arrays.stream(long[]))`→NbtOps 即 `new LongArrayTag(stream.toArray())`
+=纯流机械往返（R31 同族判例）；`ops == NbtOps.INSTANCE`（私有构造严格单例=恒等精确）
+直连 `new LongArrayTag(input.clone())`：内容恒等+tag 拥有全新数组（vanilla 可观察保证
+逐位保持，对第三方手工 PackedData 边角亦恒等）；包装 ops 走原路径。触发面=每个非单值
+block-states/biomes 节的保存。验证：恒等单测 4（**Proxy 全委托 oracle 差分**=精确
+vanilla 流路径对拍+往返 64 格+快照免疫变异+单值省略 data；自查纠偏：16 格预填误写 32=
+测试算术滑误）注册套件实测 4/0/0；链门 rebuild/apply/test（**9,071/0/0**）/compile 全
+EXIT=0，0.107.0 出包；MSPT 三序+钉死同序复跑（八腿）：唯一三序同号槽 s4（+0.7）
+**同序复跑=0.0 不复现**（R38 判例三度应用：真系统差同序必复现）+s6 四对全优+无机制
+通道→**零回归**；实体+保存窗配对腿（A 2,061 vs B 2,204 事件，实体 +0.7% 工作量缩放
+入档）：流面 **35→0**（发现 18/配对 A 35→B 0）、替代面 0、双腿 gate 绿。判例四条：
+保存窗与实体窗同腿成像/R30 留观察项定性收束/单例 ops 恒等快路（clone 比所有权转移
+证明更强）/同序复跑是同号槽终审。每 hash-palette 节保存少 4 件流机械对象+1 次冗余
+拷贝。版本 0.107.0。
+
+报告：[note/report/perf/2026-10-12-entitywindow-r42-batch183.md](report/perf/2026-10-12-entitywindow-r42-batch183.md)。
