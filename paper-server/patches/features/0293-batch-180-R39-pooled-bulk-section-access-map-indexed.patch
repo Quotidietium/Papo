@@ -1,0 +1,129 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Mon, 12 Oct 2026 01:05:44 +0800
+Subject: [PATCH] batch 180 (R39): pooled bulk-section-access map + indexed
+ processor rule loops
+
+BulkSectionAccess borrows its acquired-sections Long2ObjectOpenHashMap from a
+thread-local single-slot pool instead of allocating per construction - OreFeature
+doPlace is the only caller and its try-with-resources makes instances strictly
+sequential per thread; close() releases the acquired sections, clears the map
+(fastutil clear() zeroes key[] and nulls value[], bytecode-verified) and returns
+it to the slot; a nested or abandoned instance falls back to a fresh map,
+vanilla-identical; double-close is guarded to release exactly once (71 census
+trips in a 60s streaming window). RuleProcessor.processBlock iterates its
+immutable rule list by index (the ImmutableList iterator was one allocation per
+block per template placement, 50 trips), and StructureTemplate.processBlockInfos
+drops its per-block processor iterator the same way - same order, same
+early-return, get(i) is a plain array access.
+
+diff --git a/net/minecraft/world/level/chunk/BulkSectionAccess.java b/net/minecraft/world/level/chunk/BulkSectionAccess.java
+index a2f9858324f77cbebea8096f2d3faa8bf625f58f..00856f8c6f07fb2804524c57c05436e077e48d25 100644
+--- a/net/minecraft/world/level/chunk/BulkSectionAccess.java
++++ b/net/minecraft/world/level/chunk/BulkSectionAccess.java
+@@ -1,6 +1,5 @@
+ package net.minecraft.world.level.chunk;
+ 
+-import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
+ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+ import net.minecraft.core.BlockPos;
+ import net.minecraft.core.SectionPos;
+@@ -11,12 +10,33 @@ import org.jspecify.annotations.Nullable;
+ 
+ public class BulkSectionAccess implements AutoCloseable {
+     private final LevelAccessor level;
+-    private final Long2ObjectMap<LevelChunkSection> acquiredSections = new Long2ObjectOpenHashMap<>();
++    // Papo start - batch 180 (R39): the acquired-sections map is borrowed from a
++    // thread-local single-slot pool instead of allocated per construction. The only
++    // caller is OreFeature.doPlace, whose try-with-resources makes instances strictly
++    // sequential per thread; a nested or abandoned instance falls back to a fresh map
++    // (vanilla-identical). Maps only enter the slot from close(), after every acquired
++    // section was released and the map cleared - fastutil clear() zeroes key[] and
++    // nulls value[] (bytecode-verified), so a borrower can never observe stale entries
++    // or leak section references. Removes the per-ore-placement map allocation (71
++    // census trips in a 60s streaming window).
++    static final ThreadLocal<Long2ObjectOpenHashMap<LevelChunkSection>> PAPO_SECTION_MAP_POOL = new ThreadLocal<>();
++    private Long2ObjectOpenHashMap<LevelChunkSection> acquiredSections; // Papo - batch 180 (R39): pooled, see constructor and close()
++    private boolean papoClosed; // Papo - batch 180 (R39): double-close guard - a second close must not re-release sections or re-store a borrowed map
++    // Papo end
+     private @Nullable LevelChunkSection lastSection;
+     private long lastSectionKey;
+ 
+     public BulkSectionAccess(LevelAccessor level) {
+         this.level = level;
++        // Papo start - batch 180 (R39): borrow the pooled map when the slot holds one
++        Long2ObjectOpenHashMap<LevelChunkSection> pooled = PAPO_SECTION_MAP_POOL.get();
++        if (pooled != null) {
++            PAPO_SECTION_MAP_POOL.set(null);
++            this.acquiredSections = pooled;
++        } else {
++            this.acquiredSections = new Long2ObjectOpenHashMap<>();
++        }
++        // Papo end
+     }
+ 
+     public @Nullable LevelChunkSection getSection(BlockPos pos) {
+@@ -86,8 +106,21 @@ public class BulkSectionAccess implements AutoCloseable {
+ 
+     @Override
+     public void close() {
++        // Papo start - batch 180 (R39): double-close guard
++        if (this.papoClosed) {
++            return;
++        }
++        this.papoClosed = true;
++        // Papo end
+         for (LevelChunkSection levelChunkSection : this.acquiredSections.values()) {
+             levelChunkSection.release();
+         }
++        // Papo start - batch 180 (R39): return the now-empty map to the pool slot; if a
++        // nested instance already stored its map, this one is simply dropped (GC)
++        this.acquiredSections.clear();
++        if (PAPO_SECTION_MAP_POOL.get() == null) {
++            PAPO_SECTION_MAP_POOL.set(this.acquiredSections);
++        }
++        // Papo end
+     }
+ }
+diff --git a/net/minecraft/world/level/levelgen/structure/templatesystem/RuleProcessor.java b/net/minecraft/world/level/levelgen/structure/templatesystem/RuleProcessor.java
+index 431875a692e3f737bc784ff42a9e25853687f541..70115f222759d1ea91f3277a010037ef6cb8ebcb 100644
+--- a/net/minecraft/world/level/levelgen/structure/templatesystem/RuleProcessor.java
++++ b/net/minecraft/world/level/levelgen/structure/templatesystem/RuleProcessor.java
+@@ -33,7 +33,13 @@ public class RuleProcessor extends StructureProcessor {
+         RandomSource randomSource = RandomSource.create(Mth.getSeed(relativeBlockInfo.pos()));
+         BlockState blockState = level.getBlockState(relativeBlockInfo.pos());
+ 
+-        for (ProcessorRule processorRule : this.rules) {
++        // Papo start - batch 180 (R39): indexed loop over the immutable rule list - the
++        // enhanced-for allocated an ImmutableList iterator per block per template
++        // placement (50 census trips in a 60s streaming window); same order, same
++        // early-return, get(i) is a plain array access on RegularImmutableList.
++        for (int i = 0, ruleCount = this.rules.size(); i < ruleCount; i++) {
++            ProcessorRule processorRule = this.rules.get(i);
++            // Papo end - batch 180 (R39)
+             if (processorRule.test(relativeBlockInfo.state(), blockState, blockInfo.pos(), relativeBlockInfo.pos(), pos, randomSource)) {
+                 return new StructureTemplate.StructureBlockInfo(
+                     relativeBlockInfo.pos(), processorRule.getOutputState(), processorRule.getOutputTag(randomSource, relativeBlockInfo.nbt())
+diff --git a/net/minecraft/world/level/levelgen/structure/templatesystem/StructureTemplate.java b/net/minecraft/world/level/levelgen/structure/templatesystem/StructureTemplate.java
+index dd804657ed9935155aaaacfd5a1738df39d016e8..f78a5bc022dda3380f0d1a4a380d6fedf7a9f3bd 100644
+--- a/net/minecraft/world/level/levelgen/structure/templatesystem/StructureTemplate.java
++++ b/net/minecraft/world/level/levelgen/structure/templatesystem/StructureTemplate.java
+@@ -485,11 +485,15 @@ public class StructureTemplate {
+             StructureTemplate.StructureBlockInfo structureBlockInfo1 = new StructureTemplate.StructureBlockInfo(
+                 blockPos, structureBlockInfo.state, structureBlockInfo.nbt != null ? structureBlockInfo.nbt.copy() : null
+             );
+-            Iterator<StructureProcessor> iterator = settings.getProcessors().iterator();
++            // Papo start - batch 180 (R39): indexed loop - the per-block iterator()
++            // allocation is gone; same call order (next() has no side effects, so the
++            // swapped null/hasNext evaluation order is unobservable), same early exit.
++            List<StructureProcessor> processors = settings.getProcessors();
+ 
+-            while (structureBlockInfo1 != null && iterator.hasNext()) {
+-                structureBlockInfo1 = iterator.next().processBlock(level, offset, pos, structureBlockInfo, structureBlockInfo1, settings);
++            for (int i = 0; i < processors.size() && structureBlockInfo1 != null; i++) {
++                structureBlockInfo1 = processors.get(i).processBlock(level, offset, pos, structureBlockInfo, structureBlockInfo1, settings);
+             }
++            // Papo end - batch 180 (R39)
+ 
+             if (structureBlockInfo1 != null) {
+                 list1.add(structureBlockInfo1);

@@ -3974,3 +3974,33 @@ wrap 782/mapAll 全族/Xoroshiro 513+Legacy 166（RNG 红线）/allocateSlice 12
 0.104.0。
 
 报告：[note/report/perf/2026-10-12-ap2tempstack-r38-batch179.md](report/perf/2026-10-12-ap2tempstack-r38-batch179.md)。
+
+## 批次 180（2026-10-12）：R39——批179 三序守护→矿石/模板放置机械面三面收割（→0.105.0）
+
+红线轴：0.104 vs 0.105 三对（win5s=min 地板）：倒序对（**杀任务污染窗**，B 腿启动于人工
+终止残留任务后 ~1 分钟）B≤A 1/6 如实降权入档；干净主序 **3/6**（2 平，B 劣化仅槽1 +0.8
+boot 坡/槽5 +0.2，槽3 B −3.0=A 腿内 72ms 瞬态尖峰）；钉死 **5/6**（−0.3..−0.5 全优，槽3
++0.1）；**无任何槽两对以上同号劣化**（槽1 钉死反转）、幅度全 < 同二进制跨腿摆幅（A 槽3
+四腿 8.7-10.7）、改动全在 gen worker 无 tick 通道→**零回归**；佐证 B 同窗多载 35% 区块
+（4,389→5,941）=生成吞吐提升。立项三面：①Long2ObjectOpenHashMap←BulkSectionAccess.<init>
+←OreFeature.doPlace 71 trips（每矿石放置 new 段缓存映射；**全仓唯一使用者**+try-with-
+resources ⇒ 活深度恒 1 → 线程局**单槽借还池**：构造借槽/槽空回落新映射=vanilla 同形、
+close 先 release 全段再 clear 再还槽——**fastutil clear() 清引用字节码实证**（key/value
+双 Arrays.fill，区别于 R25 vanilla BinaryHeap 只置 size 判例）、**papoClosed 双 close 守卫**
+（第二次 close 无操作，比 vanilla 双 release 更防御且消除陈旧实例清掉借出中映射的跨实例
+危害））；②Iterators.forArrayWithPosition←RuleProcessor.processBlock 50 trips（每模板每块
+不可变规则表迭代器→索引循环；位置种子 RNG 构造不动=红线）；③processBlockInfos 每块
+iterator() 阈下同型面索引循环化（本族机械完成）。判负维持：wrap/mapAll 全族/RNG 族/
+allocateSlice/PacketEncoder memo/doPlace 放置本体（工作量缩放）/processBlockInfos 物化
+（R33）/carveEllipsoid/getWorldPos/findEligibleGroups/散布 grow（单点 1-3）。恒等单测
+PapoBulkSectionAccessPoolTest 5（顺序借用清空重 acquire、**嵌套实例独立记账**、双 close
+恰一次、异常还槽、线程隔离）+PapoRuleProcessorIterationTest 4（序+首中早退+输出态+直通）
+注册套件实测执行；链门 rebuild（0293）/apply/test --rerun-tasks（9,063 tests 0 fail）/
+compile 全 EXIT=0+BUILD SUCCESSFUL；0.105.0 出包。普查配对腿：map-ctor←BulkSectionAccess
+**37→0**、iter←RuleProcessor **37→0**、替代面 PAPO_SECTION_MAP_POOL **0**；数据面工作量
+缩放如实入档；驻留按区块 114.7→104.2KB（−9%）。判例：**单槽借还池=顺序生命周期复用通式**
+（三支柱=借空槽/close 先 release 后 clear 再还/双 close 守卫）/**清引用先实证字节码**/
+杀任务残留污染窗判读（终止腿任务前先收走子进程）/工作量缩放面与机械面分开记账。版本
+0.105.0。
+
+报告：[note/report/perf/2026-10-12-sectionpool-r39-batch180.md](report/perf/2026-10-12-sectionpool-r39-batch180.md)。
