@@ -4079,3 +4079,27 @@ EXIT=0，0.107.0 出包；MSPT 三序+钉死同序复跑（八腿）：唯一三
 拷贝。版本 0.107.0。
 
 报告：[note/report/perf/2026-10-12-entitywindow-r42-batch183.md](report/perf/2026-10-12-entitywindow-r42-batch183.md)。
+
+## 批次 184（2026-10-12）：R43——保存 IO 缓冲池化重开评估（R36 判例应用）判负关闭+内存战役收敛终局声明（版本保持 0.107.0）
+
+审计轮，无代码变更。按 R36 判例（既优化的代价面重开须先证净赢）评估 R42 普查的保存 IO
+三面（BufferedOutputStream/ChunkBuffer BAOS/Deflater 外壳）。**既有优化边界源码核实**：
+早期批次已实质收割该路径——RegionFileVersion 写侧 PapoDeflaterOutputStream 单槽
+ThreadLocal 池化 native Deflater（close reset+还槽+JDK 字节码实证显式提供则不 end）+读侧
+Inflater 池+缓冲调用分块语义论证调至 8192/32768；普查三面=该优化的残余外壳（每保存 3
+壳+32KB+8KB+8KB）。**配对定量**（R42 配对腿既有 JFR，保存 IO 代码相同→配对即复现带）：
+BufferedOutputStream 25/25·ChunkBuffer 19/19·Deflater 外壳 16/17≈合计 60 trips/保存密集
+60s 窗、filt 权重 ~62MB=区间上界。**四支柱判负**：①代价面定性（R36 PacketEncoder 同型）
+②量级（低于收割门槛一个数量级、young 突发每 5 分钟一次、压缩写出全在 IO 线程=MSPT 无
+通道）③**恒等可证性失败**（唯一消除路径=可重定向池化 stream 壳，须依赖 JDK
+FilterOutputStream/DeflaterOutputStream 未文档化内部状态复用语义，跨 JDK 更新脆弱=
+稳定性红线优先；R24 立项三门槛的恒等可证腿不成立）④子选项排除（ChunkBuffer 增长=
+内容缩放数据面；移除外层 Buffered=逆转早期有意的调用分块优化）。**正式关闭**，与
+PacketEncoder memo/LongArrayTag bulk buf 同列入档。附**内存战役收敛终局声明**：驻留轴
+（R5-R22，每区块 −46.5%，三轴收敛+直对+长时+延迟四重闭合）、分配源轴（R24-R40，事件
+−32.6%/按区块 −51.7%/权重按区块 −63.2%/吞吐 +39.7%）、新窗口轮（R41-R42）、**四域普查
+全覆盖**（流送/盘载/驻留/实体+保存）、判例索引四组（立项判负/等价性/测量守护/测试）、
+终局余量声明（wrap-mapAll 架构超授权/RNG 绝对红线/数据内容面用户裁定/上游族/维持代价面）。
+红线两轴：内存四域闭合+延迟 R15-R42 逐批相邻守护全零回归。版本保持 0.107.0。
+
+报告：[note/report/perf/2026-10-12-saveio-closure-r43-batch184.md](report/perf/2026-10-12-saveio-closure-r43-batch184.md)。
