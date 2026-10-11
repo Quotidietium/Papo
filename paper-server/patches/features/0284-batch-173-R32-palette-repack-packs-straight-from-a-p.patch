@@ -1,0 +1,133 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sun, 11 Oct 2026 10:22:48 +0800
+Subject: [PATCH] batch 173 (R32): palette repack packs straight from a
+ per-cell mapping - new SimpleBitStorage(bits,size,IntUnaryOperator) ctor
+ (loop line-identical to the int[] ctor) +
+ PalettedContainer.papoReencodedStorage (run-length memo preserved: idFor once
+ per consecutive run, consumed once in ascending order on the owning thread).
+ Eliminates the int[entryCount] intermediate of reencodeContents (16KB per
+ repack for block sections) that exists only to be consumed once by the
+ packing loop; census face 316 trips/429MB = 5.2% of the fresh-gen streaming
+ window. Legacy array pipeline kept as package-private test oracle.
+
+
+diff --git a/net/minecraft/util/SimpleBitStorage.java b/net/minecraft/util/SimpleBitStorage.java
+index 8f03fed6fa2ddd1e60a9b562245ce64d440551da..c03c5d364755ebdd30e8ee10686412d9ead25ea7 100644
+--- a/net/minecraft/util/SimpleBitStorage.java
++++ b/net/minecraft/util/SimpleBitStorage.java
+@@ -251,6 +251,41 @@ public class SimpleBitStorage implements BitStorage {
+         }
+     }
+ 
++    // Papo start - batch 173 (R32): function-sourced packing variant - loop shape is
++    // line-identical to the int[] ctor above, only the per-cell id source changes.
++    // Lets palette re-encoding (reencodeContents callers) pack straight from a per-cell
++    // mapping instead of materializing an int[entryCount] (16KB per repack for block
++    // sections) that exists only to be consumed once by this loop.
++    public SimpleBitStorage(int bits, int size, final java.util.function.IntUnaryOperator ids) {
++        this(bits, size);
++        int i = 0;
++
++        int i1;
++        for (i1 = 0; i1 <= size - this.valuesPerLong; i1 += this.valuesPerLong) {
++            long l = 0L;
++
++            for (int i2 = this.valuesPerLong - 1; i2 >= 0; i2--) {
++                l <<= bits;
++                l |= ids.applyAsInt(i1 + i2) & this.mask;
++            }
++
++            this.data[i++] = l;
++        }
++
++        int i3 = size - i1;
++        if (i3 > 0) {
++            long l1 = 0L;
++
++            for (int i4 = i3 - 1; i4 >= 0; i4--) {
++                l1 <<= bits;
++                l1 |= ids.applyAsInt(i1 + i4) & this.mask;
++            }
++
++            this.data[i] = l1;
++        }
++    }
++    // Papo end - batch 173 (R32)
++
+     public SimpleBitStorage(int bits, int size) {
+         this(bits, size, (long[])null);
+     }
+diff --git a/net/minecraft/world/level/chunk/PalettedContainer.java b/net/minecraft/world/level/chunk/PalettedContainer.java
+index 7f27f0a043664e0638cc0cdc85f443bf63ccd4f4..c3bcf32b43f2a71021b58d2e222bca21faa205f6 100644
+--- a/net/minecraft/world/level/chunk/PalettedContainer.java
++++ b/net/minecraft/world/level/chunk/PalettedContainer.java
+@@ -431,9 +431,8 @@ public class PalettedContainer<T> implements PaletteResize<T>, PalettedContainer
+                         Palette<T> palette1 = new HashMapPalette<>(i, list);
+                         SimpleBitStorage simpleBitStorage = new SimpleBitStorage(i, entryCount, longs);
+                         Palette<T> palette2 = configurationForPaletteSize.createPalette(strategy, list);
+-                        int[] ints = reencodeContents(simpleBitStorage, palette1, palette2);
+                         palette = palette2;
+-                        bitStorage = new SimpleBitStorage(configurationForPaletteSize.bitsInMemory(), entryCount, ints);
++                        bitStorage = papoReencodedStorage(simpleBitStorage, palette1, palette2, configurationForPaletteSize.bitsInMemory(), entryCount); // Papo - batch 173 (R32)
+                     }
+                 } catch (SimpleBitStorage.InitializationException var14) {
+                     return DataResult.error(() -> "Failed to read PalettedContainer: " + var14.getMessage());
+@@ -454,12 +453,11 @@ public class PalettedContainer<T> implements PaletteResize<T>, PalettedContainer
+             Palette<T> palette = this.data.palette;
+             HashMapPalette<T> hashMapPalette = new HashMapPalette<>(bitStorage.getBits());
+             int entryCount = strategy.entryCount();
+-            int[] ints = reencodeContents(bitStorage, palette, hashMapPalette);
+             Configuration configurationForPaletteSize = strategy.getConfigurationForPaletteSize(hashMapPalette.getSize());
+             int i = configurationForPaletteSize.bitsInStorage();
+             Optional<long[]> optional; // Papo - batch 172 (R31)
+             if (i != 0) {
+-                SimpleBitStorage simpleBitStorage = new SimpleBitStorage(i, entryCount, ints);
++                SimpleBitStorage simpleBitStorage = papoReencodedStorage(bitStorage, palette, hashMapPalette, i, entryCount); // Papo - batch 173 (R32)
+                 optional = Optional.of(simpleBitStorage.getRaw()); // Papo - batch 172 (R31): encode copies via stream toArray, byte-identical
+             } else {
+                 optional = Optional.empty();
+@@ -473,7 +471,7 @@ public class PalettedContainer<T> implements PaletteResize<T>, PalettedContainer
+         return var14;
+     }
+ 
+-    private static <T> int[] reencodeContents(BitStorage bitStorage, Palette<T> oldPalette, Palette<T> newPalette) {
++    static <T> int[] reencodeContents(BitStorage bitStorage, Palette<T> oldPalette, Palette<T> newPalette) { // Papo - batch 173 (R32): package-private, test oracle
+         int[] ints = new int[bitStorage.getSize()];
+         bitStorage.unpack(ints);
+         PaletteResize<T> paletteResize = PaletteResize.noResizeExpected();
+@@ -493,6 +491,34 @@ public class PalettedContainer<T> implements PaletteResize<T>, PalettedContainer
+         return ints;
+     }
+ 
++    // Papo start - batch 173 (R32): pack the re-encoded ids straight into the new storage
++    // via the function-sourced SimpleBitStorage ctor, eliminating the int[entryCount]
++    // intermediate of reencodeContents (kept above as the identity oracle for tests).
++    // The mapping closure memoizes the last (oldId -> newId) pair - the same
++    // consecutive-run memo the array version uses - and is consumed exactly once, in
++    // ascending index order, on the thread that built it (both call sites synchronize /
++    // exclusively own the container being repacked).
++    static <T> SimpleBitStorage papoReencodedStorage(
++        final BitStorage bitStorage, final Palette<T> oldPalette, final Palette<T> newPalette, final int newBits, final int entryCount
++    ) {
++        final PaletteResize<T> paletteResize = PaletteResize.noResizeExpected();
++        return new SimpleBitStorage(newBits, entryCount, new java.util.function.IntUnaryOperator() {
++            private int lastOld = -1;
++            private int lastNew = -1;
++
++            @Override
++            public int applyAsInt(final int index) {
++                final int oldId = bitStorage.get(index);
++                if (oldId != this.lastOld) {
++                    this.lastOld = oldId;
++                    this.lastNew = newPalette.idFor(oldPalette.valueFor(oldId), paletteResize);
++                }
++                return this.lastNew;
++            }
++        });
++    }
++    // Papo end - batch 173 (R32)
++
+     @Override
+     public int getSerializedSize() {
+         return this.data.getSerializedSize(this.strategy.globalMap());

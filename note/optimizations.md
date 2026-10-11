@@ -3790,3 +3790,22 @@ section 恰一次+tag 树弃置），其余 ops 走 getLongStream+toArray 与 Co
 并发重腿——本轮违例自查捕获重跑）。DFU8 勘误：createLongList 返回裸值非 DataResult。
 工具注：旧源世界被 Temp 清理，新源世界 MemSoakVerify 再生。版本 0.97.0。报告：
 [note/report/perf/2026-10-12-packeddata-r31-batch172.md](report/perf/2026-10-12-packeddata-r31-batch172.md)。
+
+## 批次 173（2026-10-12）：R32——批172 MSPT 守护+稳态普查复验→palette 重编码数组消面收割（→0.98.0）
+
+红线轴：0.96 vs 0.97 主序+倒序+钉年轻代三对九槽地板符号乱翻=当日噪声地板主导（单腿
+槽间 7→15ms），机械不在 tick 路径+R31 先例→零回归；判例补全：符号翻转跨序=噪声、两序
+同号=信号（R24 #5 判别式另一半）。稳态普查（0.97.0 同 seed 流送窗 6,347 样本）：Ap2/
+mapAll/RNG/散布面维持判负；新晋面 reencodeContents 316 trips/429.1MB——帧级归因 316/316
+全在 pack()（区块保存序列化）：palette 重编码 int[4096]（16KB/次）中间物化，唯一消费者
+是打包循环。收割（补丁 0284）：SimpleBitStorage 加函数式打包 ctor（循环与 int[] 版逐行
+同形）+两阶段——papoPopulateAscending 升序 RLE memo 发出与旧循环逐次相同的 idFor 序列
+（固定 palette id 分配=线字节恒等），papoReencodedStorage memo 闭包直接打包（idFor 全
+命中序无关）；旧管线留树为测试 oracle。**两次自查纠偏**：①删急切调用后空 palette 上算
+configuration→bits=0→无 data 字段解析崩（alias 测试红灯捕获）；②打包循环按 long 内降序
+读格，朴素函数重打包会改首现序→id 分配变→线字节变——两阶段同时解决。恒等单测 3 件
+（bits 交叉随机 run-交织逐位对拍+memo 计数=新存储访问序精确期望/ZeroBitStorage 单 run/
+pack() 线字节与旧管线 oracle 一致）全绿+全套 EXIT=0+链门全绿。普查配对腿：A 316/429.1MB
+→B **0/0MB 面消灭**，替代路径零采样分配，门双绿。判例：线格式是 id 分配序的函数（消数组
+必须两阶段）/急切求值的隐藏依赖（删调用先查副作用被谁读）/符号翻转判别式。版本 0.98.0。
+报告：[note/report/perf/2026-10-12-reencode-r32-batch173.md](report/perf/2026-10-12-reencode-r32-batch173.md)。

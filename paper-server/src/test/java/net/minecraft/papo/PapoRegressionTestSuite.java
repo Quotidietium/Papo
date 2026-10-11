@@ -14,6 +14,7 @@ import net.minecraft.world.level.levelgen.PapoSurfaceRulesAllocTest;
 import net.minecraft.world.level.pathfinder.PapoBinaryHeapReleaseTest;
 import net.minecraft.nbt.PapoReadUtfIdentityTest;
 import net.minecraft.world.level.chunk.PapoPackedDataAliasTest;
+import net.minecraft.world.level.chunk.PapoReencodeIdentityTest;
 import net.minecraft.world.level.chunk.PapoBlockCountRecalcIdentityTest;
 import net.minecraft.world.level.levelgen.structure.templatesystem.PapoStructureTemplateCacheTest;
 import net.minecraft.world.phys.shapes.PapoShapeInternTest;
@@ -27,7 +28,8 @@ import org.junit.platform.suite.api.SuiteDisplayName;
 @SelectClasses({PapoNoiseChunkParkReleaseTest.class, PapoLazyBlockEntitiesTest.class, PapoPosTypeSetLazyTest.class, PapoZeroBitStorageSharedTest.class, PapoPalettedSharedDataTest.class, PapoSWMRSharedNibbleTest.class, PapoSWMRUniformNibbleTest.class, PapoSharedConstantSectionTest.class, PapoStructureTemplateCacheTest.class, PapoShapeInternTest.class, PapoSurfaceRulesAllocTest.class, PapoBinaryHeapReleaseTest.class,
     PapoBlockCountRecalcIdentityTest.class,
     PapoReadUtfIdentityTest.class,
-    PapoPackedDataAliasTest.class})
+    PapoPackedDataAliasTest.class,
+    PapoReencodeIdentityTest.class})
 public class PapoRegressionTestSuite {
 }
 // Papo end - batch 145 (R6)
