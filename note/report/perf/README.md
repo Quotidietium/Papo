@@ -55,6 +55,7 @@ jcmd heap_info 活集；配对纪律=同会话相邻二进制、LevelChunk ±1% 
 | R34 | 175 | →0.100.0 | 批174 三序守护（主 3/6·倒 4/6·钉 5/6 含 dwell 全优，槽3 同号无通道=噪声）+残余归因→流形态消面 | CubicSpline.Multipoint 簇 ≈459 trips→**0**（mapAll 流机械+create 迭代器；替代仅 47 ArrayList）；判例：同号但幅度<腿内摆幅且无机械通道=仍噪声/代表栈外推=截断陷阱（in-stack 是下界）/PlacementModifier 流契约族新判负 | [splinemapall-r34](2026-10-12-splinemapall-r34-batch175.md) |
 | R35 | 176 | →0.101.0 | 批175 三序守护（无三序同号劣化槽，R34 槽3 跨轮反号=噪声佐证）+流契约族接口级收割 | PlacementModifier.forEachPosition 双路（默认桥接插件兼容+11 override 收 3 组）+DFS 走查驱动：placement 流机械 ≈370 trips→**0**（Head 235→0/StreamBuilder 74→0），替代仅 15 walk；判例：流契约零分配三件套/多重发射随机时序不变量（全采样先于首发射）/套件外新测试=未执行 | [placementwalk-r35](2026-10-12-placementwalk-r35-batch176.md) |
 | R36 | 177 | →0.102.0 | 批176 三序守护（主 3/6·倒 6/6 全优·钉 4/6，无三序同号劣化；A-100r 会话中断按 gate 行核对补跑）+谓词/矿物双面收割 | blockpredicates 偏移族 134→**0**（PapoPredicateScratch ThreadLocal+查询坐标只读恒等）+OreFeature λ 146→**4**（访问器提升出循环巢）；immutable 总量 162→14，无 ≥20 新面；判例：既优化的代价面判负（memo 快照 179）/Paper 接口 fake 用 Proxy 单方法路由/守护腿 gate 行核对补跑 | [predicateoffset-r36](2026-10-12-predicateoffset-r36-batch177.md) |
+| R37 | 178 | →0.103.0 | 批177 三序守护（主 2/6·倒 5/6 零劣化·钉 0/6=第二腿劣势伪影，换序即反转；无三序同号劣化槽）+水体/气候/特征五面收割 | Aquifer MutableDouble 121→**0**（所有权即线程 confinement：实例字段化）/SinglePointContext 77+33→**0**（PapoContextScratch 线程局替身）/Geode ListItr 110→**0**（ArrayList+索引循环）/MonsterRoom 58→**0**+PapoWire 27→**0**（自有代价面 ThreadLocal 化）；判例：所有权即线程 confinement/结果对象 vs 查询载体判别式/第二腿劣势伪影/Paper MutableBlockPos 防御性覆写 | [aquifercontext-r37](2026-10-12-aquifercontext-r37-batch178.md) |
 
 ## 终局状态
 

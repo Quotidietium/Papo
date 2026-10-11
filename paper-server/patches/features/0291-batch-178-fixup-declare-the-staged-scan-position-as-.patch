@@ -1,0 +1,20 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sun, 11 Oct 2026 21:16:46 +0800
+Subject: [PATCH] batch 178 fixup: declare the staged scan position as
+ MutableBlockPos (set() is not on BlockPos)
+
+
+diff --git a/net/minecraft/world/level/levelgen/feature/MonsterRoomFeature.java b/net/minecraft/world/level/levelgen/feature/MonsterRoomFeature.java
+index 8a693f913956114dc61de5eac53c925d30ebca71..05eb1cd07f3f815224402327d1cfbab20d5b8f69 100644
+--- a/net/minecraft/world/level/levelgen/feature/MonsterRoomFeature.java
++++ b/net/minecraft/world/level/levelgen/feature/MonsterRoomFeature.java
+@@ -65,7 +65,7 @@ public class MonsterRoomFeature extends Feature<NoneFeatureConfiguration> {
+                 for (int i12 = i7; i12 <= i8; i12++) {
+                     // Papo start - batch 178 (R37): scan through the staging position
+                     // (see field comment) instead of allocating one offset per probe.
+-                    BlockPos blockPos1 = SCAN_SCRATCH.get();
++                    BlockPos.MutableBlockPos blockPos1 = SCAN_SCRATCH.get();
+                     blockPos1.set(blockPos.getX() + i10, blockPos.getY() + i11, blockPos.getZ() + i12);
+                     // Papo end - batch 178 (R37)
+                     boolean isSolid = worldGenLevel.getBlockState(blockPos1).isSolid();

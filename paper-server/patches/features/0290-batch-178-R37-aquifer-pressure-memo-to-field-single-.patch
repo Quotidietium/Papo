@@ -1,0 +1,254 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sun, 11 Oct 2026 20:45:02 +0800
+Subject: [PATCH] batch 178 (R37): aquifer pressure memo to field +
+ single-point context scratch + geode indexed loops + monster-room scan
+ scratch
+
+- Aquifer: per-call NaN-sentinel MutableDouble memo hoisted to an instance
+  field (one aquifer per NoiseChunk, single generation worker thread);
+  reset-on-entry is value-identical to a fresh cell.
+- PapoContextScratch: public thread-local mutable FunctionContext stand-in;
+  Climate.Sampler.sample and WorldCarver.getCarveState stage their
+  per-position SinglePointContext in it (consumers coordinate-read-only,
+  synchronous, no reentrancy, no instanceof/equals on FunctionContext).
+- GeodeFeature: the two point lists become ArrayLists walked by indexed
+  loops - LinkedList was allocated per outer betweenClosed position
+  (up to 33^3 per geode); append-only + insertion-order iteration keeps the
+  order identical.
+- MonsterRoomFeature: room-solidity scan loop stages its probe position in a
+  thread-local MutableBlockPos (coordinate-read-only queries; build loops
+  keep immutable positions since they write and query below() before reuse).
+
+diff --git a/net/minecraft/world/level/biome/Climate.java b/net/minecraft/world/level/biome/Climate.java
+index aa8d1e781c0226b4b651fab8afddcd12597175cc..7f02e70aba1d4bc0ecc8af8c5552a2d878ca6082 100644
+--- a/net/minecraft/world/level/biome/Climate.java
++++ b/net/minecraft/world/level/biome/Climate.java
+@@ -21,6 +21,7 @@ import net.minecraft.util.ExtraCodecs;
+ import net.minecraft.util.Mth;
+ import net.minecraft.world.level.levelgen.DensityFunction;
+ import net.minecraft.world.level.levelgen.DensityFunctions;
++import net.minecraft.world.level.levelgen.PapoContextScratch;
+ import org.jspecify.annotations.Nullable;
+ 
+ public class Climate {
+@@ -491,7 +492,12 @@ public class Climate {
+             int blockPosX = QuartPos.toBlock(x);
+             int blockPosY = QuartPos.toBlock(y);
+             int blockPosZ = QuartPos.toBlock(z);
+-            DensityFunction.SinglePointContext singlePointContext = new DensityFunction.SinglePointContext(blockPosX, blockPosY, blockPosZ);
++            // Papo start - batch 178 (R37): stage the single-point context in a
++            // thread-local mutable holder instead of a fresh record - the six
++            // computes below are coordinate-read-only and synchronous, so reuse
++            // is unobservable (see PapoContextScratch).
++            DensityFunction.FunctionContext singlePointContext = PapoContextScratch.singlePoint(blockPosX, blockPosY, blockPosZ);
++            // Papo end - batch 178 (R37)
+             return Climate.target(
+                 (float)this.temperature.compute(singlePointContext),
+                 (float)this.humidity.compute(singlePointContext),
+diff --git a/net/minecraft/world/level/levelgen/Aquifer.java b/net/minecraft/world/level/levelgen/Aquifer.java
+index 2c9b447d8b0f8f817bfe5350678f97a36103ec02..27b4611e0433a8d52753c8d110c1ca0f41978551 100644
+--- a/net/minecraft/world/level/levelgen/Aquifer.java
++++ b/net/minecraft/world/level/levelgen/Aquifer.java
+@@ -90,6 +90,15 @@ public interface Aquifer {
+         private final DensityFunction erosion;
+         private final DensityFunction depth;
+         private boolean shouldScheduleFluidUpdate;
++        // Papo start - batch 178 (R37): per-call lazy memo cell hoisted to a field.
++        // The MutableDouble in computeSubstance is only a NaN-sentinel memo for one
++        // barrierNoise.compute per call (calculatePressure fills it, at most three
++        // reads); it never escapes the call. This aquifer is owned by exactly one
++        // NoiseChunk and every caller (barrier fill lambda, carver) runs on that
++        // chunk's single generation worker thread, so a field is single-threaded;
++        // resetting the NaN sentinel on entry is value-identical to a fresh cell.
++        private final MutableDouble papoPressureMemo = new MutableDouble(Double.NaN);
++        // Papo end - batch 178 (R37)
+         private final int skipSamplingAboveY;
+         private final int minGridX;
+         private final int minGridY;
+@@ -245,7 +254,11 @@ public interface Aquifer {
+                         this.shouldScheduleFluidUpdate = true;
+                         return blockState1;
+                     } else {
+-                        MutableDouble mutableDouble = new MutableDouble(Double.NaN);
++                        // Papo start - batch 178 (R37): reuse the instance memo cell
++                        // (see field comment) instead of allocating per call.
++                        MutableDouble mutableDouble = this.papoPressureMemo;
++                        mutableDouble.setValue(Double.NaN);
++                        // Papo end - batch 178 (R37)
+                         Aquifer.FluidStatus aquiferStatus2 = this.getAquiferStatus(i11);
+                         double d1 = d * this.calculatePressure(context, mutableDouble, aquiferStatus, aquiferStatus2);
+                         if (substance + d1 > 0.0) {
+diff --git a/net/minecraft/world/level/levelgen/PapoContextScratch.java b/net/minecraft/world/level/levelgen/PapoContextScratch.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..06f7c579996328bebe1191193e2cab1d06d2da13
+--- /dev/null
++++ b/net/minecraft/world/level/levelgen/PapoContextScratch.java
+@@ -0,0 +1,57 @@
++package net.minecraft.world.level.levelgen;
++
++// Papo start - batch 178 (R37): thread-local mutable stand-in for
++// DensityFunction.SinglePointContext.
++//
++// Both construction sites of that record are per-position synchronous calls:
++//  - Climate.Sampler.sample(x, y, z) builds one context per biome sample and
++//    passes it to the six climate density functions' compute(context);
++//  - WorldCarver.getCarveState builds one per carved block and passes it to
++//    aquifer.computeSubstance(context, 0.0) (which forwards it into
++//    barrierNoise.compute(context) inside calculatePressure).
++// Every consumer reads blockX/blockY/blockZ only (coordinate-read-only queries
++// - the same property the block-predicate scratch of batch 177 relies on);
++// no code in the codebase performs instanceof/equals/hashCode on a
++// FunctionContext, and the context never outlives its constructing frame, so a
++// reused mutable holder is unobservable. Reentrancy is impossible: no density
++// function compute calls back into Climate.Sampler.sample or a carver, so at
++// most one live context per thread exists at any time.
++public final class PapoContextScratch {
++    private PapoContextScratch() {}
++
++    private static final ThreadLocal<Holder> HOLDER = ThreadLocal.withInitial(Holder::new);
++
++    static final class Holder implements DensityFunction.FunctionContext {
++        private int x;
++        private int y;
++        private int z;
++
++        void set(int x, int y, int z) {
++            this.x = x;
++            this.y = y;
++            this.z = z;
++        }
++
++        @Override
++        public int blockX() {
++            return this.x;
++        }
++
++        @Override
++        public int blockY() {
++            return this.y;
++        }
++
++        @Override
++        public int blockZ() {
++            return this.z;
++        }
++    }
++
++    public static DensityFunction.FunctionContext singlePoint(int x, int y, int z) {
++        Holder holder = HOLDER.get();
++        holder.set(x, y, z);
++        return holder;
++    }
++}
++// Papo end - batch 178 (R37)
+diff --git a/net/minecraft/world/level/levelgen/carver/WorldCarver.java b/net/minecraft/world/level/levelgen/carver/WorldCarver.java
+index b574d923ef57814ee78724359106c80484207763..f0816f048438a7960534af56074f16bc08274fb9 100644
+--- a/net/minecraft/world/level/levelgen/carver/WorldCarver.java
++++ b/net/minecraft/world/level/levelgen/carver/WorldCarver.java
+@@ -21,7 +21,7 @@ import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+ import net.minecraft.world.level.chunk.CarvingMask;
+ import net.minecraft.world.level.chunk.ChunkAccess;
+ import net.minecraft.world.level.levelgen.Aquifer;
+-import net.minecraft.world.level.levelgen.DensityFunction;
++import net.minecraft.world.level.levelgen.PapoContextScratch;
+ import net.minecraft.world.level.material.Fluid;
+ import net.minecraft.world.level.material.FluidState;
+ import net.minecraft.world.level.material.Fluids;
+@@ -170,7 +170,12 @@ public abstract class WorldCarver<C extends CarverConfiguration> {
+         if (pos.getY() <= config.lavaLevel.resolveY(context)) {
+             return LAVA.createLegacyBlock();
+         } else {
+-            BlockState blockState = aquifer.computeSubstance(new DensityFunction.SinglePointContext(pos.getX(), pos.getY(), pos.getZ()), 0.0);
++            // Papo start - batch 178 (R37): stage the per-block context in the
++            // thread-local mutable holder (computeSubstance and the barrier-noise
++            // compute inside it are coordinate-read-only and synchronous - see
++            // PapoContextScratch).
++            BlockState blockState = aquifer.computeSubstance(PapoContextScratch.singlePoint(pos.getX(), pos.getY(), pos.getZ()), 0.0);
++            // Papo end - batch 178 (R37)
+             if (blockState == null) {
+                 return isDebugEnabled(config) ? config.debugSettings.getBarrierState() : null;
+             } else {
+diff --git a/net/minecraft/world/level/levelgen/feature/GeodeFeature.java b/net/minecraft/world/level/levelgen/feature/GeodeFeature.java
+index 1489328395e212fc34e6e5462dba9d7a167c9a81..5035a0f78818016f0abf00815ac086eedb5b4d66 100644
+--- a/net/minecraft/world/level/levelgen/feature/GeodeFeature.java
++++ b/net/minecraft/world/level/levelgen/feature/GeodeFeature.java
+@@ -39,11 +39,11 @@ public class GeodeFeature extends Feature<GeodeConfiguration> {
+         WorldGenLevel worldGenLevel = context.level();
+         int i = geodeConfiguration.minGenOffset;
+         int i1 = geodeConfiguration.maxGenOffset;
+-        List<Pair<BlockPos, Integer>> list = Lists.newLinkedList();
++        List<Pair<BlockPos, Integer>> list = Lists.newArrayList();
+         int i2 = geodeConfiguration.distributionPoints.sample(randomSource);
+         WorldgenRandom worldgenRandom = new WorldgenRandom(new LegacyRandomSource(worldGenLevel.getSeed()));
+         NormalNoise normalNoise = NormalNoise.create(worldgenRandom, -4, 1.0);
+-        List<BlockPos> list1 = Lists.newLinkedList();
++        List<BlockPos> list1 = Lists.newArrayList();
+         double d = (double)i2 / geodeConfiguration.outerWallDistance.getMaxValue();
+         GeodeLayerSettings geodeLayerSettings = geodeConfiguration.geodeLayerSettings;
+         GeodeBlockSettings geodeBlockSettings = geodeConfiguration.geodeBlockSettings;
+@@ -101,13 +101,24 @@ public class GeodeFeature extends Feature<GeodeConfiguration> {
+             double d7 = 0.0;
+             double d8 = 0.0;
+ 
+-            for (Pair<BlockPos, Integer> pair : list) {
++            // Papo start - batch 178 (R37): indexed loops over the two point lists.
++            // The outer betweenClosed scan visits up to 33^3 positions per geode, and
++            // each enhanced-for below allocated a fresh iterator per position (the
++            // LinkedList$ListItr census face); the lists are append-only and read in
++            // insertion order, so ArrayList + index walk is order-identical with zero
++            // allocation.
++            final int pointCount = list.size();
++            for (int pointIdx = 0; pointIdx < pointCount; pointIdx++) {
++                Pair<BlockPos, Integer> pair = list.get(pointIdx);
+                 d7 += Mth.invSqrt(blockPos2.distSqr(pair.getFirst()) + pair.getSecond().intValue()) + d6;
+             }
+ 
+-            for (BlockPos blockPos3 : list1) {
++            final int crackCount = list1.size();
++            for (int crackIdx = 0; crackIdx < crackCount; crackIdx++) {
++                BlockPos blockPos3 = list1.get(crackIdx);
+                 d8 += Mth.invSqrt(blockPos2.distSqr(blockPos3) + geodeCrackSettings.crackPointOffset) + d6;
+             }
++            // Papo end - batch 178 (R37)
+ 
+             if (!(d7 < d4)) {
+                 if (flag && d8 >= d5 && d7 < d1) {
+diff --git a/net/minecraft/world/level/levelgen/feature/MonsterRoomFeature.java b/net/minecraft/world/level/levelgen/feature/MonsterRoomFeature.java
+index da4eb637f4543bb8d9cf1a0a5608fe9e14250ca1..8a693f913956114dc61de5eac53c925d30ebca71 100644
+--- a/net/minecraft/world/level/levelgen/feature/MonsterRoomFeature.java
++++ b/net/minecraft/world/level/levelgen/feature/MonsterRoomFeature.java
+@@ -29,6 +29,20 @@ public class MonsterRoomFeature extends Feature<NoneFeatureConfiguration> {
+         super(codec);
+     }
+ 
++    // Papo start - batch 178 (R37): staging position for the room-solidity scan.
++    // The first triple loop below probes ~(7 x 6 x 7) positions per room with
++    // blockPos.offset, a fresh BlockPos each; every consumer (getBlockState /
++    // isEmptyBlock) reads coordinates only and holds no reference, so a reused
++    // mutable is unobservable - the same coordinate-read-only property the
++    // batch 177 predicate scratch relies on (above() there also stays safe:
++    // MutableBlockPos.relative is overridden to return a fresh immutable, so
++    // the trailing above() probe cannot rewrite the staging position). The
++    // build loops further down keep immutable positions: they write blocks and
++    // query below() before reusing the position.
++    private static final ThreadLocal<BlockPos.MutableBlockPos> SCAN_SCRATCH = ThreadLocal.withInitial(BlockPos.MutableBlockPos::new);
++    // Papo end - batch 178 (R37)
++
++
+     @Override
+     public boolean place(FeaturePlaceContext<NoneFeatureConfiguration> context) {
+         Predicate<BlockState> predicate = Feature.isReplaceable(BlockTags.FEATURES_CANNOT_REPLACE);
+@@ -49,7 +63,11 @@ public class MonsterRoomFeature extends Feature<NoneFeatureConfiguration> {
+         for (int i10 = i2; i10 <= i3; i10++) {
+             for (int i11 = -1; i11 <= 4; i11++) {
+                 for (int i12 = i7; i12 <= i8; i12++) {
+-                    BlockPos blockPos1 = blockPos.offset(i10, i11, i12);
++                    // Papo start - batch 178 (R37): scan through the staging position
++                    // (see field comment) instead of allocating one offset per probe.
++                    BlockPos blockPos1 = SCAN_SCRATCH.get();
++                    blockPos1.set(blockPos.getX() + i10, blockPos.getY() + i11, blockPos.getZ() + i12);
++                    // Papo end - batch 178 (R37)
+                     boolean isSolid = worldGenLevel.getBlockState(blockPos1).isSolid();
+                     if (i11 == -1 && !isSolid) {
+                         return false;

@@ -3910,3 +3910,36 @@ BlockPredicateScratchTest，Proxy fake 只路由 getBlockState——手写 fake 
 双绿。判例：既优化的代价面判负（普查可见≠可收割，重开须先证净赢）/Paper 接口 fake 用 Proxy/
 守护腿按 gate 行核对补跑。版本 0.102.0。
 报告：[note/report/perf/2026-10-12-predicateoffset-r36-batch177.md](report/perf/2026-10-12-predicateoffset-r36-batch177.md)。
+
+## 批次 178（2026-10-12）：R37——批177 三序守护→水体/气候/特征五面收割（→0.103.0）
+
+红线轴：0.101 vs 0.102 主/倒/钉三对：主序 B≤A 2/6（劣化 ≤+0.3）、倒序 5/6 零劣化
+（1 平）、钉死 0/6（+0.1..+0.4）——**第二腿劣势伪影**（判例：A 先跑两对的后跑腿
+系统性吃亏、B 先跑对反转，勿将钉死 6/6 读作回归）；无三序同号劣化槽（候选槽5
++0.3/0.0/+0.1 幅度<腿内摆幅 1.8-2.5ms 且无机制）；批177 全在 gen worker 无 tick
+通道→零回归。立项 5：Aquifer MutableDouble 121（computeSubstance 的 NaN 哨兵
+barrierNoise 懒记每调用 new——**所有权即线程 confinement** 判例：aquifer 每
+NoiseChunk 一实例单 worker 独占→实例字段化+入口重置）；SinglePointContext 77+33
+（Climate.Sampler.sample←fillBiomesFromNoise 每群系列 + getCarveState 每雕刻块——
+纯 3-int record、全仓无 instanceof/equals 观察、消费坐标只读同步无重入→
+PapoContextScratch 线程局替身）；Geode LinkedList$ListItr 110（betweenClosed 33³×
+两内层增强 for 每 geode ~7 万迭代器→ArrayList+索引循环）；MonsterRoom offset 58
+（首段扫描循环纯查询→SCAN_SCRATCH；二/三段建造循环保持 immutable——below() 后
+setBlock 用位序，mutable 自变错位）；PapoWireDirtyTracking 27（自有代价面：每
+mark 一 MutableBlockPos+markLevel ChunkAccess[4]→ThreadLocal+入口清槽）。判负：
+FlowingFluid relative 76（tick 递归各深度位置须独立存活，深度索引 scratch 侵入
++tick 红线面）；getWorldPos 44/carveEllipsoid 20（结果对象 API 调用方持有/每
+ellipsoid 摊销已复用游标——**结果对象 vs 查询载体判别式**判例）；allocateSlice
+147 数组本体；PacketEncoder memo 代价面维持；OreFeature 65 维持；集合机械散布
+单调用者 <阈；数据面/Moonrise/RNG/Ap2/wrap/mapAll 族维持。收割（0290+src/main
+直改）：5 文件+PapoContextScratch 新类+PapoWireDirtyTracking 线程局化。恒等单测
+PapoContextScratchTest 4 用例（坐标精确含 MIN/MAX、200 轮序贯覆写、三线程 latch
+隔离、getBlender 默认继承）注册套件全绿；两次编译纠偏（ThreadLocal.get() 声明
+类型须 MutableBlockPos 才见 set()；assertTrue(await()) 触发 javac void 单错改语句
+位）。链门全 EXIT=0；0.103.0 出包。普查配对腿（腿遭暂停杀尾，JFR 闭合+logErrors
+=0+直方图已打印按工件门判完整）：五面 **全零**（121/77/33/110/58/27→0，Geode
+in-stack 112→1、Climate.sample 88→2、computeSubstance 134→10 上游塌缩），λ 归一
+后无 ≥20 新面（SpreadContext 20=流体预存面波动），A 7,830/B 5,069 配对波动。
+判例：所有权即线程 confinement/结果对象 vs 查询载体/第二腿劣势伪影/Paper
+MutableBlockPos 防御性覆写返回新 immutable。版本 0.103.0。
+报告：[note/report/perf/2026-10-12-aquifercontext-r37-batch178.md](report/perf/2026-10-12-aquifercontext-r37-batch178.md)。
