@@ -1,0 +1,114 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sun, 11 Oct 2026 19:36:34 +0800
+Subject: [PATCH] batch 177 (R36): block predicates stage their query offset in
+ a thread-local mutable (PapoPredicateScratch) instead of allocating
+ pos.offset(this.offset) per test (StateTestingPredicate 116 census trips +
+ HasSturdyFacePredicate 18 - predicates run per candidate position of every
+ predicate-gated placement; queries are coordinate-read-only so the reusable
+ scratch is unobservable) + OreFeature.doPlace hoists the
+ bulkSectionAccess::getBlockState bound method reference out of the loop nest
+ (146 trips: it was created per candidate position and per target state; one
+ accessor per doPlace is identical)
+
+
+diff --git a/net/minecraft/world/level/levelgen/blockpredicates/HasSturdyFacePredicate.java b/net/minecraft/world/level/levelgen/blockpredicates/HasSturdyFacePredicate.java
+index 8911a0ec9dc73482c2016d943d65dbef12884462..70d56ba36e7cd90161fa9e365818658620b658f6 100644
+--- a/net/minecraft/world/level/levelgen/blockpredicates/HasSturdyFacePredicate.java
++++ b/net/minecraft/world/level/levelgen/blockpredicates/HasSturdyFacePredicate.java
+@@ -25,7 +25,12 @@ public class HasSturdyFacePredicate implements BlockPredicate {
+ 
+     @Override
+     public boolean test(WorldGenLevel level, BlockPos pos) {
+-        BlockPos blockPos = pos.offset(this.offset);
++        // Papo start - batch 177 (R36): stage the offset in a thread-local mutable
++        // instead of allocating pos.offset(this.offset) on every predicate test
++        // (18 census trips); both reads below consume it sequentially before any
++        // other predicate can run on this thread
++        BlockPos blockPos = PapoPredicateScratch.offset(pos, this.offset);
++        // Papo end - batch 177 (R36)
+         return level.getBlockState(blockPos).isFaceSturdy(level, blockPos, this.direction);
+     }
+ 
+diff --git a/net/minecraft/world/level/levelgen/blockpredicates/PapoPredicateScratch.java b/net/minecraft/world/level/levelgen/blockpredicates/PapoPredicateScratch.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..8abcc73fbc406ad83d1bad41149667b98176e7ae
+--- /dev/null
++++ b/net/minecraft/world/level/levelgen/blockpredicates/PapoPredicateScratch.java
+@@ -0,0 +1,34 @@
++package net.minecraft.world.level.levelgen.blockpredicates;
++
++import net.minecraft.core.BlockPos;
++import net.minecraft.core.Vec3i;
++import net.minecraft.world.level.BlockGetter;
++import net.minecraft.world.level.block.state.BlockState;
++
++// Papo start - batch 177 (R36): block predicates allocate a fresh BlockPos via
++// pos.offset(this.offset) on every test (StateTestingPredicate 116 census trips +
++// HasSturdyFacePredicate 18 - predicates run per candidate position of every
++// predicate-gated feature placement). The offset coordinate is instead staged in a
++// thread-local mutable and handed straight to the block query - Level/BlockGetter
++// implementations read x/y/z only and never retain the position (vanilla feature
++// loops pass their own mutables into these same queries), so reusing the scratch is
++// unobservable. Reentrancy is impossible: every use is a set-then-query pair that
++// completes before any other predicate can run on this thread.
++final class PapoPredicateScratch {
++    private static final ThreadLocal<BlockPos.MutableBlockPos> SCRATCH = ThreadLocal.withInitial(BlockPos.MutableBlockPos::new);
++
++    private PapoPredicateScratch() {
++    }
++
++    static BlockState offsetBlockState(BlockGetter level, BlockPos pos, Vec3i offset) {
++        BlockPos blockPos = offset(pos, offset);
++        return level.getBlockState(blockPos);
++    }
++
++    static BlockPos offset(BlockPos pos, Vec3i offset) {
++        BlockPos.MutableBlockPos scratch = SCRATCH.get();
++        scratch.set(pos.getX() + offset.getX(), pos.getY() + offset.getY(), pos.getZ() + offset.getZ());
++        return scratch;
++    }
++}
++// Papo end - batch 177 (R36)
+diff --git a/net/minecraft/world/level/levelgen/blockpredicates/StateTestingPredicate.java b/net/minecraft/world/level/levelgen/blockpredicates/StateTestingPredicate.java
+index 7a3615cf32675681cf23af7b86a88c59a26a02ca..a078299d080b5caeb98e15fd2b86264adc1483a1 100644
+--- a/net/minecraft/world/level/levelgen/blockpredicates/StateTestingPredicate.java
++++ b/net/minecraft/world/level/levelgen/blockpredicates/StateTestingPredicate.java
+@@ -21,7 +21,11 @@ public abstract class StateTestingPredicate implements BlockPredicate {
+ 
+     @Override
+     public final boolean test(WorldGenLevel level, BlockPos pos) {
+-        return this.test(level.getBlockState(pos.offset(this.offset)));
++        // Papo start - batch 177 (R36): stage the offset in a thread-local mutable
++        // instead of allocating pos.offset(this.offset) on every predicate test
++        // (116 census trips - predicates run per candidate position)
++        return this.test(PapoPredicateScratch.offsetBlockState(level, pos, this.offset));
++        // Papo end - batch 177 (R36)
+     }
+ 
+     protected abstract boolean test(BlockState state);
+diff --git a/net/minecraft/world/level/levelgen/feature/OreFeature.java b/net/minecraft/world/level/levelgen/feature/OreFeature.java
+index 043d58127e882c2ec0a080d2ebf11ee8da29c425..6f8dfc00524bab35f20953e76aea0af7093f1375 100644
+--- a/net/minecraft/world/level/levelgen/feature/OreFeature.java
++++ b/net/minecraft/world/level/levelgen/feature/OreFeature.java
+@@ -108,6 +108,11 @@ public class OreFeature extends Feature<OreConfiguration> {
+         }
+ 
+         try (BulkSectionAccess bulkSectionAccess = new BulkSectionAccess(level)) {
++            // Papo start - batch 177 (R36): the bound method reference was created per
++            // candidate position (and per target state) inside the loop nest - 146
++            // census trips; one accessor per doPlace is semantically identical
++            java.util.function.Function<BlockPos, BlockState> adjacentStateAccessor = bulkSectionAccess::getBlockState;
++            // Papo end - batch 177 (R36)
+             for (int i3x = 0; i3x < i1; i3x++) {
+                 double d = doubles[i3x * 4 + 3];
+                 if (!(d < 0.0)) {
+@@ -146,7 +151,7 @@ public class OreFeature extends Feature<OreConfiguration> {
+ 
+                                                         for (OreConfiguration.TargetBlockState targetBlockState : config.targetStates) {
+                                                             if (canPlaceOre(
+-                                                                blockState, bulkSectionAccess::getBlockState, random, config, targetBlockState, mutableBlockPos
++                                                                blockState, adjacentStateAccessor, random, config, targetBlockState, mutableBlockPos
+                                                             )) {
+                                                                 section.setBlockState(
+                                                                     relativeBlockPosCoord,

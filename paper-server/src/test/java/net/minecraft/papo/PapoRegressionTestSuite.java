@@ -20,6 +20,7 @@ import net.minecraft.world.level.biome.PapoClimateScratchTest;
 import net.minecraft.world.level.levelgen.PapoBeardifierIndexedLoopTest;
 import net.minecraft.world.level.levelgen.placement.PapoPlacementDriverEquivalenceTest;
 import net.minecraft.world.level.levelgen.placement.PapoModifierForEachTest;
+import net.minecraft.world.level.levelgen.blockpredicates.PapoBlockPredicateScratchTest;
 import net.minecraft.util.PapoCubicSplineMapAllTest;
 import net.minecraft.world.level.levelgen.structure.templatesystem.PapoStructureTemplateCacheTest;
 import net.minecraft.world.phys.shapes.PapoShapeInternTest;
@@ -39,7 +40,8 @@ import org.junit.platform.suite.api.SuiteDisplayName;
     PapoBeardifierIndexedLoopTest.class,
     PapoCubicSplineMapAllTest.class,
     PapoPlacementDriverEquivalenceTest.class,
-    PapoModifierForEachTest.class})
+    PapoModifierForEachTest.class,
+    PapoBlockPredicateScratchTest.class})
 public class PapoRegressionTestSuite {
 }
 // Papo end - batch 145 (R6)

@@ -3887,3 +3887,26 @@ getPositions 面 28→0），替代 PapoPlacementWalk 仅 15，唯一新面=Bloc
 契约接口零分配收割三件套（不动旧签名+遍历双路默认桥接+驱动换走查）/多重发射随机时序不变量/
 套件外新测试=未执行/跨轮不重现同号=噪声。版本 0.101.0。
 报告：[note/report/perf/2026-10-12-placementwalk-r35-batch176.md](report/perf/2026-10-12-placementwalk-r35-batch176.md)。
+
+## 批次 177（2026-10-12）：R36——批176 三序守护→谓词偏移 scratch+OreFeature 访问器提升双面收割（→0.102.0）
+
+红线轴：0.100 vs 0.101 主/倒/钉三对：地板 B≤A 3/6（≤0.5）、**倒序 6/6 全优**、钉死 4/6（含
+全部 dwell 槽），跨序翻号 3 槽、无三序同号劣化槽；批176 全在 gen worker 无 tick 通道→零回归。
+运维判例：会话中断杀后台守护腿（A-100r 只到槽1）——按 log gate 行核对完整性后补跑单腿，不盲
+重跑整对。立项 2：blockpredicates 偏移族 134（StateTesting 116+HasSturdyFace 18——每候选位置
+pos.offset 新分配；查询链坐标只读不持有=vanilla 特征循环自传 mutable 先例）+OreFeature λ 146
+（绑定方法引用每候选位置×每目标态循环内新建，机械提升）。判负：PacketEncoder byte[] 179=共享
+编码 memo 的快照分配（**既优化的代价面**——一次快照换 N 连接 codec 重走，重开无净收益证明）；
+immutable 残余散布调用者全 <阈；判负维持 Ap2/wrap λ/HolderDirect-Marker 族/Xoroshiro-Gaussian
+族。收割（补丁 0289）：PapoPredicateScratch（ThreadLocal MutableBlockPos，offsetBlockState
+置值即查询+offset 供 HasSturdyFace 两连读序贯消费）+StateTestingPredicate（final test 盖全部
+子类）/HasSturdyFacePredicate 改走+OreFeature.doPlace 访问器提升出循环巢。恒等单测（Papo
+BlockPredicateScratchTest，Proxy fake 只路由 getBlockState——手写 fake 连撞 Paper/Moonrise
+接口扩展 4 追加方法，判例：Paper 接口面 fake 用 Proxy 单方法路由免疫）：查询坐标=输入+offset
+精确断言（ZERO 常量/新建零偏移/负分量/命中未命中）+100 轮交错证明 scratch 不泄漏（记录侧
+即时拷贝坐标）；接线为单行复合由 helper 测试+链门+普查配对腿覆盖。链门全 EXIT=0；0.102.0
+出包。普查配对腿：blockpredicates 偏移族 **134→0**、OreFeature λ **146→4**（残余=每 doPlace
+一个合法访问器）、immutable 总量 162→14、blockpredicates-in-stack 136→2，无 ≥20 新面，门
+双绿。判例：既优化的代价面判负（普查可见≠可收割，重开须先证净赢）/Paper 接口 fake 用 Proxy/
+守护腿按 gate 行核对补跑。版本 0.102.0。
+报告：[note/report/perf/2026-10-12-predicateoffset-r36-batch177.md](report/perf/2026-10-12-predicateoffset-r36-batch177.md)。
