@@ -3770,3 +3770,23 @@ modified-UTF-8 编解码往返：ASCII 长度族跨边界/多字节 NUL/assertSa
 （前提=逐点排除身份依赖）/有界缓存须自证三性质（定尺寸+入口门+发布安全）。实现勘误
 （自查捕获）：去重比较须区间 Arrays.equals，全数组比较在 scratch 增长后永假。版本 0.96.0。
 报告：[note/report/perf/2026-10-12-nbtread-r30-batch171.md](report/perf/2026-10-12-nbtread-r30-batch171.md)。
+
+## 批次 172（2026-10-12）：R31——盘载窗第三面 PackedData 数组别名收割+批170/171 MSPT 守护闭环（→0.97.0）
+
+红线轴：MsptLoadProbe 0.94.0 vs 0.96.0 双序四腿全绿，**全槽 B≤A**（主序 −18.0%/倒序
+−7.0%）——批 170/171 全在 IO 线程的改动对 tick 零回归（改善=加载期 GC 争用外溢减少）。
+第三面归因：readAccounted 本体=内在载荷，但 NbtOps.getLongStream→Arrays.stream(tagArray)
++unpack 的 toArray() 构成**重复物化**（#1 tag 载荷→垃圾；#2 toArray→滞留者，构造器本就
+别名 #2）。收割（补丁 0283，波及两文件）：PackedData.storage Optional<LongStream>→
+Optional<long[]>；字段 codec NbtOps+LongArrayTag 别名直取（单次解码契约：parse 每
+section 恰一次+tag 树弃置），其余 ops 走 getLongStream+toArray 与 Codec.LONG_STREAM
+同形；pack 交 getRaw() 同形 encode（写侧仍拷贝线上字节恒等）。恒等单测 4 件：NbtOps
+全内容往返+assertSame(tag数组,滞留getRaw()) 别名铁证/二次编码线形逐字节相同/均匀容器
+共享 ZeroBitStorage/JsonOps 回退——全绿+全套 EXIT=0+链门全过。同世界配对腿（新源世界
+10,355/10,355 降 3465 双腿门绿）：unpack 框内 51/109.7MB→14/11.8MB（−89%）；流 toArray
+框内 −69%；驻留内容缩放无异常+LongArrayTag 零滞留（别名不泄 tag）；每 section
+3.26→3.10KB。判例：流形态=隐藏拷贝（集合→Stream→toArray 保证一次额外物化，载荷直取
+要求单次消费契约可证）/别名三问（谁持有/谁改/失败路径）/守护腿串行纪律（MSPT 期间禁
+并发重腿——本轮违例自查捕获重跑）。DFU8 勘误：createLongList 返回裸值非 DataResult。
+工具注：旧源世界被 Temp 清理，新源世界 MemSoakVerify 再生。版本 0.97.0。报告：
+[note/report/perf/2026-10-12-packeddata-r31-batch172.md](report/perf/2026-10-12-packeddata-r31-batch172.md)。

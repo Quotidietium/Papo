@@ -1,0 +1,111 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sun, 11 Oct 2026 07:52:58 +0800
+Subject: [PATCH] batch 172 (R31): PackedData.storage Optional<LongStream> ->
+ Optional<long[]> with NBT alias decode - the stream form forced unpack() into
+ a mandatory toArray() copy of every section payload, so each packed container
+ was materialized twice (LongArrayTag.read payload -> garbage, toArray -> the
+ array SimpleBitStorage retains). Field codec PAP0_LONG_ARRAY:
+ NbtOps+LongArrayTag aliases the tag array (single decode per tag on the parse
+ path; tag tree discarded after); all other ops go through
+ getLongStream+toArray exactly like Codec.LONG_STREAM (JsonOps fallback
+ unchanged). pack() hands getRaw() to the same-shaped encode (createLongList
+ copies at write, byte-identical).
+
+
+diff --git a/net/minecraft/world/level/chunk/PalettedContainer.java b/net/minecraft/world/level/chunk/PalettedContainer.java
+index 8eabdc2c471bbe4ee5de87018ebd679777c68c5c..7f27f0a043664e0638cc0cdc85f443bf63ccd4f4 100644
+--- a/net/minecraft/world/level/chunk/PalettedContainer.java
++++ b/net/minecraft/world/level/chunk/PalettedContainer.java
+@@ -63,13 +63,33 @@ public class PalettedContainer<T> implements PaletteResize<T>, PalettedContainer
+                             .listOf()
+                             .fieldOf("palette")
+                             .forGetter(PalettedContainerRO.PackedData::paletteEntries),
+-                        Codec.LONG_STREAM.lenientOptionalFieldOf("data").forGetter(PalettedContainerRO.PackedData::storage)
++                        PAP0_LONG_ARRAY.lenientOptionalFieldOf("data").forGetter(PalettedContainerRO.PackedData::storage) // Papo - batch 172 (R31)
+                     )
+                     .apply(instance, PalettedContainerRO.PackedData::new)
+             )
+             .comapFlatMap(packedData -> unpacker.read(strategy, (PalettedContainerRO.PackedData<T>)packedData), container -> container.pack(strategy));
+     }
+ 
++    // Papo start - batch 172 (R31): long[] field codec. The NBT fast path aliases the
++    // backing LongArrayTag array (single decode per tag on the parse path - see
++    // PalettedContainerRO.PackedData); every other ops goes through getLongStream +
++    // toArray exactly like Codec.LONG_STREAM did, so wire bytes/values are unchanged.
++    private static final Codec<long[]> PAP0_LONG_ARRAY = new Codec<long[]>() {
++        @Override
++        public <D> DataResult<com.mojang.datafixers.util.Pair<long[], D>> decode(final com.mojang.serialization.DynamicOps<D> ops, final D input) {
++            if (ops instanceof net.minecraft.nbt.NbtOps && input instanceof net.minecraft.nbt.LongArrayTag longArrayTag) {
++                return DataResult.success(new com.mojang.datafixers.util.Pair<>(longArrayTag.getAsLongArray(), input));
++            }
++            return ops.getLongStream(input).map(stream -> new com.mojang.datafixers.util.Pair<>(stream.toArray(), input));
++        }
++
++        @Override
++        public <D> DataResult<D> encode(final long[] input, final com.mojang.serialization.DynamicOps<D> ops, final D prefix) {
++            return DataResult.success(ops.createLongList(java.util.Arrays.stream(input))); // createLongList returns the value directly in this DFU
++        }
++    };
++    // Papo end - batch 172 (R31)
++
+     // Papo start - batch 147 (R7): canonical shared Data for single-value containers.
+     // The 0.84.0 soak census measured 576k live single-value containers (87% of all chunk
+     // sections are constant - air above terrain, uniform biomes), each paying
+@@ -396,12 +416,12 @@ public class PalettedContainer<T> implements PaletteResize<T>, PalettedContainer
+                 palette = configurationForPaletteSize.createPalette(strategy, list);
+                 bitStorage = ZeroBitStorage.papoShared(entryCount); // Papo - batch 145 (R6): shared immutable
+             } else {
+-                Optional<LongStream> optional = packedData.storage();
++                Optional<long[]> optional = packedData.storage();
+                 if (optional.isEmpty()) {
+                     return DataResult.error(() -> "Missing values for non-zero storage");
+                 }
+ 
+-                long[] longs = optional.get().toArray();
++                final long[] longs = optional.get(); // Papo - batch 172 (R31): NBT path aliases the tag array (no toArray copy)
+ 
+                 try {
+                     if (!configurationForPaletteSize.alwaysRepack() && configurationForPaletteSize.bitsInMemory() == i) {
+@@ -437,10 +457,10 @@ public class PalettedContainer<T> implements PaletteResize<T>, PalettedContainer
+             int[] ints = reencodeContents(bitStorage, palette, hashMapPalette);
+             Configuration configurationForPaletteSize = strategy.getConfigurationForPaletteSize(hashMapPalette.getSize());
+             int i = configurationForPaletteSize.bitsInStorage();
+-            Optional<LongStream> optional;
++            Optional<long[]> optional; // Papo - batch 172 (R31)
+             if (i != 0) {
+                 SimpleBitStorage simpleBitStorage = new SimpleBitStorage(i, entryCount, ints);
+-                optional = Optional.of(Arrays.stream(simpleBitStorage.getRaw()));
++                optional = Optional.of(simpleBitStorage.getRaw()); // Papo - batch 172 (R31): encode copies via stream toArray, byte-identical
+             } else {
+                 optional = Optional.empty();
+             }
+diff --git a/net/minecraft/world/level/chunk/PalettedContainerRO.java b/net/minecraft/world/level/chunk/PalettedContainerRO.java
+index 44537ad26606e1e45449af04591e241f561b9696..7b42fd3977c3f7be6b8a41a1ac2cf0d086e5e416 100644
+--- a/net/minecraft/world/level/chunk/PalettedContainerRO.java
++++ b/net/minecraft/world/level/chunk/PalettedContainerRO.java
+@@ -34,13 +34,22 @@ public interface PalettedContainerRO<T> {
+ 
+     PalettedContainerRO.PackedData<T> pack(Strategy<T> strategy);
+ 
+-    public record PackedData<T>(List<T> paletteEntries, Optional<LongStream> storage, int bitsPerEntry) {
++    // Papo start - batch 172 (R31): storage carries the raw long[] instead of a LongStream.
++    // The stream form forced unpack() into a mandatory toArray() copy of every payload -
++    // for NBT-backed input (every chunk load) NbtOps hands out Arrays.stream(tagArray),
++    // so each section's packed data was materialized twice: once by LongArrayTag.read
++    // (the tag payload, then garbage) and once by toArray (the array SimpleBitStorage
++    // retains). The NBT decode path in PalettedContainer now aliases the tag's own
++    // array; the tag is single-use on the parse path, and in-tree each section field is
++    // decoded exactly once before the tag tree is discarded.
++    public record PackedData<T>(List<T> paletteEntries, Optional<long[]> storage, int bitsPerEntry) {
+         public static final int UNKNOWN_BITS_PER_ENTRY = -1;
+ 
+-        public PackedData(List<T> paletteEntries, Optional<LongStream> storage) {
++        public PackedData(List<T> paletteEntries, Optional<long[]> storage) {
+             this(paletteEntries, storage, -1);
+         }
+     }
++    // Papo end - batch 172 (R31)
+ 
+     public interface Unpacker<T, C extends PalettedContainerRO<T>> {
+         DataResult<C> read(Strategy<T> strategy, PalettedContainerRO.PackedData<T> packedData);
