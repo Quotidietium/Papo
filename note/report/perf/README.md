@@ -51,6 +51,7 @@ jcmd heap_info 活集；配对纪律=同会话相邻二进制、LevelChunk ±1% 
 | R30 | 171 | →0.96.0 | NBT 读取通路（残余簇归因：copy=Moonrise 防御拷贝判负/O2O=流式判负/unpack<阈判负） | papoReadUtf 零分配重写：TL scratch+≤48B 有界去重（同一不可变 String），面 94 trips/83.5MB→**2 trips/2.0MB（−97.9%）**；驻留 String −5.4k/[B −8.1MB；判例：读侧物化三重奏/不可变值共享零语义面/有界缓存三性质 | [nbtread-r30](2026-10-12-nbtread-r30-batch171.md) |
 | R31 | 172 | →0.97.0 | 盘载窗第三面+红线轴闭环（批170/171 MSPT 守护双序 B≤A：主序 −18%/倒序 −7%） | PackedData storage long[] 化+NBT 别名直取（unpack toArray 重复物化）：unpack 框内 51/109.7MB→**14/11.8MB（−89%）**；assertSame 别名铁证单测；LongArrayTag 零滞留；判例：流形态=隐藏拷贝/别名三问/守护腿串行纪律 | [packeddata-r31](2026-10-12-packeddata-r31-batch172.md) |
 | R32 | 173 | →0.98.0 | 批172 MSPT 守护（三对符号乱翻=噪声地板，机械不在 tick 路径零回归）+稳态普查复验→新晋面收割 | palette 重编码 int[4096] 消面：两阶段保序（升序填充 id 分配=线字节恒等+序无关打包），面 316 trips/429.1MB→**0/0**；两次自查纠偏（空 palette 崩/降序访格 id 重分配）；判例：线格式是 id 分配序的函数/急切求值隐藏依赖/符号翻转判别式 | [reencode-r32](2026-10-12-reencode-r32-batch173.md) |
+| R33 | 174 | →0.99.0 | 0.98.0 普查残余帧级归因（立项 2 判负 4）→双小面收割 | Climate search TL scratch（只读输入无重入）+ Beardifier 索引循环：**165→0 + 228→0 双面消灭**；判负维持：StructureTemplate 族/OreFeature/散布 BlockPos/NoiseChunk wrap-mapAll；判例：assertSame 级 oracle 输入须破平局/公式复刻逐调用同形（pow(E,·)≠exp 位级）/双 switch 臂错位逐臂断言 | [climatescratch-beardifier-r33](2026-10-12-climatescratch-beardifier-r33-batch174.md) |
 
 ## 终局状态
 

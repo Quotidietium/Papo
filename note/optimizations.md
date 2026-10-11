@@ -3809,3 +3809,27 @@ pack() 线字节与旧管线 oracle 一致）全绿+全套 EXIT=0+链门全绿�
 →B **0/0MB 面消灭**，替代路径零采样分配，门双绿。判例：线格式是 id 分配序的函数（消数组
 必须两阶段）/急切求值的隐藏依赖（删调用先查副作用被谁读）/符号翻转判别式。版本 0.98.0。
 报告：[note/report/perf/2026-10-12-reencode-r32-batch173.md](report/perf/2026-10-12-reencode-r32-batch173.md)。
+
+## 批次 174（2026-10-12）：R33——0.98.0 普查残余帧级归因→Climate 检索 scratch + Beardifier 索引循环收割（→0.99.0）
+
+普查残余判定（8,391 样本）：立项 toParameterArray 165 trips（全仓唯一调用者=
+ParameterList.search，数组为树搜索只读输入不逃逸、距离度量纯算术无重入——TL scratch
+安全前提全成立）+ Beardifier.compute 228 trips（全为 enhanced-for 的 ListItr：结构邻接
+区块每噪声格一次×两条不可变 List）；判负维持/新增：StructureTemplate 处理族（vanilla
+模板放置架构，门槛不过）、OreFeature.doPlace（逐位放置本体）、散布 BlockPos/
+EnvironmentScanPlacement、NoiseChunk.wrap/mapAll 复审维持 R24 判负（per-chunk Marker
+绑定=世界生成核心架构）。收割（补丁 0286）：Climate 加 PAP0_SEARCH_SCRATCH
+ThreadLocal long[7]（每线程一份惰性分配后零分配，逐字段填充与 toParameterArray 逐值
+恒等，findValueBruteForce 走 fitness 不受影响）；Beardifier 双循环索引化（同序同算术
+零分配）。恒等单测 2 件：Climate 32 轮×5 交错点×2 实例对 bruteForce oracle 逐次
+assertSame（共享静态 scratch 泄漏探头）；Beardifier 五臂逐臂公式断言+junction+核外零+
+可加性+两早退零，oracle 逐调用同形（kernel 由初始化表达式 Math.pow(Math.E,·) 含 float
+存储位精确复刻，delta=0）。**测试自身三轮纠偏（判例素材）**：①Parameter record
+(long,long) 无单参构造；②middle=5000×6 恰为精确等距平局，树/暴力各自合法破平局
+assertSame 必炸——oracle 输入须先破平局；③BEARD_THIN 的 i5 取值臂走 BURY（i4）而
+贡献公式臂才与 BEARD_BOX 共享——逐臂断言捕获臂间错位（红灯同时纠正 i5=4 手算滑误）。
+链门 rebuild/apply/test/compile 全 EXIT=0；0.99.0 出包。普查配对腿：Climate 165→0、
+Beardifier ListItr 228→0（两面消灭；ListItr 总量 372→124 残余属他位点）；替代路径
+零采样；无 ≥20 新面；门双绿。判例：assertSame 级 oracle 要求输入无精确平局/公式复刻
+逐调用同形（pow(E,·)≠exp 位级）/双 switch 臂错位须逐臂断言。版本 0.99.0。
+报告：[note/report/perf/2026-10-12-climatescratch-beardifier-r33-batch174.md](report/perf/2026-10-12-climatescratch-beardifier-r33-batch174.md)。

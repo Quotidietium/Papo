@@ -1,0 +1,77 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sun, 11 Oct 2026 12:10:00 +0800
+Subject: [PATCH] batch 174 (R33): Climate ParameterList.search fills a
+ thread-local long[7] scratch (165-trip toParameterArray face; read-only
+ input, no reentrancy) + Beardifier.compute indexed loops (228-trip ListItr
+ face; same order same arithmetic)
+
+
+diff --git a/net/minecraft/world/level/biome/Climate.java b/net/minecraft/world/level/biome/Climate.java
+index ab567a57daebe2deac0a1f8dd76e35ae9a5cb3e5..aa8d1e781c0226b4b651fab8afddcd12597175cc 100644
+--- a/net/minecraft/world/level/biome/Climate.java
++++ b/net/minecraft/world/level/biome/Climate.java
+@@ -384,7 +384,22 @@ public class Climate {
+         }
+ 
+         public T search(Climate.TargetPoint targetPoint, Climate.DistanceMetric<T> distanceMetric) {
+-            long[] longs = targetPoint.toParameterArray();
++            // Papo start - batch 174 (R33): fill a thread-local scratch instead of
++            // allocating a fresh long[7] per query. The array is a read-only input to
++            // the tree search - never stored, never escaping root.search - and each
++            // thread runs at most one search at a time (the distance metric is pure
++            // arithmetic and never re-enters biome sampling), so overwriting the
++            // scratch per query is unobservable. This is the hottest biome-lookup
++            // allocation (every noise sample of every section fill).
++            final long[] longs = PAP0_SEARCH_SCRATCH.get();
++            longs[0] = targetPoint.temperature();
++            longs[1] = targetPoint.humidity();
++            longs[2] = targetPoint.continentalness();
++            longs[3] = targetPoint.erosion();
++            longs[4] = targetPoint.depth();
++            longs[5] = targetPoint.weirdness();
++            longs[6] = 0L;
++            // Papo end - batch 174 (R33)
+             Climate.RTree.Leaf<T> leaf = this.root.search(longs, this.lastResult.get(), distanceMetric);
+             this.lastResult.set(leaf);
+             return leaf.value;
+@@ -543,6 +558,8 @@ public class Climate {
+         }
+     }
+ 
++    private static final ThreadLocal<long[]> PAP0_SEARCH_SCRATCH = ThreadLocal.withInitial(() -> new long[7]); // Papo - batch 174 (R33)
++
+     public record TargetPoint(long temperature, long humidity, long continentalness, long erosion, long depth, long weirdness) {
+         @VisibleForTesting
+         protected long[] toParameterArray() {
+diff --git a/net/minecraft/world/level/levelgen/Beardifier.java b/net/minecraft/world/level/levelgen/Beardifier.java
+index b87fad848fa4342dc420a186a762cc826e9c0294..10ddc630d6dc7972690a5631f110d3f17fa84f7e 100644
+--- a/net/minecraft/world/level/levelgen/Beardifier.java
++++ b/net/minecraft/world/level/levelgen/Beardifier.java
+@@ -121,7 +121,14 @@ public class Beardifier implements DensityFunctions.BeardifierOrMarker {
+             } else {
+                 double d = 0.0;
+ 
+-                for (Beardifier.Rigid rigid : this.pieces) {
++                // Papo start - batch 174 (R33): indexed loops - compute() runs per noise
++                // cell of every structure-adjacent chunk, and enhanced-for over these
++                // (immutable) lists allocates a fresh ListItr per call (228 JFR trips in
++                // the streaming census). Same order, same arithmetic, zero allocation.
++                final int pieceCount = this.pieces.size();
++                for (int pieceIdx = 0; pieceIdx < pieceCount; pieceIdx++) {
++                    final Beardifier.Rigid rigid = this.pieces.get(pieceIdx);
++                    // Papo end - batch 174 (R33)
+                     BoundingBox boundingBox = rigid.box();
+                     int groundLevelDelta = rigid.groundLevelDelta();
+                     int max = Math.max(0, Math.max(boundingBox.minX() - i, i - boundingBox.maxX()));
+@@ -144,7 +151,9 @@ public class Beardifier implements DensityFunctions.BeardifierOrMarker {
+                     };
+                 }
+ 
+-                for (JigsawJunction jigsawJunction : this.junctions) {
++                final int junctionCount = this.junctions.size();
++                for (int junctionIdx = 0; junctionIdx < junctionCount; junctionIdx++) {
++                    final JigsawJunction jigsawJunction = this.junctions.get(junctionIdx);
+                     int i6 = i - jigsawJunction.getSourceX();
+                     int groundLevelDelta = i1 - jigsawJunction.getSourceGroundY();
+                     int max = i2 - jigsawJunction.getSourceZ();
