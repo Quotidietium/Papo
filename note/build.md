@@ -755,3 +755,22 @@ entities/blockEntities 段"）。改 ServerLevel tick 结构时记得同步该�
 - **1ms 采样地板下的链级成像**：小风暴（10³ 次级动作）单链在聚合 top-40 里
   不可见，但全栈 in-stack 符号扫描（jfr print --events+grep 链符号）可见
   （77 事件）——链级显著性判定用符号扫描，聚合 top-N 只用于大面。
+
+## 2026-10-13 补充：批次 201 踩坑记录
+
+- **TNT summon 服务器回显格式**="Summoned new Primed TNT"（1.21.x 新格式，
+  非旧版 "Object summoned"）——门用双模式匹配，harness 保留样本行打印
+  （boomEchoSample）供格式演化时校准。
+- **服务器日志行统计必须在 harness 内做**：CompositeCensus 的 logLines 只在
+  harness 内存（log-tail 线程收集），不会进 leg.log——shell 门要消费服务器
+  日志计数（summon 回显/joined/left 等）须 harness 内统计后以结构化行打印
+  （`CompositeCensus.boomSummonEcho=N`）。R49 的 joins/lefts 计数同法=通式。
+- **探针腿先行**：新负载形态先单跑"重"腿（风暴腿）验证探针命中/回显格式/
+  量级三件——全绿后该腿数据直接留用为普查腿，再补对照腿；比先跑对照腿再
+  发现形态缺陷省一轮 ~9min。
+- **`execute unless entity` 反向探针**：负向断言（实体应不存在）用 unless
+  变体可 say 化=门可 grep——正向探针族的补集形态（TNT 尽清探针）。
+- **爆炸域是批次 73 memo 的实证点**：PapoSharedWireMemo 当年以"大红石/TNT
+  批量更新域"立项但从未在爆炸负载下成像过——本轴 in-stack 在场（4→5）=
+  memo 对爆炸域广播覆盖的首次直接实证（回流检查的新语义：不仅查无回归，
+  还可证历史设计对新城段兑现）。

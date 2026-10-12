@@ -4637,3 +4637,41 @@ BlockCanBuildEvent 零监听无条件 callEvent（与 papo 0254 族零监听快�
 top-N。无代码变更、版本保持 0.110.0。
 
 报告：[note/report/perf/2026-10-13-place-r59-batch200.md](report/perf/2026-10-13-place-r59-batch200.md)。
+
+## 批次 201（2026-10-13）：R60——爆炸轴（TNT summon 风暴）→判负闭合（第十七域）（0.110.0 保持）
+
+事实核查定轴：区块卸载窗=R49 已复合覆盖（quit 票据卸载+spawn 卸载重载）；
+光照=R48 判例预封（数据语义面+LightEngine 核心红线）；实体 AI=R25 定量
+否决预判；**爆炸十六域零覆盖**（批 57=插件无限 dropItem 卡服的稳定性防护
+修复；批 73=R2/R3 时代 Explode 包共享否决（per-player 击退向量）非 census
+口径；R48 挖掘=单格 PLAYER_ACTION 非批量）→第十七域真新格；爆炸链复合
+R47 掉落风暴+批73 SectionBlocksUpdate 广播两大历史收割面回流检查点。harness
+（boom 参数，bot 零改动 y=200 驻留=观察者+票据远离爆心）：每 bot 石板
+24×24×3 y[148,150]+boomDrive 24 波×每 bot 2 TNT 互质步长扫描位=**576 TNT/
+腿**（默认 Fuse 与下波重叠）+三探针（BOOM-CRATER k=0 弹坑/BOOM-ITEMS/
+BOOM-TNT-CLEARED execute unless 反向）+boomSummonEcho harness 内统计
+（回显"Summoned new Primed TNT"**576/576**）。探针腿先行（B 形态全绿数据
+留用）后跑 A 对照。门双绿（A：SLAB-INTACT+零 summon；B：576+三探针）；
+B 事件 +15.0%（17,155 vs 14,916）、heap +6.0%（1.5 万 ItemEntity+区块脏
+数据面 R57 同型）。**符号级归因**（R59 判例全栈扫描）：Explosion A=0/B=74
+（叶子 ServerExplosion.getOrCacheExplosionBlock ×19+Long2ObjectOpenHashMap
+rehash 13=**vanilla 1.21.9+ 自带爆炸方块缓存**上游本体）；PrimedTnt 0/134
+（语义本体）；**ItemEntity 641→1,477（+836 掉落风暴）**物理族承载（AABB
+.inflate 319/Vec3.add 138/collisions 108/AABB.move 97=结果对象维持
+R41/R48/R52）；ClientboundExplodePacket=0（低于采样地板）；B 独有面
+RegistryFriendlyByteBuf +162=**R44 维持同脸第三见**（mapStream 适配器）；
+共享增量=网络统计 toString 族 +315（自观测按出站流量放大 R41 判例）+保存族
+上升（copyOfRangeByte +107/copy 族 +52=爆炸区块脏自动保存 R32/R43 维持）；
+A 独有面=被 +15% 事件挤窗位移（R56 相位噪声同型）。**回流双收割面**：R47
+travel-dedupe 带内（papoVisitCorners 115→134=掉落物量联动无替代面回流）；
+**批73 PapoSharedWireMemo 在场（4→5）=当年"大红石/TNT 批量更新域"立项的
+TNT 侧首次直接实证**（memo 对爆炸域广播覆盖兑现）。存活侧双腿 10/10 全
+spark 自观测族零泄漏。**四支柱判负**：量级 ~6% 窗事件全落已知维持族+零恒等
+可证标的（物理=结果对象/缓存=vanilla 上游/TNT tick=语义本体/掉落物理=R47
+收割后维持）+相位带内。判例五条：TNT summon 回显格式（"Summoned new
+Primed TNT"）/服务器日志行统计必须在 harness 内做（logLines 不进 leg.log，
+R49 joins/lefts 同法通式）/探针腿先行省一轮试错/`execute unless entity`
+反向探针可门化（负向断言 say 化）/爆炸域=批73 memo 覆盖实证点。无代码
+变更、版本保持 0.110.0。
+
+报告：[note/report/perf/2026-10-13-boom-r60-batch201.md](report/perf/2026-10-13-boom-r60-batch201.md)。

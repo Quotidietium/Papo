@@ -88,6 +88,7 @@ public final class CompositeCensus {
         final int dims = args.length > 7 ? Integer.parseInt(args[7]) : 0;
         final int rs = args.length > 8 ? Integer.parseInt(args[8]) : 0;
         final int place = args.length > 9 ? Integer.parseInt(args[9]) : 0;
+        final int boom = args.length > 10 ? Integer.parseInt(args[10]) : 0;
 
         final Path outDir = Path.of("results", "composite-" + System.currentTimeMillis() + (cmp ? "-cmp" : "-natural"));
         Files.createDirectories(outDir);
@@ -178,6 +179,11 @@ public final class CompositeCensus {
                 probe(server, logLines, String.format("execute if block %d %d %d minecraft:stone run say CMP-CTRL-STONE", ctrlX, FILL_Y, b0z));
                 probe(server, logLines, String.format("data get block %d %d %d Items", b0x - 4, FILL_Y, b0z + FARM_DZ));
                 probe(server, logLines, "execute if entity @e[type=minecraft:item,limit=1] run say CMP-ITEMS-PRESENT");
+            } else if (boom != 0) {
+                // 批次201（R60 爆炸轴）：每 bot 下方石板介质（24×24×3 y[148,150]，
+                // bot 爬至 FILL_Y=200 远离爆心）+marker 锚。boom=1 对照（石板零爆炸），
+                // boom=2=TNT summon 风暴（boomDrive）。
+                markerWall = boomSetup(server, botRefs, outDir, logLines);
             } else if (rs != 0) {
                 // 批次199（R58 红石 wire 轴）：网络建在 marker 前（bot 侧向已加载区块，
                 // fill 即时——R57 两波制判例此处不需要：bot ±7 内区块早已加载）
@@ -236,6 +242,55 @@ public final class CompositeCensus {
                 }
                 sleepUntil(markerWall + 160_000);
                 probeRs(server, logLines, botRefs[0], false);
+            }
+            if (boom == 2) {
+                // 批次201（R60 爆炸轴）TNT 风暴：marker+25s 起每 5s 一波 ×24 波
+                // （至 marker+145s），每波每 bot 2 个 TNT 于石板 24×24 上互质步长
+                // 确定性扫描位（y=151 悬于石板上，默认 Fuse 80t=4s 与下波重叠）=
+                // 12 bot×48=576 爆/腿主体（批量破坏+爆抗查询+掉落物风暴）。
+                sleepUntil(markerWall + 25_000);
+                for (int wave = 0; wave < 24; wave++) {
+                    for (int i = 0; i < botRefs.length; i++) {
+                        final OfflineJoinBot bot = botRefs[i];
+                        if (bot == null) {
+                            continue;
+                        }
+                        final int bx = (int) Math.floor(bot.getPosX());
+                        final int bz = (int) Math.floor(bot.getPosZ());
+                        for (int j = 0; j < 2; j++) {
+                            final int k = wave * 2 + j;
+                            final int px = bx - 12 + (k * 7) % 24;
+                            final int pz = bz - 12 + (k * 5) % 24;
+                            server.getOutputStream().write(String.format("summon minecraft:tnt %d 151 %d\n", px, pz).getBytes(StandardCharsets.UTF_8));
+                        }
+                    }
+                    server.getOutputStream().flush();
+                    sleepUntil(markerWall + 30_000 + wave * 5_000L);
+                }
+                // 探针（marker+150s 风暴尾后）：k=0 位弹坑=air（首爆真实）+
+                // 掉落物在场 + TNT 尽清（全部起爆无滞留）——bot 在线持票据。
+                sleepUntil(markerWall + 150_000);
+                final OfflineJoinBot bb = botRefs[0];
+                final int cbx = (int) Math.floor(bb.getPosX());
+                final int cbz = (int) Math.floor(bb.getPosZ());
+                probe(server, logLines, String.format("execute if block %d 150 %d minecraft:air run say BOOM-CRATER", cbx - 12, cbz - 12));
+                probe(server, logLines, "execute if entity @e[type=minecraft:item,limit=1] run say BOOM-ITEMS");
+                probe(server, logLines, "execute unless entity @e[type=minecraft:tnt] run say BOOM-TNT-CLEARED");
+                // 工作量正证据（R59 判例）：summon 服务器回显计数（logLines 在内存，
+                // harness 内统计后打印供 shell 门消费；样本行兼作回显格式校准）
+                final List<String> snap = new ArrayList<>(logLines);
+                final long echo = snap.stream()
+                    .filter(l -> (l.contains("Object summoned") || l.contains("Summoned new")) && !l.contains("CompositeCensus")).count();
+                System.out.println("CompositeCensus.boomSummonEcho=" + echo);
+                snap.stream().filter(l -> l.toLowerCase().contains("summon") && !l.contains("CompositeCensus"))
+                    .findFirst().ifPresent(l -> System.out.println("CompositeCensus.boomEchoSample " + l.trim()));
+            }
+            if (boom == 1) {
+                // 对照腿（零爆炸）：石板完好正证据（B−A 差分=纯爆炸链）
+                sleepUntil(markerWall + 150_000);
+                final OfflineJoinBot bb = botRefs[0];
+                probe(server, logLines, String.format("execute if block %d 149 %d minecraft:stone run say BOOM-SLAB-INTACT",
+                    (int) Math.floor(bb.getPosX()) - 12, (int) Math.floor(bb.getPosZ()) - 12));
             }
             if (place != 0 && cmp) {
                 // 批次200（R59 放置轴）探针③（marker+200s，放置风暴尾后）：首 3 放置
@@ -419,6 +474,8 @@ public final class CompositeCensus {
             if (l.contains("has the following block data") || l.contains("CMP-CTRL-STONE")
                 || l.contains("CMP-DUG-AIR") || l.contains("CMP-ITEMS-PRESENT")
                 || l.contains("DIM-N-OK") || l.contains("DIM-E-OK") || l.contains("PLACE-STONE")
+                || l.contains("BOOM-CRATER") || l.contains("BOOM-ITEMS") || l.contains("BOOM-TNT-CLEARED")
+                || l.contains("BOOM-SLAB-INTACT")
                 || l.contains("to be force loaded") || l.contains("force loaded chunk was found")
                 || l.contains("Filled") || l.contains("no items were found")
                 || l.contains("Unknown or incomplete")) {
@@ -531,6 +588,44 @@ public final class CompositeCensus {
             Thread.sleep(300);
         }
         throw new IllegalStateException("rs setup marker not seen within 120s");
+    }
+
+    /**
+     * 批次201（R60 爆炸轴）介质就位：每 bot 下方石板 24×24×3 y[148,150]（bot 于
+     * FILL_Y=200 远离爆心=观察者+票据，零伤害零击退交互）。bot 侧向已加载区块
+     * fill 即时（R58 同判例：两波制不需要）。marker 锚=PAP0-BOOM-SLAB-DONE。
+     */
+    private static long boomSetup(final Process server, final OfflineJoinBot[] botRefs,
+                                  final Path outDir, final List<String> logLines) throws Exception {
+        final List<String> cmds = new ArrayList<>();
+        for (int i = 0; i < botRefs.length; i++) {
+            final OfflineJoinBot bot = botRefs[i];
+            if (bot == null) {
+                throw new IllegalStateException("bot " + i + " not joined at boom setup");
+            }
+            final int bx = (int) Math.floor(bot.getPosX());
+            final int bz = (int) Math.floor(bot.getPosZ());
+            cmds.add(String.format("/fill %d 148 %d %d 150 %d minecraft:stone",
+                bx - 12, bz - 12, bx + 12, bz + 12));
+        }
+        cmds.add("/say PAP0-BOOM-SLAB-DONE");
+        Files.write(outDir.resolve("boomsetup.txt"), cmds, StandardCharsets.UTF_8);
+        final java.io.OutputStream stdin = server.getOutputStream();
+        for (final String c : cmds) {
+            stdin.write((c + "\n").getBytes(StandardCharsets.UTF_8));
+        }
+        stdin.flush();
+        System.out.println("CompositeCensus.boomSetupSent commands=" + (cmds.size() - 1));
+        final long start = System.currentTimeMillis();
+        final long deadline = start + 120_000;
+        while (System.currentTimeMillis() < deadline) {
+            if (new ArrayList<>(logLines).stream().anyMatch(l -> l.contains("PAP0-BOOM-SLAB-DONE") && !l.contains("boomSetupSent"))) {
+                System.out.println("CompositeCensus.boomMarkerReached ms=" + (System.currentTimeMillis() - start));
+                return System.currentTimeMillis();
+            }
+            Thread.sleep(300);
+        }
+        throw new IllegalStateException("boom slab marker not seen within 120s");
     }
 
     /** 翻转驱动块（单 setblock，已加载区块即时）。 */
