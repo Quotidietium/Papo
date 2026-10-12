@@ -66,24 +66,26 @@ jcmd heap_info 活集；配对纪律=同会话相邻二进制、LevelChunk ±1% 
 | R45 | 186 | →0.108.0 | **BE 密集内容轴**普查（自然地形普查对此面零覆盖）→空容器 BE 驻留四件套收割 | PapoLazyItemsList（11 容器 BE 19 构造点：空态 32 档共享只读视图零 per-BE 分配、物化与 vanilla 同底、UOE 位次经共享视图保持）+PDC map/view 懒化+炉 quickCheck 懒化；配对腿（59,400 BE 组成恒等）NonNullList 60,220→183·HashMap −80,562·堆 −9,994KB；MSPT 三序零回归；判例：急初始化 final 字段懒化边界=收内部急件/别名构造观察等价/腿验收必须含 bot 在线正证据 | [becontent-r45](2026-10-12-becontent-r45-batch186.md) |
 | R46 | 187 | →0.109.0 | **机械负载 tick 窗**分配普查（漏斗环+观察者时钟从未成像）→漏斗空实体查询快路 | 保守空探针四处：section 粒度谓词（chunk 计数版被同列共置击穿后升级）+EntityLookup 走架同构+Level 透传+漏斗双守卫+共享 suck 查询盒；发现面 21+12 trips（~172,800 空查询/60s 窗）；配对腿（组成恒等 576 漏斗）**双面全 0 零替代面**；MSPT 三序+第五对终审零回归（s4 三序同号+1.4 复现后 −0.1 破号=相变槽漂移，无机制通道）；判例：空探针粒度=真查询读取粒度/mock NMS 单测自带 bootstrap/applyPatches 后出包新鲜度实证/同序复跑复现≠定谳；**附 R46 播种失效勘误（R47 §8：replaceitem 自始未生效，场景=空漏斗空查询+时钟，收割有效性不受影响）** | [mechload-r46](2026-10-12-mechload-r46-batch187.md) |
 | R47 | 188 | →0.110.0 | **物品实体旋涡轴**分配普查（生成→飞行→合并→被吸取→入容器从未成像；R46 播种失效勘误）→inside-block 走查双机械面收割 | summon 批式农场（12 bot×900 漏斗柱+300 石台驻立，探针#4 全链实证；机械驱动三连败判例：replaceitem 不存在/item 命令树/观察者仅 FACING 供能）；发现腿 B 12,342 vs A 1,156 事件；立项 `forEachBlockIntersectedBetween` 双面：travel-dedupe `LongOpenHashSet` 5→489+`betweenCornersInDirection` 迭代器簇 8→304 → 5 参 scratch 重载（Entity 懒字段，try/finally 全出口清）+私有索引走查（每循环一枚 MutableBlockPos cursor=vanilla 别名契约同构，跨调用复用=插件兼容红线不取）；配对腿簇 929 trips/931MB→**0**、替代面 73（cursor 契约下限，−92%）、窗口事件 −10.4%/raw −11.6%；oracle 差分单测 3 用例（含 cursor 身份分组结构相等）9,088/0/0；判例：探针门以成功响应形态为锚+排除错误回显（双斜杠事故：回显可满足 marker/在场门）/时间线锚 fill 标记/迭代器消除 cursor 契约下限/堆叠后栈段粒度转移判读（非空查询面阈下=设计实证非遗漏） | [itemchurn-r47](2026-10-12-itemchurn-r47-batch188.md) |
+| R48 | 189 | 0.110.0 | **方块交互轴（挖掘风暴窗）**分配普查→判负闭合（无代码变更，R43 同型） | creative 即时挖掘（PLAYER_ACTION=0x28 三锚点推导+common 前缀正则判例；y=200 空中带=批次141 spectator 判例的 creative 等价形态）：12 bot×793 格可达球两腿配对（A 自然 vs B 挖掘，fill 石立方两腿同发=delta 相消），B 腿 9,472 挖全数成功（air 探针×3+control stone×2+unknown=0）；**全谱 B−A 差分低于立信阈**：LightEngine +14（数据语义面，R17 同族）、destroyBlock 事件机器 +4（阈下 5×，R36 判例强两档）、动作入口 +3、SectionBlocksUpdate +2、BlockUpdate/Ack 0；单挖 ~300B 小对象、窗内 ~1.7MB/60s=基线 0.01%、young 直接收割 MSPT 零通道；光照/邻居/广播=方块变更用户可观察语义本体不可消除；零监听快路可静态复制事件结果（L201-216 模式）但收益<变更风险两个数量级——四支柱判负关闭入维持代价面清单；判例：**探针区块卸载静默假阴性**（`execute if block` 未加载区块无回显翻 false，bot 须在线跨探针窗；与 R47 回显假阳性互补）/**serverbound 包 ID 正则须 `\w+PacketTypes\.`**（漏 common 前缀包=整体偏移 4，三锚点实证拦截）；分配普查第七域（方块交互）成像→判负留档 | [digstorm-r48](2026-10-12-digstorm-r48-batch189.md) |
 
 ## 终局状态
 
-- **内存战役收敛终局（R43 声明，0.80.0→0.107.0；终局后延伸轮 R45-R47 至 0.110.0）**：驻留轴
+- **内存战役收敛终局（R43 声明，0.80.0→0.107.0；终局后延伸轮 R45-R48 至 0.110.0）**：驻留轴
   （R5-R22）每区块 189.5→101.4KB（**−46.5%**，三轴收敛+同会话直对+长时生长+延迟守护四重闭合）；
   分配源轴（R24-R40）流送窗事件 **−32.6%/按区块 −51.7%**、权重按区块 **−63.2%**、同窗吞吐
   **+39.7%**、G1New 7→4、驻留按区块再 −10.3%；新窗口轮（R41-R42）驻留稳态 tick 窗与
   实体+保存窗收割；终局后延伸轮：R45 BE 密集内容轴（空容器 BE 驻留四件套）、
   R46 机械负载 tick 窗（漏斗空实体查询快路）、R47 物品实体旋涡轴（inside-block 走查
-  双机械面）。**分配普查六域全覆盖**
-  （流送/盘载/驻留/实体+保存/机械负载/物品旋涡）。
+  双机械面）。**分配普查七域全覆盖**
+  （流送/盘载/驻留/实体+保存/机械负载/物品旋涡/方块交互——第七域 R48 判负留档）。
 - **延迟轴**：R15-R47 逐批相邻版本三序守护**全零回归**（判读判例集：第二腿伪影/外离腿/
   同序复跑终审/自缩放混杂/相变槽漂移第五对终审）。
 - **残余判负**（红线内无已识别未收割机械面，R43 终局余量声明）：wrap/mapAll 架构改写
   （per-chunk 密度树重物化，超等价红线授权）；RNG 族（种子派生绝对红线）；数据内容面
   （palette 4-bit 地板 103MB 变长踩 getBlockState 热路径、非均匀光照 62MB 真实内容、
   变长两提案用户裁定不做 R17）；上游族（Moonrise/DFU/Netty/spark）；维持代价面
-  （PacketEncoder memo、LongArrayTag bulk buf、保存 IO 外壳 R43 正式关闭）；shape 静态
+  （PacketEncoder memo、LongArrayTag bulk buf、保存 IO 外壳 R43 正式关闭、方块交互链
+  R48 判负关闭——光照/邻居/广播=用户可观察语义本体）；shape 静态
   表残余 ~16-20MB（注册表固定量）；无玩家底座 243MB（JVM/注册表固定）。
 - **判例总集**：各批条目内联于 [optimizations.md](../../optimizations.md)；分组索引见
   [R43 终局声明](2026-10-12-saveio-closure-r43-batch184.md)。

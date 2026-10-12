@@ -4270,3 +4270,39 @@ console 探针门必须以成功响应形态为锚（`data get <pos> <path>` 成
 （物品旋涡）成像→收割闭合；版本 0.110.0。
 
 报告：[note/report/perf/2026-10-12-itemchurn-r47-batch188.md](report/perf/2026-10-12-itemchurn-r47-batch188.md)。
+
+## 批次 189（2026-10-12）：R48——方块交互轴（挖掘风暴窗）分配普查→判负闭合（0.110.0 保持）
+
+新证据等级轮（R38 判例四度应用）：分配普查六域无一窗含方块交互——方块状态
+变更链（handleBlockBreakAction→destroyAndAck→setBlock→光照增量→邻居通知→
+BLOCK_UPDATE 广播→ACK）从未成像，而挖掘是真实玩家头号负载。协议前置三实证：
+PLAYER_ACTION=0x28（GameProtocols 注册序，正则必须 `\w+PacketTypes\.` 含
+common 前缀包——首版漏检差 4，三锚点 0x00/0x1B/0x1D 全中拦截）；payload=
+varint action+long asLong 大端+byte direction+varint sequence；距离门=
+eye 到方块 AABB 点距 <5.5²（候选筛同式保守 5.0=零无效包）。creative 等价
+形态判例：无 spectator noPhysics 豁免不能穿山→y=200 空中带纯空气零纠偏
+（批次141 判例推论）。工具 DigStormCensus（12 bot 爬升撒布→/fill 石立方
+11×15×11 两腿同发=fill 面 delta 相消→latch→B 腿 100ms/挖可达球 793 格/bot）
++alloccensus-r48diglegs.sh（门含挖掘正证据）。探针两轮：首轮探针②全静默=
+**区块卸载静默假阴性判例**（execute if block 未加载区块无回显翻 false，
+bot 须在线跨探针窗）；次轮 DIG-DUG-AIR×3+CTRL-STONE×2+793/793 耗尽全绿。
+发现腿同二进制 0.110.0 配对：B 腿 9,472 挖全数成功（digdone=12、
+unknown=0、零类版本错误），A 腿 digsTotal=0 对称。**B−A 全事件 in-stack
+差分全谱低于立信阈**：LightEngine +14（数据语义面——挖掘穿孔光照再传播=
+用户可观察内容，R17 同族，过阈亦不立项）、destroyBlock 事件机器 +4
+（CraftBlock/BlockBreakEvent/CraftBlockState/captureDrops——R36 判例
+179 trips 判负强两档）、handleBlockBreakAction/playerWillDestroy +3/+3、
+SectionBlocksUpdate +2、ClientboundBlockUpdatePacket/BlockChangedAck 0；
+RegistryFriendlyByteBuf +14=R44 判负维持；JFR 自观测族 +56=挖掘活跃指纹
+（R41 剥离判例：networkStatFor 每包 toString 随包数缩放）。单挖质量
+~300B 小对象（creative 免 ItemStack.copy/preventsBlockDrops 免掉落面）、
+窗内 ~5,760 挖≈1.7MB/60s=基线 0.01%、young 直接收割 MSPT 零通道；窗口
+覆盖敏感性核算（60/99s，全窗折算 LightEngine≈23 过阈但语义面不立项、
+destroyBlock≈7 仍 3× 阈下）判负不敏感。四支柱判负闭合（R43 保存 IO
+同型）：全谱<阈+质量低基线两个数量级+语义面不可消除+事件机器零监听快路
+（L201-216 模式可静态复制：零监听 ⟹ cancelled=canAttackBlock 预设/
+dropItems=true/exp=creative 0，creative ⟹ captureDrops 恒空）收益<风险
+两个数量级。方块交互链入维持代价面清单；分配普查第七域成像→判负留档。
+无代码变更、版本保持 0.110.0。
+
+报告：[note/report/perf/2026-10-12-digstorm-r48-batch189.md](report/perf/2026-10-12-digstorm-r48-batch189.md)。

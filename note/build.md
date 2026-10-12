@@ -563,3 +563,30 @@ entities/blockEntities 段"）。改 ServerLevel tick 结构时记得同步该�
   OnGround=0b 原地悬停）但**漏斗吸取照常**（BE 侧无激活门）——探针验证机械可行性
   不需要 bot 在线；正式腿 bot 在场（MISC 列=水平 inflate×世界高的全高度柱，y=200
   物品在 bot 正上方即激活）后飞行/合并相才真实发生。
+
+### 探针区块卸载静默假阴性（R48，与双斜杠回显假阳性互补）
+
+- **事故链**：dig 探针首轮 bot 于 marker+60 断开（digMs 短时序）→ 区块票据
+  掉落卸载 → marker+90 探针 `execute if block <pos> air run say ...` 在
+  **未加载区块上静默翻 false，零错误回显**（既无 say 也无 "--[HERE"）——
+  四条探针全静默，与"命令失败"形态完全相同，无法从回显区分。
+- **判例**：①bot 驱动场景的探针窗必须保证 bot 在线（持有区块票据）；②探针
+  **全静默 ≠ 命中失败**——先核区块加载状态（bot 断开时刻 vs 探针时刻）再
+  怀疑协议本身；③与 R47 双斜杠事故构成互补对：一个错误回显**可满足门**
+  （假阳性），一个无回显**可误判失败**（假阴性）——console 探针门必须既有
+  成功响应锚又排除静默路径。
+- 次轮 digMs=120s（bot 在线跨探针窗）即 AIR×3+STONE×2 全绿——协议本身
+  无恙，纯探针设计缺陷。
+
+### serverbound 包 ID 注册序提取：common 前缀包漏检=整体偏移（R48）
+
+- **事故链**：从 GameProtocols.java 提取 serverbound 注册序的正则首版只匹配
+  `GamePacketTypes\.`——但注册序列混有 `CommonPacketTypes.SERVERBOUND_KEEP_ALIVE`、
+  `PingPacketTypes.SERVERBOUND_PING_REQUEST`、`CookiePacketTypes.*` 等 common/
+  配置态前缀包，漏检 4 个 → PLAYER_ACTION 算出 0x19，而实证 MOVE_PLAYER_POS=
+  0x1D 差 4。与批次141 clientbound 差一事故同族。
+- **修复**：正则 `\w+PacketTypes\.`（任意前缀）+ **三锚点验证**（取三个
+  已实证 ID——ACCEPT_TELEPORTATION=0x00/KEEP_ALIVE=0x1B/MOVE_PLAYER_POS=0x1D
+  全中才可信推导）→ PLAYER_ACTION=0x28，探针实证挖掘生效。
+- **判例**：注册序推导必须锚点实证收口；"包 ID 差一/差四"类偏移的第一嫌疑
+  是序列提取漏检（前缀变体/条件注册），不是字段编码。

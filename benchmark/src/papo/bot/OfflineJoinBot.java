@@ -53,6 +53,17 @@ public final class OfflineJoinBot {
     private int traceHex;   // 诊断探针（批次141）：0x46 转储计数
     private int traceMoves; // 诊断探针（批次141）：移动包转储计数
 
+    // 批次189（R48 挖掘风暴轴）：creative 即时挖掘——serverbound PLAYER_ACTION 0x28
+    // （GameProtocols 注册序，三锚点验证 ACCEPT_TELEPORT=0x00/KEEP_ALIVE=0x1B/
+    // MOVE_PLAYER_POS=0x1D）；payload = varint action(START_DESTROY_BLOCK=0) +
+    // long BlockPos.asLong 大端 + byte direction(3D data value) + varint sequence。
+    // creative instabuild：START 即 destroyAndAck 即时破坏（ServerPlayerGameMode
+    // handleBlockBreakAction L224 实证）；距离门 isWithinBlockInteractionRange(pos,1.0)
+    // = eye 到方块 AABB 的点距 < (4.5+1.0)²，候选筛用同式保守半径 5.0=必然通过。
+    private int digsSent;
+    /** 前 3 挖目标的 (x,y,z)×3，volatile 数组单次写发布——harness 窗后 air 探针锚。 */
+    public volatile int[] firstDigTargets;
+
     // 批次87：分段计时——每个收到的包记录 (状态, packetId, 自 connect 起毫秒)
     private final java.util.List<String> phaseTrace = new java.util.ArrayList<>();
 
@@ -134,6 +145,167 @@ public final class OfflineJoinBot {
         }
         this.socket.close();
         return t;
+    }
+
+    // 批次189（R48）：爬升+撒布+挖掘风暴。相位①出生列垂直爬升 0.5/tick 至 climbToY
+    // （spawn 上方空气柱；穿树叶等稀有障碍经 0x46 采纳收敛）；相位②剩余时长水平撒布
+    // ——y=200 空中带纯空气 = creative 无 clip 纠偏（批次141 spectator 判例的 creative
+    // 等价形态：creative 无 noPhysics 豁免不能穿山，就以不遇山的高度飞）。fillDone 由
+    // harness 在 /fill+/say 标记后 countDown；dig=false 时同节拍驻留（keepalive 排水）
+    // = 配对腿对称控制。
+    public long[] joinClimbSpreadDigAndDisconnect(final long spreadMs, final double dxPerTick, final double dzPerTick,
+                                                  final double climbToY, final java.util.concurrent.CountDownLatch fillDone,
+                                                  final long digMs, final boolean dig) throws IOException {
+        final long[] t = this.doJoin(100);
+        this.walkClimbThenWalk(spreadMs, dxPerTick, dzPerTick, climbToY);
+        this.awaitLatchDraining(fillDone, 120_000);
+        if (dig) {
+            this.digReachSphere(digMs);
+        } else {
+            this.walk(digMs, 0, 0); // 配对控制腿：同驻留节拍，零挖掘包
+        }
+        this.socket.close();
+        return t;
+    }
+
+    private void walkClimbThenWalk(final long durationMs, final double dxPerTick, final double dzPerTick,
+                                   final double climbToY) throws IOException {
+        final long knowBy = System.currentTimeMillis() + 10_000;
+        this.socket.setSoTimeout(20);
+        while (!this.posKnown) {
+            if (System.currentTimeMillis() > knowBy) {
+                throw new IOException("no PLAYER_POSITION sync within 10s");
+            }
+            this.drainPlayInbound();
+            if (!this.posKnown) {
+                try {
+                    Thread.sleep(20);
+                } catch (final InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+        }
+        final long deadline = System.currentTimeMillis() + durationMs;
+        while (this.posY < climbToY && System.currentTimeMillis() < deadline) {
+            this.posY = Math.min(this.posY + 0.5, climbToY);
+            this.sendMoveAndDrain();
+        }
+        while (System.currentTimeMillis() < deadline) {
+            this.posX += dxPerTick;
+            this.posZ += dzPerTick;
+            this.sendMoveAndDrain();
+        }
+        this.socket.setSoTimeout(0);
+    }
+
+    private void sendMoveAndDrain() throws IOException {
+        final ByteArrayOutputStream b = new ByteArrayOutputStream(25);
+        b.write(longBytes(Double.doubleToLongBits(this.posX)));
+        b.write(longBytes(Double.doubleToLongBits(this.posY)));
+        b.write(longBytes(Double.doubleToLongBits(this.posZ)));
+        b.write(0x01); // onGround=true, horizontalCollision=false
+        this.sendPacket(0x1D, b.toByteArray()); // MOVE_PLAYER_POS
+        this.drainPlayInbound();
+        try {
+            Thread.sleep(50);
+        } catch (final InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /** 挖一格（creative START 即时破坏）；direction=EAST(5)、sequence=0——creative 路径不消费。 */
+    public void digBlock(final int x, final int y, final int z) throws IOException {
+        final ByteArrayOutputStream b = new ByteArrayOutputStream(16);
+        writeVarint(b, 0); // START_DESTROY_BLOCK
+        b.write(longBytes(blockPosAsLong(x, y, z)));
+        b.write(5); // direction 3D data value
+        writeVarint(b, 0); // sequence
+        this.sendPacket(0x28, b.toByteArray());
+        this.digsSent++;
+    }
+
+    private static long blockPosAsLong(final int x, final int y, final int z) {
+        // BlockPos.asLong 源码逐字：((x & 0x3FFFFFF) << 38) | (y & 0xFFF) | ((z & 0x3FFFFFF) << 12)
+        return ((x & 67108863L) << 38) | ((y & 4095L)) | ((z & 67108863L) << 12);
+    }
+
+    public int getDigsSent() { return this.digsSent; }
+
+    /**
+     * 挖掘风暴：以眼位为心的可达球候选（点-AABB 距 ≤5.0²，与服务端距离门同式但半径
+     * 保守 0.5 边距=每个包必然过门），按（距离,y,x,z）确定序逐格 100ms 一挖，至耗尽
+     * 或 digMs 截止；耗尽后 keepalive 驻留至 digMs（测量轴前 bot 保持在线=区块票据）。
+     * 首 3 目标写 {@link #firstDigTargets}（harness 窗后 air 探针正证据锚）。
+     */
+    private void digReachSphere(final long digMs) throws IOException {
+        final double ex = this.posX, ey = this.posY + 1.62, ez = this.posZ;
+        final int bx = (int) Math.floor(this.posX), by = (int) Math.floor(this.posY), bz = (int) Math.floor(this.posZ);
+        record Cand(double d2, int x, int y, int z) {}
+        final java.util.List<Cand> cands = new java.util.ArrayList<>(729);
+        for (int dx = -5; dx <= 5; dx++) {
+            for (int dy = -5; dy <= 6; dy++) {
+                for (int dz = -5; dz <= 5; dz++) {
+                    final int cx = bx + dx, cy = by + dy, cz = bz + dz;
+                    final double ddx = Math.max(cx - ex, Math.max(0.0, ex - (cx + 1)));
+                    final double ddy = Math.max(cy - ey, Math.max(0.0, ey - (cy + 1)));
+                    final double ddz = Math.max(cz - ez, Math.max(0.0, ez - (cz + 1)));
+                    final double d2 = ddx * ddx + ddy * ddy + ddz * ddz;
+                    if (d2 <= 25.0) {
+                        cands.add(new Cand(d2, cx, cy, cz));
+                    }
+                }
+            }
+        }
+        cands.sort((a, c) -> a.d2 != c.d2 ? Double.compare(a.d2, c.d2)
+            : a.y != c.y ? Integer.compare(a.y, c.y)
+            : a.x != c.x ? Integer.compare(a.x, c.x) : Integer.compare(a.z, c.z));
+        final long deadline = System.currentTimeMillis() + digMs;
+        int i = 0;
+        this.socket.setSoTimeout(20);
+        while (System.currentTimeMillis() < deadline) {
+            if (i < cands.size()) {
+                final Cand c = cands.get(i);
+                if (i < 3) {
+                    System.out.println("DIGTGT[" + this.name + "] #" + i + " x=" + c.x + " y=" + c.y + " z=" + c.z);
+                }
+                this.digBlock(c.x, c.y, c.z);
+                i++;
+                if (i == 3) { // 第 3 挖完成即发布（探针② marker+90 早于挖掘耗尽）
+                    final Cand c0 = cands.get(0), c1 = cands.get(1), c2 = cands.get(2);
+                    this.firstDigTargets = new int[]{c0.x, c0.y, c0.z, c1.x, c1.y, c1.z, c2.x, c2.y, c2.z};
+                }
+            }
+            this.drainPlayInbound();
+            try {
+                Thread.sleep(i < cands.size() ? 100 : 50); // 挖尽后转驻留节拍
+            } catch (final InterruptedException e) {
+                Thread.currentThread().interrupt();
+                this.socket.setSoTimeout(0);
+                return;
+            }
+        }
+        System.out.println("DIGDONE[" + this.name + "] sent=" + i + " total=" + cands.size());
+        this.socket.setSoTimeout(0);
+    }
+
+    /** 等 harness fill 闩，期间 keepalive/纠偏排水维持连接。 */
+    private void awaitLatchDraining(final java.util.concurrent.CountDownLatch latch, final long timeoutMs) throws IOException {
+        final long deadline = System.currentTimeMillis() + timeoutMs;
+        this.socket.setSoTimeout(20);
+        while (latch.getCount() > 0) {
+            if (System.currentTimeMillis() > deadline) {
+                throw new IOException("fill latch timeout");
+            }
+            this.drainPlayInbound();
+            try {
+                latch.await(50, java.util.concurrent.TimeUnit.MILLISECONDS);
+            } catch (final InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+        this.socket.setSoTimeout(0);
     }
 
     private void walk(final long durationMs, final double dxPerTick, final double dzPerTick) throws IOException {
