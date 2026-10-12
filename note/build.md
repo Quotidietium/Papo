@@ -603,3 +603,14 @@ entities/blockEntities 段"）。改 ServerLevel tick 结构时记得同步该�
 - **同轮姊妹判例**：服务器 stdout 捕获流与 logs/latest.log 是同批行镜像，
   合并计数=2×（探针 joins=6 for 3 join 实证）——计数门只取单源；PlayerDataStorage
   成功存档零日志（仅失败 warn）——存档正证据锚 dat 文件计数/mtime。
+
+### 不可并行两个 harness（同端口 25599 互踩，R50）
+
+- **事故链**：OldObjectSample 探针服务器未退出即启动正式腿 → 两 server 抢
+  25599：腿 bots 连到探针服务器；探针 bots SocketException（连接被中止）→
+  探针 main 异常退出 → finally `stop` 杀掉探针服务器 → 腿 bots 全部断连
+  （腿注定失败，且症状出现在"别人"的日志里）。
+- **判例**：①基准腿永远串行——启动前 jcmd 扫残留 harness/服务器（端口
+  独占门），存在即中止（alloccensus-r50old.sh 已内置）；②"你的主机中的软件
+  中止了一个已建立的连接"出现在 harness A 而 B 刚启动时，第一嫌疑是端口
+  共享互踩，不是协议。

@@ -4334,3 +4334,29 @@ DataResult +22（DFU 上游）/CompoundTag ~+11（NBT 数据面相位噪声）/M
 第八域成像→判负留档。无代码变更、版本保持 0.110.0。
 
 报告：[note/report/perf/2026-10-12-jqstorm-r49-batch190.md](report/perf/2026-10-12-jqstorm-r49-batch190.md)。
+
+## 批次 191（2026-10-12）：R50——老年代驻留的分配站点归因轴（长时相变窗）→判负闭合（0.110.0 保持）
+
+证据等级升级轮（R38 判例六度应用+维度升级）：R24-R49 分配普查八域全测
+"分配站点"（年轻代垃圾近乎免费），R5-R22 驻留普查只有类级直方图——存活/
+晋升归因从未测。jdk.OldObjectSample 携带 allocationTime/objectAge/分配栈
+=驻留可归因到分配站点+路径。工具 oldsum.py（聚合器入库：cutoff 过滤 boot
+常量/depth-N 站点键/类汇总/in-stack 辅助）+alloccensus-r50old.sh（单发现腿：
+12 bot walk 150s+驻留 22min，JFR settings=profile 全程 1500s；门含端口独占
+门——**工程判例：不可并行两个 harness**，首轮探针服务器未退即启腿同端口
+25599 互踩连锁杀连接，腿注定失败整腿重跑）。探针轮验事件结构（5min 短录：
+栈/时间戳/年龄全在场）。发现腿门全绿（MemSoak.gate logErrors=0 exit 0），
+25min 窗 32 样本**全数归入四类既有清单零未解释面**：chunk 系活态映射
+（Moonrise/ChunkEntitySlices/NearbyPlayers/LevelTicks=语义活态，卸载即回收
+R12 周期腿实证）、palette 增长数组（onResize long[256]×7=walk 相生成内容
+本体，R13 熵下界域）、生成期状态（CarvingMask BitSet×5/PapoPosTypeSet=
+R6 既定形态）、光照引擎有界 scratch+R30 TL 缓存+spark 上游。**关键正交
+验证：R5-R22 已收割面（shape/palette 规范化/容器共享/SWMR 冻结壳）零回流
+——分配收割与驻留收割在存活维度互不回流，双轴闭合的存活维确认**。四支柱
+判负闭合：零未解释面+质量上界 R12/R22 独立封闭（老代 ±0.4%，本轴 ~0.1MB
+采样/25min）+语义面不可消除+方法学边界声明（采样稀疏非穷尽但结论不依赖
+穷尽——上界内晋升者全数语义/有界）。分配普查第九域（存活归因维度）成像
+→判负留档；连续三档证据等级升级（R48/R49 场景轴+R50 维度轴）全部确认
+既有闭合。无代码变更、版本保持 0.110.0。
+
+报告：[note/report/perf/2026-10-12-oldsample-r50-batch191.md](report/perf/2026-10-12-oldsample-r50-batch191.md)。
