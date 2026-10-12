@@ -4360,3 +4360,33 @@ R6 既定形态）、光照引擎有界 scratch+R30 TL 缓存+spark 上游。**�
 既有闭合。无代码变更、版本保持 0.110.0。
 
 报告：[note/report/perf/2026-10-12-oldsample-r50-batch191.md](report/perf/2026-10-12-oldsample-r50-batch191.md)。
+
+## 批次 192（2026-10-13）：R51——高并发流送轴（60 bot 持续行走）+收割面高并发坍缩终验→判负闭合+终验通过（0.110.0 保持）
+
+复合负载轴取高并发形态：R27 只测过 60-bot join 相，5× 玩家持续流送从未
+成像（真实繁忙服形态：广播扇出/NearbyPlayers/票据结构/per-player 区块发送
+簿记高压）；一腿两得：0.107.0 vs 0.110.0 配对（alloccensus-r51fanout.sh，
+MemSoakVerify 60 bot walk 150s+驻留 180s，流送峰窗 60s 同 r40arc 锚，端口
+独占门内置）兼做 R41/R47 收割面 5× 规模坍缩终验。双腿门全绿（traces=
+420/420、零类版本错误、exit 0）；终态区块 4,402/4,397 **±0.1% 同载配对**
+（60 bot 径向邻距 r/9.5<320 恒视野重叠，~10k 区块 ≈1GB）。**收割面高并发
+坍缩终验通过**：betweenCornersInDirection 簇 9→**0**、forEachBlockIntersected
+Between 族 68→**41**（B 同等工作量样本 −40%）、StepBasedCollector 100→
+**72**——R41/R47 收割在 5× 规模零回流，与 R50 存活维度零回流互证（更高
+压力+更长寿命两方向都不复活）。高并发成像判定：top-40 全为已知流送族
+±10% 带内摆动（wrap 571/mapAll 族/RNG 绝对红线/StandardTable/PacketEncoder
+173/网络/自观测），零 B 独有新面；扇出专属结构全 <20 阈（NearbyPlayers 9/
+broadcast 9/PlayerInfo 0——per-player 追踪的分配侧阈下，驻留才是形态=R27
+画像对偶）；PlayerChunkLoader 87 trips=Moonrise RegionizedPlayerChunkLoader
+$PlayerChunkLoaderData（sendChunk 59/updateQueues 40）上游维持；ServerPlayer
+in-stack 523=per-player 语义扇出本体；事件 +5.9%（6,590→6,978）全落工作量
+缩放族（Xoroshiro +62 同族=窗内生成吞吐摆动，R39 分开记账判例）、raw
++1.6%、**heap B −0.4%**。终局直对链完整性：0.92.0 原始 jar 已清理（build/
+libs 只余 0.107-0.110），全弧直对须重建旧版本（paperweight 全管线 ~40min+
+扰动工作树）；分配轴闭合由四段合成等价且各段仪器更优：R40 弧（0.92→0.105
+同会话直对+两系复现带互证）+逐批相邻配对守护（0.105→0.110 每轮面坍缩零
+回归）+R44 驻留终验（0.105 vs 0.107 按节归一 −1.3%）+本轮 5× 规模坍缩
+终验——R40 判例：相邻守护才是有效仪器，弧形直对反受自缩放混杂。高并发
+流送轴（第十域）判负闭合留档。无代码变更、版本保持 0.110.0。
+
+报告：[note/report/perf/2026-10-13-fanout-r51-batch192.md](report/perf/2026-10-13-fanout-r51-batch192.md)。
