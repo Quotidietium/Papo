@@ -4525,3 +4525,38 @@ R52 A 2,218=±7.9% 带内+B−A 差分面族与 R52 短窗差分面族完全同�
 exit 1）+腿脚本腿选择参数。无代码变更、版本保持 0.110.0。
 
 报告：[note/report/perf/2026-10-13-soak-r56-batch197.md](report/perf/2026-10-13-soak-r56-batch197.md)。
+
+## 批次 198（2026-10-13）：R57——维度轴（下界+末地生成+多世界并驻）→判负闭合（第十四域）（0.110.0 保持）
+
+事实核查定轴：报告 nether/end 命中全为附带提及（批次78 未来工作/批次150 结构名/
+批次95 R1 时代），R5-R56 十三域全部 overworld——跨维度生成器（下界洞穴 carver/
+末地岛屿噪声）与多世界并驻结构从未成像。**v1 形态失败**：直接 `execute in <dim>
+run fill` 被 Paper 异步区块体系拒绝（服务器日志 "That position is not loaded"×24
+静默——无主线程同步加载路径），磁盘增量仅为末批 forceload 邻域，JFR 窗内生成量
+远低于设计=按 R44 判例整腿重跑不缝合。**v2 两波制**（CompositeCensus dims 参数，
+bot 零改动）：波①（marker+25s，JFR 激活后）每 bot 每维度 forceload add 3×3 区块
+区间×24 处=跨维度异步生成主体；波②（marker+130s 生成完成后）同位置 fill——
+**24/24 Successfully filled**；探针（marker+150s）DIM-N-OK/DIM-E-OK **双中**；
+探针后 forceload remove all 清票；digMs=360s measure 推导至 marker+312s，JFR
+300s 双事件集。门变量 filled 捕获位置缺陷（fill 回显时点无 probe 读窗）——
+**服务器日志复核 24/24+零拒绝+探针双中**替代门（R55 事实核查判例的日志变体）。
+B 事件 +79%（17,480 vs 9,766）。**B 独有面（维度生成直接证据，A=0）**：
+StructureManager.fillStartsForStructure +136（跨维度结构起点查填=R52 生成族
+维度形态）/LegacyRandomSource.<init> +93（**维度生成 per-feature RNG 工厂——
+RNG 绝对红线的维度轴再确认**）/ArrayList.grow +97/DeflaterOutputStream +101+
+BufferedOutputStream +140（**保存壳=R43 正式关闭维持面的维度形态**）/
+RegistryFriendlyByteBuf decorator +112（R44 维持）/InetAddress +93（自观测）。
+**共享面增量=多世界 spawn tick 族**：NaturalSpawner 全族 +943（forceload FULL
+票据区块每 tick 自然 spawn 循环=vanilla 语义，peaceful 亦跑）+NBT 保存族
+（CompoundTag +188/LongArrayTag.write +59=维度区块序列化，R32/R42/R43 维持）+
+自观测按事件率放大。存活侧 B 7 样本全落清单（**维度生成光照 resizeIncreaseQueue
+long[20736]=R21/R50 有界 scratch 域**）零未解释零收割面存活回流；收割面维度轴
+零回流（0298/0297 语义性缺席——零移动实体）；heap B +27%（489,276→620,964KB）=
+多维区块内容+结构驻留（数据面画像：多世界并驻真实内存代价）。**四支柱判负
+关闭第十四域**。判例四条：**Paper fill 对未加载位置直接拒绝**（跨维度负载触发
+两波制通式：forceload 波①异步生成→fill 波②生效）/门变量测量位置=数据有效性
+的一部分（probe 读窗外回显须独立捕获或服务器日志复核）/形态失败按 R44 判例
+整腿重跑（数据完整但负载未达设计量不缝合）/RNG 红线无维度例外性。无代码变更、
+版本保持 0.110.0。
+
+报告：[note/report/perf/2026-10-13-dims-r57-batch198.md](report/perf/2026-10-13-dims-r57-batch198.md)。

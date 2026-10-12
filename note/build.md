@@ -690,3 +690,16 @@ entities/blockEntities 段"）。改 ServerLevel tick 结构时记得同步该�
   不是回归）；扩时间参数前先想窗内对象的生命周期边界。
 - **腿脚本入库腿选择参数**（`bash script.sh B` 只跑指定腿）——部分腿因脚本 bug 误报
   而数据完整时，修复后单跑剩余腿，不整脚本重放已绿腿。
+
+## 2026-10-13 补充：批次 198 踩坑记录
+
+- **Paper fill 对未加载位置直接拒绝**：`execute in <dim> run fill ...` 在目标区块
+  未加载时回显 "That position is not loaded"（不报错、不排队、静默跳过）——异步
+  区块体系没有主线程同步加载路径。跨维度（或任意远端）负载触发的通式=两波制：
+  波① forceload add 区块区间（异步生成）→等生成完成→波② fill（已加载，生效）。
+- **门变量必须在回显发生处带读窗**：fill 回显发生在命令发出后下一刻，若 harness
+  的 probe 读窗（1.5s）不在该时点，门变量恒 0——腿被误判失败。数据有效性复核入口
+  =临时目录 server latest.log 的命令回显计数（"Successfully filled"×N）。
+- **JFR 样本量是负载形态的第一验收指标**：v1 腿 JFR 里维度生成帧为零（NoiseChunk
+  样本全在命令发出前=overworld 残余）——负载没发生，先修形态再谈判读；磁盘 region
+  增量（字节数/region 数）是生成量的旁证但来源要归因（forceload 邻域≠fill 触发）。

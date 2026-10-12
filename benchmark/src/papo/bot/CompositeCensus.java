@@ -39,7 +39,7 @@ import java.util.regex.Pattern;
  * 实体在场）→ +150s 驻留测量。A 腿=自然驻立基线（零 fill 零挖掘，R47 A 形），
  * B−A=复合窗全谱，逐面归因既有十域清单，未归因面=交互面候选。
  *
- * 用法：java papo.bot.CompositeCensus <jar> [bots=12] [spreadMs=150000] [digMs=160000] [cmp=1] [gridN=10] [per=3]
+ * 用法：java papo.bot.CompositeCensus <jar> [bots=12] [spreadMs=150000] [digMs=160000] [cmp=1] [gridN=10] [per=3] [dims=0]
  *
  * gridN/per=石台召唤格边长/每格件数（批次195 R52 原形 10/3=300 站立/bot；
  * 批次196 R55 极高密度轴 20/3=1,200 站立/bot=历史普查 4× 站立存活）。
@@ -85,6 +85,7 @@ public final class CompositeCensus {
         final boolean cmp = args.length > 4 && Integer.parseInt(args[4]) != 0;
         final int gridN = args.length > 5 ? Integer.parseInt(args[5]) : 10;
         final int per = args.length > 6 ? Integer.parseInt(args[6]) : 3;
+        final int dims = args.length > 7 ? Integer.parseInt(args[7]) : 0;
 
         final Path outDir = Path.of("results", "composite-" + System.currentTimeMillis() + (cmp ? "-cmp" : "-natural"));
         Files.createDirectories(outDir);
@@ -178,11 +179,24 @@ public final class CompositeCensus {
             } else {
                 markerWall = System.currentTimeMillis();
             }
+            // 批次198（R57 维度轴）：dims=1 时 JFR 窗内（marker+15s）触发下界+末地
+            // 同步生成——每 bot 两处 fill（下界 y=70 netherrack 立方/末地 y=60 stone
+            // 立方，同 x,z 坐标=各维度独立远端区域）+每维度 forceload 钉 bot0 中心
+            // 区块（跨探针窗在场）。B−A 差分=纯维度生成+多世界并驻面（bot 均在线
+            // 驻立、零挖掘零农场=轴纯净）。
             // loadWarmed=JFR 锚点（marker+12s 起 60s 窗覆盖挖掘主体+drain 相叠加），
             // 同刻 latch 放行：B 腿起挖、A 腿同节拍驻留
             sleepUntil(markerWall + 12_000);
             System.out.println("CompositeCensus.loadWarmed cmp=" + cmp + " t=" + (System.currentTimeMillis() - walksStartWall) + "ms");
             fillDone.countDown();
+            if (dims != 0 && !cmp) {
+                // 波① marker+25s（JFR 已激活）：forceload 3×3×24 处×2 维=异步生成主体
+                sleepUntil(markerWall + 25_000);
+                dimFills(server, botRefs, outDir, 1);
+                // 波② marker+130s（生成完成）：fill 生效+回显=正证据
+                sleepUntil(markerWall + 130_000);
+                dimFills(server, botRefs, outDir, 2);
+            }
             if (cmp) {
                 // 探针②（marker+90s，JFR 窗 marker+72s 尾后）：首 3 挖=air（破坏真实生效）+
                 // ctrl=stone + chest 收物（cobblestone=全链完成）+ 实体在场（石台站立相）
@@ -198,6 +212,11 @@ public final class CompositeCensus {
                 probe(server, logLines, String.format("execute if block %d %d %d minecraft:stone run say CMP-CTRL-STONE", ctrlX, FILL_Y, b0z));
                 probe(server, logLines, String.format("data get block %d %d %d Items", b0x, FILL_Y, b0z + FARM_DZ));
                 probe(server, logLines, "execute if entity @e[type=minecraft:item,limit=1] run say CMP-ITEMS-PRESENT");
+            }
+            if (dims != 0 && !cmp) {
+                // 维度探针（marker+150s，fill 波②后 20s）：方块在场=生成+放置生效
+                sleepUntil(markerWall + 150_000);
+                probeDims(server, logLines, botRefs[0]);
             }
             // 批次197（R56 长时复合浸泡）：短窗（digMs≤300s）保持历史 measure 点
             // marker+150s；长窗 measure 推导至 bot 断开前 60s（bot 在线=区块票据与
@@ -341,10 +360,75 @@ public final class CompositeCensus {
             }
             if (l.contains("has the following block data") || l.contains("CMP-CTRL-STONE")
                 || l.contains("CMP-DUG-AIR") || l.contains("CMP-ITEMS-PRESENT")
-                || l.contains("no items were found") || l.contains("Unknown or incomplete")) {
+                || l.contains("DIM-N-OK") || l.contains("DIM-E-OK")
+                || l.contains("to be force loaded") || l.contains("force loaded chunk was found")
+                || l.contains("Filled") || l.contains("no items were found")
+                || l.contains("Unknown or incomplete")) {
                 System.out.println("CompositeCensus.probe " + l.trim());
             }
         }
+    }
+
+    // ---------- 批次198（R57 维度轴）：下界+末地同步生成触发 ----------
+
+    /**
+     * 批次198 v2（Paper 判例：fill 对未加载位置直接拒绝——"That position is not
+     * loaded"，异步区块体系无主线程同步加载）。两波制：波①（marker+25s）每 bot
+     * 每维度 forceload add 3×3 区块区间=跨维度异步生成负载主体（24 区块/维度
+     * ×邻域，远端独立 region）；波②（marker+130s，生成完成后）同位置 fill 11×15×11
+     * ——此时区块已加载，fill 生效+回显=正证据。
+     */
+    private static void dimFills(final Process server, final OfflineJoinBot[] botRefs,
+                                 final Path outDir, final int wave) throws Exception {
+        final List<String> cmds = new ArrayList<>();
+        for (int i = 0; i < botRefs.length; i++) {
+            final OfflineJoinBot bot = botRefs[i];
+            if (bot == null) {
+                continue;
+            }
+            final int bx = (int) Math.floor(bot.getPosX());
+            final int bz = (int) Math.floor(bot.getPosZ());
+            if (wave == 1) {
+                // forceload 3×3 区块区间（chunk 坐标 = 方块坐标>>4）
+                final int cx = bx >> 4;
+                final int cz = bz >> 4;
+                cmds.add(String.format("execute in minecraft:the_nether run forceload add %d %d %d %d",
+                    (cx - 1) << 4, (cz - 1) << 4, (cx + 1) << 4 | 15, (cz + 1) << 4 | 15));
+                cmds.add(String.format("execute in minecraft:the_end run forceload add %d %d %d %d",
+                    (cx - 1) << 4, (cz - 1) << 4, (cx + 1) << 4 | 15, (cz + 1) << 4 | 15));
+            } else {
+                // 下界 y∈[63,77]（天花 127/地板 0 之内）；末地 y∈[54,64]
+                cmds.add(String.format("execute in minecraft:the_nether run fill %d 63 %d %d 77 %d minecraft:netherrack",
+                    bx - 5, bz - 5, bx + 5, bz + 5));
+                cmds.add(String.format("execute in minecraft:the_end run fill %d 54 %d %d 64 %d minecraft:stone",
+                    bx - 5, bz - 5, bx + 5, bz + 5));
+            }
+        }
+        Files.write(outDir.resolve(wave == 1 ? "dimforceloads.txt" : "dimfills.txt"), cmds, StandardCharsets.UTF_8);
+        final java.io.OutputStream stdin = server.getOutputStream();
+        for (final String c : cmds) {
+            stdin.write((c + "\n").getBytes(StandardCharsets.UTF_8));
+        }
+        stdin.flush();
+        System.out.println("CompositeCensus.dimWave" + wave + "Sent commands=" + cmds.size());
+    }
+
+    /** 维度正证据探针：fill 中心方块在场（gold_block 覆盖）+ forceload 回显。 */
+    private static void probeDims(final Process server, final List<String> logLines,
+                                  final OfflineJoinBot b0) throws Exception {
+        final int bx = (int) Math.floor(b0.getPosX());
+        final int bz = (int) Math.floor(b0.getPosZ());
+        probe(server, logLines, String.format(
+            "execute in minecraft:the_nether run execute if block %d 70 %d minecraft:netherrack run say DIM-N-OK", bx, bz));
+        probe(server, logLines, String.format(
+            "execute in minecraft:the_end run execute if block %d 59 %d minecraft:stone run say DIM-E-OK", bx, bz));
+        probe(server, logLines, "execute in minecraft:the_nether run forceload query");
+        probe(server, logLines, "execute in minecraft:the_end run forceload query");
+        // 探针后清 forceload 票据（驻留测量=维度结构常驻+已卸载区块票面干净）
+        final java.io.OutputStream stdin = server.getOutputStream();
+        stdin.write("execute in minecraft:the_nether run forceload remove all\n".getBytes(StandardCharsets.UTF_8));
+        stdin.write("execute in minecraft:the_end run forceload remove all\n".getBytes(StandardCharsets.UTF_8));
+        stdin.flush();
     }
 
     private static void sleepUntil(final long wall) throws InterruptedException {
