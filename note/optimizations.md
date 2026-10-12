@@ -4418,3 +4418,24 @@ ChunkHolder +3/HopperBE +3/suckInItems +2——系统性跨域结构记账在原
 （隔离×10+高并发+多域叠加全闭合）。无代码变更、版本保持 0.110.0。
 
 报告：[note/report/perf/2026-10-13-composite-r52-batch193.md](report/perf/2026-10-13-composite-r52-batch193.md)。
+
+## 批次 194（2026-10-13）：R53——复合负载收割面版本配对终验（0.107 vs 0.110）→坍缩验证通过（0.110.0 保持）
+
+R51 高并发终验（流送窗移动实体仅 12 bot）的复合负载对偶：R52 复合形态恰是 0298
+收割面的原始高压形态（3.6k 站立实体+drain+~7.2k 挖/窗同窗叠加）。双 cmp=1 腿
+（CompositeCensus 零改动；**配对恰为单收割隔离窗——0.107→0.110 间唯一代码变更
+=0298，R48-R52 五轮均无代码变更**）；门全绿（digs 9,483/9,511·burst 恒等·
+chest cobblestone·实体在场）。**R47 收割簇 1,056 trips→0（−100%，~966MB 权重
+蒸发）**：LongOpenHashSet travel-dedupe 588→0+betweenCorners 迭代器簇
+251/117/100→0；替代面 papoVisitCorners 0→110 如期；StepBasedCollector 两腿
+同在（R41 已入 0.106）——**配对面切分精确落在 0.110 收割边界**；零 0.110 独有
+新面（增加面全落自观测/网络/spark/生成族噪声带）；heap +6.3% 与存活物品 +3.7%/
+生成活动 +23% 同向=窗相组成缩放（R39 分开记账；0298 驻留效应已在 R47 同组成
+配对 −3.6% 定谳本配对不重复主张）。**收割面终验矩阵闭合：R44 驻留+R50 存活维
++R51 高并发 5×+R53 复合高压四维全部零回流**。工程判例：**keepalive 连环踢出
+=服务器停摆签名**（4 bot 8 秒内相继 timeout=所有在途 keepalive 同时到期，
+区别于单 bot 协议失败；诊断入口=临时目录 server latest.log——harness stdout
+不含踢出行）→gate 破坏按 R44 整腿重跑不缝合、重跑通过=环境瞬态定谳；首轮
+B 腿即此判例来源。无代码变更、版本保持 0.110.0。
+
+报告：[note/report/perf/2026-10-13-cmppair-r53-batch194.md](report/perf/2026-10-13-cmppair-r53-batch194.md)。

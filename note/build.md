@@ -631,3 +631,20 @@ entities/blockEntities 段"）。改 ServerLevel tick 结构时记得同步该�
   复合窗 Δ+812 trips 假面霸榜第一（R48 挖掘窗 +56、R47 旋涡窗独立存在）
   ——各域包数叠加时自观测权重=可加和；R41 剥离判例在复合窗必要且直接
   适用（不剥离则差分第一面归因错误）。
+
+## 2026-10-13 补充：批次 194 踩坑记录
+
+- **keepalive 连环踢出=服务器侧停摆签名**：多个 bot 在数秒内相继 keepalive
+  timeout（本轮 4 bot/8s）=所有在途 keepalive 同时到期=服务器 ~30s 停摆
+  （本机环境瞬态：OS 调度/磁盘/AV），不是单 bot 协议失败（后者不会同时命中
+  多个不相干连接）。诊断入口=临时目录 server latest.log（harness stdout 不含
+  踢出行；"主机软件中止连接"出现在 bot 侧写入栈=连接已被服务器关闭的后效）。
+  gate 破坏 → R44 判例整腿重跑不缝合；重跑通过=R48/R51 同序复跑判例瞬态定谳。
+- **残留 harness 进程清理**：harness 主线程异常路径绕过 botPool.shutdown()，
+  非守护池线程使 JVM 不退出（进程挂着但 server 已停）——taskkill 后必须
+  jcmd 复核零 server.jar + 零 java 再重跑（端口独占门只扫 server.jar，挂着的
+  harness 本身无端口但持有结果文件句柄）。
+- **版本配对的收割批切分读法**：相邻版本配对差分=版本窗内变更净效应——选
+  版本窗使其只含一个收割批（本轮 0.107→0.110 唯一变更=0298），差分面的
+  塌缩/出现线即精确落在该批边界（StepBasedCollector 两腿同在证 R41 在窗前、
+  betweenCorners 簇全塌证 0298 在窗内），无需逐面溯源。
