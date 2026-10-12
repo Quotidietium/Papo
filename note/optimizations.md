@@ -4494,3 +4494,34 @@ R41 剥离+收割替代形态+容器族）——**密度缩放次线性**（主�
 格成立，压力强度分层入档）。无代码变更、版本保持 0.110.0。
 
 报告：[note/report/perf/2026-10-13-xdense-r55-batch196.md](report/perf/2026-10-13-xdense-r55-batch196.md)。
+
+## 批次 197（2026-10-13）：R56——长时复合浸泡窗（22.5min 双事件集）→判负闭合（第十三域）（0.110.0 保持）
+
+事实核查定轴（R55 判例）：R50 长时=自然负载×仅 OldObjectSample（分配侧全程未测）、
+R52-R55 复合=全部 60s 短窗、R22/R44 长时=行走+直方图——**长时×复合×双事件集=真空
+格**。CompositeCensus digMs>300s 分支（挖尽后同节拍驻立、measure 推导至断开前 60s，
+bot 在线=区块票据）+JFR 1350s `ObjectAllocationSample#1ms + OldObjectSample#enabled`
+双事件集（R55 阈与 R50 事件合并）。**相位构成声明**：ItemEntity 5min despawn（vanilla
+语义）→长窗=复合瞬态前段+结构驻留后段（4-5 轮自动保存）；measure 末 ItemEntity
+109 vs 自然 104 同量级。门全绿（A digs 0/B 9,477·air×3·chest·burst 14,461 命令
+2.5s=R52 几何锚）。**判定一（存活归因复合对偶）**：A 22+B 39 样本全落 R50 四类清单
+（上游固定量/光照 scratch/R30 TL/palette 增长域/结果对象个例）——零未解释零收割面
+存活回流；ItemEntity/ItemStack 零存活样本=despawn 边界先于晋升窗 young 全收割
+（0298 cursor 同理零老年代样本）。**判定二（B−A 长窗差分 52 非零面全归因）**：每物品
+物理族 ~7,100（5min 存活期前段）+碰撞+网络回声+自观测族（**绝对量随窗长线性累积**
+22min ~2,900 trips vs 短窗 ~1,300——不剥离假面霸榜前三，R41 剥离判例的窗长推广）
++**保存族权重上升首像**（CompoundTag +565/LongArrayTag.write +304=4-5 轮自动保存×
+复合脏区块：满载箱/漏斗 BE/挖掘穿孔，R32 bulk buf/R43 维持清单、R42 保存窗的自然
+负载对偶）+生成族混号（NaturalSpawner +495/−245 双面相抵=B 前段物理挤占生成预算，
+自缩放负载的分配版）。**收割面长窗零回流**：travel-dedupe 构造面 0·betweenCorners
+迭代器簇 0·papoVisitCorners 替代面 615 in-stack 在场（唯一 LongOpenHashSet top 面=
+StructureManager 生成族 704/664 带内）。**零超线性积累**：A 等效 60s 率 2,394 vs
+R52 A 2,218=±7.9% 带内+B−A 差分面族与 R52 短窗差分面族完全同构。四支柱判负关闭
+第十三域；时间维外推链（短窗→长窗）与负载维外推链（隔离→复合）**双向闭合**。
+判例：**扩窗的相位构成副作用声明**（R55 几何副作用的时间维对偶：实体面绝对量与
+短窗不可直接比）/**长时窗归一两件套**（等效 60s 率带内+差分面族同构=瞬态面不积累
+直接判据；保存族权重上升=周期事件×窗长线性叠加须区分于积累）/**自观测族绝对量随
+窗长线性累积**/工程：shell ok 布尔语义与退出码分离（return $ok 把 pass=1 误作
+exit 1）+腿脚本腿选择参数。无代码变更、版本保持 0.110.0。
+
+报告：[note/report/perf/2026-10-13-soak-r56-batch197.md](report/perf/2026-10-13-soak-r56-batch197.md)。

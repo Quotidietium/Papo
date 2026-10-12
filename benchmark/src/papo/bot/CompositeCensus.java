@@ -43,6 +43,8 @@ import java.util.regex.Pattern;
  *
  * gridN/per=石台召唤格边长/每格件数（批次195 R52 原形 10/3=300 站立/bot；
  * 批次196 R55 极高密度轴 20/3=1,200 站立/bot=历史普查 4× 站立存活）。
+ * digMs>300s（批次197 R56 长时浸泡）=bot 挖尽后同节拍驻立至段末，measure
+ * 随之推导至断开前 60s（配腿脚本 JFR duration~digMs 双事件集=长窗时间维度）。
  * 门：fill 标记 + bot 全成功 + B: digsTotal≥400/bot+探针正证据（air×3+ctrl×2+
  * 漏斗 Items+chest cobblestone+实体在场）+ 日志零门错误 + 服务器 exit 0。
  */
@@ -197,7 +199,10 @@ public final class CompositeCensus {
                 probe(server, logLines, String.format("data get block %d %d %d Items", b0x, FILL_Y, b0z + FARM_DZ));
                 probe(server, logLines, "execute if entity @e[type=minecraft:item,limit=1] run say CMP-ITEMS-PRESENT");
             }
-            sleepUntil(markerWall + 150_000);
+            // 批次197（R56 长时复合浸泡）：短窗（digMs≤300s）保持历史 measure 点
+            // marker+150s；长窗 measure 推导至 bot 断开前 60s（bot 在线=区块票据与
+            // 实体在场，JFR 窗 marker+12 起覆盖挖尽→drain→长驻留→多轮自动保存）。
+            sleepUntil(markerWall + (digMs > 300_000 ? 12_000 + digMs - 60_000 : 150_000));
             measure(server.pid(), outDir);
 
             for (final CompletableFuture<Void> f : futures) {

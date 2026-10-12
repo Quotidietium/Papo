@@ -675,3 +675,18 @@ entities/blockEntities 段"）。改 ServerLevel tick 结构时记得同步该�
 - **Edit 多点修改的签名/调用点配对**：一次改 doFills 形参须同步改调用点与
   签名两处——两处 Edit 部分失败时编译错误被后台任务吞到输出文件尾（stdout
   文件 tail 才见），编译验证永远独立前台跑一次再启动腿脚本。
+
+## 2026-10-13 补充：批次 197 踩坑记录
+
+- **shell 布尔变量与退出码语义分离**：门变量 `ok=1` 表 pass，但函数结尾 `return $ok`
+  把 1 当作失败退出码——腿门全绿却报 LEG FAILED。pass/fail 布尔必须显式转换为
+  `return 0/1`；同理 `[ cond ] || ok=0` 风格的累加门结尾要单独裁决。
+- **JFR 事件集可组合**：`jcmd JFR.start settings=profile duration=Xs
+  jdk.ObjectAllocationSample#threshold=1ms jdk.OldObjectSample#enabled=true`——
+  分配普查（1ms 阈）与存活归因（OldObjectSample）一次录制双聚合；长窗时自观测族
+  绝对量随窗长线性累积（22min ~2,900 trips），归因前必须剥离。
+- **扩窗即改相位构成**：把 60s 窗扩到 22min 后 ItemEntity 走完 5min despawn（vanilla
+  语义）——实体相只占窗前段，实体面绝对量与短窗不可直接比（残余 109 vs 短窗 ~3,600
+  不是回归）；扩时间参数前先想窗内对象的生命周期边界。
+- **腿脚本入库腿选择参数**（`bash script.sh B` 只跑指定腿）——部分腿因脚本 bug 误报
+  而数据完整时，修复后单跑剩余腿，不整脚本重放已绿腿。
