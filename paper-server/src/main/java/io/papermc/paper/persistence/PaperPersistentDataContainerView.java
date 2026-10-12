@@ -24,11 +24,24 @@ import org.jspecify.annotations.Nullable;
 public abstract class PaperPersistentDataContainerView implements PersistentDataContainerView {
 
     protected final CraftPersistentDataTypeRegistry registry;
-    protected final CraftPersistentDataAdapterContext adapterContext;
+    // Papo start - batch 186 (R45): the adapter context is only consumed by primitive
+    // conversions on paths that require a tag to exist (get with a present value, set) or
+    // by the explicit getAdapterContext API - empty containers (the overwhelmingly common
+    // state) never pay its allocation until then.
+    private @Nullable CraftPersistentDataAdapterContext adapterContext;
+
+    protected final CraftPersistentDataAdapterContext papoAdapterContext() {
+        final CraftPersistentDataAdapterContext context = this.adapterContext;
+        if (context != null) {
+            return context;
+        }
+        return this.adapterContext = new CraftPersistentDataAdapterContext(this.registry);
+    }
+    // Papo end
 
     public PaperPersistentDataContainerView(final CraftPersistentDataTypeRegistry registry) {
         this.registry = registry;
-        this.adapterContext = new CraftPersistentDataAdapterContext(this.registry);
+        // Papo start - batch 186 (R45): adapterContext materialized lazily via papoAdapterContext()
     }
 
     public abstract @Nullable Tag getTag(final String key);
@@ -64,7 +77,7 @@ public abstract class PaperPersistentDataContainerView implements PersistentData
             return null;
         }
 
-        return type.fromPrimitive(this.registry.extract(type, value), this.adapterContext);
+        return type.fromPrimitive(this.registry.extract(type, value), this.papoAdapterContext()); // Papo - batch 186 lazy adapter
     }
 
     @Override
@@ -105,7 +118,7 @@ public abstract class PaperPersistentDataContainerView implements PersistentData
 
     @Override
     public PersistentDataAdapterContext getAdapterContext() {
-        return this.adapterContext;
+        return this.papoAdapterContext(); // Papo - batch 186 lazy adapter
     }
 
     @Override

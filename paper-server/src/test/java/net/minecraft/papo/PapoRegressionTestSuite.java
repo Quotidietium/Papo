@@ -27,6 +27,8 @@ import net.minecraft.world.level.chunk.PapoBulkSectionAccessPoolTest;
 import net.minecraft.world.level.levelgen.structure.templatesystem.PapoRuleProcessorIterationTest;
 import net.minecraft.world.entity.PapoStepCollectorEmptyAddAllTest;
 import net.minecraft.world.level.chunk.PapoLongArrayEncodeFastPathTest;
+import net.minecraft.world.item.PapoLazyItemsListTest;
+import org.bukkit.craftbukkit.persistence.PapoPersistentDataContainerLazyTest;
 import net.minecraft.util.PapoCubicSplineMapAllTest;
 import net.minecraft.world.level.levelgen.structure.templatesystem.PapoStructureTemplateCacheTest;
 import net.minecraft.world.phys.shapes.PapoShapeInternTest;
@@ -53,7 +55,9 @@ import org.junit.platform.suite.api.SuiteDisplayName;
     PapoBulkSectionAccessPoolTest.class,
     PapoRuleProcessorIterationTest.class,
     PapoStepCollectorEmptyAddAllTest.class,
-    PapoLongArrayEncodeFastPathTest.class})
+    PapoLongArrayEncodeFastPathTest.class,
+    PapoLazyItemsListTest.class,
+    PapoPersistentDataContainerLazyTest.class})
 public class PapoRegressionTestSuite {
 }
 // Papo end - batch 145 (R6)

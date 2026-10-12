@@ -326,7 +326,7 @@ git add paper-server/patches/features/0203-*.patch paper-server/patches/features
 
 ### GRADLE_USER_HOME 已迁移
 
-本机 gradle 缓存（wrapper dists、模块缓存、daemon）已整体迁移到 **`F:\TEMP\.gradle`**（环境变量未持久化，调用时显式 `export GRADLE_USER_HOME=F:/TEMP/.gradle`）。旧的 `~/.gradle` 只剩 wrapper dists（gradle-9.4.1-bin），依赖缓存以 F: 为准。PATH 中的 java 已是 **25.0.4**（javapath 转发器），但编译工具链仍钉 21：真实 JDK 21.0.10 在 `C:\Program Files\Java\latest\jdk-21`（`latest` junction 同时挂 jdk-21/jdk-25）。
+本机 gradle 缓存（wrapper dists、模块缓存、daemon）已整体迁移到 **`F:\TEMP\.gradle`**（环境变量未持久化，调用时显式 `export GRADLE_USER_HOME=F:/TEMP/.gradle`）。**2026-10-12 清理轮核实：旧的 `~/.gradle`（C 盘）已彻底不存在**——显式 export 是硬前提，漏掉时 wrapper 会尝试向 C 盘重新下载发行版，而 services.gradle.org 在本机不可达，直接卡死。PATH 中的 java 已是 **25.0.4**（javapath 转发器），但编译工具链仍钉 21：真实 JDK 21.0.10 在 `C:\Program Files\Java\latest\jdk-21`（`latest` junction 同时挂 jdk-21/jdk-25）。
 
 ### javac 增量编译的 class 文件签名解析陷阱（PaperConfigurations 泛型）
 
@@ -420,3 +420,39 @@ Windows 中文 locale 下 socket 层 IOException 文案（"远程主机强迫关
 专用），统一放 [note/ops-empty-world-ticking.md](ops-empty-world-ticking.md)——含源码级
 "门内/门外"逐段核对（批次 90 的"22-23% 已有旋钮可消"口径在那里被修正为"旋钮只覆盖
 entities/blockEntities 段"）。改 ServerLevel tick 结构时记得同步该文档的行号锚点。
+
+## 2026-10-12 补充：深度清理轮——缓存盘点与清理判例（无代码变更）
+
+**本机缓存位置权威地图**（盘点时点证据）：
+
+- `F:\TEMP\.gradle` = 唯一 GRADLE_USER_HOME（C 盘 `~/.gradle` 已不存在，见上方批次 78 节修正）。内部归属：
+  - **Papo 活跃**：`caches/9.4.1`（wrapper 钉的版本）、`caches/modules-2`（依赖缓存）、`caches/paperweight-userdev/v2/work`（881M——2026-10-03 全量重建波 + 10-05 applyDevBundlePatches 补丁波，无更早代际残留=整体现行键位；内含 vanilla server jar 下载副本，受"网络大文件单连接截断"判例保护）、`wrapper/dists/gradle-9.4.1-bin`（**命脉，网络不可达不可再取**）。
+  - **非 Papo（sibling 项目所有，清理必须排除）**：`caches/fabric-loom` 1.3G（meteor-client 等 Fabric 项目，最后使用 2026-08-30，含 26.2 实验残量 155M）、`caches/9.4.0` + dist（Custom-Crops/PapersDelight）、`caches/9.8.0` + dist（无 wrapper 归属、10-07 仍被触碰=疑似系统/IDE 直调，默认保留）。
+- `F:\TEMP\.cache/huggingface`（3.3G）= ML 项目模型缓存，与 Papo 无关，**清理 F:\TEMP 根时必须排除**。
+- `F:\TEMP` 根 = 历次会话散落产物（构建日志 ap*/b*.log、jar 嵌套分析 jarcheck/pj/papo-jar-v、批 129 验证 b129v、census 提取物 r2x-*-events.txt、fastutil sources、PowerShell 探针脚本等）。
+- 仓库内：`benchmark/results/`（.gitignore 内）= 每次浸泡/压测腿的完整服务器世界+转储+JFR，**每腿 memsoak ≈1G、无自动轮转**；`paper-server/build/libs` = 历版 release jar（各 97M）。
+
+**本轮清理**（共释放 ≈23G，F 盘可用 62G→84G；git status 全程保持干净）：
+
+1. `benchmark/results` 22G 全清（内存战役 R43 已终局声明、R44 已终验，数字以 note/report/perf/ 已提交报告为准，原始世界/转储不再复用）。
+2. 旧版 release jar 删除（0.92.0/0.103.0-0.106.0 共 5×97M），保留当前 0.107.0；需要旧版时 `git checkout <该版提交> && createPapoJar` 可逐位重建。
+3. 仓库 `.gradle/`（configuration cache）+ 根 `build/` 清除——本文件多处判例早已记录 config cache 掩盖编译/脚本损坏，清掉是纯收益。
+4. F:\TEMP 根会话残留 ≈537M 清空（保留 `.gradle` 与 `.cache`）。
+5. 三个 wrapper dist 目录（9.3.0/8.14.2/8.14.4）只剩 0 字节 `.zip.part`/`.zip.lck` 下载失败残骸，删除。
+
+**清理判例**：
+
+1. **共享 GRADLE_USER_HOME 里的东西不都是 Papo 的**——清理前必须归因：wrapper 版本反查 `/f/Github/repo/*` 的 gradle-wrapper.properties、目录内文件 mtime 波次；无法归因且近期被触碰的版本缓存默认保留。
+2. **paperweight work 目录代际判定用"目录内最新文件 mtime"，不用目录自身 mtime**（同 hash 重跑只改写内部文件、不改目录 mtime）；盘点无更早波次=整体现行，不要凭"同任务多个 hash 目录"猜多代。
+3. 0 字节 `.zip.part`/`.zip.lck` = 被墙网络下 wrapper 下载失败残骸，可径删。
+4. benchmark/results 按腿累积无轮转——每轮大战役收官后应清一次（本轮 22G 即 R4/内存/分配源三役累积）。
+5. **清理后验证门**：①内部仓库 `git status --porcelain` 必须为空（全量重编译可能触发 applyPatches 重建内部仓库，R20 判例）；②`gradlew --no-daemon help`（配置层从零重建）+ `:paper-server:compileJava --rerun-tasks --no-configuration-cache`（全量重编译）双 BUILD SUCCESSFUL；③删除只允许落在 .gitignore 覆盖路径内（git status 保持干净是硬门）。
+
+## 2026-10-12 补充：批次 186 踩坑记录
+
+### benchmark 共享 build/classes 被 PATH javac 异版污染 → 空服腿静默通过（MSPT 守护判废重跑判例）
+
+- **事故链**：PATH `java/javac` = JDK 25（类文件版本 69），而腿脚本与 harness 均钉死 `/f/Java/21/bin/java`（只认 ≤65）。本轮普查工具编译走了 PATH `javac`，把 `OfflineJoinBot.class` 等重编为 v69 写进共享 `benchmark/build/classes`；随后 MSPT 腿的 J21 harness 在 `new OfflineJoinBot` 处全体 `UnsupportedClassVersionError`——bot 零在线，server 空转，但采样按时间表照常进行、腿 exit=0，**四条腿全部是空服噪声**。`grep -c "MlpB"`=0 是揭发证据（bot 从未 join）。
+- **server 侧不受污染**：两个 harness 起 server 均走 `ProcessBuilder("F:/Java/21/bin/java.exe", …)` 常量——普查腿的 server 测量始终在 J21 上，harness JVM 版本只影响 bot 客户端进程内加载，普查配对腿有效性不受本次事故影响。
+- **修复与门**：①bot 包用 `/f/Java/21/bin/javac` 全量重编（ShortListVerify 除外——需 Moonrise 类，非腿依赖面）；②两脚本编译/运行行全部钉死 J21 bin；③`msptload-r45legs.sh` 每腿加验收门：`TRACE[` 行数 ≥ bot 数（OfflineJoinBot 行走期打印，bot 在线正证据）且类版本/NoClassDef 错误 =0，否则判废。
+- **判例**：①**腿有效性验收必须有 bot 在线正证据**——exit=0 + 采样齐全 ≠ 腿有效（空服腿与真腿在低负载下数值上可分辨性差，主序空服对比"3 优 3 平"毫无意义）；②**共享输出目录的编译器版本必须与运行 JVM 同钉**（多工具共用 build/classes 时，任一工具换 javac 即全局污染）；③杀后台任务后必须清进程树（`taskkill /T` 或核对端口）——被停 bash 的脚本子进程会继续推进腿序，孤儿 server 占端口令后续腿静默撞车。

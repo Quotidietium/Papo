@@ -4123,3 +4123,37 @@ PalettedContainer/节两腿恒等 2.0001=结构恒等 → R41/R42 零驻留回�
 finalverify-r44.sh 入库。版本保持 0.107.0。
 
 报告：[note/report/perf/2026-10-12-finalverify-r44-batch185.md](report/perf/2026-10-12-finalverify-r44-batch185.md)。
+
+## 批次 186（2026-10-12）：R45——BE 密集内容轴普查→空容器 BE 驻留机械面四件套收割（0.108.0）
+
+新场景轴轮（R38 判例：从未普查过的场景即新证据等级——R24-R44 历轮窗口全为自然地形，
+容器 BE 面零覆盖，而真实服驻留大头恰是海量空容器）。工具 BeDensifyCensus（MemSoakVerify-fork
++控制台 stdin 填充相位：12 bot×11 条带×150×3 格 y=200 barrel/chest/furnace/hopper 轮转
+=59,400 只空 BE 入图）。发现腿同二进制配对（自然 628,269KB vs 密集 710,777KB=+82.5MB），
+全直方图逐面判定：收割四件——①物品列表三件（NonNullList.withSize(n,EMPTY)=壳+Arrays$ArrayList
++Object[n]，11 个容器 BE 19 构造点换 PapoLazyItemsList：空态=32 档共享 nCopies 只读视图零
+per-BE 分配、set 物化 Arrays.asList(filled) 与 vanilla 同底、clear 回共享视图、add/remove 经
+共享视图 UOE 位次与 vanilla 定长表逐位一致；R5-轮2/R20 懒化族第三度应用）②PDC 内部 map
+（CraftPersistentDataContainer.customDataTags @Nullable：读全走 emptyMap 视图（hashCode 0==空
+HashMap、逐元 equals）、写物化、remove/空 putAll 不物化、clear 置 null；equals 热路径
+（CraftMetaItem 无守卫）读视图比较零物化；getRaw 活 map 契约物化+三外部调用方审计即用即弃；
+双参构造别名审计：唯一活别名消费方 DeprecatedContainerTagType 别名的是 toPrimitive 瞬态产物
+快照即取=拷贝观察等价）③PDC AdapterContext（view 急初始化字段懒化+protected 物化访问器；
+final 容器字段本体=Paper API 契约保持）④炉 quickCheck（ctor 急建闭包→@Nullable+访问器，
+唯一读点在有输入分支内=空炉驻留常态永不物化）；判负留档四件（lootable null 双义=Paper 补给
+跟踪语义、ChestLidController tick 首帧即物化、dataAccess 与 menu 耦合、BoundTicking 包装=
+vanilla tick 架构红线）。验证：恒等单测 11 用例（列表 oracle 差分 5+PDC 懒化 6）注册套件实测
+9,082/0/0+链门 rebuild/apply/test/compile 全 EXIT=0+0.108.0 出包+密集配对腿（同普查组成恒等
+59,400 BE±1）：NonNullList 60,220→183·Arrays$ArrayList 60,701→669·HashMap 174,600→94,038
+（−80,562，≥59,400=普查 BE PDC map）·堆 711,482→701,488KB=−9,994KB（−1.4%，≈−172B/空 BE
+四件合计量级带一致，B 载节 −1.9% 跨腿带如实入档）·双腿 gate 全绿；MSPT 三序六腿（bot 在线正证据门 84-90 TRACE/腿、零类版本错误）：
+主序 5/6 优最差 +0.5·倒序 2/6 优最差 +0.4·钉死 3/6 优最差 +0.5——无任何槽三序同号劣化
+（全部劣化出现均被他序反号否决=噪声带），六槽池中位 B 5 平优 1 微劣 +0.2 → 零回归。
+判例五条：BE 密集内容轴是独立成像域（自然地形普查
+对此面零覆盖）/急初始化 final 字段的懒化边界=收字段内部急件而非字段本身/别名构造观察等价
+判法（别名产物生命周期封闭在工厂方法内且快照即取则拷贝==别名）/共享只读视图替代 per-instance
+空表在定长 NonNullList 上的应用（UOE 位次经共享视图保持）/腿有效性验收必须含 bot 在线正证据
+（exit=0+采样齐全≠腿有效，详见 build.md 批次186 判例与事故链）。空容器 BE 机械驻留归零，
+BE 密集轴从未成像→收割闭合；版本 0.108.0。
+
+报告：[note/report/perf/2026-10-12-becontent-r45-batch186.md](report/perf/2026-10-12-becontent-r45-batch186.md)。
