@@ -4390,3 +4390,31 @@ libs 只余 0.107-0.110），全弧直对须重建旧版本（paperweight 全管
 流送轴（第十域）判负闭合留档。无代码变更、版本保持 0.110.0。
 
 报告：[note/report/perf/2026-10-13-fanout-r51-batch192.md](report/perf/2026-10-13-fanout-r51-batch192.md)。
+
+## 批次 193（2026-10-13）：R52——复合负载轴（机械+实体+方块交互多域同窗叠加）→判负闭合+隔离外推性直接证明（0.110.0 保持）
+
+十域普查全部单域隔离窗，跨域交互面（多变更者并发打同一节的 SectionBlocksUpdate
+批处理交错/光照并发重传播/chunk 脏标记跨域竞争/混合包型广播）从未成像——本轮
+CompositeCensus（bot 零改动）把 R48 挖掘立方（793 格/bot×100ms）与 R47 农场
+几何整体 z+8 平移（漏斗排+漏斗柱 drain 45-75s+石台站立相）同窗叠加：**空间隔离
+判据=农场置于挖掘候选域（|dz|≤5）之外，域间零物理干扰，bot 无法破坏自身负载
+源——复合差分可归因的前提**；JFR 锚 loadWarmed=marker+12s 同刻 latch=挖掘与
+drain 全窗叠加；14,461 命令 burst 实测 2.5s；门全绿（digs 9,516·air×3·ctrl×2·
+chest cobblestone·实体在场×2；A 腿对称零挖）。B−A 全站点差分（301 非零）
+**≥20 阈面全数归因既有清单零未归因新面**：旋涡物理本体 ~2,200 trips+Moonrise
+碰撞 ~1,100+流体 ~500+网络/tracker 回声 ~2,100+JFR 自观测 Δ+812（复合包数
+可加和放大，R41 剥离判例必要且适用）+**R47 收割替代形态 +510 trips 零回流**
+（papoVisitCorners 98/recorded 收集器 46/cursor 族——又一零回归确认）+生成族
+混号（spawnForChunk +60/getRandomPosWithin −75=RNG 红线域相位噪声）。**本轮
+独有支柱=叠加线性**：挖掘链全 face 在旋涡叠加下与 R48 隔离值恒等或更低
+（LightEngine +8 vs ~7,200 挖线性预期 +18·destroyBlock +3 vs +4·入口 +3 vs +3·
+BlockUpdate/Ack 0）——**隔离普查的判负闭合可外推真实复合负载**（"隔离窗是否
+足够"的方法论问题正式闭合）；交互候选结构全在噪声底（SectionBlocksUpdate −1/
+ChunkHolder +3/HopperBE +3/suckInItems +2——系统性跨域结构记账在原始/身份结构
+上不产生可测分配）。判例三条：复合叠加线性（超线性面=交互通道存在性正证据须
+立项，本轮阴性首例定谳）/多域 harness 空间隔离设计（负载源几何置于对方作用域
+外+bot 零改动复用=复合轮协议风险只剩时间线共存，探针轮一次覆盖）/自观测族随
+复合包数可加和放大。分配普查第十一域（多域叠加）→判负留档；证据矩阵补全
+（隔离×10+高并发+多域叠加全闭合）。无代码变更、版本保持 0.110.0。
+
+报告：[note/report/perf/2026-10-13-composite-r52-batch193.md](report/perf/2026-10-13-composite-r52-batch193.md)。
