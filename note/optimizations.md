@@ -4560,3 +4560,38 @@ long[20736]=R21/R50 有界 scratch 域**）零未解释零收割面存活回流�
 版本保持 0.110.0。
 
 报告：[note/report/perf/2026-10-13-dims-r57-batch198.md](report/perf/2026-10-13-dims-r57-batch198.md)。
+
+## 批次 199（2026-10-13）：R58——红石 wire 翻转轴（大网络激活/去激活传播风暴）→判负闭合（第十五域）（0.110.0 保持）
+
+事实核查定轴：重启循环=R44 boot 逐位确定性已闭合；维度×实体复合=R52 叠加线性
+外推判例已覆盖；**红石 wire 从未在负载窗出现**（R46 判例亲证 y=200 空中 wire
+缺支撑弹跳失效；R4=batch123 是内存战役前的语义/常数评估）→第十五域真新格
+（wire 传播链=MC 最深递归更新链之一，R52 超线性判例适用）。harness
+（CompositeCensus rs 参数，bot 零改动）：每 bot 侧向石台 15×15 y=200+
+redstone_wire y=201 全平面+中心 redstone_block 驱动=**2,700 wire 全网**；JFR
+窗内 marker+25 起每 3s 交替驱动块 ×30 次=90s 传播风暴；双态探针（EDGE-ON/OFF）。
+**门复合定谳**：EDGE-OFF 服务器日志双中（两边缘 power=0=去激活传播真实到达）
++JFR 传播帧强在场（RedstoneWire 313/updatePower 313/neighborChanged 243
+in-stack）=传播铁证——EDGE-ON 探针 power 差一失败（wire#k power=15−(k−1)，
+第 7 格=9 非 8）+probe 命中集漏 RS-EDGE-*（工程缺陷两条）。B 事件 +12%
+（12,406 vs 11,073）。**红石传播独有面 ~550 trips/240s≈2.3/s**：
+BlockPos.relative←MultiNeighborUpdate.runNext +272+←getConnectingSide +97
+（方向偏移结果对象/查询载体候选）/**papoCalculateTargetStrength +106=批次125
+R4 红石 VANILLA 评估轮历史补丁 0258 的自有代价面**（单扫描合并 wire 目标强度
+每次重算分配；补丁名反查归因，R36 代价面判例=重开须先证净赢）/
+updateNeighborsAtExceptFromFacing +75（除源方向广播=语义本体）/Vec3.add +59
+（陪跑）；共享面=copyOfRangeByte +60（wire 状态变更→区块脏保存）/NaturalSpawner
+createState +72（wire 区块 FULL tick spawn 陪跑，R57 同款语义面）/
+RegistryFriendlyByteBuf +34（状态广播给 32 格内 bot=观察者语义）/自观测带内；
+存活侧 9 样本全落清单零未解释零收割面存活回流；收割面零回流（0298/0297
+语义性缺席）。**四支柱判负**：量级低于立项门槛（R38 面 1,347/60s）两个数量级
++每翻转 ~18 trips young 直接收取+heap B +0.7% 数据面 trivial；恒等可证性——
+红石传播链=**R4 VANILLA 评估核心区**，scratch 手术须证 MultiNeighborUpdate
+队列语义（元素跨 tick 持有 pos=别名风险）+连接查询重入面=**稳定性红线优先于
+trivial 收益**（R43 判例同型）。判例四条：红石信号算术差一（R33/R42 滑误族
+第四例）/probe 命中集扩展与新增 say 标签同步（通式：新增探针 tag 先改命中集
+再写调用点）/单态探针失败复合门定谳（另一态正证据+JFR 帧在场=传播铁证免整腿
+重跑）/历史补丁代价面归因入口=patches 补丁名反查（papo* 前缀帧）。无代码
+变更、版本保持 0.110.0。
+
+报告：[note/report/perf/2026-10-13-rswire-r58-batch199.md](report/perf/2026-10-13-rswire-r58-batch199.md)。

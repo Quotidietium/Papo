@@ -39,7 +39,7 @@ import java.util.regex.Pattern;
  * 实体在场）→ +150s 驻留测量。A 腿=自然驻立基线（零 fill 零挖掘，R47 A 形），
  * B−A=复合窗全谱，逐面归因既有十域清单，未归因面=交互面候选。
  *
- * 用法：java papo.bot.CompositeCensus <jar> [bots=12] [spreadMs=150000] [digMs=160000] [cmp=1] [gridN=10] [per=3] [dims=0]
+ * 用法：java papo.bot.CompositeCensus <jar> [bots=12] [spreadMs=150000] [digMs=160000] [cmp=1] [gridN=10] [per=3] [dims=0] [rs=0]
  *
  * gridN/per=石台召唤格边长/每格件数（批次195 R52 原形 10/3=300 站立/bot；
  * 批次196 R55 极高密度轴 20/3=1,200 站立/bot=历史普查 4× 站立存活）。
@@ -86,6 +86,7 @@ public final class CompositeCensus {
         final int gridN = args.length > 5 ? Integer.parseInt(args[5]) : 10;
         final int per = args.length > 6 ? Integer.parseInt(args[6]) : 3;
         final int dims = args.length > 7 ? Integer.parseInt(args[7]) : 0;
+        final int rs = args.length > 8 ? Integer.parseInt(args[8]) : 0;
 
         final Path outDir = Path.of("results", "composite-" + System.currentTimeMillis() + (cmp ? "-cmp" : "-natural"));
         Files.createDirectories(outDir);
@@ -176,6 +177,10 @@ public final class CompositeCensus {
                 probe(server, logLines, String.format("execute if block %d %d %d minecraft:stone run say CMP-CTRL-STONE", ctrlX, FILL_Y, b0z));
                 probe(server, logLines, String.format("data get block %d %d %d Items", b0x - 4, FILL_Y, b0z + FARM_DZ));
                 probe(server, logLines, "execute if entity @e[type=minecraft:item,limit=1] run say CMP-ITEMS-PRESENT");
+            } else if (rs != 0) {
+                // 批次199（R58 红石 wire 轴）：网络建在 marker 前（bot 侧向已加载区块，
+                // fill 即时——R57 两波制判例此处不需要：bot ±7 内区块早已加载）
+                markerWall = rsSetup(server, botRefs, outDir, logLines);
             } else {
                 markerWall = System.currentTimeMillis();
             }
@@ -196,6 +201,40 @@ public final class CompositeCensus {
                 // 波② marker+130s（生成完成）：fill 生效+回显=正证据
                 sleepUntil(markerWall + 130_000);
                 dimFills(server, botRefs, outDir, 2);
+            }
+            if (rs != 0 && !cmp) {
+                // 翻转风暴：marker+25 起每 3s 交替驱动块 redstone_block/air ×30 次
+                // （全网激活/去激活传播主体，JFR 窗内），循环后补一次激活=末态已激活
+                sleepUntil(markerWall + 25_000);
+                for (int flip = 0; flip < 30; flip++) {
+                    final String blk = flip % 2 == 0 ? "minecraft:redstone_block" : "minecraft:air";
+                    for (int i = 0; i < botRefs.length; i++) {
+                        final OfflineJoinBot bot = botRefs[i];
+                        if (bot == null) {
+                            continue;
+                        }
+                        rsDrive(server, (int) Math.floor(bot.getPosX()), (int) Math.floor(bot.getPosZ()), blk);
+                    }
+                    sleepUntil(markerWall + 28_000 + flip * 3_000L);
+                }
+                for (int i = 0; i < botRefs.length; i++) {
+                    final OfflineJoinBot bot = botRefs[i];
+                    if (bot != null) {
+                        rsDrive(server, (int) Math.floor(bot.getPosX()), (int) Math.floor(bot.getPosZ()), "minecraft:redstone_block");
+                    }
+                }
+                // 正证据双态：EDGE-ON（激活态边缘 power=8）→最终去激活→EDGE-OFF（power=0）
+                sleepUntil(markerWall + 130_000);
+                probeRs(server, logLines, botRefs[0], true);
+                sleepUntil(markerWall + 140_000);
+                for (int i = 0; i < botRefs.length; i++) {
+                    final OfflineJoinBot bot = botRefs[i];
+                    if (bot != null) {
+                        rsDrive(server, (int) Math.floor(bot.getPosX()), (int) Math.floor(bot.getPosZ()), "minecraft:air");
+                    }
+                }
+                sleepUntil(markerWall + 160_000);
+                probeRs(server, logLines, botRefs[0], false);
             }
             if (cmp) {
                 // 探针②（marker+90s，JFR 窗 marker+72s 尾后）：首 3 挖=air（破坏真实生效）+
@@ -429,6 +468,72 @@ public final class CompositeCensus {
         stdin.write("execute in minecraft:the_nether run forceload remove all\n".getBytes(StandardCharsets.UTF_8));
         stdin.write("execute in minecraft:the_end run forceload remove all\n".getBytes(StandardCharsets.UTF_8));
         stdin.flush();
+    }
+
+    // ---------- 批次199（R58 红石 wire 翻转轴） ----------
+
+    /**
+     * 每 bot 侧向 wire 网络（bot 位置不动=驻立稳定）：stone 平台 y=200（15×15，
+     * x∈[bx+10,bx+24]）+redstone_wire y=201 全平面 +中心 (bx+17,201,bz) redstone_block
+     * 驱动（激活初始态）。R46 判例：y=200 空中 wire 须先铺 solid 支撑。/say 标记=
+     * 网络建成（命令服务器侧处理完）。
+     */
+    private static long rsSetup(final Process server, final OfflineJoinBot[] botRefs,
+                                final Path outDir, final List<String> logLines) throws Exception {
+        final List<String> cmds = new ArrayList<>();
+        for (int i = 0; i < botRefs.length; i++) {
+            final OfflineJoinBot bot = botRefs[i];
+            if (bot == null) {
+                throw new IllegalStateException("bot " + i + " not joined at rs setup");
+            }
+            final int bx = (int) Math.floor(bot.getPosX());
+            final int bz = (int) Math.floor(bot.getPosZ());
+            cmds.add(String.format("/fill %d %d %d %d %d %d minecraft:stone",
+                bx + 10, 200, bz - 7, bx + 24, 200, bz + 7));
+            cmds.add(String.format("/fill %d %d %d %d %d %d minecraft:redstone_wire",
+                bx + 10, 201, bz - 7, bx + 24, 201, bz + 7));
+            cmds.add(String.format("/setblock %d %d %d minecraft:redstone_block", bx + 17, 201, bz));
+        }
+        cmds.add("/say PAP0-RS-SETUP-DONE");
+        Files.write(outDir.resolve("rssetup.txt"), cmds, StandardCharsets.UTF_8);
+        final java.io.OutputStream stdin = server.getOutputStream();
+        for (final String c : cmds) {
+            stdin.write((c + "\n").getBytes(StandardCharsets.UTF_8));
+        }
+        stdin.flush();
+        System.out.println("CompositeCensus.rsSetupSent commands=" + (cmds.size() - 1));
+        final long start = System.currentTimeMillis();
+        final long deadline = start + 120_000;
+        while (System.currentTimeMillis() < deadline) {
+            if (new ArrayList<>(logLines).stream().anyMatch(l -> l.contains("PAP0-RS-SETUP-DONE") && !l.contains("rsSetupSent"))) {
+                System.out.println("CompositeCensus.rsMarkerReached ms=" + (System.currentTimeMillis() - start));
+                return System.currentTimeMillis();
+            }
+            Thread.sleep(300);
+        }
+        throw new IllegalStateException("rs setup marker not seen within 120s");
+    }
+
+    /** 翻转驱动块（单 setblock，已加载区块即时）。 */
+    private static void rsDrive(final Process server, final int bx, final int bz, final String block) throws Exception {
+        server.getOutputStream().write(String.format("/setblock %d %d %d %s\n", bx + 17, 201, bz, block).getBytes(StandardCharsets.UTF_8));
+        server.getOutputStream().flush();
+    }
+
+    /**
+     * 传播正证据探针：激活态下近端边缘 wire（距中心 7 格直线）power=15-7=8；
+     * 去激活态 power=0。双态命中=信号传播真实到达边缘。
+     */
+    private static void probeRs(final Process server, final List<String> logLines,
+                                final OfflineJoinBot b0, final boolean on) throws Exception {
+        final int bx = (int) Math.floor(b0.getPosX());
+        final int bz = (int) Math.floor(b0.getPosZ());
+        final String tag = on ? "RS-EDGE-ON" : "RS-EDGE-OFF";
+        final String power = on ? "power=8" : "power=0";
+        probe(server, logLines, String.format(
+            "execute if block %d 201 %d minecraft:redstone_wire[%s] run say %s", bx + 10, bz, power, tag));
+        probe(server, logLines, String.format(
+            "execute if block %d 201 %d minecraft:redstone_wire[%s] run say %s", bx + 24, bz, power, tag));
     }
 
     private static void sleepUntil(final long wall) throws InterruptedException {

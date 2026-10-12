@@ -703,3 +703,19 @@ entities/blockEntities 段"）。改 ServerLevel tick 结构时记得同步该�
 - **JFR 样本量是负载形态的第一验收指标**：v1 腿 JFR 里维度生成帧为零（NoiseChunk
   样本全在命令发出前=overworld 残余）——负载没发生，先修形态再谈判读；磁盘 region
   增量（字节数/region 数）是生成量的旁证但来源要归因（forceload 邻域≠fill 触发）。
+
+## 2026-10-13 补充：批次 199 踩坑记录
+
+- **方块状态谓词探针的属性值按 vanilla 语义逐格推导**：红石 wire#k（距源第 k
+  格）power=15−(k−1)——紧邻=15、第 7 格=9（不是 8：把"距源块"当"距首 wire"
+  就是差一）。任何 `[property=N]` 探针先写一格的期望值再写整列。
+- **probe 命中集扩展与新增 say 标签同步**：新轴探针 tag（如 RS-EDGE-*）忘了
+  加进 probe() 的打印过滤器=harness 输出恒 0、门假失败（R57 加了 DIM-*、本批
+  忘了 RS-*=同型失误两连）。通式：新增探针 tag 的 Edit 顺序=先改命中集再写
+  调用点，漏一处 grep 一下再跑。
+- **单态探针失败先看复合证据再重跑**：另一态正证据（日志双中）+JFR 里该负载
+  的特征帧在场（in-stack 数百）=负载真实发生，探针差一只是测量瑕疵——复合门
+  定谳免整腿重跑（~11min/腿）。
+- **papo* 前缀帧=自有优化代价面**：分配普查栈帧出现 papo 前缀方法时，反查
+  patches/features 补丁名即可定位是哪一批的历史优化（本例 papoCalculateTarget
+  Strength=批次125 wire 目标强度合并），按代价面判例处理不误判为新面。
