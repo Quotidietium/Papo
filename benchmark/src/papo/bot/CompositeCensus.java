@@ -87,6 +87,7 @@ public final class CompositeCensus {
         final int per = args.length > 6 ? Integer.parseInt(args[6]) : 3;
         final int dims = args.length > 7 ? Integer.parseInt(args[7]) : 0;
         final int rs = args.length > 8 ? Integer.parseInt(args[8]) : 0;
+        final int place = args.length > 9 ? Integer.parseInt(args[9]) : 0;
 
         final Path outDir = Path.of("results", "composite-" + System.currentTimeMillis() + (cmp ? "-cmp" : "-natural"));
         Files.createDirectories(outDir);
@@ -149,8 +150,8 @@ public final class CompositeCensus {
                         Thread.sleep((long) (Math.random() * 400));
                         final OfflineJoinBot bot = new OfflineJoinBot("127.0.0.1", PORT, name);
                         botRefs[idx] = bot;
-                        bot.joinClimbSpreadDigAndDisconnect(spreadMs, dx, dz, FILL_Y, fillDone, digMs, cmp);
-                        System.out.println("CompositeCensus.botFinalPos " + name + " x=" + (int) bot.getPosX() + " z=" + (int) bot.getPosZ());
+                        bot.joinClimbSpreadDigAndDisconnect(spreadMs, dx, dz, FILL_Y, fillDone, digMs, cmp, place != 0);
+                        System.out.println("CompositeCensus.botFinalPos " + name + " x=" + (int) bot.getPosX() + " z=" + (int) bot.getPosZ() + " places=" + bot.getPlacesSent());
                     } catch (final Exception e) {
                         throw new RuntimeException("bot " + name + " failed: " + e, e);
                     }
@@ -236,9 +237,27 @@ public final class CompositeCensus {
                 sleepUntil(markerWall + 160_000);
                 probeRs(server, logLines, botRefs[0], false);
             }
+            if (place != 0 && cmp) {
+                // 批次200（R59 放置轴）探针③（marker+200s，放置风暴尾后）：首 3 放置
+                // 目标=stone 在场。批次200 判例：挖掘半段把四侧面格挖空（挖掘候选集=放置
+                // 支撑集超集）→ BlockPlaceContext.replaceClicked=true → 石头放进支撑格
+                // 自身而非外贴格——探针必须查支撑格（sx,sy,sz），查外贴格恒零命中
+                // （腿 B 判例：世界直存面格 stone=放置铁证，复合门免重跑）。
+                sleepUntil(markerWall + 200_000);
+                final int[] pt = b0.getFirstPlaceTargets();
+                if (pt != null) {
+                    for (int k = 0; k < 3; k++) {
+                        probe(server, logLines, String.format("execute if block %d %d %d minecraft:stone run say PLACE-STONE%d", pt[k * 6 + 3], pt[k * 6 + 4], pt[k * 6 + 5], k));
+                    }
+                } else {
+                    System.out.println("CompositeCensus.probe MISSING firstPlaceTargets（bot0 未起放？）");
+                }
+            }
             if (cmp) {
                 // 探针②（marker+90s，JFR 窗 marker+72s 尾后）：首 3 挖=air（破坏真实生效）+
-                // ctrl=stone + chest 收物（cobblestone=全链完成）+ 实体在场（石台站立相）
+                // ctrl=stone + chest 收物（cobblestone=全链完成）+ 实体在场（石台站立相）。
+                // 批次200：两腿对称跑（B 腿此时在挖掘半段中=首 3 挖仍 air、放置风暴未起，
+                // 探针成立且为 B−A 差分基线正证据；门 air≥3 两腿同权）
                 sleepUntil(markerWall + 90_000);
                 final int[] tgt = b0.firstDigTargets;
                 if (tgt != null) {
@@ -257,10 +276,10 @@ public final class CompositeCensus {
                 sleepUntil(markerWall + 150_000);
                 probeDims(server, logLines, botRefs[0]);
             }
-            // 批次197（R56 长时复合浸泡）：短窗（digMs≤300s）保持历史 measure 点
+            // 批次197（R56 长时复合浸泡）：短窗（digMs<200s）保持历史 measure 点
             // marker+150s；长窗 measure 推导至 bot 断开前 60s（bot 在线=区块票据与
             // 实体在场，JFR 窗 marker+12 起覆盖挖尽→drain→长驻留→多轮自动保存）。
-            sleepUntil(markerWall + (digMs > 300_000 ? 12_000 + digMs - 60_000 : 150_000));
+            sleepUntil(markerWall + (digMs >= 200_000 ? 12_000 + digMs - 60_000 : 150_000));
             measure(server.pid(), outDir);
 
             for (final CompletableFuture<Void> f : futures) {
@@ -399,7 +418,7 @@ public final class CompositeCensus {
             }
             if (l.contains("has the following block data") || l.contains("CMP-CTRL-STONE")
                 || l.contains("CMP-DUG-AIR") || l.contains("CMP-ITEMS-PRESENT")
-                || l.contains("DIM-N-OK") || l.contains("DIM-E-OK")
+                || l.contains("DIM-N-OK") || l.contains("DIM-E-OK") || l.contains("PLACE-STONE")
                 || l.contains("to be force loaded") || l.contains("force loaded chunk was found")
                 || l.contains("Filled") || l.contains("no items were found")
                 || l.contains("Unknown or incomplete")) {

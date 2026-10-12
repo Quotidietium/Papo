@@ -4595,3 +4595,45 @@ trivial 收益**（R43 判例同型）。判例四条：红石信号算术差一
 变更、版本保持 0.110.0。
 
 报告：[note/report/perf/2026-10-13-rswire-r58-batch199.md](report/perf/2026-10-13-rswire-r58-batch199.md)。
+
+## 批次 200（2026-10-13）：R59——方块放置轴（SET_CREATIVE_SLOT+USE_ITEM_ON 放置风暴）→判负闭合（第十六域）（0.110.0 保持）
+
+事实核查定轴：R48 报告零放置提及——挖掘风暴（PLAYER_ACTION 破坏链）的对偶
+right-click 放方块链（BlockItem.place/canPlace 碰撞/BlockPlaceEvent 事件机器/
+状态广播）在十五域普查从未成像→第十六域真新格；放置链同时穿过 CraftBukkit
+事件机器（R36 判例强两档族）与 Papo 自有补丁热路径（handleUseItemOn 的
+papoHasListeners 零监听快路+标量距离检查恰在此链上）。**协议实证三轮收敛**
+（两轮纠错）：v1 "+10 偏移外推"得 0x35/0x3d——实际是 SET_COMMAND_BLOCK/
+TELEPORT_TO_ENTITY（12 bot 全数 DecoderException 踢：10×accept_teleportation
+29 extra+2×set_command_block，服务器日志包名+字节数=协议错位实锚）；权威
+提取=**GameProtocols.java SERVERBOUND_TEMPLATE 注册表定义序**（五锚点校准：
+0x00/0x1b/0x1d/0x28/0x2c）→SET_CREATIVE_MODE_SLOT=**0x37**、USE_ITEM_ON=
+**0x3f**+**BlockHitResult 尾双布尔**（isInside+isWorldBorderHit，1.21.11 特有，
+旧版单 insideBorder）；PlaceVerify 单 bot 隔离验证器三探针全中（Inventory
+slot0=stone/目标格 stone/支撑格在场）。harness：bot 半段制 dig(140s)→
+placeFaceStorm(140s)（立方四侧面外贴格 d2≤25 确定序 100ms/放，~95 候选/bot×
+12=1,147）+cmp=1 两腿相消；A-110dig vs B-110digplace。**B 门复合定谳**
+（探针③ PLACE-STONE 零命中=瞄格语义错误非负载未发生）：bot 侧 places=1,147
+（sent==total 12/12 候选耗尽）+**世界直存地面真值**（WorldProbe 重开保存世界
++forceload 加载，北/南/东面格 stone 五探针全中；外贴格无 stone=恰证
+BlockPlaceContext.replaceClicked 语义：点击格=空气时放置落点=支撑格自身）
++JFR 放置链特征帧 75-77 in-stack（handleUseItemOn/UseOnContext/
+BlockPlaceContext/BlockItem）。B−A 差分：**放置链 77 事件/~77.5MB=窗 raw
+0.155%**，逐面计数全 <20（最大 Arrays.copyOf 10）全归已知族（Moonrise
+ZeroCollidingReferenceStateTable MapView=R42/R54 上游/事件机器基建=R36/
+**RegistryFriendlyByteBuf decorator +80（580→660）=R44 维持清单同一张脸**
+（StreamCodec$5 mapStream 适配器每出站包一包装）/updateNeighbourShapes ×21
+=R58 邻域族维持）。**四支柱判负**：量级两数量级低+零 census 显著单体面+
+BlockCanBuildEvent 零监听无条件 callEvent（与 papo 0254 族零监听快路同族的
+唯一候选）低于采样地板三数量级→维持代价面备忘（R24 三门槛第一腿不成立）+
+上游族；heap B +5.0%（835→877MB）=1,147 放置石头+section palette 重排数据面
+（R57 同型）；存活侧双腿干净（13/8 全 spark 自观测族）零回流零泄漏。判例七条：
+**包 ID 权威提取**（新包 ID 唯一路径=注册表定义序提取+隔离验证器实证，锚点
+线性外推禁用——R48 同源陷阱两连踩）/BlockHitResult 双布尔（1.21.2+ 线格式
+演化族）/replaceClicked 语义（放置探针查支撑格）/世界直存地面真值（R58 复合
+门扩展：探针坐标语义错误≠负载未发生）/会话恢复杀 shell=JFR 永不启动（JFR.start
+是 shell 侧锚后 jcmd）→整腿重跑+门/设计一致性腿前自查/门阈值按候选池校准
+（1800→1080）/采样地板下链级成像须全栈符号扫描（jfr print+grep）非聚合
+top-N。无代码变更、版本保持 0.110.0。
+
+报告：[note/report/perf/2026-10-13-place-r59-batch200.md](report/perf/2026-10-13-place-r59-batch200.md)。

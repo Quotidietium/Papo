@@ -74,6 +74,7 @@ public final class OfflineJoinBot {
     // 批次141（R5）：服务器权威终位（harness 打印验证行走扩散真实生效）
     public double getPosX() { return this.posX; }
     public double getPosZ() { return this.posZ; }
+    public double getPosY() { return this.posY; } // 批次200 PlaceVerify：支撑格几何锚定
 
     private void trace(final String state, final int packetId, final long t0) {
         this.phaseTrace.add(state + ":0x" + Integer.toHexString(packetId) + ":" + (System.nanoTime() - t0) / 1_000_000 + "ms");
@@ -156,13 +157,39 @@ public final class OfflineJoinBot {
     public long[] joinClimbSpreadDigAndDisconnect(final long spreadMs, final double dxPerTick, final double dzPerTick,
                                                   final double climbToY, final java.util.concurrent.CountDownLatch fillDone,
                                                   final long digMs, final boolean dig) throws IOException {
+        // 旧行为原样保留（R47-R58 腿语义）：dig=true 时全 digMs 段挖掘（挖尽转驻留）
         final long[] t = this.doJoin(100);
         this.walkClimbThenWalk(spreadMs, dxPerTick, dzPerTick, climbToY);
         this.awaitLatchDraining(fillDone, 120_000);
         if (dig) {
             this.digReachSphere(digMs);
         } else {
+            this.walk(digMs, 0, 0);
+        }
+        this.socket.close();
+        return t;
+    }
+
+    // 批次200（R59 放置轴）：place=true 时 dig 段挖尽后把挖掘立方表面外贴格逐格放回
+    // （USE_ITEM_ON 放置链=R48 挖掘风暴的对偶轴；A 腿同节拍纯挖=挖掘面同量相消）。
+    public long[] joinClimbSpreadDigAndDisconnect(final long spreadMs, final double dxPerTick, final double dzPerTick,
+                                                  final double climbToY, final java.util.concurrent.CountDownLatch fillDone,
+                                                  final long digMs, final boolean dig, final boolean place) throws IOException {
+        final long[] t = this.doJoin(100);
+        this.walkClimbThenWalk(spreadMs, dxPerTick, dzPerTick, climbToY);
+        this.awaitLatchDraining(fillDone, 120_000);
+        if (dig) {
+            this.digReachSphere(digMs / 2);
+        } else {
             this.walk(digMs, 0, 0); // 配对控制腿：同驻留节拍，零挖掘包
+        }
+        if (place && dig) {
+            // dig/place 各半段：放置风暴紧跟挖尽段（~80s 挖+~20s 放回+各自驻留尾）
+            this.setHeldStone();
+            this.placeFaceStorm(digMs / 2);
+        } else if (dig && !place) {
+            // A 腿对称控制：纯挖腿的后半段同节拍驻留（挖掘面同量、放置面零）
+            this.walk(digMs / 2, 0, 0);
         }
         this.socket.close();
         return t;
@@ -231,6 +258,132 @@ public final class OfflineJoinBot {
     }
 
     public int getDigsSent() { return this.digsSent; }
+
+    // ---------- 批次200（R59 放置轴）：creative 手持 + USE_ITEM_ON 放置风暴 ----------
+
+    private int placesSent = 0;
+    private int placeSeq = 0;
+    private int[] firstPlaceTargets;
+
+    /**
+     * SET_CREATIVE_MODE_SLOT（play id 0x37，GameProtocols 注册序权威提取——批次200
+     * 判例：+10 偏移外推失效，common/ping/cookie 包在特定位置穿插，0x35 实为
+     * SET_COMMAND_BLOCK/0x3d 实为 TELEPORT_TO_ENTITY，服务器日志踢因实锚）。
+     * slot 36=hotbar 首格（默认选中槽 0）。ItemStack 线格式（ItemStack.
+     * createOptionalStreamCodec）：varint count + varint itemId（vanilla flat 注册序
+     * AIR=0/STONE=1）+ component patch（varint 0 ×2=空）。
+     */
+    public void setHeldStone() throws IOException {
+        final ByteArrayOutputStream b = new ByteArrayOutputStream(16);
+        b.write((36 >>> 8) & 0xFF); // big-endian short slot
+        b.write(36 & 0xFF);
+        writeVarint(b, 1); // count
+        writeVarint(b, 1); // minecraft:stone（flat 注册序）
+        writeVarint(b, 0); // patch added = 0
+        writeVarint(b, 0); // patch removed = 0
+        this.sendPacket(0x37, b.toByteArray());
+    }
+
+    /**
+     * USE_ITEM_ON（play id 0x3f，同上权威提取）：varint hand(0=主手)+long 支撑格
+     * BlockPos.asLong 大端+varint direction+float×3 cursor+bool isInside+bool
+     * isWorldBorderHit（FriendlyByteBuf.writeBlockHitResult 尾两布尔——批次200 判例：
+     * 1.21.11 比旧版多 worldBorderHit 位，漏写致帧内多一字节解码错）+varint
+     * sequence（递增）。
+     */
+    public void placeOnFace(final int x, final int y, final int z, final int direction) throws IOException {
+        final ByteArrayOutputStream b = new ByteArrayOutputStream(32);
+        writeVarint(b, 0); // hand = MAIN_HAND
+        b.write(longBytes(blockPosAsLong(x, y, z)));
+        writeVarint(b, direction);
+        b.write(intBytes(Float.floatToIntBits(0.5f))); // cursorX
+        b.write(intBytes(Float.floatToIntBits(1.0f))); // cursorY
+        b.write(intBytes(Float.floatToIntBits(0.5f))); // cursorZ
+        b.write(0); // isInside = false
+        b.write(0); // isWorldBorderHit = false
+        writeVarint(b, ++this.placeSeq);
+        this.sendPacket(0x3f, b.toByteArray());
+        this.placesSent++;
+    }
+
+    public int getPlacesSent() { return this.placesSent; }
+
+    public int[] getFirstPlaceTargets() { return this.firstPlaceTargets; }
+
+    /**
+     * 表面外贴放置风暴：挖掘立方（11×15×11，bx±5/y[FILL_Y-5,FILL_Y+9]/bz±5）四侧面
+     * 外一格的放置目标（支撑=立方表面格恒 solid），按（距离,y,x,z）确定序逐 100ms
+     * 放置至耗尽或截时；耗尽后 keepalive 驻留。首 3 目标写 firstPlaceTargets
+     * （窗后探针锚）。距离门对支撑格（R48 digReachSphere 同式保守 5.0 半径）。
+     */
+    private void placeFaceStorm(final long digMs) throws IOException {
+        final double ex = this.posX, ey = this.posY + 1.62, ez = this.posZ;
+        final int bx = (int) Math.floor(this.posX), by = (int) Math.floor(this.posY), bz = (int) Math.floor(this.posZ);
+        record PCand(double d2, int tx, int ty, int tz, int sx, int sy, int sz, int dir) {}
+        final java.util.List<PCand> cands = new java.util.ArrayList<>(512);
+        final int[][] faces = {
+            {0, 0, -1, 2},  // 北：支撑面 z=bz-5，目标 z-1 格，direction=NORTH(2)
+            {0, 0, 1, 3},   // 南：支撑面 z=bz+5，direction=SOUTH(3)
+            {-1, 0, 0, 4},  // 西：支撑面 x=bx-5，direction=WEST(4)
+            {1, 0, 0, 5},   // 东：支撑面 x=bx+5，direction=EAST(5)
+        };
+        for (final int[] f : faces) {
+            for (int dy = -5; dy <= 9; dy++) {
+                for (int u = -5; u <= 5; u++) {
+                    final int cx = bx + (f[0] != 0 ? f[0] * 5 : u);
+                    final int cz = bz + (f[2] != 0 ? f[2] * 5 : u);
+                    final int cy = by + dy;
+                    final double ddx = Math.max(cx - ex, Math.max(0.0, ex - (cx + 1)));
+                    final double ddy = Math.max(cy - ey, Math.max(0.0, ey - (cy + 1)));
+                    final double ddz = Math.max(cz - ez, Math.max(0.0, ez - (cz + 1)));
+                    final double d2 = ddx * ddx + ddy * ddy + ddz * ddz;
+                    if (d2 <= 25.0) {
+                        cands.add(new PCand(d2, cx + f[0], cy, cz + f[2], cx, cy, cz, f[3]));
+                    }
+                }
+            }
+        }
+        cands.sort((a, c) -> a.d2 != c.d2 ? Double.compare(a.d2, c.d2)
+            : a.ty != c.ty ? Integer.compare(a.ty, c.ty)
+            : a.tx != c.tx ? Integer.compare(a.tx, c.tx) : Integer.compare(a.tz, c.tz));
+        final long deadline = System.currentTimeMillis() + digMs;
+        int i = 0;
+        this.socket.setSoTimeout(20);
+        while (System.currentTimeMillis() < deadline) {
+            if (i < cands.size()) {
+                final PCand c = cands.get(i);
+                if (i < 3) {
+                    System.out.println("PLACETGT[" + this.name + "] #" + i + " x=" + c.tx + " y=" + c.ty + " z=" + c.tz);
+                }
+                this.placeOnFace(c.sx, c.sy, c.sz, c.dir);
+                if (i == 2) {
+                    // 发满 3 个即锚定（原 i==3 处锚定在早死时丢锚——批次200 腿 B 判例）。
+                    // 18 元组=[target(tx,ty,tz)+support(sx,sy,sz)]×3：探针③查支撑格
+                    // （replaceClicked 语义：挖空面格时石头落支撑格自身）。
+                    final PCand c0 = cands.get(0), c1 = cands.get(1), c2 = cands.get(2);
+                    this.firstPlaceTargets = new int[]{
+                        c0.tx, c0.ty, c0.tz, c0.sx, c0.sy, c0.sz,
+                        c1.tx, c1.ty, c1.tz, c1.sx, c1.sy, c1.sz,
+                        c2.tx, c2.ty, c2.tz, c2.sx, c2.sy, c2.sz};
+                }
+                i++;
+            }
+            this.drainPlayInbound();
+            try {
+                Thread.sleep(i < cands.size() ? 100 : 50);
+            } catch (final InterruptedException e) {
+                Thread.currentThread().interrupt();
+                this.socket.setSoTimeout(0);
+                return;
+            }
+        }
+        System.out.println("PLACEDONE[" + this.name + "] sent=" + i + " total=" + cands.size());
+        this.socket.setSoTimeout(0);
+    }
+
+    private static byte[] intBytes(final int v) {
+        return new byte[]{(byte) (v >>> 24), (byte) (v >>> 16), (byte) (v >>> 8), (byte) v};
+    }
 
     /**
      * 挖掘风暴：以眼位为心的可达球候选（点-AABB 距 ≤5.0²，与服务端距离门同式但半径
@@ -359,7 +512,7 @@ public final class OfflineJoinBot {
     private boolean handlePlayFrame(final Frame f) throws IOException {
         switch (f.packetId()) {
             case 0x2B -> this.sendPacket(0x1B, f.payload); // keepalive echo（long）
-            case 0x3B -> this.sendPacket(0x2B, f.payload); // ping → pong（int）
+            case 0x3B -> this.sendPacket(0x2C, f.payload); // ping → pong（int；0x2C=权威注册序，0x2b 实为 PLAYER_LOADED）
             case 0x46 -> { // PLAYER_POSITION：采纳坐标 + 回传送确认（id=0x46 经验实证：
                 // 注册序推算 0x45 差一，实测 join burst 中唯一 len=61 的包恰为 varint+48B+8B+4B 结构）
                 if (this.traceHex < 8) { // 诊断探针（批次141）：前 8 个 0x46 原样十六进制转储

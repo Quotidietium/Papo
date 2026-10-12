@@ -719,3 +719,39 @@ entities/blockEntities 段"）。改 ServerLevel tick 结构时记得同步该�
 - **papo* 前缀帧=自有优化代价面**：分配普查栈帧出现 papo 前缀方法时，反查
   patches/features 补丁名即可定位是哪一批的历史优化（本例 papoCalculateTarget
   Strength=批次125 wire 目标强度合并），按代价面判例处理不误判为新面。
+
+## 2026-10-13 补充：批次 200 踩坑记录
+
+- **bot 新包 ID 必须从注册表源码提取，锚点外推禁用**："+10 偏移"（两个已验证
+  锚点恰好同位推出的线性规律）在注册表其他位置失效——common/ping/cookie 包在
+  特定位置穿插移位（0x35=SET_COMMAND_BLOCK 而非 CREATIVE_SLOT、0x3d=
+  TELEPORT_TO_ENTITY 而非 USE_ITEM_ON）。唯一权威路径=
+  GameProtocols.java SERVERBOUND_TEMPLATE 的 addPacket 定义序（正则
+  `(\w+PacketTypes)\.(\w+)` 逐条，五锚点 0x00/0x1b/0x1d/0x28/0x2c 校准）。
+  服务器日志踢因（解码出的包名+extra 字节数）是协议错位的实锚；与 R48
+  "extraction regex 漏 common 前缀移位 4" 同源陷阱两连踩——通式：新包 ID
+  提取+**单 bot 隔离验证器**（PlaceVerify 三探针：Inventory 回显/目标格/
+  支撑格）实证后才进 harness。
+- **1.21.11 BlockHitResult 尾双布尔**：writeBlockHitResult=BlockPos long+
+  direction+cursor float×3+isInside+**isWorldBorderHit**（旧版单
+  insideBorder）——载荷少一个字节即解码踢。与 1.21.2+ move 尾单字节打包
+  同族：线格式逐版本演化，逐字段对照源码不算想当然。
+- **BlockPlaceContext.replaceClicked 语义**：构造器
+  `replaceClicked=getBlockState(点击格).canBeReplaced()`——点击格=空气时
+  getClickedPos() 返回点击格自身（非 relative(face)）。放置风暴的支撑格被
+  前序挖掘清空时石头落在支撑格；放置探针必须查支撑格，查外贴格恒零命中。
+- **世界直存=最强放置证据**（WorldProbe 工具）：保存世界目录重开+forceload
+  加载目标区块（R57 两波制+R48 未加载静默假规避）+`execute if block` 探针
+  ——R58 复合门判例扩展：**探针坐标语义错误≠负载未发生**，bot 侧计数+
+  JFR 特征帧+世界直存三源复合定谳免重跑。
+- **会话恢复杀编排 shell 的数据判读**（R44 判例扩展）：shell 死而 java 孤儿
+  活=JFR 永不启动（JFR.start 是 shell 侧 loadWarmed 锚后 jcmd，非 harness
+  自为）——数据必然不完整，杀孤儿整腿重跑。腿前自查清单加一项：**门变量与
+  harness 探针条件对照**（本轮 air≥3 无条件门 vs 探针② place==0 条件=B 腿
+  必假失败，腿前拦下省一轮 10min）。
+- **门阈值按候选池实测校准**：places≥1800 预估无据（d2≤25 表面格筛后真实池
+  ~95/bot×12=1,140）——预估阈值先跑一腿实测池再定门（或首腿后校准并记录
+  判例），阈值池外=门永假。
+- **1ms 采样地板下的链级成像**：小风暴（10³ 次级动作）单链在聚合 top-40 里
+  不可见，但全栈 in-stack 符号扫描（jfr print --events+grep 链符号）可见
+  （77 事件）——链级显著性判定用符号扫描，聚合 top-N 只用于大面。
