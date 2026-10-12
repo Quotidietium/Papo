@@ -456,3 +456,73 @@ entities/blockEntities 段"）。改 ServerLevel tick 结构时记得同步该�
 - **server 侧不受污染**：两个 harness 起 server 均走 `ProcessBuilder("F:/Java/21/bin/java.exe", …)` 常量——普查腿的 server 测量始终在 J21 上，harness JVM 版本只影响 bot 客户端进程内加载，普查配对腿有效性不受本次事故影响。
 - **修复与门**：①bot 包用 `/f/Java/21/bin/javac` 全量重编（ShortListVerify 除外——需 Moonrise 类，非腿依赖面）；②两脚本编译/运行行全部钉死 J21 bin；③`msptload-r45legs.sh` 每腿加验收门：`TRACE[` 行数 ≥ bot 数（OfflineJoinBot 行走期打印，bot 在线正证据）且类版本/NoClassDef 错误 =0，否则判废。
 - **判例**：①**腿有效性验收必须有 bot 在线正证据**——exit=0 + 采样齐全 ≠ 腿有效（空服腿与真腿在低负载下数值上可分辨性差，主序空服对比"3 优 3 平"毫无意义）；②**共享输出目录的编译器版本必须与运行 JVM 同钉**（多工具共用 build/classes 时，任一工具换 javac 即全局污染）；③杀后台任务后必须清进程树（`taskkill /T` 或核对端口）——被停 bash 的脚本子进程会继续推进腿序，孤儿 server 占端口令后续腿静默撞车。
+
+## 2026-10-12 补充：批次 187 踩坑记录
+
+### mock NMS 类的单测必须自带 @BeforeAll bootstrap（隐式套件顺序依赖根除判例）
+
+- **事故链**：`PapoHopperEmptyQueryFastPathTest` 用 `Mockito.mock(Entity.class)`。Mockito
+  inline mock 创建时触发 `Entity.<clinit>` → `EntityDataSerializers` → `ParticleTypes` →
+  `BuiltInRegistries.<clinit>` → `Bootstrap.checkBootstrapCalled` 抛 "Not bootstrapped"。
+  全套件运行时**碰巧**排在某个已 bootstrap 的测试类之后而全部通过；`--tests` 单类过滤
+  跑立即 3/3 全炸（MockitoException: Cannot instrument class Entity）。该类此前从未在
+  独立 JVM 里跑过——绿灯是执行顺序借来的。
+- **修复**：`@BeforeAll { SharedConstants.tryDetectVersion(); Bootstrap.bootStrap(); }`
+  （套件既有模式，tryDetectVersion 必须先行否则污染整个套件 JVM）。
+- **判例**：**凡 mock/触碰 NMS 类静态的测试必须自带 bootstrap，不得依赖套件内其他类
+  先行初始化**——顺序依赖绿灯是潜伏红灯；单类过滤跑一遍是暴露它的最廉价手段。
+
+### 测试查询盒 z 轴算术滑误（R33/R42 同族第三例）与诊断方法论
+
+- **事故链**：oracle 差分测试把 y 值误写进 z 槽（`new AABB(7.9, 74.9, 74.9, 8.6, 75.6, 75.6)`
+  的 z 跨 [74.9,75.6] 而实体在 z=8.0..8.5）——oracle 正确返回空、谓词（只看 section
+  区间）正确翻 false，两断言"矛盾"。逐字节核对源码无果后，一条**联合诊断断言**把
+  `intersects=false` 与两个盒的 toString 倾倒进 failure message，一步定位：几何根本
+  不相交，是测试自己写错了轴。
+- **诊断方法论判例**：①Gradle 测试 stdout 默认不进控制台/报告——`System.out.println`
+  诊断在 `--tests` 过滤跑里**不可见**，别用它；②把诊断数据拼进 assertion message
+  （failure 里必然可见）是测试内实证隔离的最快路径；③`intersects` 是纯几何且 AABB
+  不可变——当它对一个"明显相交"的盒对返回 false，先怀疑打印的盒不是比较的盒
+  （轴写错），再怀疑玄学。
+- **判例**：非对称轴值的盒构造必须逐轴复核（x/y/z 各自独立括值）；x=y=z 同值的
+  测试用例对此类滑误免疫，恰使错误只在轴值分化的用例显形。
+
+### applyPatches 后的出包新鲜度必须实证（Gradle up-to-date 跨任务图误判判例）
+
+- **事故链**：16:15 出的 0.109.0 jar → 16:35 源修正（谓词 chunk→section 粒度）走
+  amend+rebuildPatches+**applyPatches 全树重写**（mtime 16:35）→ 之后 `createMojmapBundlerJar`
+  报 up-to-date **未重建**（16:15 jar 依然是旧谓词）。Gradle 的 packaging 任务对
+  applyPatches 重写后的源-类一致性判断在跨任务图（test --rerun-tasks 重编译过 classes）
+  场景下失真。
+- **修复与门**：删产物 + `createMojmapBundlerJar --rerun-tasks` 强制重建 + `createPapoJar`
+  改名；随后 `javap -c` 反汇编包内嵌套 jar 的 `ChunkEntitySlices.class` 验证 section
+  粒度谓词字节码在场。
+- **判例**：**applyPatches 之后出的包必须以源 mtime 对比或包内字节码抽查实证新鲜度**；
+  up-to-date 绿灯不构成证据。createMojmapBundlerJar 的产物名是 paper-bundler-*，改名
+  Papo-<ver>.jar 由 `createPapoJar` Copy 任务完成——直接跑 bundler 任务不出 Papo 名件。
+
+### MSPT 同号槽终审：一次同序复跑复现不够，第五对破号定谳（相变槽漂移判例）
+
+- **序列**：s4（首驻留槽）三序同号劣 +0.5/+1.4/+0.2 → 同序复跑 ② **+1.4 复现** →
+  若止步于此按 R38 判例只能判"真差"；但改动全在漏斗路径而 MSPT 腿零漏斗
+  （无机制通道），遂加跑第五对 → ③ **−0.1 破号**。
+- **判例**：①**同序复跑复现 ≠ 定谳**——R42 的"复跑即破"是顺利情形；复现后仍有
+  无通道/摆幅两道否决权，可追加独立对终审；②**相变槽特征**：合池只有两个相位
+  过渡槽（末流送/首驻留）偏劣、稳态槽偏优的形态 = 过渡窗排空时序运气，不是代码
+  通道——版本不可能选择性只拖慢过渡窗而加速稳态窗；③s4 版本内腿间摆幅（1.1ms）
+  大于同号幅度带，序列本身在噪声带内。
+- **会话恢复杀腿判例二度应用**（R44 判例）：pinned 对被会话暂停杀死于 B 腿中途
+  （0x40010004 控制台中断）——A 腿虽完整完成仍整对重跑（配对腿须同会话时间邻接），
+  不缝合不借用。
+
+### 杂项工具纪律
+
+- **Bash 会话恢复后 cwd 不保证**：恢复会话后 cwd 停在内部仓库
+  `paper-server/src/minecraft/java`（上次 git 操作遗留），`./gradlew` 连续 127×4
+  才发现；且 `cd X && cmd` 前缀在该会话里被剥不可靠。**稳态形态：`bash
+  /f/Github/repo/Papo/gradlew -p /f/Github/repo/Papo …` 绝对路径 + `-p` 指项目根**，
+  与 cwd 完全解耦。
+- **空中红石时钟判例**：y=200 空中无支撑，中继器/红石线/火把时钟放置即弹跳失效、
+  `/data get block` 对无 BE 方块返回空——**观察者对**（互视 facing）是唯一可靠的
+  空中自启时钟（2gt 振荡、实心方块零支撑需求）；证活须 10×200ms 密采样
+  （`/execute if block ... powered=true`），2gt 占空比下单次长采样必漏。

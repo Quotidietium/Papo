@@ -4157,3 +4157,49 @@ vanilla tick 架构红线）。验证：恒等单测 11 用例（列表 oracle �
 BE 密集轴从未成像→收割闭合；版本 0.108.0。
 
 报告：[note/report/perf/2026-10-12-becontent-r45-batch186.md](report/perf/2026-10-12-becontent-r45-batch186.md)。
+
+## 批次 187（2026-10-12）：R46——机械负载 tick 窗分配普查→漏斗空实体查询快路（0.109.0）
+
+新场景轴轮（R38 判例三度应用：R24-R45 历轮窗口全为自然地形+bot 流送，机械负载
+（漏斗物流+红石时钟）从未成像）。工具 MechCensus（12 bot 撒布→+20s 机械填充相位：
+每 bot 6 漏斗环（3×3 周界 N/E/S/W 逆时针充装+replaceitem 预置种子）+6 对观察者互视
+时钟（2gt 自启振荡零支撑需求）→loadWarmed 锚点→JFR 60s 窗→测量；实测每腿 576 漏斗
++72 时钟）。发现腿同二进制 0.108.0 配对（自然 643,124KB vs 机械 686,249KB）：唯一
+≥20 阈立项面=漏斗空实体双查询（getEntityContainer 21 trips/24.0MB+getItemsAtAndAbove
+12 trips/16.5MB，A 腿双面皆 0）——漏斗每 tick 两问"suck 范围有无实体"，农场场景答案
+永远"无"而 vanilla 每问全价走 getEntitiesOfClass 完整走架（±2 chunk 迭代+输出
+ArrayList+逐实体谓词），60s 窗 ~72 动作/tick×2 问≈172,800 次空查询；余面全落判例清单
+判负（ItemStack.copy/观察者<阈=R41、保存 IO 壳=R43 关闭清单、NBT/DFU=R42、网络
+=R41/R43/R44、spark/JFR 自观测=R41 剥离、Vec3/结果对象=R41、MoonriseRegionFileIO=R30）。
+红石工具判例：中继器/红石线时钟 y=200 空中无支撑即弹跳失效，观察者对=唯一可靠
+空中时钟形态（10×200ms 密采样证活，2gt 占空比下单次采样必漏）。立项收割 0297：
+保守空探针四处——①ChunkEntitySlices.papoHasNoEntitiesInSections（镜像真查询逐位
+section 区间 clamp(floor(minY-2)>>4..floor(maxY+2)>>4) 逐 section 判 allEntities 空表；
+全 null⟹真查询 no-op：initClass 从 allEntities 回填⟹类/型集合亦空）②EntityLookup.
+papoHasNoEntitiesIn（镜像 getEntities(Class,..) 走架：同 ±2 chunk 边距/同 REGION 环形/
+同非 FULL 跳过，每 chunk 只调谓词不建输出表）③Level 透传④漏斗双守卫（suckInItems
+else 分支前置探针；getEntityContainer 查询前置）+共享 suck 查询盒 papoSuckQueryAabb
+（原内联 AABB 含 per-hopper-kind 缓存提为共享——快路必须探测与真查询逐位相同的盒）。
+恒等性：保守单向（true⟹必空，false=可能有回退原查询=只付原价）+线程封闭（增删与
+查询全主线程，无并发窗口）。**粒度判例：第一版 chunk 计数谓词被配对腿击穿**
+（getEntityContainer 15→0 但 getItemsAtAndAbove 15→10——y=200 漏斗与 y≈75 观战 bot
+同 chunk 列，真实世界同构=玩家站农场上方），升级 section 粒度后双面全坍缩——空探针
+粒度必须匹配真查询读取粒度（查询按 section 区间读，探针就按 section 区间判）。验证：
+恒等单测 3 用例（oracle 差分：空态双向/同列不同 section 可跳+降盒翻谓词/±2 chunk 边距
++INACCESSIBLE 同过滤）注册套件实测 **9,085/0/0**+链门 rebuild/apply/test/compile 全
+EXIT=0+0.109.0 出包（**出包新鲜度判例：applyPatches 源重写 16:35 晚于旧包 16:15 而
+Gradle up-to-date 误判不重建——删产物+--rerun-tasks 强制重建后 javap 验包内字节码
+确为 section 粒度**）+机械配对腿（双腿 fill=1 组成逐位一致 504/576/72，gate 全绿
+traces 84+84、零类版本错误）：V108 getEntityContainer 19 trips/24.1MB vs **V109 双面
+全 0、零替代面**（谓词零分配；R41 判例面坍缩是门，堆差 668,057 vs 671,573KB=+0.5%
+负载方差带如实入档）；MSPT 三序+同序复跑十腿全绿（主① 5/6 优·倒 6/6 劣（双腿整体
+上漂）·钉 5/6 劣·主②复现·主③破号；唯一三序同号槽 s4 +0.5/+1.4/+0.2 → 同序复跑
+终审：②+1.4 复现后 ③−0.1 **破号**+无机制通道（腿内零漏斗，0297 全部改动在漏斗
+路径零执行）+幅度<相变槽版本内摆幅（s4 腿间 4.5..5.6）三重否决 → 零回归）。测试
+工程判例两条：mock NMS 类单测必须自带 @BeforeAll bootstrap（隐式依赖套件执行顺序=
+顺序一变即红，单类过滤跑即暴露）；查询盒 z 轴算术滑误第三例（R33/R42 同族——y 值
+误入 z 槽，oracle 正确空 vs 谓词正确翻 false 的"矛盾"实为测试坐标错；非对称轴值盒
+构造必须逐轴复核）。每漏斗动作省 2 次完整实体查询走架→1 次零分配谓词走架；分配源
+轴第五域（机械负载）从未成像→收割闭合；版本 0.109.0。
+
+报告：[note/report/perf/2026-10-12-mechload-r46-batch187.md](report/perf/2026-10-12-mechload-r46-batch187.md)。
