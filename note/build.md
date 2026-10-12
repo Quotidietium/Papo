@@ -590,3 +590,16 @@ entities/blockEntities 段"）。改 ServerLevel tick 结构时记得同步该�
   全中才可信推导）→ PLAYER_ACTION=0x28，探针实证挖掘生效。
 - **判例**：注册序推导必须锚点实证收口；"包 ID 差一/差四"类偏移的第一嫌疑
   是序列提取漏检（前缀变体/条件注册），不是字段编码。
+
+### `javac | head && bash` 管道掩盖编译失败跑旧类（R49）
+
+- **事故链**：`javac … JoinQuitStormCensus.java 2>&1 | head -3 && bash 腿脚本 &`
+  ——单文件编译缺 OfflineJoinBot 符号（-cp 未含 build/classes）报错，但管道
+  出口取 head 的 0，`&&` 照常放行腿脚本 → **旧 .class 静默运行**（修复未编入，
+  双计数 bug 残留于腿；仅显示计数翻倍，门语义仍立，数据有效）。
+- **判例**：①编译→运行链必须 `set -o pipefail` 或先独立验类文件 mtime/
+  javac 输出为空再启动；②`cmd1 | cmd2 && cmd3` 的 cmd3 看到的是 cmd2 的
+  出口码——凡"编译成功才跑"的语义都不得用管道头。
+- **同轮姊妹判例**：服务器 stdout 捕获流与 logs/latest.log 是同批行镜像，
+  合并计数=2×（探针 joins=6 for 3 join 实证）——计数门只取单源；PlayerDataStorage
+  成功存档零日志（仅失败 warn）——存档正证据锚 dat 文件计数/mtime。

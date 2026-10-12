@@ -4306,3 +4306,31 @@ dropItems=true/exp=creative 0，creative ⟹ captureDrops 恒空）收益<风险
 无代码变更、版本保持 0.110.0。
 
 报告：[note/report/perf/2026-10-12-digstorm-r48-batch189.md](report/perf/2026-10-12-digstorm-r48-batch189.md)。
+
+## 批次 190（2026-10-12）：R49——玩家生命周期轴（join↔quit 风暴窗）分配普查→判负闭合（0.110.0 保持）
+
+新证据等级轮（R38 判例五度应用）：分配普查七域无一窗含 join/quit 相位——
+退出（异步 quit 存档/票据卸载）与重进（playerdata 读/PlayerList add/
+advancements 重建/spawn 区卸载后重载）从未成像；复合覆盖 R48 预留卸载-重载
+fallback 轴。工具 JoinQuitStormCensus（B 腿 12 bot 错峰 200ms 循环 4 轮
+{join→dwell 8s→断开=异步存档触发→gap 4s 落盘窗}；A 腿一次 join 持续在线同
+总时长；bot 零改动）+alloccensus-r49jqlegs.sh（JFR @1ms 60s=风暴 18..78s）。
+探针轮（1 bot×3 轮）：全净+**同名快速重 join 零竞态**（gap 3s 足够异步存档
+落盘）；揭三工程坑：成功存档静默（PlayerDataStorage 仅失败 warn 源码实证
+→门锚 "joined/left the game" 行+dat 文件计数）/logLines 与 latest.log 同批
+行合并=双计数（单源修复）/`javac|head&&bash` 管道掩盖编译失败跑旧类（腿跑
+23:11 旧类仅计数显示翻倍，门语义仍立；判例：pipefail 或验类 mtime）。发现
+腿门全绿：A traces=84·dat=12；B traces=48·**真值 48 join/48 quit**（12×4
+轮）·dat=12·零类版本错误。**B−A 全事件 in-stack 差分 ≥20 阈面全落判例
+清单**：PacketEncoder +155（R36 memo 代价面维持——join 突发包编码，R43
+判例重开须先证净赢）/advancements +40+ServerPlayer +39+PlayerList +29
+（**每玩家语义状态本体**：registerListeners 对 ~1,100 进度逐项 computeIfAbsent
+建 AdvancementProgress+逐 criterion 注册触发器 Listener=分派功能面，懒化
+重写 trigger 分派且改变 award/toast 时序=红线；R27 驻留画像的分配对偶）/
+DataResult +22（DFU 上游）/CompoundTag ~+11（NBT 数据面相位噪声）/Moonrise
+~0/R44 网络面阈下。**四支柱判负闭合（R48 同型）：零新机械面+语义面不可消除
+（进度触发/存档字节/重载内容）+量级小对象 young 直接收割+R43 保存壳恒等
+可证性失败与频率无关维持关闭**。玩家生命周期轴入维持代价面清单；分配普查
+第八域成像→判负留档。无代码变更、版本保持 0.110.0。
+
+报告：[note/report/perf/2026-10-12-jqstorm-r49-batch190.md](report/perf/2026-10-12-jqstorm-r49-batch190.md)。
