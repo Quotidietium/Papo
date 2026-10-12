@@ -39,10 +39,12 @@ import java.util.regex.Pattern;
  * 实体在场）→ +150s 驻留测量。A 腿=自然驻立基线（零 fill 零挖掘，R47 A 形），
  * B−A=复合窗全谱，逐面归因既有十域清单，未归因面=交互面候选。
  *
- * 用法：java papo.bot.CompositeCensus <jar> [bots=12] [spreadMs=150000] [digMs=160000] [cmp=1]
+ * 用法：java papo.bot.CompositeCensus <jar> [bots=12] [spreadMs=150000] [digMs=160000] [cmp=1] [gridN=10] [per=3]
  *
+ * gridN/per=石台召唤格边长/每格件数（批次195 R52 原形 10/3=300 站立/bot；
+ * 批次196 R55 极高密度轴 20/3=1,200 站立/bot=历史普查 4× 站立存活）。
  * 门：fill 标记 + bot 全成功 + B: digsTotal≥400/bot+探针正证据（air×3+ctrl×2+
- * 漏斗/chest/实体）+ 日志零门错误 + 服务器 exit 0。
+ * 漏斗 Items+chest cobblestone+实体在场）+ 日志零门错误 + 服务器 exit 0。
  */
 public final class CompositeCensus {
 
@@ -79,6 +81,8 @@ public final class CompositeCensus {
         final long spreadMs = args.length > 2 ? Long.parseLong(args[2]) : 150_000;
         final long digMs = args.length > 3 ? Long.parseLong(args[3]) : 160_000;
         final boolean cmp = args.length > 4 && Integer.parseInt(args[4]) != 0;
+        final int gridN = args.length > 5 ? Integer.parseInt(args[5]) : 10;
+        final int per = args.length > 6 ? Integer.parseInt(args[6]) : 3;
 
         final Path outDir = Path.of("results", "composite-" + System.currentTimeMillis() + (cmp ? "-cmp" : "-natural"));
         Files.createDirectories(outDir);
@@ -163,7 +167,7 @@ public final class CompositeCensus {
             final int ctrlX = b0x + 7; // reach 外 control（>5.5 立方距，R48 同式）
             long markerWall;
             if (cmp) {
-                markerWall = doFills(server, botRefs, outDir, logLines, ctrlX, b0z);
+                markerWall = doFills(server, botRefs, outDir, logLines, ctrlX, b0z, gridN, per);
                 // 探针①（marker+8s，JFR 窗前）：control=stone + 漏斗 Items 非空（drain 进行中）+ 实体在场
                 sleepUntil(markerWall + 8_000);
                 probe(server, logLines, String.format("execute if block %d %d %d minecraft:stone run say CMP-CTRL-STONE", ctrlX, FILL_Y, b0z));
@@ -240,7 +244,8 @@ public final class CompositeCensus {
      */
     private static long doFills(final Process server, final OfflineJoinBot[] botRefs,
                                 final Path outDir, final List<String> logLines,
-                                final int ctrlX, final int ctrlZ) throws Exception {
+                                final int ctrlX, final int ctrlZ,
+                                final int gridN, final int per) throws Exception {
         final List<String> fills = new ArrayList<>();
         int blocks = 0;
         int summons = 0;
@@ -260,9 +265,11 @@ public final class CompositeCensus {
                 bx - 6, FILL_Y, bz + FARM_DZ, bx - 1, FILL_Y, bz + FARM_DZ));
             fills.add(String.format("/setblock %d %d %d minecraft:chest[facing=west]", bx, FILL_Y, bz + FARM_DZ));
             fills.add(String.format("/setblock %d %d %d minecraft:chest[facing=west]", bx, FILL_Y, bz + FARM_DZ + 1));
-            // 石台平台（5×5，R47 原样几何 z 平移）
+            // 石台平台 gridN×gridN（gridN=10=R47 原形 5×5 平台+带外落体；gridN>10
+            // =全格站立（批次196 极端密度轴）。z 从 bz+FARM_DZ+2 起=漏斗排（bz+8）
+            // 与双箱（bz+8/9）之后，与漏斗排/箱/挖掘立方（z≤bz+5）零重叠。
             fills.add(String.format("/fill %d %d %d %d %d %d minecraft:stone",
-                bx - 12, FILL_Y, bz + FARM_DZ - 2, bx - 8, FILL_Y, bz + FARM_DZ + 2));
+                bx - 12, FILL_Y, bz + FARM_DZ + 2, bx - 12 + gridN - 1, FILL_Y, bz + FARM_DZ + 2 + gridN - 1));
             // 漏斗柱堆积：150/列 × 6 = 900（8 类轮转，~21/s 吸排 → 45-75s drain 相）
             for (int x = 0; x < HOPPERS; x++) {
                 final int hx = bx - 6 + x;
@@ -273,13 +280,13 @@ public final class CompositeCensus {
                     summons++;
                 }
             }
-            // 石台召唤格：10×10 ×3 = 300（邻格异类防合并=永驻站立相，R47 原样）
-            for (int gx = 0; gx < 10; gx++) {
-                for (int gz = 0; gz < 10; gz++) {
-                    for (int k = 0; k < 3; k++) {
+            // 石台召唤格：gridN×gridN ×per（邻格异类防合并=永驻站立相，R47 轮转式）
+            for (int gx = 0; gx < gridN; gx++) {
+                for (int gz = 0; gz < gridN; gz++) {
+                    for (int k = 0; k < per; k++) {
                         final String t = TYPES[(gx * 10 + gz * 3 + k) % TYPES.length];
                         fills.add(String.format("summon minecraft:item %d.5 %d.3 %d.5 {Item:{id:\"%s\",count:1}}",
-                            bx - 12 + gx, FILL_Y + 1, bz + FARM_DZ - 2 + gz, t));
+                            bx - 12 + gx, FILL_Y + 1, bz + FARM_DZ + 2 + gz, t));
                         summons++;
                     }
                 }
