@@ -59,7 +59,8 @@ import org.junit.platform.suite.api.SuiteDisplayName;
     PapoLongArrayEncodeFastPathTest.class,
     PapoLazyItemsListTest.class,
     PapoPersistentDataContainerLazyTest.class,
-    PapoHopperEmptyQueryFastPathTest.class})
+    PapoHopperEmptyQueryFastPathTest.class,
+    net.minecraft.world.level.PapoBlockWalkEquivalenceTest.class})
 public class PapoRegressionTestSuite {
 }
 // Papo end - batch 145 (R6)

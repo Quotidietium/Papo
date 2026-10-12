@@ -526,3 +526,40 @@ entities/blockEntities 段"）。改 ServerLevel tick 结构时记得同步该�
   `/data get block` 对无 BE 方块返回空——**观察者对**（互视 facing）是唯一可靠的
   空中自启时钟（2gt 振荡、实心方块零支撑需求）；证活须 10×200ms 密采样
   （`/execute if block ... powered=true`），2gt 占空比下单次长采样必漏。
+
+### 探针命令双斜杠事故：错误回显可同时满足 marker 门与在场门（批次188 判例）
+
+- **事故链**：`probe()` 辅助给 cmd 前补 `/`，而调用点传入的串已带 `/` → 控制台收到
+  `//data get ...` → `trimOptionalPrefix` 剥一层后 `/data` 作命令名 → "Unknown or
+  incomplete command"。三重隐蔽：①同腿 `/fill`/`/setblock`/`summon`/`/say`（单斜杠）
+  全部成功（farm 真建、ItemEntity 3,693 实测在场），唯探针全灭——命令族混杂掩盖根因；
+  ②**错误回显行本身含 marker 子串**——`/say MARKER` 若失败其回显也能满足 marker 检测
+  （`contains(MARKER)` 命中回显）；③`@e` 探针失败回显含 "CHURN-ITEMS-PRESENT" 字样，
+  在场门 grep 同样被回显满足——本轮在场门=1 恰是回显贡献的假阳性。
+- **修复与门**：①探针调用点去斜杠（辅助统一补前缀）；②harness 过滤器**排除
+  `--[HERE` 错误回显**再打印（门只数 harness 打印行=正证据行）；③marker 检测加
+  `!l.contains("--[HERE")`；④服务器自身 latest.log `grep -c "Unknown or incomplete"`
+  是命令族失败总数的决定性证据（首轮=3 恰等于探针数→farm 命令族全绿）。
+- **判例**：**console 探针门必须以"成功响应形态"为锚**（`data get <pos> <path>` 的成功
+  响应是 `has the following block data: <值>`，**不含路径键名 "Items"**——按
+  "Items.*count" 匹配必漏），且必须显式排除错误回显；错误回显与成功回显在子串门下
+  不可分辨是探针门的默认脆弱态。
+
+### 1.21.11 命令/红石实证三则（批次188 探针阶段，判负依据入档）
+
+- **`/replaceitem` 不存在**（1.17 移除）；正确形式
+  `/item replace block <pos> <slot> with <item> [count 1-99]`（ItemCommands.java 命令树：
+  item→replace→block→pos→slot→with→item→count）。**追溯性勘误：R46 的 replaceitem
+  播种自始未生效**（R46 探针回显 `[]` 即证据）——R46 场景实为空漏斗空查询+时钟，
+  目标面=真实运行的空查询面，收割有效性不受影响；但 R46 文档中"物品环流+split
+  转移"设计组件描述失实，以本条为准。
+- **观察者仅向 FACING 侧面供能**（ObserverBlock L116 `POWERED && FACING == side ? 15
+  : 0`）：互视对的两张脸互相消耗，**无法驱动邻接发射器**——发射器族 QC
+  （DispenserBlock L125 `hasNeighborSignal(pos) || hasNeighborSignal(pos.above())`）
+  理论可达但更新时序竞态使其不可靠。机械驱动设计三连败（命令语法×2+供能原理）后
+  改 **summon 批式**（一次性命令、窗内零命令伪影、8 类轮转防合并、despawn 6000t>
+  测量轴）。
+- **无人服务器上 summon 的物品冻结不 tick**（ActivationRange 无玩家=不激活；Age 不增、
+  OnGround=0b 原地悬停）但**漏斗吸取照常**（BE 侧无激活门）——探针验证机械可行性
+  不需要 bot 在线；正式腿 bot 在场（MISC 列=水平 inflate×世界高的全高度柱，y=200
+  物品在 bot 正上方即激活）后飞行/合并相才真实发生。

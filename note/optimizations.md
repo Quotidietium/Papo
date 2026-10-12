@@ -4203,3 +4203,70 @@ traces 84+84、零类版本错误）：V108 getEntityContainer 19 trips/24.1MB v
 轴第五域（机械负载）从未成像→收割闭合；版本 0.109.0。
 
 报告：[note/report/perf/2026-10-12-mechload-r46-batch187.md](report/perf/2026-10-12-mechload-r46-batch187.md)。
+
+## 批次 188（2026-10-12）：R47——物品实体旋涡轴分配普查→inside-block 走查双机械面收割（0.110.0）
+
+新场景轴轮（R38 判例四度应用）：R24-R46 六域中**物品实体旋涡（生成→飞行→着地→堆叠
+合并→被吸取→入容器）从未成像**——R42 实体密集窗的实体"在场不动"，R46 机械窗漏斗
+对实体查询答案永远"空"，而这是真实农场服（刷怪塔/树场/矿山）的常开负载。机械驱动
+设计三连败判例（`/replaceitem` 1.21.11 不存在→`/item replace block` 命令树结构→
+观察者仅向 FACING 侧面供能无法驱动邻接发射器）后收敛 **summon 批式**：每 bot 漏斗排
+6→双箱+石台 10×10，召唤漏斗柱 150/列×6（8 类轮转：同列同类距 0 就地堆叠=合并相，
+跨列异类 1 格>0.75 合并盒=柱数维持）+石台 3/格=300 永驻站立相（despawn 6000t>测量
+轴），12 bot=14,400 召唤 2.5s 处理完（服务器日志 "Unknown or incomplete" 恰 3 条=仅
+探针，构建命令族全绿——**服务器日志命令错误计数是命令族失败总数的决定性证据**）；
+时间线锚 **fill 标记**而非发送时刻（万级命令的服务器侧处理耗时不可假设）。发现腿
+同二进制 0.109.0 配对（自然 1,156 事件 vs 旋涡 12,342=10.7×，TRACE 88/84 零类版本
+错误）：旋涡三正证据门全绿（探针①漏斗 +8s 已吸 98 件五类+`[Server] CHURN-ITEMS-
+PRESENT`+探针②箱 cobblestone 64+30=全链完成）；ItemEntity 3,693≈12×300 石台驻立
+（A 腿 240-306 自然基线）。逐面判定（判例清单对照）：**立项唯一机械面=移动实体
+inside-block 走查双件套**（travel-dedupe `LongOpenHashSet` 5→489 trips+
+`betweenCornersInDirection` 迭代器簇 8→304 in-stack）；判负/剥离维持：JFR 自观测
+toString 簇 2,811（R41 剥离判例再实证）、spark 711（上游）、网络面 slice 938/
+copyOfRange 619/RegistryFriendlyByteBuf 438（R44 判负+netty 上游；14.4k→3.6k 实体
+spawn/destroy/位置同步回声）、Vec3/AABB/collision 结果对象族数千（R42 维持）、
+FluidState.getFlow 253（数据/结果面）、Holder.tags() stream（数据面）；**设计实证
+判读：非空 suck 查询面（ArrayList/forClass/包装 lambda 三件）0-1 trips 阈下**——
+漏斗吸取按整栈段取（同位合并→~8 栈/列），查询速率被堆叠压到 ~1-2/s/bot，旋涡轴的
+实体查询分配面不立项是设计实证结论非遗漏（配对腿复现 0-1）。立项收割 0298：
+①`forEachBlockIntersectedBetween` 5 参 scratch 重载（`@Nullable LongSet`，原 4 参
+委托=冷路径 Ghast 原语义逐位保持），热路径 `Entity.checkInsideBlocks` 传 per-Entity
+懒字段——调用局部容器 caller-owned scratch 通式（R39/R46 延伸）：**try/finally 全
+出口清空（含 visitor 抛 ReportedException 的异常态）**+fastutil clear 保容量+主线程
+封闭+visitor 无重入；②三调用点全在 BlockGetter 内部（公开 BlockPos API 未变=插件
+可见面零变化）的迭代器簇→私有索引走查 `papoVisitCornersInDirection`：逐位复刻
+computeNext 三重索引推进（t 最内/end 语义/短路），**每循环一枚共享 MutableBlockPos
+cursor=vanilla 别名契约逐位同构**——跨调用 cursor 复用会把块回调留存 pos 的观察
+窗口扩到后续走查（vanilla 契约下留存永久有效）=插件兼容红线不取，**替代面=cursor
+契约下限**；loop1 的 `move(scale(-1))` 内联为分量表达式（IEEE a+(-b)≡a-b 逐位
+相同）顺带消灭 4×getMinPosition Vec3+1×moved AABB。恒等性消费侧另有实证：
+StepBasedCollector.currentBlockPos 唯一读取点 recorded() 即时 `.immutable()` 快照，
+cursor 变异不影响已排队效果。验证：oracle 差分单测 3 用例（oracle=原方法体逐字
+副本走未改动公开 BlockPos 原语；18 组合网格差分含六向/对角/负坐标/亚 1e-5 短路
+分支×三盒型的位置序列+步索引+完成态+**cursor 身份分组结构相等**（per-loop 别名性
+对等）/早停对等（stopAfter×scratch 开关：精确停位+出口空）/scratch 契约（恒等+
+复用无泄漏+异常传播且 finally 清空））注册套件实测 **9,088/0/0**（9,085+3，类可见
+性教训：跨包套件引用测试类须 public）+链门 rebuild/apply/compile 全 EXIT=0+
+0.110.0 出包（javap 验包内嵌套 jar 双新成员字节码在场）+旋涡配对腿（组成恒等
+summons 14,400/14,400、burstMs 2,511/2,515、TRACE 96/87、三正证据双绿）：V109 簇
+合计 929 trips/~931MB（LongOpenHashSet 467/444.2MB+lambda$8 191/219.8MB+自帧 94/
+97.1MB+BlockPos$6 92/86.3MB+allocateInstance 85/83.4MB）→ **V110 全零**、替代面
+papoVisitCorners 73 trips/82.1MB（纯 MutableBlockPos×3/调用=语义下限，**−92% trips/
+−91% 权重**）、窗口事件 12,700→11,380（**−10.4%**）、raw 24,768→21,901MB
+（**−11.6%**）、heap 1,057,562→1,019,710KB（−3.6%）；MSPT 三序+同序复跑八腿（主①
+2/6 优·倒 1/6 优·钉 3/6 优；槽 3/4 三序同号劣 +1.4/+0.2/+0.9 与 +0.3/+1.3/+1.4
+——两相位过渡槽（末流送/首驻留）偏劣+稳态槽互有胜负=R46 相变槽判例同形，但本轮
+改动在 tick 路径有真实通道（每移动实体每段）无通道否决权不可用→同序复跑终审：
+**主② 4/6 优，槽 3 −0.3、槽 4 −0.2 双破号**=瞬态漂移（R42 判例四度应用），带重叠
+复核（slot4 A 带扩至 6.6 入 B 带）→零回归）。收益结构：每移动实体每移动段 inside-block
+走查 ~5 件分配→3 件 32B cursor，一切移动实体（玩家/生物/矿车/掉落物）通用非旋涡
+独占。判例五条：**探针命令双斜杠事故族**（错误回显可同时满足 marker 门与在场门——
+console 探针门必须以成功响应形态为锚（`data get <pos> <path>` 成功响应只回显值不含
+路径键名）且显式排除 `--[HERE` 回显）/时间线锚 fill 标记/迭代器消除 cursor 契约下限
+（跨循环独立+循环内共享=vanilla 同构，跨调用复用=兼容红线）/调用局部容器 scratch
+通式异常态支柱（finally 含 visitor 异常传播）/堆叠后栈段粒度转移判读。附 R46 播种
+失效追溯性勘误（R46 replaceitem 自始未生效=场景实为空漏斗空查询+时钟，目标面与
+收割有效性不受影响，R46 文档"物品环流"组件描述失实以勘误为准）；分配普查第六域
+（物品旋涡）成像→收割闭合；版本 0.110.0。
+
+报告：[note/report/perf/2026-10-12-itemchurn-r47-batch188.md](report/perf/2026-10-12-itemchurn-r47-batch188.md)。
