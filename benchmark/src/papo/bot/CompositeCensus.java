@@ -93,6 +93,7 @@ public final class CompositeCensus {
         final int place = args.length > 9 ? Integer.parseInt(args[9]) : 0;
         final int boom = args.length > 10 ? Integer.parseInt(args[10]) : 0;
         final int vill = args.length > 11 ? Integer.parseInt(args[11]) : 0;
+        final int fluid = args.length > 12 ? Integer.parseInt(args[12]) : 0;
 
         final Path outDir = Path.of("results", "composite-" + System.currentTimeMillis() + (cmp ? "-cmp" : "-natural"));
         Files.createDirectories(outDir);
@@ -196,6 +197,13 @@ public final class CompositeCensus {
                 // 每 20gt 完整调度 refreshActivities+acquirePOI/findClosestHomework
                 // 查询风暴=调度轴负载本体，无需波驱动：召唤即刻持续调度）。
                 markerWall = villSetup(server, botRefs, outDir, logLines, vill);
+            } else if (fluid != 0) {
+                // 批次204（R63 流体轴）：每 bot 石板 24×24×3 y[148,150]+围墙 2 格
+                // y[151,152]（挡水不溢）=水盆。fluid=1 对照（盆零水零扰动）/
+                // fluid=2=水流风暴（fluidDrive：24 波×每 5s×水条+气条互质扫位，
+                // 水横流 7 格限距持续再计算）。R58 wire 轴同构：批30/31 微基准单点
+                // 已收（0104/0106）但专轴流动风暴从未普查成像。
+                markerWall = fluidSetup(server, botRefs, outDir, logLines);
             } else if (rs != 0) {
                 // 批次199（R58 红石 wire 轴）：网络建在 marker 前（bot 侧向已加载区块，
                 // fill 即时——R57 两波制判例此处不需要：bot ±7 内区块早已加载）
@@ -358,6 +366,60 @@ public final class CompositeCensus {
                 final int vbz = (int) Math.floor(vb.getPosZ());
                 probe(server, logLines, "execute unless entity @e[type=minecraft:villager] run say VLGR-ABSENT");
                 probe(server, logLines, String.format("execute if block %d 151 %d minecraft:lectern run say VLGR-LECTERN", vbx - 11, vbz - 10));
+            }
+            if (fluid == 2) {
+                // 批次204（R63 流体轴）水流风暴：marker+25s 起每 5s 一波 ×24（至
+                // marker+145s），每波每 bot 两条命令：20 格竖列 water（互质步长 7 扫位）
+                // +20 格竖列 air（互质步长 5 扫位）——水横流 7 格限距内持续展开/回落
+                // =FlowingFluid.tick→spread→spreadToSides 链全窗再计算风暴。
+                sleepUntil(markerWall + 25_000);
+                for (int wave = 0; wave < 24; wave++) {
+                    for (int i = 0; i < botRefs.length; i++) {
+                        final OfflineJoinBot bot = botRefs[i];
+                        if (bot == null) {
+                            continue;
+                        }
+                        final int bx = (int) Math.floor(bot.getPosX());
+                        final int bz = (int) Math.floor(bot.getPosZ());
+                        final int k = wave * 2;
+                        final int wx = bx - 11 + (k * 7) % 20;
+                        final int ax = bx - 11 + ((k + 1) * 5) % 20;
+                        server.getOutputStream().write(String.format("fill %d 151 %d %d 151 %d minecraft:water\n",
+                            wx, bz - 10, wx, bz + 9).getBytes(StandardCharsets.UTF_8));
+                        server.getOutputStream().write(String.format("fill %d 151 %d %d 151 %d minecraft:air\n",
+                            ax, bz - 10, ax, bz + 9).getBytes(StandardCharsets.UTF_8));
+                    }
+                    server.getOutputStream().flush();
+                    sleepUntil(markerWall + 30_000 + wave * 5_000L);
+                }
+                // 探针（marker+150s 风暴尾后）：水在场（B 正证据）+墙盆在位+
+                // fill 回显计数（R59/R60 判例 harness 内统计，"Filled"=恒英文）
+                sleepUntil(markerWall + 150_000);
+                final OfflineJoinBot fb = botRefs[0];
+                final int fbx = (int) Math.floor(fb.getPosX());
+                final int fbz = (int) Math.floor(fb.getPosZ());
+                probe(server, logLines, String.format("execute if block %d 151 %d minecraft:water run say FLUID-WATER", fbx - 11, fbz));
+                probe(server, logLines, String.format("execute if block %d 151 %d minecraft:stone run say FLUID-WALL", fbx - 12, fbz - 12));
+                final List<String> fsnap = new ArrayList<>(logLines);
+                // 批次204 判例预案（R61 zh_cn 判例）：fill 回显可能本地化——
+                // "Filled"/"已填充"双词计数+样本行打印（腿后校准门词）
+                final long fecho = fsnap.stream()
+                    .filter(l -> (l.contains("Filled") || l.contains("已填充")) && !l.contains("CompositeCensus")).count();
+                final String fsample = fsnap.stream()
+                    .filter(l -> (l.contains("Filled") || l.contains("已填充")) && !l.contains("CompositeCensus"))
+                    .findFirst().orElse("(none)");
+                System.out.println("CompositeCensus.fluidFillEcho=" + fecho);
+                System.out.println("CompositeCensus.fluidEchoSample=" + fsample.trim());
+            }
+            if (fluid == 1) {
+                // 对照腿：盆在场零水（unless 反向探针）
+                sleepUntil(markerWall + 150_000);
+                final OfflineJoinBot fb = botRefs[0];
+                final int fbx = (int) Math.floor(fb.getPosX());
+                final int fbz = (int) Math.floor(fb.getPosZ());
+                probe(server, logLines, String.format("execute if block %d 152 %d minecraft:air run say FLUID-BASE-AIR", fbx, fbz));
+                probe(server, logLines, String.format("execute unless block %d 151 %d minecraft:water run say FLUID-DRY", fbx - 11, fbz));
+                probe(server, logLines, String.format("execute if block %d 151 %d minecraft:stone run say FLUID-WALL", fbx - 12, fbz - 12));
             }
             if (place != 0 && cmp) {
                 // 批次200（R59 放置轴）探针③（marker+200s，放置风暴尾后）：首 3 放置
@@ -545,6 +607,7 @@ public final class CompositeCensus {
                 || l.contains("BOOM-SLAB-INTACT")
                 || l.contains("LTNG-FIRE") || l.contains("LTNG-BOLT") || l.contains("weather is")
                 || l.contains("VLGR-PRESENT") || l.contains("VLGR-LECTERN") || l.contains("VLGR-ABSENT")
+                || l.contains("FLUID-WATER") || l.contains("FLUID-DRY") || l.contains("FLUID-WALL") || l.contains("FLUID-BASE-AIR")
                 || l.contains("to be force loaded") || l.contains("force loaded chunk was found")
                 || l.contains("Filled") || l.contains("no items were found")
                 || l.contains("Unknown or incomplete")) {
@@ -757,6 +820,52 @@ public final class CompositeCensus {
             Thread.sleep(300);
         }
         throw new IllegalStateException("village setup marker not seen within 120s");
+    }
+
+    /**
+     * 批次204（R63 流体轴）水盆就位：每 bot 石板 24×24×3 y[148,150]（boom 同制式）
+     * +围墙 2 格 y[151,152] 周界四条（水流 7 格限距在盆内展开不外溢）。两腿同权
+     * （B−A 差分=纯水流再计算链）。marker 锚=PAP0-FLUID-BASIN-DONE。
+     */
+    private static long fluidSetup(final Process server, final OfflineJoinBot[] botRefs,
+                                   final Path outDir, final List<String> logLines) throws Exception {
+        final List<String> cmds = new ArrayList<>();
+        for (int i = 0; i < botRefs.length; i++) {
+            final OfflineJoinBot bot = botRefs[i];
+            if (bot == null) {
+                throw new IllegalStateException("bot " + i + " not joined at fluid setup");
+            }
+            final int bx = (int) Math.floor(bot.getPosX());
+            final int bz = (int) Math.floor(bot.getPosZ());
+            cmds.add(String.format("/fill %d 148 %d %d 150 %d minecraft:stone",
+                bx - 12, bz - 12, bx + 12, bz + 12));
+            cmds.add(String.format("/fill %d 151 %d %d 152 %d minecraft:stone",
+                bx - 12, bz - 12, bx + 12, bz - 12));
+            cmds.add(String.format("/fill %d 151 %d %d 152 %d minecraft:stone",
+                bx - 12, bz + 12, bx + 12, bz + 12));
+            cmds.add(String.format("/fill %d 151 %d %d 152 %d minecraft:stone",
+                bx - 12, bz - 11, bx - 12, bz + 11));
+            cmds.add(String.format("/fill %d 151 %d %d 152 %d minecraft:stone",
+                bx + 12, bz - 11, bx + 12, bz + 11));
+        }
+        cmds.add("/say PAP0-FLUID-BASIN-DONE");
+        Files.write(outDir.resolve("fluidsetup.txt"), cmds, StandardCharsets.UTF_8);
+        final java.io.OutputStream stdin = server.getOutputStream();
+        for (final String c : cmds) {
+            stdin.write((c + "\n").getBytes(StandardCharsets.UTF_8));
+        }
+        stdin.flush();
+        System.out.println("CompositeCensus.fluidSetupSent commands=" + (cmds.size() - 1));
+        final long start = System.currentTimeMillis();
+        final long deadline = start + 120_000;
+        while (System.currentTimeMillis() < deadline) {
+            if (new ArrayList<>(logLines).stream().anyMatch(l -> l.contains("PAP0-FLUID-BASIN-DONE") && !l.contains("fluidSetupSent"))) {
+                System.out.println("CompositeCensus.fluidMarkerReached ms=" + (System.currentTimeMillis() - start));
+                return System.currentTimeMillis();
+            }
+            Thread.sleep(300);
+        }
+        throw new IllegalStateException("fluid basin marker not seen within 120s");
     }
 
     /** 翻转驱动块（单 setblock，已加载区块即时）。 */

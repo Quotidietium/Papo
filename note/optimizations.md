@@ -4703,3 +4703,16 @@ R49 joins/lefts 同法通式）/探针腿先行省一轮试错/`execute unless e
 - **判例六条**：回显词=display name 非实体类型名/门与 harness 输出约定腿前对齐（对照腿"无输出口径"显式定义）/运行期结构突变容忍是快照遍历立项前提/paperclip 嵌套 jar javap 验法/R37 后跑腿伪影二度/对象复用≠内部数组复用（grow-ladder 爬升+配对腿是浮出残余同族面的唯一仪器）。
 
 报告：[note/report/perf/2026-10-13-villager-r62-batch203.md](report/perf/2026-10-13-villager-r62-batch203.md)。
+
+### 批次 204（2026-10-13，R63，收割轮·第二十域，0301，→0.113.0）
+
+**流体轴分配普查（水盆流动风暴 24 波×12 bot 水条/气条互质扫位）→SpreadContext isHole de-lambda 收割；预容量面配对字节账本判负回退。**
+
+- **选轴核查**：投射物（批41-44）/坐骑载具（0122+0147）/区块卸载 GC（R49+R56）/雨雪粒子（服务端无粒子+R61 precipitation）全判出；流体轴=批30/31（0104/0106）微基准单点≠专轴普查成像（R58 wire 同构判例），R52 附带 500 trips=物品掉水结果对象不同面；SpreadContext/isHole/holeCache/getSlopeDistance 全史零补丁命中=真新格第二十域。
+- **harness（fluid=args[12] 参数，bot 零改动）**：每 bot 石板 24×24×3+围墙 2 格（水流 7 格限距盆内不外溢）；fluid=2=marker+25s 起 24 波×5s 水条 fill（互质步长 7 扫位）+气条（步长 5）=FlowingFluid.tick→spread→getSpread→getSlopeDistance 全窗再计算风暴；fluid=1 对照同盆零水。探针 FLUID-WATER/WALL/DRY/BASE-AIR。
+- **普查差分**（B 15,204 vs A 13,778=+10.3%）：链本体族 585 events/597.0MB——isHole 捕获 lambda 216/218.8MB（立项收割）+rehash 族 44/44.7MB（后判负）+relative 244（结果对象维持 R52 同判）+below 25（miss 路径结果对象）+SpreadContext 结构 7；剥离面=JFR 自观测 toString 链 ~500（R41）/fillStartsForStructure +156=水改变 heightmap→spawn 采样相位分岔（R61 相位判例同族）/AABB 族=水推挤实体（R41/R52 维持）；0046/0079/0104/0106 四流体补丁面零回流；OldObjectSample 零流体帧=纯瞬态轴（状态 interned）。
+- **0301**：isHole de-lambda——`computeIfAbsent(key, s->{...})` 捕获 pos+this→每 call 新 lambda 实例（hit 也分配）改显式 containsKey/get+miss 逐字 compute-then-put；恒等=map 每 spread() 单线程+compute 体只碰异 map stateCache→put-on-miss/hit 零计算逐位同。**预容量子项判负回退**：128-expected（Manhattan 球半径 8 上界 145 列可证零 rehash）中间版配对腿实测 `<init>` +94 trips/+98.7MB **大于** ladder 拷贝节约 44.7MB=字节负（per-call 临时容器 ladder 一次即死 vs R62 ThreadLocal 持久槽反复爬升 regime 相反）→终态纯 de-lambda，字节账本判例入档。
+- **验证**：恒等单测 4 用例（oracle=未触碰 isWaterHole 非缓存重算差分/随机 21×21 三态景观 200 采样/hit 路径 below 恰一次+世界突变仍回缓存值/miss put+stateCache 背书）套件 4/0/0+全套件 9,101/0 绿（bukkit 注册表环境性 skip 无关）+链门 rebuildPatches 0301+compile 全 BUILD SUCCESSFUL+出包 0.113.0+javap 嵌套 jar 验 isHole 0 computeIfAbsent/invokedynamic；**最终配对腿族坍缩**：isHole lambda 216→0、族 585→374 events（−36%）/597.0→391.2MB（−34%）、rehash 回基线（44→38 噪声带）、`<init>` 回 16-slot 量级（回退确认）、零替代面；MSPT 三序守护（R37 后跑腿伪影先排除）。
+- **判例六条**：fill 控制台零回显门退役（R61 wq 判例新形态：根本不打印非本地化）/模板复制参数计数必须逐位重数（vill/fluid 位错两犯均被门拦截 VOID 留档）/预容量字节账本否决（trips 坍缩≠字节收益）/trips 门与字节门分开判读/配对中间版是判负证据生产器/归因帧移动配对判读（below 从 lambda 帧移至 isHole 帧=A 侧零 trips 假象，面按分配语义对齐）。
+
+报告：[note/report/perf/2026-10-13-fluid-r63-batch204.md](report/perf/2026-10-13-fluid-r63-batch204.md)。

@@ -790,3 +790,11 @@ entities/blockEntities 段"）。改 ServerLevel tick 结构时记得同步该�
 4. **paperclip 嵌套 jar 的 javap 验法（R46 新鲜度判例补全）**：Papo-*.jar 是 paperclip 结构（server jar 嵌套于 META-INF/versions/<mc>/paper-<mc>.jar），外层 `javap -cp` 找不到 net.minecraft 类零输出——须解包内嵌 jar 再验（unzip META-INF/versions/... 后 javap）。
 5. **对象复用≠内部数组复用（fastutil grow-ladder）**：ThreadLocal 对象壳复用后，fastutil 集合内部数组的扩容爬升（倍增 copyOf）仍逐查询发生——IO 线程池轮转使每线程槽反复爬升（JFR 时间分布全窗均匀=爬升特征签名）；预容量到工作集上界是彻底解。**配对腿是浮出残余同族面的唯一仪器**（R39"同族完成判例不留半脸"的测量面：单腿差分看不到，版本配对才浮出）。
 6. **MSPT"后跑腿劣势伪影"二度实证（R37 判例）**：主序（A→B）B 劣 4/6+倒序（B→A）B 优 5/6+钉死 B 优 5/6——两序都是后跑腿系统性吃亏（时间趋势），与代码通道无关；同号槽判读必须先排除该形态（换序破号+钉死反优）再谈回归。
+
+## 2026-10-13 补充：批次 204 踩坑记录
+
+1. **fill 命令在 server 控制台零回显**（R61 wq 判例的新形态）：`/fill` 经 stdin 发给 server 后**根本不打印任何回显行**（非"本地化措辞 grep 不到"——是命令反馈通道不发控制台；576 命令 0 行实证）。判例：**以 fill 为负载驱动的门不可用 fill 回显计数**——正证据改由 `execute if block` say 探针（命中格在场）+JFR 特征帧（FlowingFluid/LiquidBlock）复合承担，harness 保留双词计数+样本行仅作观测。
+2. **模板复制后的参数位错两犯**（vill=args[11]/fluid=args[12]）：从 R62 脚本复制 java 调用行少写一个 `0`，`fluid=2` 落在 vill 槽=腿跑了村民风暴。两次（发现腿+配对腿）都被探针门零命中兜底拦下（FLUID-WATER=0 → gateOk=0），VOID 目录留档不删。判例：**跨批次复制 harness 调用行后必须逐位重数参数序**；腿门的价值在腿前自查之后的最后一道兜底。
+3. **预容量字节账本否决（trips 门≠字节门）**：fastutil 容器预容量按 R62 判例立项（trips 坍缩 44→0），但配对腿字节账本显示前置 256 槽数组本体 `<init>` +94 trips/+98.7MB **大于** ladder 拷贝节约 44.7MB——per-call 临时容器（每 spread() 一次即死）与 R62 ThreadLocal 持久槽（每查询反复爬升无界）是相反 regime，预容量判例不可外推。判例：**JFR trips 是可信度口径、字节是内存轴本位口径，两门分开判读**；配对中间版二进制是判负证据的生产器（负结果也要实测不要推测）。
+4. **归因帧移动的配对判读**：de-lambda 后 miss 路径的 `pos.below()` 分配从 `lambda$isHole$0` 帧移到 `isHole` 直帧——配对差分中 A 侧该帧 0 trips 会伪装成"新增面"。判例：面比较按**分配语义**对齐（同一 below() 调用），不是按帧名。
+5. **rebuildPatches 的前置**：feature 补丁从内仓（`paper-server/src/minecraft/java/.git`）**已提交**状态生成——工作树未提交的改动产出 "Saved modified patches (0/300)"。顺序恒为：改源→内仓 commit→rebuildPatches→test/compile 链门。
