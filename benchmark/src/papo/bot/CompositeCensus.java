@@ -243,11 +243,16 @@ public final class CompositeCensus {
                 sleepUntil(markerWall + 160_000);
                 probeRs(server, logLines, botRefs[0], false);
             }
-            if (boom == 2) {
-                // 批次201（R60 爆炸轴）TNT 风暴：marker+25s 起每 5s 一波 ×24 波
-                // （至 marker+145s），每波每 bot 2 个 TNT 于石板 24×24 上互质步长
-                // 确定性扫描位（y=151 悬于石板上，默认 Fuse 80t=4s 与下波重叠）=
-                // 12 bot×48=576 爆/腿主体（批量破坏+爆抗查询+掉落物风暴）。
+            if (boom == 2 || boom == 3) {
+                // 批次201（R60 爆炸轴）/批次202（R61 天气雷电轴）风暴：
+                // boom=2 TNT（每爆=批量破坏+掉落风暴）/boom=3 雷电（weather thunder
+                // 600s+LightningBolt 风暴=雷击+点火尝试+音效广播+天气 tick）。
+                // 共用：marker+25s 起每 5s 一波 ×24 波（至 marker+145s），每波每
+                // bot 2 个于石板 24×24 互质步长确定性扫描位（y=151 石板面上）。
+                if (boom == 3) {
+                    server.getOutputStream().write("weather thunder 600\n".getBytes(StandardCharsets.UTF_8));
+                    server.getOutputStream().flush();
+                }
                 sleepUntil(markerWall + 25_000);
                 for (int wave = 0; wave < 24; wave++) {
                     for (int i = 0; i < botRefs.length; i++) {
@@ -261,32 +266,49 @@ public final class CompositeCensus {
                             final int k = wave * 2 + j;
                             final int px = bx - 12 + (k * 7) % 24;
                             final int pz = bz - 12 + (k * 5) % 24;
-                            server.getOutputStream().write(String.format("summon minecraft:tnt %d 151 %d\n", px, pz).getBytes(StandardCharsets.UTF_8));
+                            final String what = boom == 2 ? "tnt" : "lightning_bolt";
+                            server.getOutputStream().write(String.format("summon minecraft:%s %d 151 %d\n", what, px, pz).getBytes(StandardCharsets.UTF_8));
                         }
                     }
                     server.getOutputStream().flush();
                     sleepUntil(markerWall + 30_000 + wave * 5_000L);
                 }
-                // 探针（marker+150s 风暴尾后）：k=0 位弹坑=air（首爆真实）+
-                // 掉落物在场 + TNT 尽清（全部起爆无滞留）——bot 在线持票据。
+                // 探针（marker+150s 风暴尾后）——bot 在线持票据。
                 sleepUntil(markerWall + 150_000);
                 final OfflineJoinBot bb = botRefs[0];
                 final int cbx = (int) Math.floor(bb.getPosX());
                 final int cbz = (int) Math.floor(bb.getPosZ());
-                probe(server, logLines, String.format("execute if block %d 150 %d minecraft:air run say BOOM-CRATER", cbx - 12, cbz - 12));
-                probe(server, logLines, "execute if entity @e[type=minecraft:item,limit=1] run say BOOM-ITEMS");
-                probe(server, logLines, "execute unless entity @e[type=minecraft:tnt] run say BOOM-TNT-CLEARED");
+                if (boom == 2) {
+                    probe(server, logLines, String.format("execute if block %d 150 %d minecraft:air run say BOOM-CRATER", cbx - 12, cbz - 12));
+                    probe(server, logLines, "execute if entity @e[type=minecraft:item,limit=1] run say BOOM-ITEMS");
+                    probe(server, logLines, "execute unless entity @e[type=minecraft:tnt] run say BOOM-TNT-CLEARED");
+                } else {
+                    // 批次202 判例：雷击火=统计性（10% 点火概率×hit 位 ±3 随机偏移）
+                    // ——固定点探针必 miss；探针=两雷击位 3×3 邻域 6 点 ≥1 中。天气回显
+                    // 本地化（zh_cn 控制台 translatable 组件）不可 grep，天气 tick 相
+                    // 正证据由 JFR Thunder/Weather 帧承担（探针腿判例：fire 差一
+                    // 不否定负载，复合门三源定谳）。
+                    for (int f = 0; f < 6; f++) {
+                        final int[][] offs = {{0, 0}, {1, 0}, {0, 1}, {1, 1}, {-1, 1}, {1, -1}};
+                        probe(server, logLines, String.format("execute if block %d 151 %d minecraft:fire run say LTNG-FIRE%d",
+                            cbx - 12 + offs[f][0], cbz - 12 + offs[f][1], f));
+                        probe(server, logLines, String.format("execute if block %d 151 %d minecraft:fire run say LTNG-FIRE%d",
+                            cbx - 5 + offs[f][0], cbz - 5 + offs[f][1], 10 + f));
+                    }
+                    probe(server, logLines, "execute if entity @e[type=minecraft:lightning_bolt,limit=1] run say LTNG-BOLT-PRESENT");
+                }
                 // 工作量正证据（R59 判例）：summon 服务器回显计数（logLines 在内存，
                 // harness 内统计后打印供 shell 门消费；样本行兼作回显格式校准）
                 final List<String> snap = new ArrayList<>(logLines);
+                final String echoWord = boom == 2 ? "Summoned new" : "Object summoned";
                 final long echo = snap.stream()
                     .filter(l -> (l.contains("Object summoned") || l.contains("Summoned new")) && !l.contains("CompositeCensus")).count();
-                System.out.println("CompositeCensus.boomSummonEcho=" + echo);
+                System.out.println("CompositeCensus.stormSummonEcho=" + echo + " word=" + echoWord);
                 snap.stream().filter(l -> l.toLowerCase().contains("summon") && !l.contains("CompositeCensus"))
-                    .findFirst().ifPresent(l -> System.out.println("CompositeCensus.boomEchoSample " + l.trim()));
+                    .findFirst().ifPresent(l -> System.out.println("CompositeCensus.stormEchoSample " + l.trim()));
             }
             if (boom == 1) {
-                // 对照腿（零爆炸）：石板完好正证据（B−A 差分=纯爆炸链）
+                // 对照腿（零爆炸零雷击）：石板完好正证据（B−A 差分=纯风暴链）
                 sleepUntil(markerWall + 150_000);
                 final OfflineJoinBot bb = botRefs[0];
                 probe(server, logLines, String.format("execute if block %d 149 %d minecraft:stone run say BOOM-SLAB-INTACT",
@@ -476,6 +498,7 @@ public final class CompositeCensus {
                 || l.contains("DIM-N-OK") || l.contains("DIM-E-OK") || l.contains("PLACE-STONE")
                 || l.contains("BOOM-CRATER") || l.contains("BOOM-ITEMS") || l.contains("BOOM-TNT-CLEARED")
                 || l.contains("BOOM-SLAB-INTACT")
+                || l.contains("LTNG-FIRE") || l.contains("LTNG-BOLT") || l.contains("weather is")
                 || l.contains("to be force loaded") || l.contains("force loaded chunk was found")
                 || l.contains("Filled") || l.contains("no items were found")
                 || l.contains("Unknown or incomplete")) {

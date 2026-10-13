@@ -4675,3 +4675,17 @@ R49 joins/lefts 同法通式）/探针腿先行省一轮试错/`execute unless e
 变更、版本保持 0.110.0。
 
 报告：[note/report/perf/2026-10-13-boom-r60-batch201.md](report/perf/2026-10-13-boom-r60-batch201.md)。
+
+### 批次 202（2026-10-13，R61，判负闭合·第十八域）
+
+**天气/雷电轴分配普查（thunder 600s+576 雷×12 bot）→四支柱判负，无代码变更，版本保持 0.110.0。**
+
+- **选轴核查**：骑乘/载具（0122 已收割）、投射物（批41-44 已深度收割）、聊天（0133+Brigadier 判否）全判出；Lightning/Thunder 全史 grep 零命中=天气雷电从未被任何时代任何口径碰过→真新格轴，分配普查第十八域。
+- **harness（boom=3 复用 boom 骨架，bot 零改动）**：`weather thunder 600` 前置+每 bot 石板+24 波×2 雷/bot=576 lightning_bolt；`alloccensus-r61storm.sh` A-110clear（boom=1 石板对照）vs B-110thunder（boom=3 雷电风暴）。
+- **探针腿先行复合定谳**：fire 探针三点零命中=雷击火统计性落点（10% 点火×hit 位 ±3 随机偏移，固定点必 miss）测量瑕疵；weather query 零命中=控制台回显本地化陷阱（zh_cn translatable 组件英文 grep 不可用）；summonEcho=576/576+JFR Lightning 15/FireBlock 5/Thunder 1/Weather 1 帧在场=雷电链铁证，免重跑（R58/R59/R60 复合门判例链）。
+- **链本体 23 帧=十八域历史最低量级**（两数量级低于 R58 红石 550）：CollectingNeighborUpdater.shapeUpdate（雷击火邻域更新=R58 维持）+LightningBolt.tick+事件机器基建，零单体收割面。
+- **判定面**：B 独有 RegistryFriendlyByteBuf +94=R44 维持同脸第四见；B 事件 +23.1% 主体=雷暴期 NaturalSpawner spawn 陪跑（+123/+121）+自观测放大；A 独有=SpreadingSnowyDirt.randomTick 挤窗位移（天气切换改变 randomTick/spawn 模式的相位画像）；回流三面：travel-dedupe 带内/**批73 PapoSharedWireMemo B=9（A=0）=雷击火 setBlock 广播第三域覆盖实证**（红石→TNT→雷击火）/**0119 BlockIgnite 门控零帧=真实雷击触发者无代价回流**；存活侧 32/8 全 spark 族；heap B +12.6%=spawn+区块脏数据面。
+- **四支柱判负**：量级（23 帧）/恒等可证（零标的）/上游语义（雷电链 vanilla 本体）/相位带内。
+- **判例四条**：雷击火统计性落点（探针须多点邻域扫描）/控制台回显本地化陷阱（探针用 say tag 恒英文）/探针腿先行复合门链免重跑/天气轴相位画像先剥离 spawn 陪跑再谈链本体。
+
+报告：[note/report/perf/2026-10-13-lightning-r61-batch202.md](report/perf/2026-10-13-lightning-r61-batch202.md)。

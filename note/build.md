@@ -774,3 +774,10 @@ entities/blockEntities 段"）。改 ServerLevel tick 结构时记得同步该�
   批量更新域"立项但从未在爆炸负载下成像过——本轴 in-stack 在场（4→5）=
   memo 对爆炸域广播覆盖的首次直接实证（回流检查的新语义：不仅查无回归，
   还可证历史设计对新城段兑现）。
+
+## 2026-10-13 补充：批次 202 踩坑记录
+
+1. **雷击火统计性落点——固定点探针必 miss**：雷击点火是 10% 概率事件且落点在 hit 位 ±3 范围随机偏移，576 雷×10% 期望 ~57 火但分布在 12 bot×每雷 ~343 格候选域里；固定坐标 `execute if block` 探针即使扫 12 邻域点也接近必然零命中。判例：**统计性落点事件的探针必须多点邻域扫描（位×偏移组合展开）或改用 say-tag 计数器**；本腿 fire 探针零命中不构成负载未发生证据，由 summonEcho+JFR 特征帧复合定谳。
+2. **控制台回显本地化陷阱**：`weather query`/部分 vanilla 命令的回显是 zh_cn translatable 组件（如"现在的天气是…"），**在服务器日志/管道里 grep 英文短语（"clear skies"）零命中≠命令未执行**。判例：协议回显探针一律用**恒英文**的通道——summon 回显（"Summoned new Lightning Bolt"）、say tag、execute if block 计数；本地化文本不可作门。
+3. **探针腿先行+复合门链定谳（R58→R59→R60→R61 判例链成熟）**：负载发生性证据=回显计数（summonEcho 576/576）+JFR 特征帧（Lightning/FireBlock/Thunder/Weather 四型在场）+可命中的正探针，三源合取即定谳，单源测量瑕疵（落点统计性 miss、本地化 miss）不再触发整腿重跑。判例：**先跑风暴腿验证形态，数据留用，再补对照腿**——避免重跑 40 分钟风暴。
+4. **天气轴差分的相位画像**：`weather thunder` 会同时改变 randomTick 模式（雪蔓延 SpreadingSnowyDirt 消长）与 spawn 模式（雷暴期 NaturalSpawner 活跃度提升=+123/+121 陪跑主体）；天气轴差分判读前必须先剥离 spawn/randomTick 陪跑再谈天气链本体（本腿链本体仅 23 帧=历史最低量级）。与 R57 维度轴（ambient spawn 混杂）、R60 自缩放负载（多干 40% 生成活）同族：**环境命令的差分=全机器相位切换，不止目标链变化**。
