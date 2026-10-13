@@ -1,0 +1,253 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Tue, 13 Oct 2026 08:56:19 +0800
+Subject: [PATCH] villager brain tick de-allocation (Brain snapshot traversal /
+ PoiAccess BFS workset / SecondaryPoiSensor mutable scan)
+
+
+diff --git a/io/papermc/paper/util/PoiAccess.java b/io/papermc/paper/util/PoiAccess.java
+index f39294b1f83c4022be5ced4da781103a1eee2daf..60b09fa9fdcf258c5af94030b7ab9ff4fd82a9b0 100644
+--- a/io/papermc/paper/util/PoiAccess.java
++++ b/io/papermc/paper/util/PoiAccess.java
+@@ -29,8 +29,16 @@ import java.util.function.Predicate;
+  */
+ public final class PoiAccess {
+ 
++    // Papo start - BFS workset scratch (R62): per-thread queue/seen reused across POI
++    // queries, cleared at entry of each BFS (see findClosestPoiDataRecords /
++    // findNearestPoiRecords). Primitive backing: clear() keeps capacity and has no
++    // reference-retention semantics.
++    private static final ThreadLocal<LongArrayFIFOQueue> PAP0_BFS_QUEUE = ThreadLocal.withInitial(LongArrayFIFOQueue::new);
++    private static final ThreadLocal<LongOpenHashSet> PAP0_BFS_SEEN = ThreadLocal.withInitial(LongOpenHashSet::new);
++    // Papo end
++
+     protected static double clamp(final double val, final double min, final double max) {
+-        return (val < min ? min : (val > max ? max : val));
++        return val < min ? min : (val > max ? max : val);
+     }
+ 
+     protected static double getSmallestDistanceSquared(final double boxMinX, final double boxMinY, final double boxMinZ,
+@@ -224,8 +232,20 @@ public final class PoiAccess {
+         final int centerZ = sourcePosition.getZ() >> 4;
+         final long centerKey = CoordinateUtils.getChunkSectionKey(centerX, centerY, centerZ);
+ 
+-        final LongArrayFIFOQueue queue = new LongArrayFIFOQueue();
+-        final LongOpenHashSet seen = new LongOpenHashSet();
++        // Papo start - caller-owned BFS workset (R62): every POI query allocated a
++        // fresh LongArrayFIFOQueue + LongOpenHashSet; both are method-local and never
++        // escape (results are collected into the per-query result lists). ThreadLocal
++        // scratch, cleared unconditionally at entry — exception-path leftovers are
++        // wiped by the next call, and clear() keeps capacity (primitive backing, no
++        // reference semantics). Queries are non-reentrant (a BFS never starts another
++        // one), so a single slot per thread suffices. Threads: brain behaviors /
++        // sensors / PortalForcer run on the server thread; PoiManager's own calls run
++        // on their calling thread — every caller gets its own slot.
++        final LongArrayFIFOQueue queue = PoiAccess.PAP0_BFS_QUEUE.get();
++        final LongOpenHashSet seen = PoiAccess.PAP0_BFS_SEEN.get();
++        queue.clear();
++        seen.clear();
++        // Papo end
+         seen.add(centerKey);
+         queue.enqueue(centerKey);
+ 
+@@ -467,8 +487,20 @@ public final class PoiAccess {
+         final int centerZ = sourcePosition.getZ() >> 4;
+         final long centerKey = CoordinateUtils.getChunkSectionKey(centerX, centerY, centerZ);
+ 
+-        final LongArrayFIFOQueue queue = new LongArrayFIFOQueue();
+-        final LongOpenHashSet seen = new LongOpenHashSet();
++        // Papo start - caller-owned BFS workset (R62): every POI query allocated a
++        // fresh LongArrayFIFOQueue + LongOpenHashSet; both are method-local and never
++        // escape (results are collected into the per-query result lists). ThreadLocal
++        // scratch, cleared unconditionally at entry — exception-path leftovers are
++        // wiped by the next call, and clear() keeps capacity (primitive backing, no
++        // reference semantics). Queries are non-reentrant (a BFS never starts another
++        // one), so a single slot per thread suffices. Threads: brain behaviors /
++        // sensors / PortalForcer run on the server thread; PoiManager's own calls run
++        // on their calling thread — every caller gets its own slot.
++        final LongArrayFIFOQueue queue = PoiAccess.PAP0_BFS_QUEUE.get();
++        final LongOpenHashSet seen = PoiAccess.PAP0_BFS_SEEN.get();
++        queue.clear();
++        seen.clear();
++        // Papo end
+         seen.add(centerKey);
+         queue.enqueue(centerKey);
+ 
+diff --git a/net/minecraft/world/entity/ai/Brain.java b/net/minecraft/world/entity/ai/Brain.java
+index 27090cb797540a1a671f4185418452a7cac01768..b19bb49fb1f2210362a5bac72fd709028941de3c 100644
+--- a/net/minecraft/world/entity/ai/Brain.java
++++ b/net/minecraft/world/entity/ai/Brain.java
+@@ -57,6 +57,18 @@ public class Brain<E extends LivingEntity> {
+     private final Set<Activity> activeActivities = Sets.newHashSet();
+     private Activity defaultActivity = Activity.IDLE;
+     private long lastScheduleUpdate = -9999L;
++    // Papo start - dirty-flag lazy behavior snapshot (R62): the per-tick traversal
++    // startEachNonRunningBehavior/tickEachRunningBehavior allocates TreeMap/HashMap/
++    // LinkedHashSet iterators for every brain every tick even when zero behaviors
++    // run. Snapshot flattens (activity, behavior) pairs to parallel arrays, rebuilt
++    // only after a structure mutation (addActivity family / removeAllBehaviors,
++    // e.g. Villager.refreshBrain on profession change). Snapshot order is bit-for-bit
++    // the vanilla traversal order: TreeMap values (priority ascending) x HashMap
++    // entrySet (bucket order, stable while unmutated) x LinkedHashSet iteration
++    // order (insertion order) — the same collections the vanilla loops iterate.
++    private @Nullable BehaviorControl<? super E>[] papoSnapshotBehaviors;
++    private @Nullable Activity[] papoSnapshotActivities;
++    // Papo end
+ 
+     public static <E extends LivingEntity> Brain.Provider<E> provider(
+         Collection<? extends MemoryModuleType<?>> memoryTypes, Collection<? extends SensorType<? extends Sensor<? super E>>> sensorTypes
+@@ -390,11 +402,19 @@ public class Brain<E extends LivingEntity> {
+                 .computeIfAbsent(activity, activity1 -> Sets.newLinkedHashSet())
+                 .add((BehaviorControl<? super E>)pair.getSecond());
+         }
++        // Papo start - structure mutated: invalidate the behavior snapshot (R62)
++        this.papoSnapshotBehaviors = null;
++        this.papoSnapshotActivities = null;
++        // Papo end
+     }
+ 
+     @VisibleForTesting
+     public void removeAllBehaviors() {
+         this.availableBehaviorsByPriority.clear();
++        // Papo start - structure mutated: invalidate the behavior snapshot (R62)
++        this.papoSnapshotBehaviors = null;
++        this.papoSnapshotActivities = null;
++        // Papo end
+     }
+ 
+     public boolean isActive(Activity activity) {
+@@ -451,35 +471,84 @@ public class Brain<E extends LivingEntity> {
+     private void startEachNonRunningBehavior(ServerLevel level, E entity) {
+         long gameTime = level.getGameTime();
+ 
+-        for (Map<Activity, Set<BehaviorControl<? super E>>> map : this.availableBehaviorsByPriority.values()) {
+-            for (Entry<Activity, Set<BehaviorControl<? super E>>> entry : map.entrySet()) {
+-                Activity activity = entry.getKey();
+-                if (this.activeActivities.contains(activity)) {
+-                    for (BehaviorControl<? super E> behaviorControl : entry.getValue()) {
+-                        if (behaviorControl.getStatus() == Behavior.Status.STOPPED) {
+-                            behaviorControl.tryStart(level, entity, gameTime);
+-                        }
+-                    }
+-                }
++        // Papo start - snapshot traversal (R62): see field comment. Order-identical
++        // to the vanilla nested loops; tryStart/tickOrStop never structurally mutate
++        // availableBehaviorsByPriority (vanilla iterators would CME otherwise).
++        final BehaviorControl<? super E>[] papoBehaviors = this.papoBehaviorSnapshot();
++        final Activity[] papoActivities = this.papoSnapshotActivities;
++
++        for (int i = 0, n = papoBehaviors.length; i < n; i++) {
++            if (this.activeActivities.contains(papoActivities[i])
++                && papoBehaviors[i].getStatus() == Behavior.Status.STOPPED) {
++                papoBehaviors[i].tryStart(level, entity, gameTime);
+             }
+         }
++        // Papo end
+     }
+ 
+     private void tickEachRunningBehavior(ServerLevel level, E entity) {
+         long gameTime = level.getGameTime();
+         // Papo start - tick RUNNING behaviors in place instead of collecting them into a
+         // fresh ObjectArrayList every tick (Brain.tick runs for every brain mob every tick).
++        // R62: snapshot traversal — zero iterator allocation per tick, see field comment.
++        final BehaviorControl<? super E>[] papoBehaviors = this.papoBehaviorSnapshot();
++
++        for (int i = 0, n = papoBehaviors.length; i < n; i++) {
++            final BehaviorControl<? super E> behaviorControl = papoBehaviors[i];
++            if (behaviorControl.getStatus() == Behavior.Status.RUNNING) {
++                behaviorControl.tickOrStop(level, entity, gameTime);
++            }
++        }
++        // Papo end
++    }
++
++    // Papo start - snapshot rebuild + accessors (R62)
++    /** Returns the flattened behavior snapshot, rebuilding it lazily after a structure mutation. */
++    private BehaviorControl<? super E>[] papoBehaviorSnapshot() {
++        final BehaviorControl<? super E>[] behaviors = this.papoSnapshotBehaviors;
++        if (behaviors == null) {
++            this.papoRebuildBehaviorSnapshot();
++            return this.papoSnapshotBehaviors;
++        }
++        return behaviors;
++    }
++
++    /**
++     * Rebuilds the flattened (activity, behavior) snapshot from the live structure.
++     * Traversal order mirrors the vanilla nested loops exactly: TreeMap values
++     * (priority ascending), then per-priority HashMap entrySet, then per-activity
++     * LinkedHashSet iteration order. While the structure is unmutated every one of
++     * these orders is deterministic, so the snapshot order equals the order the
++     * vanilla loops would produce on every tick.
++     */
++    @SuppressWarnings("unchecked")
++    private void papoRebuildBehaviorSnapshot() {
++        int count = 0;
++
+         for (Map<Activity, Set<BehaviorControl<? super E>>> map : this.availableBehaviorsByPriority.values()) {
+             for (Set<BehaviorControl<? super E>> set : map.values()) {
+-                for (BehaviorControl<? super E> behaviorControl : set) {
+-                    if (behaviorControl.getStatus() == Behavior.Status.RUNNING) {
+-                        behaviorControl.tickOrStop(level, entity, gameTime);
+-                    }
++                count += set.size();
++            }
++        }
++
++        final BehaviorControl<? super E>[] behaviors = new BehaviorControl[count];
++        final Activity[] activities = new Activity[count];
++        int i = 0;
++
++        for (Map<Activity, Set<BehaviorControl<? super E>>> map : this.availableBehaviorsByPriority.values()) {
++            for (Entry<Activity, Set<BehaviorControl<? super E>>> entry : map.entrySet()) {
++                for (BehaviorControl<? super E> behaviorControl : entry.getValue()) {
++                    behaviors[i] = behaviorControl;
++                    activities[i] = entry.getKey();
++                    i++;
+                 }
+             }
+         }
+-        // Papo end
++
++        this.papoSnapshotBehaviors = behaviors;
++        this.papoSnapshotActivities = activities;
+     }
++    // Papo end
+ 
+     private boolean activityRequirementsAreMet(Activity activity) {
+         if (!this.activityRequirements.containsKey(activity)) {
+diff --git a/net/minecraft/world/entity/ai/sensing/SecondaryPoiSensor.java b/net/minecraft/world/entity/ai/sensing/SecondaryPoiSensor.java
+index 39a9e9a6f6dfddbf47a7f96150ef832efe61f89e..c914ab5730057e78f76018f2427cfe355a8f4312 100644
+--- a/net/minecraft/world/entity/ai/sensing/SecondaryPoiSensor.java
++++ b/net/minecraft/world/entity/ai/sensing/SecondaryPoiSensor.java
+@@ -27,16 +27,27 @@ public class SecondaryPoiSensor extends Sensor<Villager> {
+         List<GlobalPos> list = Lists.newArrayList();
+         int i = 4;
+ 
++        // Papo start - scan with one mutable cursor (R62): the 9x5x9 = 405 BlockPos
++        // produced by blockPos.offset were pure query carriers (only read by
++        // getBlockState, never held); a single per-scan cursor replaces all 405.
++        // getBlockState reads coordinates only, so a MutableBlockPos yields identical
++        // block states (vanilla feature loops pass mutable positions themselves).
++        // On a hit the value crosses into brain memory via GlobalPos, so the cursor
++        // is copied with immutable() — same coordinates, same freshness as the
++        // immutable BlockPos the vanilla code produced there.
++        final BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
++
+         for (int i1 = -4; i1 <= 4; i1++) {
+             for (int i2 = -2; i2 <= 2; i2++) {
+                 for (int i3 = -4; i3 <= 4; i3++) {
+-                    BlockPos blockPos1 = blockPos.offset(i1, i2, i3);
+-                    if (entity.getVillagerData().profession().value().secondaryPoi().contains(level.getBlockState(blockPos1).getBlock())) {
+-                        list.add(GlobalPos.of(resourceKey, blockPos1));
++                    cursor.setWithOffset(blockPos, i1, i2, i3);
++                    if (entity.getVillagerData().profession().value().secondaryPoi().contains(level.getBlockState(cursor).getBlock())) {
++                        list.add(GlobalPos.of(resourceKey, cursor.immutable()));
+                     }
+                 }
+             }
+         }
++        // Papo end
+ 
+         Brain<?> brain = entity.getBrain();
+         if (!list.isEmpty()) {

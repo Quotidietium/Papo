@@ -781,3 +781,12 @@ entities/blockEntities 段"）。改 ServerLevel tick 结构时记得同步该�
 2. **控制台回显本地化陷阱**：`weather query`/部分 vanilla 命令的回显是 zh_cn translatable 组件（如"现在的天气是…"），**在服务器日志/管道里 grep 英文短语（"clear skies"）零命中≠命令未执行**。判例：协议回显探针一律用**恒英文**的通道——summon 回显（"Summoned new Lightning Bolt"）、say tag、execute if block 计数；本地化文本不可作门。
 3. **探针腿先行+复合门链定谳（R58→R59→R60→R61 判例链成熟）**：负载发生性证据=回显计数（summonEcho 576/576）+JFR 特征帧（Lightning/FireBlock/Thunder/Weather 四型在场）+可命中的正探针，三源合取即定谳，单源测量瑕疵（落点统计性 miss、本地化 miss）不再触发整腿重跑。判例：**先跑风暴腿验证形态，数据留用，再补对照腿**——避免重跑 40 分钟风暴。
 4. **天气轴差分的相位画像**：`weather thunder` 会同时改变 randomTick 模式（雪蔓延 SpreadingSnowyDirt 消长）与 spawn 模式（雷暴期 NaturalSpawner 活跃度提升=+123/+121 陪跑主体）；天气轴差分判读前必须先剥离 spawn/randomTick 陪跑再谈天气链本体（本腿链本体仅 23 帧=历史最低量级）。与 R57 维度轴（ambient spawn 混杂）、R60 自缩放负载（多干 40% 生成活）同族：**环境命令的差分=全机器相位切换，不止目标链变化**。
+
+## 2026-10-13 补充：批次 203 踩坑记录
+
+1. **villager summon 回显=display name 非实体类型名**："Summoned new **Librarian**"（职业名做实体显示名）——echo 计数匹配词绑定实体类型名（"Villager"）必零命中。判例：回显计数用类型无关词（"Summoned new"/"Object summoned"，R60 TNT 先例的通式化），样本行打印兼作措辞校准。
+2. **门与 harness 输出约定必须腿前对齐（R59 门设计一致性判例新形态）**：对照腿（vill=1）无 summon 分支=harness 不打印 echo 行，shell 门把"无输出（none）"当失败——门变量在对照腿的"无输出口径"必须显式定义（`${vecho:-0}=0` 同过）。
+3. **运行期结构突变容忍是集合快照遍历的立项前提**：Brain 行为集"构造后冻结"假设被 Villager.refreshBrain（职业转换运行期 addActivity）证伪——脏标记 lazy 重建是唯一正确形态（突变置脏，下 tick 重建=vanilla 突变后立即生效同构）；冻结假设必须 grep 运行期调用点证伪而非想当然。
+4. **paperclip 嵌套 jar 的 javap 验法（R46 新鲜度判例补全）**：Papo-*.jar 是 paperclip 结构（server jar 嵌套于 META-INF/versions/<mc>/paper-<mc>.jar），外层 `javap -cp` 找不到 net.minecraft 类零输出——须解包内嵌 jar 再验（unzip META-INF/versions/... 后 javap）。
+5. **对象复用≠内部数组复用（fastutil grow-ladder）**：ThreadLocal 对象壳复用后，fastutil 集合内部数组的扩容爬升（倍增 copyOf）仍逐查询发生——IO 线程池轮转使每线程槽反复爬升（JFR 时间分布全窗均匀=爬升特征签名）；预容量到工作集上界是彻底解。**配对腿是浮出残余同族面的唯一仪器**（R39"同族完成判例不留半脸"的测量面：单腿差分看不到，版本配对才浮出）。
+6. **MSPT"后跑腿劣势伪影"二度实证（R37 判例）**：主序（A→B）B 劣 4/6+倒序（B→A）B 优 5/6+钉死 B 优 5/6——两序都是后跑腿系统性吃亏（时间趋势），与代码通道无关；同号槽判读必须先排除该形态（换序破号+钉死反优）再谈回归。

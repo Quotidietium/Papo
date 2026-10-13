@@ -60,7 +60,10 @@ import org.junit.platform.suite.api.SuiteDisplayName;
     PapoLazyItemsListTest.class,
     PapoPersistentDataContainerLazyTest.class,
     PapoHopperEmptyQueryFastPathTest.class,
-    net.minecraft.world.level.PapoBlockWalkEquivalenceTest.class})
+    net.minecraft.world.level.PapoBlockWalkEquivalenceTest.class,
+    net.minecraft.world.entity.ai.PapoBrainSnapshotTraversalTest.class,
+    net.minecraft.world.entity.ai.sensing.PapoSecondaryPoiSensorCursorTest.class,
+    io.papermc.paper.util.PapoPoiAccessScratchReuseTest.class})
 public class PapoRegressionTestSuite {
 }
 // Papo end - batch 145 (R6)

@@ -75,6 +75,9 @@ public final class CompositeCensus {
         "net.minecraft.core.BlockPos",
         "net.minecraft.world.phys.Vec3",
         "net.minecraft.world.level.chunk.LevelChunk",
+        "net.minecraft.world.entity.npc.Villager",
+        "net.minecraft.world.entity.ai.Brain",
+        "net.minecraft.world.entity.ai.village.poi.PoiRecord",
     };
 
     public static void main(final String[] args) throws Exception {
@@ -89,6 +92,7 @@ public final class CompositeCensus {
         final int rs = args.length > 8 ? Integer.parseInt(args[8]) : 0;
         final int place = args.length > 9 ? Integer.parseInt(args[9]) : 0;
         final int boom = args.length > 10 ? Integer.parseInt(args[10]) : 0;
+        final int vill = args.length > 11 ? Integer.parseInt(args[11]) : 0;
 
         final Path outDir = Path.of("results", "composite-" + System.currentTimeMillis() + (cmp ? "-cmp" : "-natural"));
         Files.createDirectories(outDir);
@@ -184,6 +188,14 @@ public final class CompositeCensus {
                 // bot 爬至 FILL_Y=200 远离爆心）+marker 锚。boom=1 对照（石板零爆炸），
                 // boom=2=TNT summon 风暴（boomDrive）。
                 markerWall = boomSetup(server, botRefs, outDir, logLines);
+            } else if (vill != 0) {
+                // 批次203（R62 村民调度/POI 轴）：每 bot 石板 24×24×3 y[148,150]+围墙
+                // y=151 周界（villager AI 走动囚于农场内）+lectern×12（librarian job
+                // site=POI 注册源）。vill=1 对照（设施+POI 注册在场、零村民——方块更新
+                // /POI 注册面两腿相消）/vill=2=+summon librarian villager×12/bot（brain
+                // 每 20gt 完整调度 refreshActivities+acquirePOI/findClosestHomework
+                // 查询风暴=调度轴负载本体，无需波驱动：召唤即刻持续调度）。
+                markerWall = villSetup(server, botRefs, outDir, logLines, vill);
             } else if (rs != 0) {
                 // 批次199（R58 红石 wire 轴）：网络建在 marker 前（bot 侧向已加载区块，
                 // fill 即时——R57 两波制判例此处不需要：bot ±7 内区块早已加载）
@@ -313,6 +325,39 @@ public final class CompositeCensus {
                 final OfflineJoinBot bb = botRefs[0];
                 probe(server, logLines, String.format("execute if block %d 149 %d minecraft:stone run say BOOM-SLAB-INTACT",
                     (int) Math.floor(bb.getPosX()) - 12, (int) Math.floor(bb.getPosZ()) - 12));
+            }
+            if (vill == 2) {
+                // 村民调度风暴腿探针（marker+150s，JFR 窗已覆盖 ~138s 调度主体）：
+                // 村民在场（say 正证据）+lectern 在位（job site 未被破坏）+summon 回显
+                // 计数（R59/R60 判例：harness 内统计 logLines，回显=恒英文通道）。
+                // 调度正证据复合门：echo 144/144+VLGR-PRESENT+JFR Villager/Brain/Poi
+                // 特征帧（差分阶段符号扫描承担）。
+                sleepUntil(markerWall + 150_000);
+                final OfflineJoinBot vb = botRefs[0];
+                final int vbx = (int) Math.floor(vb.getPosX());
+                final int vbz = (int) Math.floor(vb.getPosZ());
+                probe(server, logLines, "execute if entity @e[type=minecraft:villager,limit=1] run say VLGR-PRESENT");
+                probe(server, logLines, String.format("execute if block %d 151 %d minecraft:lectern run say VLGR-LECTERN", vbx - 11, vbz - 10));
+                // 职业校验探针：VillagerData NBT 路径若错则全变默认 nitwit（无 job site
+                // 兴趣=调度轴失效）——data get 回显须含 librarian，否则整腿判废重跑
+                probe(server, logLines, "execute as @e[type=minecraft:villager,limit=1] run data get entity @s VillagerData.profession");
+                final List<String> vsnap = new ArrayList<>(logLines);
+                // 回显词=display name（职业实体名 "Summoned new Librarian"，R60 判例
+                // 通式：harness 内统计 logLines，匹配词不绑实体类型名）
+                final long vecho = vsnap.stream()
+                    .filter(l -> (l.contains("Summoned new") || l.contains("Object summoned")) && !l.contains("CompositeCensus")).count();
+                System.out.println("CompositeCensus.villagerSummonEcho=" + vecho);
+                vsnap.stream().filter(l -> l.toLowerCase().contains("summon") && !l.contains("CompositeCensus"))
+                    .findFirst().ifPresent(l -> System.out.println("CompositeCensus.villEchoSample " + l.trim()));
+            }
+            if (vill == 1) {
+                // 对照腿：设施在场+零村民（unless 反向探针可门化，R60 判例）
+                sleepUntil(markerWall + 150_000);
+                final OfflineJoinBot vb = botRefs[0];
+                final int vbx = (int) Math.floor(vb.getPosX());
+                final int vbz = (int) Math.floor(vb.getPosZ());
+                probe(server, logLines, "execute unless entity @e[type=minecraft:villager] run say VLGR-ABSENT");
+                probe(server, logLines, String.format("execute if block %d 151 %d minecraft:lectern run say VLGR-LECTERN", vbx - 11, vbz - 10));
             }
             if (place != 0 && cmp) {
                 // 批次200（R59 放置轴）探针③（marker+200s，放置风暴尾后）：首 3 放置
@@ -493,12 +538,13 @@ public final class CompositeCensus {
             if (l.contains("--[HERE")) {
                 continue;
             }
-            if (l.contains("has the following block data") || l.contains("CMP-CTRL-STONE")
+            if (l.contains("has the following block data") || l.contains("has the following entity data") || l.contains("CMP-CTRL-STONE")
                 || l.contains("CMP-DUG-AIR") || l.contains("CMP-ITEMS-PRESENT")
                 || l.contains("DIM-N-OK") || l.contains("DIM-E-OK") || l.contains("PLACE-STONE")
                 || l.contains("BOOM-CRATER") || l.contains("BOOM-ITEMS") || l.contains("BOOM-TNT-CLEARED")
                 || l.contains("BOOM-SLAB-INTACT")
                 || l.contains("LTNG-FIRE") || l.contains("LTNG-BOLT") || l.contains("weather is")
+                || l.contains("VLGR-PRESENT") || l.contains("VLGR-LECTERN") || l.contains("VLGR-ABSENT")
                 || l.contains("to be force loaded") || l.contains("force loaded chunk was found")
                 || l.contains("Filled") || l.contains("no items were found")
                 || l.contains("Unknown or incomplete")) {
@@ -649,6 +695,68 @@ public final class CompositeCensus {
             Thread.sleep(300);
         }
         throw new IllegalStateException("boom slab marker not seen within 120s");
+    }
+
+    /**
+     * 批次203（R62 村民调度/POI 轴）农场就位：每 bot 石板 24×24×3 y[148,150]
+     * （boom 同制式）+围墙 y=151 周界四条（villager AI 寻路囚于农场内，不掉落
+     * 不走丢）+lectern×12 北缘内一排（librarian job site=PoiTypes.lectern 注册
+     * 源，两腿同权）+vill≥2 时中央 4×3 网格 summon librarian villager×12（level 5
+     * 熟练工=工作行为权重满格，PersistenceRequired 防意外清理）。time set 1000
+     * 白天锚（JFR 窗 ~140s=2800 tick 不入夜，全程 WORK/IDLE 相=调度主体；夜间
+     * SLEEP 相会引入 bed 寻路语义偏离轴心）。marker 锚=PAP0-VILL-SETUP-DONE。
+     */
+    private static long villSetup(final Process server, final OfflineJoinBot[] botRefs,
+                                  final Path outDir, final List<String> logLines, final int vill) throws Exception {
+        final List<String> cmds = new ArrayList<>();
+        cmds.add("/time set 1000");
+        for (int i = 0; i < botRefs.length; i++) {
+            final OfflineJoinBot bot = botRefs[i];
+            if (bot == null) {
+                throw new IllegalStateException("bot " + i + " not joined at villager setup");
+            }
+            final int bx = (int) Math.floor(bot.getPosX());
+            final int bz = (int) Math.floor(bot.getPosZ());
+            cmds.add(String.format("/fill %d 148 %d %d 150 %d minecraft:stone",
+                bx - 12, bz - 12, bx + 12, bz + 12));
+            // 围墙 2 格高（y=151..152）：villager 自动跳跃可上 1 格台阶，1 格墙可翻越
+            cmds.add(String.format("/fill %d 151 %d %d 152 %d minecraft:stone",
+                bx - 12, bz - 12, bx + 12, bz - 12));
+            cmds.add(String.format("/fill %d 151 %d %d 152 %d minecraft:stone",
+                bx - 12, bz + 12, bx + 12, bz + 12));
+            cmds.add(String.format("/fill %d 151 %d %d 152 %d minecraft:stone",
+                bx - 12, bz - 11, bx - 12, bz + 11));
+            cmds.add(String.format("/fill %d 151 %d %d 152 %d minecraft:stone",
+                bx + 12, bz - 11, bx + 12, bz + 11));
+            for (int k = 0; k < 12; k++) {
+                cmds.add(String.format("/setblock %d 151 %d minecraft:lectern", bx - 11 + 2 * k, bz - 10));
+            }
+            if (vill >= 2) {
+                for (int k = 0; k < 12; k++) {
+                    cmds.add(String.format(
+                        "summon minecraft:villager %d.5 151 %d.5 {VillagerData:{profession:\"minecraft:librarian\",level:5},PersistenceRequired:1b}",
+                        bx - 6 + (k % 4) * 3, bz + 2 + (k / 4) * 3));
+                }
+            }
+        }
+        cmds.add("/say PAP0-VILL-SETUP-DONE");
+        Files.write(outDir.resolve(vill >= 2 ? "villagesetup.txt" : "villagectrl.txt"), cmds, StandardCharsets.UTF_8);
+        final java.io.OutputStream stdin = server.getOutputStream();
+        for (final String c : cmds) {
+            stdin.write((c + "\n").getBytes(StandardCharsets.UTF_8));
+        }
+        stdin.flush();
+        System.out.println("CompositeCensus.villSetupSent commands=" + (cmds.size() - 1) + " villagers=" + (vill >= 2 ? botRefs.length * 12 : 0));
+        final long start = System.currentTimeMillis();
+        final long deadline = start + 120_000;
+        while (System.currentTimeMillis() < deadline) {
+            if (new ArrayList<>(logLines).stream().anyMatch(l -> l.contains("PAP0-VILL-SETUP-DONE") && !l.contains("villSetupSent"))) {
+                System.out.println("CompositeCensus.villMarkerReached ms=" + (System.currentTimeMillis() - start));
+                return System.currentTimeMillis();
+            }
+            Thread.sleep(300);
+        }
+        throw new IllegalStateException("village setup marker not seen within 120s");
     }
 
     /** 翻转驱动块（单 setblock，已加载区块即时）。 */

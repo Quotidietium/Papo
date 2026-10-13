@@ -4689,3 +4689,17 @@ R49 joins/lefts 同法通式）/探针腿先行省一轮试错/`execute unless e
 - **判例四条**：雷击火统计性落点（探针须多点邻域扫描）/控制台回显本地化陷阱（探针用 say tag 恒英文）/探针腿先行复合门链免重跑/天气轴相位画像先剥离 spawn 陪跑再谈链本体。
 
 报告：[note/report/perf/2026-10-13-lightning-r61-batch202.md](report/perf/2026-10-13-lightning-r61-batch202.md)。
+
+### 批次 203（2026-10-13，R62，收割轮·第十九域，0299，→0.112.0）
+
+**村民调度/POI 轴分配普查（144 librarian 村庄调度风暴）→brain tick 三机械面收割（两步：0.111.0 对象复用+0.112.0 BFS 队列预容量）。**
+
+- **选轴核查**：地图（批38 已收）/成就推送（批26+79/82+R49 多重）/药水（批39+53+0210 三重）/传送门（独有面薄）全判出；Villager/PoiManager/acquirePOI 全史零命中（R25 只有自然 mob Brain 驻留画像+寻路 Node 收割）=真新格第十九域。
+- **harness（vill 参数，bot 零改动）**：每 bot 石板+2 格围墙+lectern×12（librarian job site POI）+summon librarian×12/bot（level 5+PersistenceRequired）=144 村民每 tick brain 调度+每 20-40tick AcquirePoi BFS 查询；time set 1000 白天锚；vill=1 对照（设施+POI 注册在场零村民=差分纯净）；职业校验探针（data get VillagerData.profession）。
+- **B−A 深栈三面立项**（B 事件 +51%）：Brain 三层 for-each 迭代器 1,261 trips/1,377MB（tickEach 935+startEach 326——每 tick 每 brain 每集合一枚迭代器，R41 通式）/PoiAccess BFS 工作集 670 trips/685MB（rehash 519+resize 151）/SecondaryPoiSensor 405 格 BlockPos.offset 171 trips/177MB（R37 scratch 族）。
+- **0299 三面**：①Brain 脏标记 lazy 行为快照（平行数组+add 族/removeAll 置脏；序恒等=TreeMap 升序×HashMap 桶序×LinkedHashSet 插入序三层全确定→快照序≡vanilla 每 tick 遍历序；运行期突变容忍=Villager.refreshBrain 职业转换证伪冻结假设）②PoiAccess ThreadLocal 双槽（入口无条件 clear=异常兜底；调用方线程面全核查=主线程+调用线程独立槽；**第二步 2048 预容量**——V111 配对腿浮出 FIFO resize 残余 160 trips 全窗均匀=fastutil grow-ladder 在 IO 池线程轮转下每槽反复爬升，对象复用不消除）③Sensor 单 cursor（405→1 分配/扫描，命中 cursor.immutable() 拷贝=语义载体）。
+- **验证**：恒等单测 9 用例（Brain 5/Sensor 2/PoiAccess 2；自查纠偏三次=期望漏算 vanilla 同 tick startEach+tickEach 双段语义×2+findClosestPoiDataRecords 最近平局语义）套件 177 绿+全套件 --rerun 绿+链门 rebuildPatches（0299）/applyPatches/test EXIT=0+出包 0.111.0/0.112.0 javap 嵌套 server jar 字节码（paperclip 结构外层 javap 找不到类须解包）；MSPT 三序六腿零回归（主序 B 劣 4/6+倒序 B 优 5/6+钉死 B 优 5/6=R37 后跑腿伪影形态；唯一大额 s2 +2.2 倒序 −1.9 钉死 −0.4 双破号=R38 瞬态）；**配对腿 V110 vs V112 四面全坍缩**（LinkedKeySet 1,305→0/rehash 501→0/FIFO resize 110→0/Sensor offset 166→0；全口径事件 V110→V111 −31.1%；V111 中间版=FIFO 残余 160 的发现仪器）。
+- **判负维持**：物理走位族（Vec3/AABB/getOnPos=结果对象 R41/R48/R52/R60 族）/brain 语义小面（Optional 230/MemoryCondition 105/tryTrigger 96/ShufflingList 96=声明式链与洗牌语义本体）/RegistryFriendlyByteBuf +156=R44 第五见/自观测按事件率放大/NBT 保存族=村民实体数据/Moonrise 调度池/BalancedPrioritisedThreadPool 上游维持。
+- **判例六条**：回显词=display name 非实体类型名/门与 harness 输出约定腿前对齐（对照腿"无输出口径"显式定义）/运行期结构突变容忍是快照遍历立项前提/paperclip 嵌套 jar javap 验法/R37 后跑腿伪影二度/对象复用≠内部数组复用（grow-ladder 爬升+配对腿是浮出残余同族面的唯一仪器）。
+
+报告：[note/report/perf/2026-10-13-villager-r62-batch203.md](report/perf/2026-10-13-villager-r62-batch203.md)。
