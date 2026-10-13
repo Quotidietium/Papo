@@ -4716,3 +4716,14 @@ R49 joins/lefts 同法通式）/探针腿先行省一轮试错/`execute unless e
 - **判例六条**：fill 控制台零回显门退役（R61 wq 判例新形态：根本不打印非本地化）/模板复制参数计数必须逐位重数（vill/fluid 位错两犯均被门拦截 VOID 留档）/预容量字节账本否决（trips 坍缩≠字节收益）/trips 门与字节门分开判读/配对中间版是判负证据生产器/归因帧移动配对判读（below 从 lambda 帧移至 isHole 帧=A 侧零 trips 假象，面按分配语义对齐）。
 
 报告：[note/report/perf/2026-10-13-fluid-r63-batch204.md](report/perf/2026-10-13-fluid-r63-batch204.md)。
+
+### 批次 205（2026-10-13，R64，普查轮·第二十一域，**收尾暂停未闭合**——零服务器变更，版本保持 0.113.0）
+
+**农业生长轴（骨粉催熟链）分配普查：选轴+探针基础设施+双腿 GREEN 数据在位；普查链因用户收尾指令暂停于差分前。**
+
+- **选轴核查**：验证器候选五轴（火=R61 雷击火相位/光=区块光域/繁殖+傀儡+enderman=实体与生成域）全历史命中判出；`CropBlock|BonemealItem|BlockFertilizeEvent|captureTreeGeneration` 全史零补丁命中=第二十一域真新格。源码预读收割预期面：useOn 双捕获开关→setBlock 捕获路径（LinkedHashMap+pos.immutable）→尾排空（ArrayList copy+StructureGrowEvent+**BlockFertilizeEvent 恒构造**+snapshot.place）——每 use 一套纯机械 capture 机器。
+- **harness（grow=args[13]）**：farmland[moisture=7] 5×5+wheat[age=0] 田建 bot 脚下（悬停 y=200 reach 内）；grow=2=24 波×5s 每波重植+12 bot×12 USE_ITEM_ON 骨粉风暴（cell=(k·7)%25 扫位避中心格）；grow=1 对照同田零骨粉。OfflineJoinBot 增强：papoSendLock 帧级互斥+setCreativeSlotItem/setHeldBonemeal（SET_CREATIVE_MODE_SLOT 0x37 flat 编码）。新验证器 GrowVerify（单 bot 隔离协议验证，三轮调试主仪器）。
+- **双腿 GREEN（0.113.0 同版对照）**：B 风暴 traces=12/field=1/**ageadv=5/uses=3456**（=24×12×12 全生效）/heap 705,469KB；A 对照 traces=12/field=1/**ageadv=0/age0=1/uses=0**/heap 692,010KB。JFR 双事件集在位；VOID 两腿留档。**B−A 差分与逐面判定未做**——下轮从差分直接恢复。
+- **判例四条（详记 build.md）**：flat item id 源码声明序≠运行时注册序（dye 块程序化注册 +16 漂移：源码序 1066=white_dye，BONE_MEAL 真身=1082；四槽候选回显定位法）/sendPacket 无锁跨线程并发写帧损坏（风暴主线程 USE vs bot 线程 50ms MOVE——帧级互斥锁修复；R59 单线程从未踩中≠协议安全）/farmland 干涸回退弹麦掉种链（moisture=7+creative 槽位直写武装）/探针确定性化（多龄×多位必中，R60 统计性落点判例的确定性化；探针位避开 bot 脚下不驻留格）。
+
+报告：[note/report/perf/2026-10-13-grow-r64-batch205.md](report/perf/2026-10-13-grow-r64-batch205.md)。

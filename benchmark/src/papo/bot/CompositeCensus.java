@@ -94,6 +94,7 @@ public final class CompositeCensus {
         final int boom = args.length > 10 ? Integer.parseInt(args[10]) : 0;
         final int vill = args.length > 11 ? Integer.parseInt(args[11]) : 0;
         final int fluid = args.length > 12 ? Integer.parseInt(args[12]) : 0;
+        final int grow = args.length > 13 ? Integer.parseInt(args[13]) : 0;
 
         final Path outDir = Path.of("results", "composite-" + System.currentTimeMillis() + (cmp ? "-cmp" : "-natural"));
         Files.createDirectories(outDir);
@@ -204,6 +205,13 @@ public final class CompositeCensus {
                 // 水横流 7 格限距持续再计算）。R58 wire 轴同构：批30/31 微基准单点
                 // 已收（0104/0106）但专轴流动风暴从未普查成像。
                 markerWall = fluidSetup(server, botRefs, outDir, logLines);
+            } else if (grow != 0) {
+                // 批次205（R64 农业生长轴）：每 bot 5×5 农田（farmland y=149+对角
+                // water 保墒）+wheat[age=0] y=150。grow=1 对照（田在场零骨粉）/
+                // grow=2=骨粉催熟风暴（每波 console 重植 fill+bot USE_ITEM_ON
+                // 骨粉×12 互质扫位=BoneMealItem→growCrop→setBlock 捕获+事件
+                // 排空链全窗风暴）。CropBlock/骨粉/竹子全史零命中=真新格。
+                markerWall = growSetup(server, botRefs, outDir, logLines);
             } else if (rs != 0) {
                 // 批次199（R58 红石 wire 轴）：网络建在 marker 前（bot 侧向已加载区块，
                 // fill 即时——R57 两波制判例此处不需要：bot ±7 内区块早已加载）
@@ -421,6 +429,66 @@ public final class CompositeCensus {
                 probe(server, logLines, String.format("execute unless block %d 151 %d minecraft:water run say FLUID-DRY", fbx - 11, fbz));
                 probe(server, logLines, String.format("execute if block %d 151 %d minecraft:stone run say FLUID-WALL", fbx - 12, fbz - 12));
             }
+            if (grow == 2) {
+                // 批次205（R64 农业生长轴）骨粉催熟风暴：marker+25s 起每 5s 一波 ×24，
+                // 每波：console 每 bot fill 重植 wheat[age=0]（5×5）+每 bot 12 次
+                // USE_ITEM_ON 骨粉（k*7 mod 25 互质扫位 5×5 网格，direction=1 顶面）
+                // ——每次成功催熟=isValidBonemealTarget→performBonemeal→setBlock
+                // （captureTreeGeneration 捕获路径）+growth levelEvent 广播+useOn 尾
+                // BlockFertilizeEvent 排空链。288 use/bot×12=3,456 use 全窗。
+                sleepUntil(markerWall + 25_000);
+                for (final OfflineJoinBot bot : botRefs) {
+                    if (bot != null) {
+                        bot.setHeldBonemeal();
+                    }
+                }
+                long usesTotal = 0;
+                for (int wave = 0; wave < 24; wave++) {
+                    for (int i = 0; i < botRefs.length; i++) {
+                        final OfflineJoinBot bot = botRefs[i];
+                        if (bot == null) {
+                            continue;
+                        }
+                        final int bx = (int) Math.floor(bot.getPosX());
+                        final int bz = (int) Math.floor(bot.getPosZ());
+                        server.getOutputStream().write(String.format("fill %d 199 %d %d 199 %d minecraft:wheat[age=0]\n",
+                            bx - 2, bz - 2, bx + 2, bz + 2).getBytes(StandardCharsets.UTF_8));
+                        for (int j = 0; j < 12; j++) {
+                            final int k = wave * 12 + j;
+                            final int cell = (k * 7) % 25;
+                            bot.placeOnFace(bx - 2 + cell / 5, 199, bz - 2 + cell % 5, 1);
+                            usesTotal++;
+                        }
+                    }
+                    server.getOutputStream().flush();
+                    sleepUntil(markerWall + 30_000 + wave * 5_000L);
+                }
+                // 探针（marker+150s 风暴尾后）：末波 4 个确定被骨粉位（k=276..279）
+                // ×全龄 2..7 扫描（1 use 至少推进 1 龄+自然 tick 余量→末龄必落 [2,7]
+                // =确定性命中；R60 统计性落点判例的确定性化）+田在位+工作量计数
+                sleepUntil(markerWall + 150_000);
+                final OfflineJoinBot gb = botRefs[0];
+                final int gbx = (int) Math.floor(gb.getPosX());
+                final int gbz = (int) Math.floor(gb.getPosZ());
+                for (int kk = 276; kk <= 279; kk++) {
+                    final int cell = (kk * 7) % 25;
+                    for (int age = 2; age <= 7; age++) {
+                        probe(server, logLines, String.format("execute if block %d 199 %d minecraft:wheat[age=%d] run say GROW-AGE%d",
+                            gbx - 2 + cell / 5, gbz - 2 + cell % 5, age, age));
+                    }
+                }
+                probe(server, logLines, String.format("execute if block %d 198 %d minecraft:farmland run say GROW-FIELD", gbx - 2, gbz - 2));
+                System.out.println("CompositeCensus.growUsesSent=" + usesTotal);
+            }
+            if (grow == 1) {
+                // 对照腿：田在场零骨粉零扰动（wheat 恒 age=0 反向正证据）
+                sleepUntil(markerWall + 150_000);
+                final OfflineJoinBot gb = botRefs[0];
+                final int gbx = (int) Math.floor(gb.getPosX());
+                final int gbz = (int) Math.floor(gb.getPosZ());
+                probe(server, logLines, String.format("execute if block %d 199 %d minecraft:wheat[age=0] run say GROW-AGE0", gbx - 2, gbz - 2));
+                probe(server, logLines, String.format("execute if block %d 198 %d minecraft:farmland run say GROW-FIELD", gbx - 2, gbz - 2));
+            }
             if (place != 0 && cmp) {
                 // 批次200（R59 放置轴）探针③（marker+200s，放置风暴尾后）：首 3 放置
                 // 目标=stone 在场。批次200 判例：挖掘半段把四侧面格挖空（挖掘候选集=放置
@@ -608,6 +676,7 @@ public final class CompositeCensus {
                 || l.contains("LTNG-FIRE") || l.contains("LTNG-BOLT") || l.contains("weather is")
                 || l.contains("VLGR-PRESENT") || l.contains("VLGR-LECTERN") || l.contains("VLGR-ABSENT")
                 || l.contains("FLUID-WATER") || l.contains("FLUID-DRY") || l.contains("FLUID-WALL") || l.contains("FLUID-BASE-AIR")
+                || l.contains("GROW-AGE") || l.contains("GROW-FIELD")
                 || l.contains("to be force loaded") || l.contains("force loaded chunk was found")
                 || l.contains("Filled") || l.contains("no items were found")
                 || l.contains("Unknown or incomplete")) {
@@ -866,6 +935,50 @@ public final class CompositeCensus {
             Thread.sleep(300);
         }
         throw new IllegalStateException("fluid basin marker not seen within 120s");
+    }
+
+    /**
+     * 批次205（R64 农业生长轴）农田就位：每 bot 5×5 farmland y=149+对角水格保墒
+     * （4 格水化半径内防 randomTick 干涸回退）+wheat[age=0] y=150 fill。两腿同权
+     * （B−A 差分=纯骨粉催熟链）。marker 锚=PAP0-GROW-FIELD-DONE。
+     */
+    private static long growSetup(final Process server, final OfflineJoinBot[] botRefs,
+                                  final Path outDir, final List<String> logLines) throws Exception {
+        final List<String> cmds = new ArrayList<>();
+        for (int i = 0; i < botRefs.length; i++) {
+            final OfflineJoinBot bot = botRefs[i];
+            if (bot == null) {
+                throw new IllegalStateException("bot " + i + " not joined at grow setup");
+            }
+            final int bx = (int) Math.floor(bot.getPosX());
+            final int bz = (int) Math.floor(bot.getPosZ());
+            // 田在 bot 悬停位正下方（feet y=200）：farmland y=198+wheat y=199
+            // ——eye(201.6) 到 wheat 盒 [199,200] 距离 ~1.6-2.6 在交互半径内
+            // （R59 放置风暴 d²≤25 候选集同式）；bot 驻留悬停零踩踏。
+            cmds.add(String.format("/fill %d 198 %d %d 198 %d minecraft:farmland[moisture=7]",
+                bx - 2, bz - 2, bx + 2, bz + 2));
+            cmds.add(String.format("/setblock %d 198 %d minecraft:water", bx - 3, bz - 3));
+            cmds.add(String.format("/fill %d 199 %d %d 199 %d minecraft:wheat[age=0]",
+                bx - 2, bz - 2, bx + 2, bz + 2));
+        }
+        cmds.add("/say PAP0-GROW-FIELD-DONE");
+        Files.write(outDir.resolve("growsetup.txt"), cmds, StandardCharsets.UTF_8);
+        final java.io.OutputStream stdin = server.getOutputStream();
+        for (final String c : cmds) {
+            stdin.write((c + "\n").getBytes(StandardCharsets.UTF_8));
+        }
+        stdin.flush();
+        System.out.println("CompositeCensus.growSetupSent commands=" + (cmds.size() - 1));
+        final long start = System.currentTimeMillis();
+        final long deadline = start + 120_000;
+        while (System.currentTimeMillis() < deadline) {
+            if (new ArrayList<>(logLines).stream().anyMatch(l -> l.contains("PAP0-GROW-FIELD-DONE") && !l.contains("growSetupSent"))) {
+                System.out.println("CompositeCensus.growMarkerReached ms=" + (System.currentTimeMillis() - start));
+                return System.currentTimeMillis();
+            }
+            Thread.sleep(300);
+        }
+        throw new IllegalStateException("grow field marker not seen within 120s");
     }
 
     /** 翻转驱动块（单 setblock，已加载区块即时）。 */

@@ -798,3 +798,10 @@ entities/blockEntities 段"）。改 ServerLevel tick 结构时记得同步该�
 3. **预容量字节账本否决（trips 门≠字节门）**：fastutil 容器预容量按 R62 判例立项（trips 坍缩 44→0），但配对腿字节账本显示前置 256 槽数组本体 `<init>` +94 trips/+98.7MB **大于** ladder 拷贝节约 44.7MB——per-call 临时容器（每 spread() 一次即死）与 R62 ThreadLocal 持久槽（每查询反复爬升无界）是相反 regime，预容量判例不可外推。判例：**JFR trips 是可信度口径、字节是内存轴本位口径，两门分开判读**；配对中间版二进制是判负证据的生产器（负结果也要实测不要推测）。
 4. **归因帧移动的配对判读**：de-lambda 后 miss 路径的 `pos.below()` 分配从 `lambda$isHole$0` 帧移到 `isHole` 直帧——配对差分中 A 侧该帧 0 trips 会伪装成"新增面"。判例：面比较按**分配语义**对齐（同一 below() 调用），不是按帧名。
 5. **rebuildPatches 的前置**：feature 补丁从内仓（`paper-server/src/minecraft/java/.git`）**已提交**状态生成——工作树未提交的改动产出 "Saved modified patches (0/300)"。顺序恒为：改源→内仓 commit→rebuildPatches→test/compile 链门。
+
+## 2026-10-13 补充：批次 205 踩坑记录
+
+1. **flat item id 的源码声明序≠运行时注册序**：从注册表源码读的序号直接进 SET_CREATIVE_MODE_SLOT 是错的——dye 块在注册表中程序化注册使后续 id 集体漂移 +16：源码序 1066=white_dye，BONE_MEAL 真身=**1082**。定位法=四槽候选（1081/1082/1083/1084=black_dye/bone_meal/bone/sugar）写入后 `data get entity Inventory` 回显比对。判例：**协议风暴的 item id 必须运行时回显定位，源码序只能做候选外推**。
+2. **sendPacket/sendRaw 无锁=跨线程并发写帧损坏**：风暴驱动线程的 USE 包与 bot 自身 walk 循环每 50ms 的 MOVE_PLAYER_POS 并发写同一 socket，帧交错后服务器静默丢弃——症状是"uses 全发但 ageadv=0"的假阴性（两次 VOID 腿的真因）。修=帧级互斥锁（write+flush 原子段）。判例：**R59 单线程发送从未踩中≠协议安全；多线程驱动的协议腿必须帧级互斥**，这类失败不抛异常只丢效果，最易误判为协议编码错误。
+3. **farmland 干涸回退弹麦掉种链**：干 farmland（moisture<7）被 randomTick 打回 dirt→小麦弹落掉种→bot 走位拾取 wheat_seeds 占 slot 0→后续 give 落他槽→手持=种子在"种田"不在"催熟"。修=建田用 farmland[moisture=7]（保水+防回退）+手持武装坚持 SET_CREATIVE_MODE_SLOT 槽位直写（确定性覆盖，不用 give）。判例：**长窗协议风暴腿的目标方块态必须对抗 randomTick 漂移**（干涸/生长/蔓延三类自漂移都要锚定或排除）。
+4. **探针确定性化（R60 统计性落点判例的确定性化）**：催熟一次推进 2-5 龄是随机分布——单龄单格探针有 miss 概率，必须多龄（age=2..5）×多位（cell 扫位）使"命中≥1"成为确定事件而非统计事件。另：bot 脚下中心格 wheat 不驻留（实体占位），探针位集必须显式避开该格（风暴驱动位与探针位同式计算即天然一致）。

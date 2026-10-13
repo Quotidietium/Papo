@@ -40,6 +40,9 @@ public final class OfflineJoinBot {
     private Socket socket;
     private InputStream in;
     private OutputStream out;
+    /** 批次205 判例：sendPacket/sendRaw 无锁=跨线程并发写帧损坏（storm 主线程 USE
+     *  包与 bot 线程 move 包交错）——帧级互斥锁（R59 单线程发送从未踩中）。 */
+    private final Object papoSendLock = new Object();
     private int compressionThreshold = -1;
 
     // 批次141（R5）：服务器权威位置跟踪。PLAY 0x45 PLAYER_POSITION（varint teleportId +
@@ -282,6 +285,32 @@ public final class OfflineJoinBot {
         writeVarint(b, 0); // patch added = 0
         writeVarint(b, 0); // patch removed = 0
         this.sendPacket(0x37, b.toByteArray());
+    }
+
+    /**
+     * 批次205：通用 creative 槽位武装（slot+flat itemId 参数化——批次205 判例：
+     * flat id 以运行时注册序为准，源码声明序 dye 块族有 +16 漂移，须回显定位）。
+     */
+    public void setCreativeSlotItem(final int slot, final int itemId, final int count) throws IOException {
+        final ByteArrayOutputStream b = new ByteArrayOutputStream(16);
+        b.write((slot >>> 8) & 0xFF);
+        b.write(slot & 0xFF);
+        writeVarint(b, count);
+        writeVarint(b, itemId);
+        writeVarint(b, 0); // patch added = 0
+        writeVarint(b, 0); // patch removed = 0
+        this.sendPacket(0x37, b.toByteArray());
+    }
+
+    /**
+     * 批次205（R64 农业生长轴）：骨粉手持——BONE_MEAL flat 注册序 **1082**
+     * （批次205 判例：源码声明序≠运行时注册序——dye 块族程序化注册漂移 +16，
+     * 源码序 1066 实为 white_dye；GrowVerify 四槽候选回显定位：1081=black_dye/
+     * 1082=bone_meal/1083=bone/1084=sugar。AIR=0/STONE=1 锚点只保序不保偏移，
+     * 声明序 id 必须回显验证后才可用）。
+     */
+    public void setHeldBonemeal() throws IOException {
+        this.setCreativeSlotItem(36, 1082, 1);
     }
 
     /**
@@ -713,15 +742,19 @@ public final class OfflineJoinBot {
     }
 
     private void sendRaw(final int packetId, final byte[] payload) throws IOException {
-        final ByteArrayOutputStream body = new ByteArrayOutputStream();
-        writeVarint(body, packetId);
-        body.writeBytes(payload);
-        final byte[] bodyB = body.toByteArray();
-        final ByteArrayOutputStream frame = new ByteArrayOutputStream();
-        writeVarint(frame, bodyB.length);
-        frame.writeBytes(bodyB);
-        this.out.write(frame.toByteArray());
-        this.out.flush();
+        final byte[] frameBytes;
+        synchronized (this.papoSendLock) {
+            final ByteArrayOutputStream body = new ByteArrayOutputStream();
+            writeVarint(body, packetId);
+            body.writeBytes(payload);
+            final byte[] bodyB = body.toByteArray();
+            final ByteArrayOutputStream frame = new ByteArrayOutputStream();
+            writeVarint(frame, bodyB.length);
+            frame.writeBytes(bodyB);
+            frameBytes = frame.toByteArray();
+            this.out.write(frameBytes);
+            this.out.flush();
+        }
     }
 
     private void sendPacket(final int packetId, final byte[] payload) throws IOException {
@@ -735,8 +768,10 @@ public final class OfflineJoinBot {
             final ByteArrayOutputStream frame = new ByteArrayOutputStream();
             writeVarint(frame, bodyB.length);
             frame.writeBytes(bodyB);
-            this.out.write(frame.toByteArray());
-            this.out.flush();
+            synchronized (this.papoSendLock) {
+                this.out.write(frame.toByteArray());
+                this.out.flush();
+            }
         } else {
             throw new IOException("bot payload >= threshold not implemented");
         }
