@@ -4798,3 +4798,44 @@ Optional<LongStream>→Optional<long[]> 的 NMS ABI 变更（需重编译，运�
 锁步三形态/方块实体活 map 契约/懒列表 null）全注册套件；compileJava+compileTestJava 显式
 BUILD SUCCESSFUL；rebuildPatches（首跑 rebuildResourcePatches git stash 128 文锁间歇判例
 复发，重跑即过）→applyPatches→test 链门；版本 0.113.0→0.114.0。
+
+---
+
+## 批次 207（2026-10-27）：插件兼容修复第二轮——批次 206 留档面清理 + 真实冒烟首验（0309-0311，→0.115.0）
+
+**背景**：批次 206 修复 13 项后的遗留复核：第一轮"判负留档"中按严格基线红线应修未修的项，
+本轮全部处置；并补齐 0302-0308 改动的真实服务器运行验证（此前只有单测/编译级验证）。
+
+**修复**：
+1. **0309 撤 0210/0211 等值抑制门 + Scoreboard numberFormatOverride 门（9 处）**：复核实锤
+   ——抑制不只省包，还连带跳过 `onTeamChanged` 的 `updateTeamWaypoints`（1.21.11 队伍路径点
+   更新）与 `setDirty`（记分板保存标记）；且"等值新实例"正是与 vanilla 的全部差异面
+   （vanilla setter 无任何早退，包括同值原语/枚举）。0212 的同方法内同实例双发去重保留
+   （幂等操作，客户端零可见，非 setter 级语义）。
+2. **0310 撤 0283 的 PackedData 组件改型 + 0295 字段编码快路**：record 组件类型
+   `Optional<LongStream>`→`Optional<long[]>` 即公共访问器 `storage()` 描述符变更——对按
+   Paper 1.21.11 编译的 NMS 插件是 NoSuchMethodError。字段编解码/unpack/pack 全回 vanilla
+   形态：unpack 经 `toArray()` 单次隔离拷贝（=vanilla 平价，第一轮 clone 修随之天然满足）；
+   pack 的 `Arrays.stream(getRaw())` O(1) 包装；**R32 两段重编码在 pack 侧完整保留**。
+   代价：0283 的 unpack 拷贝消除（−89% 窗口面）与 0295 的保存窗 35 trips 收益回吐。
+3. **0311 quickCheck 字段名 + configureSerialization 重载**：`papoQuickCheck`→`quickCheck`
+   （vanilla 字段名，反射兼容；懒物化保留）；0225 曾把 4 参
+   `configureSerialization(pipeline,flow,memoryOnly,monitor)` 原地替换为 6 参——现恢复 4 参
+   委托重载（null counters），6 参保留。
+
+**判例**：
+1. **record 组件类型=公共访问器 ABI**：改组件即改访问器描述符，任何"内部数据形状"优化不得
+   触碰公开 record 的组件类型。
+2. **setter 级"等值跳过"必须连坐审查回调的全部副作用**：省一个包的同时可能省掉
+   waypoint/dirty 等旁路效果——门的语义边界必须逐副作用核对。
+3. **方法改造用重载不用替换**：加参数的"内部"工厂方法（configureSerialization）对按旧签名
+   编译的外部调用者就是删方法。
+4. **兼容修复轮也需要运行时首验**：0302 改动横跨连接管线/记分板/区块路径，单测绿≠开机绿
+   ——SmokeJoinVerify（boot+10 join+产物/零异常门）是收尾必备门。
+
+**验证**：compileJava/compileTestJava 显式 SUCCESSFUL；rebuildPatches 311 补丁（0309-0311
+零垃圾名）→applyPatches→全量 test 全绿（上游 PlayerProfileTest 两项网络条件测试的环境性
+翻转留档 build.md；批次 147 自有测试的 ArrayList 丢失写竞态顺手修复）；出包 0.115.0；
+**SmokeJoinVerify 真实冒烟全绿**（joins=10/10·exit=0·logErrors=0·产物 OK·稳态 join p50=22ms）
+——批次 206+207 全部改动的首次真机验证；另修 harness 起服 JVM 常量腐烂判例（跟随
+java.home）。

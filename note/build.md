@@ -834,3 +834,29 @@ dubious ownership`，仓库属主 SID `S-1-5-21-1626371262-…` ≠ 当前用户
    locale 属性），"包 codec 确定性"论证必须查到 codec 末梢的每个组件字段。
 5. **NMS 公共字段即 API**：@Nullable 化（0278）、删字段（0273）、final 剥离都是二进制/
    行为破坏；懒化收益 ~210B/实例不够支付。fastutil 容量也保持 vanilla——容量改变迭代序。
+
+## 2026-10-27 补充：批次 207（第二轮）环境判例
+
+### F:/Java/21 与 C 盘 latest/jdk-21 双双消失——harness 起服 JVM 跟随自身 java.home
+
+`C:\Program Files\Java\latest` 只剩 jdk-25，`F:/Java/21` 目录不存在（本会话 Gradle 工具链在
+`F:/TEMP/.gradle/jdks/eclipse_adoptium-21-amd64-windows.2` 自动供给 21.0.12.1）。SmokeJoinVerify
+硬编码 `F:/Java/21/bin/java` 的起服常量随之失效。**修复**：起服 JVM 改为"harness 自身
+`java.home`（harness 必须以 J21 启动）优先，旧路径回退"——钉死版本语义不变，绝对路径不再
+随机器布局漂移腐烂。**判例**：工具里的 JDK 绝对路径常量必须可从运行时推导（java.home），
+否则换机/重装即静默失效。
+
+### 上游网络条件测试的翻转暴露过期测试数据（PlayerProfileTest）
+
+`@EnableIfMojangServerAvailable`（1 秒连接超时探测 sessionserver）：昨日超时→两项签名测试
+**跳过**（套件假绿）；今日连通→测试真跑→红（"Invalid test property signature, has the public
+key changed?"）。校验路径=本地固定公钥(.der)+上游硬编码签名，Mojang 现实轮换签名密钥致上游
+测试数据过期——与 Papo 改动零交集（git 溯源测试文件纯上游）。**判例**：网络条件门控制的
+测试，绿灯可能只是"没跑"；跳过计数漂移（7↔8）是翻转的可见信号；上游数据过期类失败按
+环境留档不改测试fixture。
+
+### 自有并发测试的 ArrayList 丢失写（concurrentCreationConverges 8→7）
+
+批次 147 测试用裸 ArrayList 收 8 线程产物——并发 add 丢失写（size 7/8 偶发）。改每线程槽位
+数组。**判例**：并发测试的收集器必须是并发结构或按线程分槽；"期望 N 实得 N-1"的偶发失败
+先查测试自己的竞态再怀疑产品。
