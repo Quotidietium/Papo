@@ -5,6 +5,7 @@
 每一处优化都附带等价性论证、恒等单测与真实服务器实测验证。
 
 - 游戏版本：Minecraft **1.21.11**（protocol 774）
+- 运行时：Java 25（0.117.0 起编译目标）；生产服建议加 `-XX:+UseCompactObjectHeaders`（实测活集 −2~4%）
 - 当前版本：**0.113.0**（`gradle.properties` 的 `papoVersion`，独立于 Paper API 版本演进）
 - 许可：GPL-3.0（随上游 Paper，见 [LICENSE.md](LICENSE.md)）
 
