@@ -860,3 +860,25 @@ key changed?"）。校验路径=本地固定公钥(.der)+上游硬编码签名�
 批次 147 测试用裸 ArrayList 收 8 线程产物——并发 add 丢失写（size 7/8 偶发）。改每线程槽位
 数组。**判例**：并发测试的收集器必须是并发结构或按线程分槽；"期望 N 实得 N-1"的偶发失败
 先查测试自己的竞态再怀疑产品。
+
+## 2026-10-27 补充：批次 209——Java 25 全面迁移（用户决断，→0.117.0）
+
+**变更**：根 `build.gradle.kts` 工具链与 `options.release` 21→25；`paper-server` run 任务去掉
+JETBRAINS vendor 钉（JBR 25 本机无保证）并移除 JBR 专属 DCEVM 旗标；测试依赖 mockito
+5.14.1→5.20.0（旧 ByteBuddy 不识 v69 类文件——297 测试 142 挂的唯一根因）。
+
+**版本红线修订**："Java 21 工具链"自本批起不再是红线（这是 2026-10-27 用户明确决断的迁移，
+非上游漂移）；mcVersion/apiVersion=1.21.11 与 paperweight 2.0.0-beta.19 红线**不变**。
+
+**兼容性口径**：插件不受影响——Papo 不向插件开发者发布 api 工件，插件按上游 Paper 1.21.11
+（repo.papermc.io，v65）编译，v65 类在 Java 25 运行时正常加载（真机冒烟 10/10 join 实证）。
+已知残留风险：自带旧版 ASM 且会解析**服务器类**字节码的插件（罕见形态）可能不识 v69。
+
+**性能注记**：Java 25 运行时收益入口——`-XX:+UseCompactObjectHeaders`（JEP 519，对本内存
+优化型服务端是大头）、分代 ZGC、JIT 改进。运维建议以 COH 开旗做一轮配对浸泡对比。
+
+**判例**：①工具链迁移的真实坑在测试栈（ByteBuddy/ASM 类文件版本）不在编译——javac 25
+对反编译源码零告警错误一次过；②harness 起服路径含空格（Program Files）且无 `.exe` 后缀时
+ProcessBuilder CreateProcess error=2——用 `File(java.home, "bin/java.exe")` 绝对路径；
+③Gradle daemon 全会话本就跑在 PATH 的 Oracle JDK 25 上（工具链自动供给 21 编译），迁移=
+改 toolchain 声明一行 + 测试栈升级。

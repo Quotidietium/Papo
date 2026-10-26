@@ -22,7 +22,7 @@
 
 ## 构建
 
-需要 JDK 21 与网络（Mojang / PaperMC 仓库）。Windows 本机构建判例（Gradle daemon、
+需要 JDK 25 与网络（Mojang / PaperMC 仓库）；自 0.117.0 起服务器与 API 以 Java 25 编译（类文件 v69），插件仍按 Paper 1.21.11 目标编译（v65 类在 25 上正常加载）。Windows 本机构建判例（Gradle daemon、
 网络、补丁工作流踩坑）见 [note/build.md](note/build.md)。
 
 ```bash

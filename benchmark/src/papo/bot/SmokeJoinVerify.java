@@ -85,9 +85,11 @@ public final class SmokeJoinVerify {
         // Papo - compat round 2: the server JVM follows the harness JVM (java.home) so the
         // pinned-absolute-path constant cannot go stale when the machine's JDK layout changes;
         // the legacy F:/Java/21 path remains as a fallback when the harness runs on another JDK.
+        final java.io.File papoJavaBin = new java.io.File(new java.io.File(System.getProperty("java.home"), "bin"),
+            System.getProperty("os.name", "").toLowerCase().contains("win") ? "java.exe" : "java");
         final String papoServerJava = System.getProperty("java.version").startsWith("21.")
-            ? System.getProperty("java.home") + java.io.File.separator + "bin" + java.io.File.separator + "java"
-            : "F:/Java/21/bin/java";
+            ? "F:/Java/21/bin/java" // legacy fallback when the harness itself cannot run the server JVM version
+            : papoJavaBin.getAbsolutePath();
         final Process server = new ProcessBuilder(
             papoServerJava, "-Xmx3G", "-Dfile.encoding=UTF-8", "-jar", jar.getFileName().toString(), "nogui")
             .directory(dir.toFile())

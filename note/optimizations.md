@@ -4871,3 +4871,21 @@ NMS 面=内部仓 0040 父提交（上游 Paper 特性补丁全部应用后）�
 
 **验证**：compileJava 显式 SUCCESSFUL；rebuildPatches（0312 零垃圾名）→applyPatches→
 全量 test 全绿；出包 0.116.0。
+
+---
+
+## 批次 209（2026-10-27）：Java 25 全面迁移（用户决断，→0.117.0）
+
+**变更**：工具链/`options.release` 21→25（根 build.gradle.kts）；run 任务去 JBR vendor 钉+
+移除 DCEVM 旗标；mockito 5.14.1→5.20.0（v69 类文件支持）；类文件版本 v65→v69（包内 javap
+实证）。
+
+**验证**：`compileJava --rerun-tasks --no-configuration-cache`（工具链 25）一次通过——
+paperweight 2.0.0-beta.19 与反编译源码在 javac 25 下零错误；全量测试套件全绿（mockito 升级
+后；升级前 142/297 挂全为 ByteBuddy 不识 v69 单根因）；出包 0.117.0；**JDK 25 真机冒烟**
+SmokeJoinVerify 全绿（10/10 join、exit=0、logErrors=0、dat/stats/advancements OK、稳态
+join p50=22ms）。
+
+**判例**：见 build.md 批次 209 节（测试栈是迁移真实坑/harness 空格路径/daemon 本就在 25）。
+**性能口径**：运行时收益待配对浸泡量化（COH/ZGC/JIT 入口已记入 build.md 运维注记）；
+**兼容口径**：插件零影响（编译目标仍是上游 Paper 1.21.11 v65；Papo 不发布 api 工件）。

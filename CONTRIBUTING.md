@@ -5,8 +5,9 @@
 
 ## 红线（先读）
 
-1. **游戏版本钉死 Minecraft 1.21.11**：`gradle.properties`（mcVersion/apiVersion）与根
-   `build.gradle.kts`（paperweight 2.0.0-beta.19、Java 21 工具链）绝不能取上游 26.x 侧的值。
+1. **游戏版本钉死 Minecraft 1.21.11**：`gradle.properties`（mcVersion/apiVersion）与
+   paperweight 2.0.0-beta.19 绝不能取上游 26.x 侧的值。Java 工具链自 2026-10-27（批次 209，
+   用户决断）为 **25**——这是本 fork 的既定形态而非上游漂移。
 2. **默认行为与 vanilla/Paper 等价**：只做可证等价的优化；涉及行为面（时序、事件、随机）
    的候选默认判负，除非用户明确授权。
 3. RNG 族（种子派生）、插件可见 API、存档格式不做变更。
@@ -28,7 +29,7 @@
 
 ## 验证门（缺一不可）
 
-1. `compileJava --rerun-tasks --no-configuration-cache` 显式 BUILD SUCCESSFUL
+1. `compileJava --rerun-tasks --no-configuration-cache` 显式 BUILD SUCCESSFUL（工具链 25）
    （configuration cache 与 up-to-date 绿灯不构成证据）。
 2. 全量 `test` 套件绿；触及 NMS 静态的 mock 测试必须自带 `@BeforeAll` bootstrap。
 3. 行为等价改动附恒等单测（oracle 对拍），机械改动附 JMH 微基准
