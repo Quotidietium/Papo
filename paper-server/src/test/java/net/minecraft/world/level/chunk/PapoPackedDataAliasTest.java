@@ -83,7 +83,7 @@ public class PapoPackedDataAliasTest {
         final Object storage = storageOf(decoded);
         Assertions.assertTrue(storage instanceof net.minecraft.util.SimpleBitStorage);
         Assertions.assertNotSame(tagArray, ((net.minecraft.util.SimpleBitStorage) storage).getRaw(), "NBT decode must not alias the tag array");
-        Assertions.assertArrayEquals(tagArray, ((net.minecraft.util.SimpleBitStorage) storage).getRaw(), "value identity is preserved");
+        Assertions.assertTrue(java.util.Arrays.equals(tagArray, ((net.minecraft.util.SimpleBitStorage) storage).getRaw()), "value identity is preserved");
     }
 
     @Test

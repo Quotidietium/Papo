@@ -65,7 +65,7 @@ public class PapoReencodeIdentityTest {
             Strategy.createForBlockStates(net.minecraft.world.level.block.Block.BLOCK_STATE_REGISTRY)
                 .getConfigurationForPaletteSize(legacy.getSize()).bitsInStorage(), 4096, ints);
 
-        Assertions.assertArrayEquals(legacyStorage.getRaw(), packed.storage().get(),
+        Assertions.assertTrue(java.util.Arrays.equals(legacyStorage.getRaw(), packed.storage().get().toArray()), // Papo - compat: storage() is LongStream again (vanilla ABI restored)
             "pack() wire bytes must match the legacy array pipeline (palette id assignment is order-defined)");
         Assertions.assertEquals(legacy.getEntries(), packed.paletteEntries(),
             "palette entries (id order) must match the legacy ascending-first-occurrence assignment");

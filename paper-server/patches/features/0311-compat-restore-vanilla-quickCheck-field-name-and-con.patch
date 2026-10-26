@@ -1,0 +1,50 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Tue, 27 Oct 2026 00:32:39 +0800
+Subject: [PATCH] compat: restore vanilla quickCheck field name and
+ configureSerialization 4-arg overload
+
+Furnace quickCheck keeps the upstream field name (lazy materialization unchanged); the wire-accounting 6-arg configureSerialization no longer replaces the upstream 4-arg signature.
+
+diff --git a/net/minecraft/network/Connection.java b/net/minecraft/network/Connection.java
+index f48332a6e5040e8c5d446ea2643f2cb861e897b1..da3b9e204faff83bb9777b5f0adc432adfaa514c 100644
+--- a/net/minecraft/network/Connection.java
++++ b/net/minecraft/network/Connection.java
+@@ -755,6 +755,15 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
+     }
+ 
+     // Papo start - wire byte accounting: thread per-connection counters into the frame codec factory
++    // Papo - compat fix: the vanilla 4-arg configureSerialization over the SAME class shape is kept as a
++    // delegating overload (the 6-arg version had replaced it in place - a binary break for any
++    // external caller compiled against the upstream signature).
++    public static void configureSerialization(
++        ChannelPipeline pipeline, PacketFlow flow, boolean memoryOnly, @Nullable BandwidthDebugMonitor bandwidthDebugMonitor
++    ) {
++        configureSerialization(pipeline, flow, memoryOnly, bandwidthDebugMonitor, null, null);
++    }
++
+     public static void configureSerialization(
+         ChannelPipeline pipeline, PacketFlow flow, boolean memoryOnly, @Nullable BandwidthDebugMonitor bandwidthDebugMonitor,
+         @javax.annotation.Nullable java.util.concurrent.atomic.AtomicLong papoReceivedWireBytes, @javax.annotation.Nullable java.util.concurrent.atomic.AtomicLong papoSentWireBytes
+diff --git a/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java b/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java
+index a484de6ad2fdb3d9283706a194149622c041a015..f94805442443947ebe3273bfd8fb565436fe3738 100644
+--- a/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java
+@@ -110,14 +110,14 @@ public abstract class AbstractFurnaceBlockEntity extends BaseContainerBlockEntit
+     // residency state - never pay the per-furnace CachedCheck closure allocation; the first
+     // fed tick materializes it from recipeType (public final), creating exactly what the
+     // constructor used to build eagerly.
+-    private RecipeManager.@Nullable CachedCheck<SingleRecipeInput, ? extends AbstractCookingRecipe> papoQuickCheck;
++    private RecipeManager.@Nullable CachedCheck<SingleRecipeInput, ? extends AbstractCookingRecipe> quickCheck; // Papo - compat: vanilla field name kept (batch 186 had renamed it)
+ 
+     private RecipeManager.CachedCheck<SingleRecipeInput, ? extends AbstractCookingRecipe> papoQuickCheck() {
+-        final RecipeManager.CachedCheck<SingleRecipeInput, ? extends AbstractCookingRecipe> check = this.papoQuickCheck;
++        final RecipeManager.CachedCheck<SingleRecipeInput, ? extends AbstractCookingRecipe> check = this.quickCheck;
+         if (check != null) {
+             return check;
+         }
+-        return this.papoQuickCheck = RecipeManager.createCheck(this.recipeType);
++        return this.quickCheck = RecipeManager.createCheck(this.recipeType);
+     }
+     // Papo end
+     public final RecipeType<? extends AbstractCookingRecipe> recipeType; // Paper - cook speed multiplier API

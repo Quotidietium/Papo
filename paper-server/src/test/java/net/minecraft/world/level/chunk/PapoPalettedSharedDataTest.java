@@ -178,9 +178,12 @@ public class PapoPalettedSharedDataTest {
         final int threads = 8;
         final CountDownLatch ready = new CountDownLatch(threads);
         final CountDownLatch go = new CountDownLatch(1);
-        final List<PalettedContainer<String>> out = new java.util.ArrayList<>(threads);
+        // Papo - compat round 2: per-thread slots instead of a shared ArrayList - concurrent
+        // add on a plain ArrayList is a lost-write race (this test flaked with size 7/8).
+        final PalettedContainer<String>[] out = new PalettedContainer[threads];
         final List<Thread> ts = new java.util.ArrayList<>(threads);
         for (int i = 0; i < threads; i++) {
+            final int slot = i;
             final Thread t = new Thread(() -> {
                 ready.countDown();
                 try {
@@ -189,7 +192,7 @@ public class PapoPalettedSharedDataTest {
                     Thread.currentThread().interrupt();
                     return;
                 }
-                out.add(new PalettedContainer<>("a", strategy, null));
+                out[slot] = new PalettedContainer<>("a", strategy, null);
             }, "papo-pcd-" + i);
             ts.add(t);
             t.start();
@@ -199,8 +202,8 @@ public class PapoPalettedSharedDataTest {
         for (final Thread t : ts) {
             t.join(10_000);
         }
-        Assertions.assertEquals(threads, out.size());
         for (final PalettedContainer<String> c : out) {
+            Assertions.assertNotNull(c, "thread failed to populate its slot");
             Assertions.assertSame(expected, c.data);
         }
     }
