@@ -35,8 +35,12 @@ import java.util.regex.Pattern;
 public final class MemSoakVerify {
 
     private static final int PORT = 25596;
-    private static final String JAVA = "F:/Java/21/bin/java.exe";
-    private static final String JCMD = "F:/Java/21/bin/jcmd.exe";
+    // Papo - batch 209: follow the harness JVM (java.home) instead of a pinned absolute path
+    // (the F:/Java/21 install vanished; harness is expected to run on JDK 25 post-migration).
+    private static final String JAVA = new java.io.File(new java.io.File(System.getProperty("java.home"), "bin"),
+        System.getProperty("os.name", "").toLowerCase().contains("win") ? "java.exe" : "java").getAbsolutePath();
+    private static final String JCMD = new java.io.File(new java.io.File(System.getProperty("java.home"), "bin"),
+        System.getProperty("os.name", "").toLowerCase().contains("win") ? "jcmd.exe" : "jcmd").getAbsolutePath();
     private static final double BLOCKS_PER_TICK = 0.25; // 5 b/s（TickSurveyBench 实证速度）
 
     // 直方图关注类（内存驻留画像 + 缓存归因）
