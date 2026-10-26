@@ -68,7 +68,7 @@ public class CraftPersistentDataContainer extends io.papermc.paper.persistence.P
     @Override
     public <T, Z> void set(@NotNull NamespacedKey key, @NotNull PersistentDataType<T, Z> type, @NotNull Z value) {
         Preconditions.checkArgument(key != null, "The NamespacedKey key cannot be null");
-        Preconditions.checkArgument(type != null, "The provided PersistentDataType type cannot be null");
+        Preconditions.checkArgument(type != null, "The provided type cannot be null"); // Papo - compat: upstream Paper message (batch 186 had reworded it)
         Preconditions.checkArgument(value != null, "The provided value cannot be null");
 
         this.papoTags().put(key.toString(), this.registry.wrap(type, type.toPrimitive(value, this.papoAdapterContext()))); // Papo - batch 186 lazy map + lazy adapter

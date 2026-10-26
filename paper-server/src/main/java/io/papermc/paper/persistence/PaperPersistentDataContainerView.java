@@ -27,8 +27,9 @@ public abstract class PaperPersistentDataContainerView implements PersistentData
     // Papo start - batch 186 (R45): the adapter context is only consumed by primitive
     // conversions on paths that require a tag to exist (get with a present value, set) or
     // by the explicit getAdapterContext API - empty containers (the overwhelmingly common
-    // state) never pay its allocation until then.
-    private @Nullable CraftPersistentDataAdapterContext adapterContext;
+    // state) never pay its allocation until then. Visibility stays protected (not private)
+    // so plugin subclasses of this API abstract class keep field compatibility with upstream.
+    protected @Nullable CraftPersistentDataAdapterContext adapterContext;
 
     protected final CraftPersistentDataAdapterContext papoAdapterContext() {
         final CraftPersistentDataAdapterContext context = this.adapterContext;
