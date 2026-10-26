@@ -92,7 +92,7 @@ cd benchmark
   （ObjectAllocationSample#1ms + OldObjectSample）+ 探针门；判读判例全在
   [note/build.md](../note/build.md) 各批次节。
 
-纪律：bot 与 harness 的编译/运行一律钉死 JDK 21（`/f/Java/21/bin`）；腿永远串行
+纪律：bot 与 harness 的编译/运行一律钉死 JDK 25（工具链随批次 209 迁移；本机 `C:/Program Files/Java/latest/jdk-25/bin`，起服 JVM 跟随 harness `java.home`）；腿永远串行
 （端口独占门）；原始数据留 `results/`（不入库，大战役收官后清理）。
 
 ## 依赖

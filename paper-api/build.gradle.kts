@@ -85,9 +85,9 @@ dependencies {
     testImplementation("org.apache.commons:commons-lang3:3.17.0")
     testImplementation("org.junit.jupiter:junit-jupiter:5.12.2")
     testImplementation("org.hamcrest:hamcrest:2.2")
-    testImplementation("org.mockito:mockito-core:5.14.1")
+    testImplementation("org.mockito:mockito-core:5.20.0") // Papo - Java 25 migration (batch 209): 5.14's ByteBuddy cannot parse class-file v69
     testImplementation("org.ow2.asm:asm-tree:9.9.1")
-    mockitoAgent("org.mockito:mockito-core:5.14.1") { isTransitive = false } // configure mockito agent that is needed in newer java versions
+    mockitoAgent("org.mockito:mockito-core:5.20.0") { isTransitive = false } // configure mockito agent that is needed in newer java versions
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
