@@ -33,6 +33,20 @@ public class PapoLazyItemsListTest {
 
     private static final int[] SIZES = {1, 3, 5, 9, 27, 64};
 
+    // Papo start - compat: NonNullList.set rejects null with NPE (Objects.requireNonNull before
+    // the backing delegation); the lazy list must keep that fast-fail contract instead of
+    // silently storing nulls that explode far away from the write site.
+    @org.junit.jupiter.api.Test
+    void setNullThrowsNpeLikeNonNullList() {
+        final net.minecraft.core.NonNullList<net.minecraft.world.item.ItemStack> list =
+            net.minecraft.world.item.PapoLazyItemsList.papoOf(3);
+        org.junit.jupiter.api.Assertions.assertThrows(NullPointerException.class, () -> list.set(0, null));
+        // and a materialized list keeps the same contract
+        list.set(0, net.minecraft.world.item.ItemStack.EMPTY);
+        org.junit.jupiter.api.Assertions.assertThrows(NullPointerException.class, () -> list.set(1, null));
+    }
+    // Papo end
+
     @Test
     void emptyStateMatchesOracle() {
         for (final int n : SIZES) {

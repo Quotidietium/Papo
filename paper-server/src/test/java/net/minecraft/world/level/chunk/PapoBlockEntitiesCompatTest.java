@@ -17,15 +17,13 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
-// Papo start - batch 161 (R20): the lazy block-entities map contract. ChunkAccess.blockEntities
-// is null until the first mutation; null is observably identical to the old eagerly-allocated
-// empty map for every audited read (size/keySet/values/containsKey/get/getBlockEntitiesPos)
-// and the two put-sites allocate through papoBlockEntitiesWritable(). The empty view is the
-// immutable Collections.emptyMap() - a write through it fails loudly, which pins the audited
-// read-only contract of getBlockEntities() callers (any future write-through site surfaces as
-// an immediate UnsupportedOperationException instead of a silent lost update).
-// Construction follows the batch 147/149 synthetic-registry test pattern.
-public class PapoLazyBlockEntitiesTest {
+// Papo start - compat fix (revert of batch 161/R20 lazy field): the public block-entities
+// contract as of Paper 1.21.11. `ChunkAccess.blockEntities` and `getBlockEntities()` hand
+// plugins a live, writable, always-non-null map - NMS-touching plugins iterate it and write
+// through it directly. These tests pin that contract: fresh chunk => non-null empty mutable
+// map; writes through getBlockEntities() are visible; the papo* accessors alias the same
+// live map. Construction follows the batch 147/149 synthetic-registry test pattern.
+public class PapoBlockEntitiesCompatTest {
 
     private static final Holder<Biome> PLAINS = Holder.direct(null);
     private static final Holder<Biome> DESERT = Holder.direct(null);
@@ -74,33 +72,42 @@ public class PapoLazyBlockEntitiesTest {
     }
 
     @Test
-    void lazyFieldStaysNullUntilFirstMutation() {
+    void freshChunkHasLiveEmptyMutableMap() {
         final ProtoChunk chunk = protoChunk();
-        Assertions.assertNull(chunk.blockEntities, "fresh chunk must not allocate the map");
-        Assertions.assertTrue(chunk.papoBlockEntitiesView().isEmpty());
+        Assertions.assertNotNull(chunk.blockEntities, "plugin-visible field must never be null (Paper 1.21.11 contract)");
+        Assertions.assertTrue(chunk.blockEntities.isEmpty());
         Assertions.assertTrue(chunk.getBlockEntities().isEmpty());
         Assertions.assertTrue(chunk.getBlockEntitiesPos().isEmpty());
         Assertions.assertNull(chunk.getBlockEntity(BlockPos.ZERO));
+        // The map must be writable by plugins directly through the public field.
+        final BlockEntity be = org.mockito.Mockito.mock(BlockEntity.class);
+        Assertions.assertDoesNotThrow(() -> chunk.blockEntities.put(BlockPos.ZERO, be));
+        Assertions.assertSame(be, chunk.getBlockEntity(BlockPos.ZERO));
     }
 
     @Test
-    void emptyViewIsImmutableByContract() {
+    void getBlockEntitiesReturnsLiveWritableMap() {
         final ProtoChunk chunk = protoChunk();
-        Assertions.assertThrows(UnsupportedOperationException.class,
-            () -> chunk.getBlockEntities().put(BlockPos.ZERO, org.mockito.Mockito.mock(BlockEntity.class)),
-            "empty view must fail loudly on write-through (audited read-only contract)");
+        final BlockEntity be = org.mockito.Mockito.mock(BlockEntity.class);
+        org.mockito.Mockito.when(be.getBlockPos()).thenReturn(BlockPos.ZERO);
+        // Plugin pattern that the lazy-view scheme broke with UOE: write through the getter.
+        Assertions.assertDoesNotThrow(() -> chunk.getBlockEntities().put(BlockPos.ZERO, be));
+        Assertions.assertEquals(1, chunk.getBlockEntities().size());
+        Assertions.assertSame(be, chunk.getBlockEntity(BlockPos.ZERO));
+        Assertions.assertSame(chunk.blockEntities, chunk.getBlockEntities(), "getter must expose the same live map as the field");
     }
 
     @Test
-    void writableAllocatesOnceAndServesLiveView() {
+    void papoAccessorsAliasTheLiveMap() {
         final ProtoChunk chunk = protoChunk();
+        Assertions.assertSame(chunk.blockEntities, chunk.papoBlockEntitiesView());
+        Assertions.assertSame(chunk.blockEntities, chunk.papoBlockEntitiesWritable());
         final BlockEntity first = org.mockito.Mockito.mock(BlockEntity.class);
         final BlockEntity second = org.mockito.Mockito.mock(BlockEntity.class);
         org.mockito.Mockito.when(first.getBlockPos()).thenReturn(BlockPos.ZERO);
         org.mockito.Mockito.when(second.getBlockPos()).thenReturn(new BlockPos(1, 0, 0));
         chunk.setBlockEntity(first);
         chunk.setBlockEntity(second);
-        Assertions.assertNotNull(chunk.blockEntities, "first mutation must allocate");
         Assertions.assertEquals(2, chunk.blockEntities.size());
         Assertions.assertSame(first, chunk.getBlockEntity(BlockPos.ZERO));
         Assertions.assertSame(second, chunk.getBlockEntity(new BlockPos(1, 0, 0)));
@@ -109,20 +116,19 @@ public class PapoLazyBlockEntitiesTest {
     }
 
     @Test
-    void removeOnUnallocatedMapIsANoOp() {
+    void removeOnEmptyMapIsANoOp() {
         final ProtoChunk chunk = protoChunk();
         Assertions.assertDoesNotThrow(() -> chunk.removeBlockEntity(BlockPos.ZERO));
-        Assertions.assertNull(chunk.blockEntities, "removal on the null state must not allocate");
+        Assertions.assertTrue(chunk.getBlockEntities().isEmpty());
     }
 
     @Test
-    void removalKeepsTheMapAllocatedLikeTheOldEmptyMap() {
+    void removalKeepsTheMapLikeVanilla() {
         final ProtoChunk chunk = protoChunk();
         final BlockEntity be = org.mockito.Mockito.mock(BlockEntity.class);
         org.mockito.Mockito.when(be.getBlockPos()).thenReturn(BlockPos.ZERO);
         chunk.setBlockEntity(be);
         chunk.removeBlockEntity(BlockPos.ZERO);
-        Assertions.assertNotNull(chunk.blockEntities, "post-mutation map persists (same as the old empty map)");
         Assertions.assertTrue(chunk.getBlockEntities().isEmpty());
     }
 }

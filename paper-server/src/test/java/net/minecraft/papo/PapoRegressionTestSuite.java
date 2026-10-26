@@ -6,7 +6,7 @@ package net.minecraft.papo;
 import ca.spottedleaf.moonrise.patches.starlight.light.PapoSWMRSharedNibbleTest;
 import ca.spottedleaf.moonrise.patches.starlight.light.PapoSWMRUniformNibbleTest;
 import net.minecraft.util.PapoZeroBitStorageSharedTest;
-import net.minecraft.world.level.chunk.PapoLazyBlockEntitiesTest;
+import net.minecraft.world.level.chunk.PapoBlockEntitiesCompatTest;
 import net.minecraft.world.level.chunk.PapoNoiseChunkParkReleaseTest;
 import net.minecraft.world.level.chunk.PapoPalettedSharedDataTest;
 import net.minecraft.world.level.chunk.PapoSharedConstantSectionTest;
@@ -40,7 +40,10 @@ import org.junit.platform.suite.api.SuiteDisplayName;
 
 @Suite(failIfNoTests = false)
 @SuiteDisplayName("Papo regression suites")
-@SelectClasses({PapoNoiseChunkParkReleaseTest.class, PapoLazyBlockEntitiesTest.class, PapoPosTypeSetLazyTest.class, PapoZeroBitStorageSharedTest.class, PapoPalettedSharedDataTest.class, PapoSWMRSharedNibbleTest.class, PapoSWMRUniformNibbleTest.class, PapoSharedConstantSectionTest.class, PapoStructureTemplateCacheTest.class, PapoShapeInternTest.class, PapoSurfaceRulesAllocTest.class, PapoBinaryHeapReleaseTest.class,
+@SelectClasses({
+    net.minecraft.network.PapoPipelineGuardTest.class,
+    net.minecraft.network.PapoSharedWireMemoContentTest.class,
+    net.minecraft.world.level.levelgen.placement.PapoPlacementLockstepTest.class,PapoNoiseChunkParkReleaseTest.class, PapoBlockEntitiesCompatTest.class, PapoPosTypeSetLazyTest.class, PapoZeroBitStorageSharedTest.class, PapoPalettedSharedDataTest.class, PapoSWMRSharedNibbleTest.class, PapoSWMRUniformNibbleTest.class, PapoSharedConstantSectionTest.class, PapoStructureTemplateCacheTest.class, PapoShapeInternTest.class, PapoSurfaceRulesAllocTest.class, PapoBinaryHeapReleaseTest.class,
     PapoBlockCountRecalcIdentityTest.class,
     PapoReadUtfIdentityTest.class,
     PapoPackedDataAliasTest.class,
