@@ -1,16 +1,19 @@
 # 性能报告索引（note/report/perf/）
 
 本目录是 Papo 全部性能量化报告。三大优化主题的逐批全日志（含等价性论证与判例）
-在 [optimizations.md](../../optimizations.md)；此处按时代索引，重点是内存主线（2026-10）。
+在 [optimizations.md](../../optimizations.md)；此处按时代索引。
 
 ## 时代索引
 
 | 时代 | 日期 | 批次 | 主题 | 报告 |
 |---|---|---|---|---|
 | R1 多核调度 | 2026-08-26~27 | 78-96 | 池 sizing/存档 IO 下放/事件驱动 join | `2026-08-26-*`/`2026-08-27-*` |
+| R2+R3 多核续作 | 2026-08~09 | 97-122 | **已抛弃**（2026-09-03 用户决断，tag `archive/multicore-r3`） | 无（历史在 tag） |
 | R4 红石 VANILLA | 2026-09-05~07 | 123-131 | 红石评估级联 | `2026-09-0*` |
 | JMH 微基准 | 2026-07-30~08-22 | 23-77 | 分配/编解码/事件门控微基准 | `*-jmh-microbench-*` |
 | **内存主线 R5-R15** | 2026-10-09~10 | 141-155 | 多玩家多区块加载下最低内存 | 见下表 |
+| **延伸 R16-R40** | 2026-10-10~12 | 156-181 | shape/SWMR/驻留残余/分配源战役 | 见下表 |
+| **窗口普查 R41-R64** | 2026-10-12~13 | 182-205 | 二十一个负载域普查全覆盖（含收割与判负留档） | 见下表 |
 
 ## 内存主线（R5-R15，0.80.0 → 0.88.0）
 
@@ -82,10 +85,11 @@ jcmd heap_info 活集；配对纪律=同会话相邻二进制、LevelChunk ±1% 
 | R61 | 202 | 0.110.0 | **天气/雷电轴（thunder 600s+LightningBolt 风暴 576 雷）**→判负闭合（第十八域；无代码变更；探针腿复合定谳） | 事实核查：骑乘/载具=0122 已收割判出/投射物=批41-44 弹射物专题已深度收割判出/聊天=0133 已收割+Brigadier 已判否判出/**天气雷电全史零命中**（Lightning/Thunder grep=0）=从未被任何时代任何口径碰过→真新格；harness（boom=3 复用 boom 骨架 bot 零改动）：weather thunder 600+石板+24 波×2 雷/bot=576 雷+fire 多点探针；**探针腿先行复合定谳**（R58/R59/R60 判例链）：summonEcho=576/576（"Summoned new Lightning Bolt"）+**JFR Lightning 15/FireBlock 5/Thunder 1/Weather 1 帧在场**=雷电链铁证——fire 探针三点零命中=统计性落点测量瑕疵（10% 点火×±3 随机偏移固定点必 miss）+weather query 零命中=**控制台回显本地化陷阱**（zh_cn translatable 组件英文 grep 不可用），免重跑；A 对照腿门绿；B 事件 +23.1%；**链本体 23 帧=十八域历史最低量级**（两数量级低于 R58 红石 550）：叶子=CollectingNeighborUpdater.shapeUpdate（雷击火邻域更新=R58 维持）+LightningBolt.tick+事件机器基建=零单体面；B 独有 RegistryFriendlyByteBuf +94=**R44 维持同脸第四见**；共享增量=**雷暴期 spawn 陪跑**（NaturalSpawner +123/+121=B 事件主体，R57/R60 同款）+自观测按事件率放大；A 独有=SpreadingSnowyDirt.randomTick 位移（**天气切换改变 randomTick/spawn 模式的相位画像**——天气轴差分先剥离 spawn 陪跑再谈链本体）；回流三面：travel-dedupe 带内（50→95）/**批73 PapoSharedWireMemo B=9（A=0）=雷击火 setBlock 广播第三域覆盖实证**（红石→TNT→雷击火）/**0119 BlockIgnite 门控零帧=对真实雷击触发者无代价回流**；存活侧 32/8 全 spark 族；heap B +12.6%=spawn+区块脏数据面；四支柱判负（量级+零恒等可证标的+vanilla 语义本体+相位带内）；判例：雷击火统计性落点（多点邻域扫描）/控制台回显本地化陷阱（探针用 say tag 恒英文）/探针腿复合门免重跑/天气轴相位画像先剥离 spawn 陪跑；分配普查第十八域→判负留档 | [lightning-r61](2026-10-13-lightning-r61-batch202.md) |
 | R62 | 203 | 0.112.0 | **村民调度/POI 轴（144 librarian 村庄调度风暴）→三机械面收割（0299，第十九域；两步 0.111.0+0.112.0）** | 事实核查：地图=批38 已收/成就=批26+79/82+R49 多重/药水=批39+53+0210 三重/传送门独有面薄判出；**Villager/PoiManager/acquirePOI 全史零命中**（R25 只有自然 mob Brain 驻留画像+寻路 Node 收割）=真新格；harness vill 参数（石板+2 格墙+lectern POI+librarian×12/bot=144 村民 brain 每 tick 调度+AcquirePoi 每 20-40tick BFS 查询）+职业校验探针（防 NBT 路径错变 nitwit）；B 事件 +51%；**B−A 深栈三面立项**：Brain 三层 for-each 迭代器 1,261 trips（R41"什么都不做的路径也要分配"通式）/PoiAccess BFS 工作集 rehash 519+resize 151/SecondaryPoiSensor 405 格 offset 171（R37 scratch 族）；0299：**Brain 脏标记 lazy 快照遍历**（运行期突变容忍=Villager.refreshBrain 职业转换证伪冻结假设；快照序≡TreeMap×HashMap 桶序×LinkedHashSet 插入序逐位恒等）+PoiAccess ThreadLocal 双槽（第二步 V111 配对腿浮出 FIFO resize 残余 160=fastutil grow-ladder 线程轮转爬升→2048 预容量补齐，R39 不留半脸）+Sensor 单 cursor（命中 immutable()）；恒等单测 9 用例（自查纠偏三次=同 tick startEach+tickEach 双段语义×2+closest-only 语义）套件 177 绿+全套件 --rerun 绿+链门+出包 javap 嵌套 jar 验；**MSPT 三序零回归**（主序 B 劣 4/6+倒序 B 优 5/6+钉死 B 优 5/6=R37 后跑腿伪影形态，唯一大额 s2 +2.2 两序双破号=R38 瞬态）；**配对腿 V110 vs V112 四面全坍缩**（LinkedKeySet 1,305→0/rehash 501→0/FIFO resize 110→0/Sensor offset 166→0；V111 中间版三面坍缩+FIFO 残余如实分层）；判负维持：物理走位族/brain 语义小面（Optional/MemoryCondition/ShufflingList）/RegistryFriendlyByteBuf +156=R44 第五见/自观测/保存族/Moonrise 调度池；判例六条：回显词=display name/门与 harness 输出约定腿前对齐/运行期结构突变容忍是快照立项前提/paperclip 嵌套 javap 验法/R37 伪影二度/对象复用≠内部数组复用（grow-ladder+配对腿浮出）；分配普查第十九域→收割留档 | [villager-r62](2026-10-13-villager-r62-batch203.md) |
 | R63 | 204 | 0.113.0 | **流体轴（水盆流动风暴 24 波×12 bot 水条/气条互质扫位）→SpreadContext isHole de-lambda 收割（0301，第二十域）+预容量面配对字节账本判负回退** | 事实核查：投射物=批41-44/坐骑=0122+0147/卸载=R49/粒子=服务端无粒子（R61 判例）全判出；流体=批30/31 微基准单点≠普查成像（R58 wire 同构判例），SpreadContext 全史零补丁命中=真新格；harness fluid=args[12]（石板水盆 24×24+围墙 2 格+24 波水条/气条互质扫位=FlowingFluid.tick→spread→getSlopeDistance 再计算风暴）+FLUID-WATER/WALL/DRY 探针；B−A +10.3%；链本体族 585 events/597.0MB：isHole 捕获 lambda 216/218.8MB 立项收割（computeIfAbsent 捕获 lambda 每 call 一实例 hit 也分配）+rehash 44/44.7MB 后判负+relative 244/below 25=结果对象维持（R52 同判）；剥离：自观测 toString 链 ~500（R41）/fillStartsForStructure +156=水改 heightmap→spawn 采样相位分岔（R61 相位判例）/AABB=水推挤实体；0046/0079/0104/0106 零回流；OldObjectSample 零流体帧=纯瞬态轴；0301：显式 containsKey/get+miss 逐字 compute-then-put（map 每 spread() 单线程+compute 体只碰异 map=恒等可证）；**预容量 128-expected 中间版配对腿实测 `<init>` +94 trips/+98.7MB>ladder 节约 44.7MB=字节负判负回退**（per-call 临时容器 vs R62 持久槽 regime 相反）；验证：恒等单测 4/0/0（oracle=isWaterHole 非缓存重算差分+hit 路径 below 恰一次+世界突变仍回缓存值）+全套件 9,101/0 绿+链门+出包 javap 验 isHole 0 lambda；最终配对腿：isHole lambda 216→0、族 585→374 events（−36%）/597.0→391.2MB（−34%）、rehash 回基线噪声带、零替代面；MSPT 三序守护；判例六条：fill 控制台零回显门退役（R61 wq 新形态）/模板复制参数逐位重数（vill/fluid 位错两犯）/预容量字节账本否决（trips 坍缩≠字节收益）/trips 门与字节门分开判读/配对中间版=判负证据生产器/归因帧移动按分配语义对齐 | [fluid-r63](2026-10-13-fluid-r63-batch204.md) |
+| R64 | 205 | 0.113.0 | **农业生长轴（骨粉催熟链）分配普查——第二十一域选定+探针基础设施+双腿 GREEN，普查链暂停于差分前（进行中）** | 选轴：验证器候选五轴（火/光/繁殖+傀儡+enderman）全历史命中判出；`CropBlock\|BonemealItem\|BlockFertilizeEvent\|captureTreeGeneration` 全史零补丁命中=真新格；预期收割面=useOn 双捕获开关→setBlock 捕获路径（LinkedHashMap+pos.immutable）→尾排空（ArrayList copy+StructureGrowEvent+BlockFertilizeEvent 恒构造+snapshot.place）；harness grow=args[13]（farmland[moisture=7] 5×5+wheat 田+24 波×12 bot×12 USE_ITEM_ON 骨粉风暴）+OfflineJoinBot papoSendLock 帧级互斥+GrowVerify 单 bot 验证器；双腿 GREEN（0.113.0 同版对照）：B 风暴 uses=3456 全生效/ageadv=5、A 对照 uses=0/ageadv=0/age0=1（反向正证据）；JFR 双事件集在位；**B−A 差分与逐面判定未做**（收尾指令暂停），恢复路径见报告 §4；判例四条：flat item id 源码声明序≠运行时注册序（BONE_MEAL=1082 四槽候选回显定位法）/sendPacket 无锁跨线程并发写帧损坏（帧级互斥锁修复）/farmland 干涸回退弹麦掉种链（moisture=7+creative 槽位直写）/探针确定性化（多龄×多位必中） | [grow-r64](2026-10-13-grow-r64-batch205.md) |
 
 ## 终局状态
 
-- **内存战役收敛终局（R43 声明，0.80.0→0.107.0；终局后延伸轮 R45-R63 至 0.113.0）**：驻留轴
+- **内存战役收敛终局（R43 声明，0.80.0→0.107.0；终局后延伸轮 R45-R63 至 0.113.0；R64 进行中）**：驻留轴
   （R5-R22）每区块 189.5→101.4KB（**−46.5%**，三轴收敛+同会话直对+长时生长+延迟守护四重闭合）；
   分配源轴（R24-R40）流送窗事件 **−32.6%/按区块 −51.7%**、权重按区块 **−63.2%**、同窗吞吐
   **+39.7%**、G1New 7→4、驻留按区块再 −10.3%；新窗口轮（R41-R42）驻留稳态 tick 窗与
@@ -95,6 +99,8 @@ jcmd heap_info 活集；配对纪律=同会话相邻二进制、LevelChunk ±1% 
   （流送/盘载/驻留/实体+保存/机械负载/物品旋涡/方块交互/玩家生命周期/存活
   归因维度/高并发流送/多域叠加/极高实体密度/长时复合浸泡/维度轴/红石 wire/方块放置/爆炸/天气雷电/村民调度 POI/流体——七至二十域 R48-R52/R55-R61 判负留档+R62/R63 收割，R51 兼收割面
   5× 规模坍缩终验通过，R52 直接证明隔离闭合可外推复合负载，R53 复合高压版本配对坍缩 1,056→0；R54 复合 MSPT 守护零回归，R55 极端密度（4× 站立 14.7k 活体）坍缩 175→0，R56 长时复合浸泡 22.5min 收割面零回流+零积累=终验矩阵六维闭合（驻留/存活/高并发/复合分配/复合延迟/极端密度）+时间维外推（短窗→长窗）闭合）。
+  **第二十一域（农业生长轴，R64）选定+harness 就绪、双腿 GREEN，普查链暂停于 B−A 差分前
+  （恢复路径见 [grow-r64 报告 §4](2026-10-13-grow-r64-batch205.md)）。**
 - **延迟轴**：R15-R47 逐批相邻版本三序守护**全零回归**（判读判例集：第二腿伪影/外离腿/
   同序复跑终审/自缩放混杂/相变槽漂移第五对终审）。
 - **残余判负**（红线内无已识别未收割机械面，R43 终局余量声明）：wrap/mapAll 架构改写
@@ -107,7 +113,9 @@ jcmd heap_info 活集；配对纪律=同会话相邻二进制、LevelChunk ±1% 
 - **判例总集**：各批条目内联于 [optimizations.md](../../optimizations.md)；分组索引见
   [R43 终局声明](2026-10-12-saveio-closure-r43-batch184.md)。
 
-工具与数据：bot 浸泡套件（`benchmark/src/papo/bot/`：MemSoakVerify/OfflineJoinBot/
-HeapRefAttr/ShellRefAttr/LongRunGrowth/MsptLoadProbe 等）+ 腿脚本
-（`benchmark/memsoak-*.sh`、`msptload-r15legs.sh`）；原始数据不入库，留
-`benchmark/results/`（含 B-088 转储 memsoak-1791582031387 / 1791591974980）。
+工具与数据：bot 浸泡套件（`benchmark/src/papo/bot/` 35 类：MemSoakVerify/OfflineJoinBot/
+HeapRefAttr/ShellRefAttr/LongRunGrowth/MsptLoadProbe/CompositeCensus 等）+ 腿脚本
+（`benchmark/alloccensus-*.sh`、`memsoak-*.sh`、`msptload-*.sh` 等 67 个，索引见
+[benchmark/README.md](../../../benchmark/README.md)）；原始数据不入库，留
+`benchmark/results/`（.gitignore 内，无自动轮转——大战役收官后清理，2026-10-12
+清理轮已释放 22G）。
