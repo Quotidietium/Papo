@@ -40,9 +40,10 @@ public class PapoSharedWireMemoContentTest {
     @Test
     void hashIsIndexNeutral() {
         final ByteBuf buf = bytes("abcdefgh");
+        final int writerBefore = buf.writerIndex();
         final long before = PapoSharedWireMemo.papoHashBytes(buf);
         Assertions.assertEquals(0, buf.readerIndex(), "hash must not move readerIndex");
-        Assertions.assertEquals(buf.writerIndex(), buf.capacity(), "hash must not move writerIndex");
+        Assertions.assertEquals(writerBefore, buf.writerIndex(), "hash must not move writerIndex");
         Assertions.assertEquals(before, PapoSharedWireMemo.papoHashBytes(buf), "hash must be stable");
         buf.release();
     }

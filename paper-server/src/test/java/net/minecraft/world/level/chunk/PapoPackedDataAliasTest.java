@@ -59,8 +59,13 @@ public class PapoPackedDataAliasTest {
         }
     }
 
+    // Papo - compat fix (batch 206): the R31 alias was removed. Vanilla's decode path
+    // (getLongStream().toArray()) always produced an isolated copy; retaining the tag's own
+    // array aliased the decoded container to tag storage, so an NMS plugin holding the tag
+    // and the live chunk could corrupt each other. The contract is now value-identical AND
+    // isolated - this test pins the restored copy semantics.
     @Test
-    void nbtRoundTripIsValueIdenticalAndAliasesTheTagArray() {
+    void nbtRoundTripIsValueIdenticalAndIsolatedFromTheTagArray() {
         final PalettedContainer<BlockState> source = mixedContainer();
         final Tag encoded = codec.encodeStart(NbtOps.INSTANCE, source).getOrThrow();
         final CompoundTag packed = (CompoundTag) encoded;
@@ -72,11 +77,13 @@ public class PapoPackedDataAliasTest {
         for (int i = 0; i < 4096; ++i) {
             Assertions.assertEquals(source.get(i), decoded.get(i), "cell " + i);
         }
-        // the alias proof: the retained storage IS the tag's own array (no copy anywhere
-        // between readAccounted and SimpleBitStorage retention)
+        // Papo - compat fix (batch 206): the decoded storage must NOT alias the tag's array.
+        // Vanilla (getLongStream().toArray()) always isolated; the R31 alias let a retained
+        // LongArrayTag and the live container corrupt each other through the shared long[].
         final Object storage = storageOf(decoded);
         Assertions.assertTrue(storage instanceof net.minecraft.util.SimpleBitStorage);
-        Assertions.assertSame(tagArray, ((net.minecraft.util.SimpleBitStorage) storage).getRaw(), "NBT decode must alias the tag array");
+        Assertions.assertNotSame(tagArray, ((net.minecraft.util.SimpleBitStorage) storage).getRaw(), "NBT decode must not alias the tag array");
+        Assertions.assertArrayEquals(tagArray, ((net.minecraft.util.SimpleBitStorage) storage).getRaw(), "value identity is preserved");
     }
 
     @Test

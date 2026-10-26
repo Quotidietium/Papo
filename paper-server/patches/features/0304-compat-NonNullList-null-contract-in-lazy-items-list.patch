@@ -1,0 +1,22 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Tue, 27 Oct 2026 00:10:05 +0800
+Subject: [PATCH] compat: NonNullList null contract in lazy items list
+
+PapoLazyItemsList.set now does Objects.requireNonNull(value) exactly like NonNullList.set instead of silently storing nulls.
+
+diff --git a/net/minecraft/world/item/PapoLazyItemsList.java b/net/minecraft/world/item/PapoLazyItemsList.java
+index e422452b12de04396e0deb65fae1d977cdb2c496..b8de5070f094907750bfcd8cbba0f2e9dc38ac51 100644
+--- a/net/minecraft/world/item/PapoLazyItemsList.java
++++ b/net/minecraft/world/item/PapoLazyItemsList.java
+@@ -64,6 +64,10 @@ public final class PapoLazyItemsList extends NonNullList<ItemStack> {
+ 
+     @Override
+     public ItemStack set(final int index, final ItemStack value) {
++        // Papo - compat: NonNullList.set does Objects.requireNonNull(value) before delegating;
++        // the direct backing delegation in batch 186 silently stored nulls instead. Restore
++        // the upstream contract.
++        java.util.Objects.requireNonNull(value);
+         List<ItemStack> b = this.backing;
+         if (b == null) {
+             final ItemStack[] filled = new ItemStack[this.fixedSize];

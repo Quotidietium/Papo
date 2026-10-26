@@ -1,0 +1,25 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Tue, 27 Oct 2026 00:10:06 +0800
+Subject: [PATCH] compat: no pickup animation on the canPickupItems=false fast
+ path
+
+PlayerPickupItemEvent.setCancelled(true) also sets flyAtPlayer=false, so vanilla sends no take-animation packet here; the fast path no longer sends one either.
+
+diff --git a/net/minecraft/world/entity/item/ItemEntity.java b/net/minecraft/world/entity/item/ItemEntity.java
+index d78273d59f9a92ddab7d872e8463b62b4652a02b..b262cdec5904a72d70257b4ac5d4abcf7bdfe959 100644
+--- a/net/minecraft/world/entity/item/ItemEntity.java
++++ b/net/minecraft/world/entity/item/ItemEntity.java
+@@ -455,7 +455,11 @@ public class ItemEntity extends Entity implements TraceableEntity {
+                     && org.bukkit.event.entity.EntityPickupItemEvent.getHandlerList().getRegisteredListeners().length == 0) {
+                     if (!entity.getBukkitEntity().getCanPickupItems()) {
+                         item.setCount(count); // SPIGOT-5294 - restore count
+-                        entity.take(this, count); // Papo fix - batch 135: the vanilla cancelled branch plays the fly animation (flyAtPlayer defaults true with zero listeners)
++                        // Papo - compat fix: NO entity.take() here. The vanilla path calls
++                        // playerEvent.setCancelled(true), and PlayerPickupItemEvent.setCancelled
++                        // also sets flyAtPlayer=false (see the API), so vanilla's flyAtPlayer
++                        // branch is DEAD on this path - no pickup animation packet is sent. The
++                        // batch-135 "fix" that added take() here misread flyAtPlayer's default.
+                         return;
+                     }
+                     item.setCount(canHold + remaining); // = i (events cannot swap the stack with no listeners)

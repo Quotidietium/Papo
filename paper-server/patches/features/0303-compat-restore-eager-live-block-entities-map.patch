@@ -1,0 +1,75 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Tue, 27 Oct 2026 00:10:04 +0800
+Subject: [PATCH] compat: restore eager live block-entities map
+
+ChunkAccess.blockEntities is public final and never null again, with the exact vanilla constructor (capacity pins iteration order); papoBlockEntitiesView/Writable stay as live-map aliases.
+
+diff --git a/net/minecraft/world/level/chunk/ChunkAccess.java b/net/minecraft/world/level/chunk/ChunkAccess.java
+index f08acef2a3154cf486935cc26955427b1ff642c1..e1efa319d3d423ef67b9476de6cb09d1f6749149 100644
+--- a/net/minecraft/world/level/chunk/ChunkAccess.java
++++ b/net/minecraft/world/level/chunk/ChunkAccess.java
+@@ -76,21 +76,18 @@ public abstract class ChunkAccess implements BiomeManager.NoiseBiomeSource, Ligh
+     private final Map<Structure, StructureStart> structureStarts = Maps.newHashMap();
+     private final Map<Structure, LongSet> structuresRefences = Maps.newHashMap();
+     protected final Map<BlockPos, CompoundTag> pendingBlockEntities = Maps.newHashMap();
+-    // Papo start - batch 161 (R20): lazy block-entities map. Every ChunkAccess used to pay an
+-    // eagerly-allocated fastutil Object2ObjectOpenHashMap (map header + Object[16] keys +
+-    // Object[16] values, ~210B) at construction, yet in natural terrain the overwhelming
+-    // majority of chunks never hold a single block entity (stone/deepslate/water/air carry
+-    // none) - measured 13,810 live maps against 4,947 loaded chunks at 12 bots / vd10, i.e.
+-    // ~8.9k permanently-empty maps (~1.9MB), including the 4,947 ImposterProtoChunk instances
+-    // whose inherited map is provably never touched (all their block-entity accessors
+-    // delegate to the wrapped LevelChunk). null is the new empty state; readers route through
+-    // papoBlockEntitiesView() (immutable empty view, observably identical for the audited
+-    // read-only call sites: size/keySet/values/containsKey/get) and the two put-sites through
+-    // papoBlockEntitiesWritable(). All direct field users live in this package plus
+-    // org.bukkit.craftbukkit (CraftChunk/CraftWorld, reads only) - audited batch 161.
+-    @Nullable
+-    public Map<BlockPos, BlockEntity> blockEntities;
+-    // Papo end - batch 161 (R20)
++    // Papo start - batch 161 (R20) lazy map REVERTED (compat fix): the @Nullable lazy field broke
++    // the public contract of this field and of getBlockEntities() for NMS-touching plugins -
++    // `chunk.blockEntities` is null on empty chunks (vanilla: always a live map, NPE for plugins)
++    // and LevelChunk/ProtoChunk.getBlockEntities() handed out an immutable empty view (vanilla:
++    // the live map, UOE for plugins that write through it). The residency win (~1.9MB at 12
++    // bots/vd10) does not justify the compatibility break; the field is eagerly allocated again
++    // with the exact vanilla constructor (capacity included: fastutil iteration order depends on
++    // table size and is observable through iteration order of saved block entities).
++    // papoBlockEntitiesView()/papoBlockEntitiesWritable() remain as trivial field aliases so the
++    // batch-161 call sites stay source-compatible.
++    public final Map<BlockPos, BlockEntity> blockEntities = new Object2ObjectOpenHashMap<>();
++    // Papo end
+     protected final LevelHeightAccessor levelHeightAccessor;
+     protected final LevelChunkSection[] sections;
+     // CraftBukkit start - SPIGOT-6814: move to IChunkAccess to account for 1.17 to 1.18 chunk upgrading.
+@@ -237,22 +234,18 @@ public abstract class ChunkAccess implements BiomeManager.NoiseBiomeSource, Ligh
+         return set;
+     }
+ 
+-    // Papo start - batch 161 (R20): block-entities map accessors for the lazy field; see the
+-    // field comment for the residency rationale. View never allocates; writable allocates on
+-    // the first mutation only. getBlockEntities() callers across the server are read-only
+-    // (audited), so the immutable empty-map view is observably identical.
++    // Papo start - batch 161 (R20): block-entities map accessors. The lazy-null scheme was
++    // reverted for plugin NMS compatibility (see the field comment); both accessors are now
++    // trivial live-map aliases kept so the batch-161 call sites stay source-compatible and
++    // semantically vanilla (view == writable == the always-live map).
+     public final Map<BlockPos, BlockEntity> papoBlockEntitiesView() {
+-        return this.blockEntities == null ? Collections.<BlockPos, BlockEntity>emptyMap() : this.blockEntities;
++        return this.blockEntities;
+     }
+ 
+     public final Map<BlockPos, BlockEntity> papoBlockEntitiesWritable() {
+-        Map<BlockPos, BlockEntity> map = this.blockEntities;
+-        if (map == null) {
+-            this.blockEntities = map = new Object2ObjectOpenHashMap<>();
+-        }
+-        return map;
++        return this.blockEntities;
+     }
+-    // Papo end - batch 161 (R20)
++    // Papo end
+ 
+     public LevelChunkSection[] getSections() {
+         return this.sections;
