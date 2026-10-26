@@ -4727,3 +4727,74 @@ R49 joins/lefts 同法通式）/探针腿先行省一轮试错/`execute unless e
 - **判例四条（详记 build.md）**：flat item id 源码声明序≠运行时注册序（dye 块程序化注册 +16 漂移：源码序 1066=white_dye，BONE_MEAL 真身=1082；四槽候选回显定位法）/sendPacket 无锁跨线程并发写帧损坏（风暴主线程 USE vs bot 线程 50ms MOVE——帧级互斥锁修复；R59 单线程从未踩中≠协议安全）/farmland 干涸回退弹麦掉种链（moisture=7+creative 槽位直写武装）/探针确定性化（多龄×多位必中，R60 统计性落点判例的确定性化；探针位避开 bot 脚下不驻留格）。
 
 报告：[note/report/perf/2026-10-13-grow-r64-batch205.md](report/perf/2026-10-13-grow-r64-batch205.md)。
+
+---
+
+## 批次 206（2026-10-26）：插件兼容性修复轮——性能战役补丁对抗兼容审计 + 13 项缺陷修复（0302-0308，→0.114.0）
+
+**背景**：实际使用中性能更新后与大量插件不兼容。事实核查：0267-0301（内存+分配战役 35 补丁）
+自诞生起从未经过对抗兼容审计（审计线 132-140 覆盖到 0.80.0 为止；R2/R3 审计线随用户决断抛弃）。
+四簇并行深审（事件门控 45 补丁/内存战役/分配战役/网络 join 0213-0251）+ 直提交全史 + 品牌面自查。
+
+**修复清单**（全部恢复 Paper 1.21.11 基线行为，不改任何 API）：
+
+1. **Brand-Name 构建清单**：`Papo` → `Paper`（brandName() 经 Bukkit.getName()/getServerModName()
+   外泄到 client brand payload；brand 门控是插件最常见 Paper 判定法）。
+2. **0302 共享包/管线纯净门**：PapoPipelineGuard（fail-closed：管线出现任何非原生 handler 类
+   即判非纯）；区块包缓存/共享实例（PlayerChunkSender 分支）、join 包缓存
+   （SynchronizeRegistriesTask/PlayerList recipes——非纯连接拿全新构造，缓存实例永不递给
+   可变它的插件，递出污染链断路）、pairing 扫描共享（ServerEntity 逐观众判定+污染即弃缓存）、
+   PacketEncoder encode-memo/压缩 memo 武装全部过门；CompressionEncoder 压缩 memo 增加
+   FNV-1a 内容哈希校验（回放必命中当前连接字节——防同实例被改后回放陈旧字节，也防
+   字段拷贝克隆携带 memo 的旁路）；player-info 双 memo 彻底拆除（displayName 走
+   per-receiver-locale localizedCodec，memo=冻结首位观众 locale=R2/R3 被抛弃修复 0268 本体）。
+3. **0303 blockEntities 恒非 null 活 map**：0278 的 @Nullable 懒字段+空视图对 NMS 插件是
+   NPE/UOE 双破坏（审计只盖了仓内调用点，插件是盲区）；恢复 public final 急构造
+   （构造器逐字 vanilla——容量改变迭代序也是可观察行为），view/writable 留作活 map 别名。
+4. **0304 PapoLazyItemsList.set null 契约**：恢复 Objects.requireNonNull。
+5. **0305 anti-xray + NBT 别名**：带 presetValues 的节不 canonical 化（共享实例构造传 null
+   preset→ChunkPacketBlockControllerAntiXray 跳过该节→engine-mode 2/3 uniform 节明文出网，
+   物化后 copy() 继承 null=永久失混淆）；PAP0_LONG_ARRAY 解码 clone（vanilla
+   getLongStream().toArray() 恒隔离拷贝，别名化使活区块 storage 与 LongArrayTag 互通污染）。
+6. **0306 模板兼容**：TemplateStructurePiece.template protected final 字段恢复（R10 删除
+   =NMS 自定义结构 piece 的 NoSuchFieldError）；PapoStructureCache.papoProtect——Bukkit
+   getStructure/getStructures 递出活实例即防逐出（vanilla 恒同实例；逐出后 getStructure
+   返回 null + 未保存内存改动丢失双破坏）。
+7. **0307 拾取动画**：!canPickupItems 零监听快路去掉 entity.take（PlayerPickupItemEvent
+   .setCancelled(true) 隐式置 flyAtPlayer=false——批次 135 误读 API 联动；多发动画包
+   =setCanPickupItems(false) 类插件全员可见回归）。
+8. **0308 放置锁步门**：papoForEachPosition final 入口+ClassValue 锁步判定
+   （getPositions/forEachPosition 同类声明才走循环孪生；只覆盖 getPositions 的插件形态
+   经桥接仍由其覆盖驱动）。
+9. **直提交**：PDC set 异常文案恢复上游；adapterContext 保持 protected；
+   CraftStructureManager 递出即保护（配合 0306）。
+
+**判负留档（审查确认 SAFE/可观察但非破坏，不改）**：事件门控 45 补丁全 SAFE（HandlerList
+归属/构造默认值/时序逐项验证；"子类共享父表"声明全部经 paper-api 核实）；0241 缓存失效面
+完备；0247 无观众跳过与 seenBy 语义一致；0249/0250/0251 有界等待与状态机守卫成立
+（R2/R3 无界等待已由现行 60s 有界修复）；0210/0211/0212 等值包抑制=同实例重设仍重广播
+（作者预留的插件重同步通道），新实例等值重设被抑制——已知低危偏离留档；0282 ≤48B String
+去重使跨线程共享实例（==/identity 缓存更多命中，equals 语义不变）；0281 全局 palette
+（>256 态单节）计数数组 ~108KB 性能悬崖（行为逐位一致）；0283 PackedData.storage() 签名
+Optional<LongStream>→Optional<long[]> 的 NMS ABI 变更（需重编译，运行时反射罕见）；
+0277 pre-carver NoiseChunk 释放的 legacy-blend 世界等价性未证（建议差分测试，非插件面）。
+
+**判例**：
+1. **共享可变实例的递出即污染**：跨连接共享的包实例/缓存数组，只要曾递给可改它的对象
+   （插件管线、Bukkit API），就必须假设被改——门必须装在"递出点"且 fail-closed。
+2. **"locale 无关"断言必须查到 codec 末梢**：组件序列化在 FriendlyByteBuf 上按连接 locale
+   分派（adventure$locale 属性），包级"确定性"论证漏掉 displayName 这类组件字段。
+3. **事件语义联动**：setCancelled 联动改其他字段（flyAtPlayer）是 API 契约的一部分，
+   零监听快路复现"构造→callEvent→读"必须含联动效果。
+4. **NMS 公共字段是 API**：@Nullable 化/删字段/final 剥离对 NMS 插件都是二进制/行为破坏；
+   懒化收益（~210B/实例）不够支付。
+5. **纯度判定按精确类名**：子类化原生 handler=外来（类名不同）；匿名 handler 按
+   声明类前缀（Connection$N）匹配；未知一律非纯（fail-closed，未来上游加 handler
+   只损失优化不损失正确性）。
+6. **内容校验回放**：identity 键控的 memo 想兼容"对象可能被改"的世界，回放前对当前输入
+   做内容哈希校验（O(n) 内存扫描 << O(deflate)），失配即压缩当前字节。
+
+**验证**：新增 4 兼容回归测试类+1 用例（管线门 fail-closed 四态/memo 内容命中-失配-重填/
+锁步三形态/方块实体活 map 契约/懒列表 null）全注册套件；compileJava+compileTestJava 显式
+BUILD SUCCESSFUL；rebuildPatches（首跑 rebuildResourcePatches git stash 128 文锁间歇判例
+复发，重跑即过）→applyPatches→test 链门；版本 0.113.0→0.114.0。

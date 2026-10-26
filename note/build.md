@@ -805,3 +805,32 @@ entities/blockEntities 段"）。改 ServerLevel tick 结构时记得同步该�
 2. **sendPacket/sendRaw 无锁=跨线程并发写帧损坏**：风暴驱动线程的 USE 包与 bot 自身 walk 循环每 50ms 的 MOVE_PLAYER_POS 并发写同一 socket，帧交错后服务器静默丢弃——症状是"uses 全发但 ageadv=0"的假阴性（两次 VOID 腿的真因）。修=帧级互斥锁（write+flush 原子段）。判例：**R59 单线程发送从未踩中≠协议安全；多线程驱动的协议腿必须帧级互斥**，这类失败不抛异常只丢效果，最易误判为协议编码错误。
 3. **farmland 干涸回退弹麦掉种链**：干 farmland（moisture<7）被 randomTick 打回 dirt→小麦弹落掉种→bot 走位拾取 wheat_seeds 占 slot 0→后续 give 落他槽→手持=种子在"种田"不在"催熟"。修=建田用 farmland[moisture=7]（保水+防回退）+手持武装坚持 SET_CREATIVE_MODE_SLOT 槽位直写（确定性覆盖，不用 give）。判例：**长窗协议风暴腿的目标方块态必须对抗 randomTick 漂移**（干涸/生长/蔓延三类自漂移都要锚定或排除）。
 4. **探针确定性化（R60 统计性落点判例的确定性化）**：催熟一次推进 2-5 龄是随机分布——单龄单格探针有 miss 概率，必须多龄（age=2..5）×多位（cell 扫位）使"命中≥1"成为确定事件而非统计事件。另：bot 脚下中心格 wheat 不驻留（实体占位），探针位集必须显式避开该格（风暴驱动位与探针位同式计算即天然一致）。
+
+## 2026-10-26 补充：批次 206（插件兼容修复轮）判例
+
+### Windows 用户 SID 变更 → 全部 git 仓 dubious ownership（重建类任务 128）
+
+**症状**：`rebuildPatches` 在 `rebuildResourcePatches` 稳定失败 `git stash push` exit 128（两次
+重跑不过，非文锁间歇判例——判例"重跑即过"只适用于单次）。手跑 stash 暴露真因：`detected
+dubious ownership`，仓库属主 SID `S-1-5-21-1626371262-…` ≠ 当前用户 SID
+`S-1-5-21-3725959389-…`（Windows 用户配置文件重建导致本机 SID 变更；外层仓因当前会话
+一直可写而隐性同病）。**修复**：`git config --global --add safe.directory` 登记外仓 +
+两个内部仓（`src/minecraft/java` 与 `src/minecraft/resources`）。**判例**：①重建类任务
+128 连续两次即应手跑内部 git 命令看真实报错，不要按文锁判例无限重跑；②safe.directory
+只认 global/system 配置（repo 级自证无效）；③诊断入口=`rebuildResourcePatches` 的
+`stash push`（rebuildSourcePatches 同病但可能先报别处）。
+
+### 共享包/memo 与插件改包的兼容门（本轮 0302 的设计判例）
+
+1. **递出即污染**：跨连接共享的包实例/缓存数组，只要曾递给可改它的对象（协议层插件管线、
+   Bukkit API 持引用者），就必须假设被改。兼容门必须装在**递出点**且 fail-closed
+   （未知 handler 一律判非纯——未来上游新增 handler 只损失优化不损失正确性）。
+2. **纯度按精确类名**：子类化原生 handler=外来（类名不同即非纯）；匿名 handler 按声明类
+   前缀（`Connection$N`）匹配。检测位选在武装/递出判定处（管线遍历 ~12 项，非每包）。
+3. **内容校验回放**：identity 键控的压缩 memo 兼容"对象可能被改"的世界的办法=回放前对
+   当前连接字节做 FNV-1a 校验（O(n) 扫描 << O(deflate)，哈希须在 deflate 前算——deflate
+   可能移动包装缓冲的 readerIndex）。
+4. **locale 敏感包永不 memo**：组件序列化按连接 locale 分派（FriendlyByteBuf adventure
+   locale 属性），"包 codec 确定性"论证必须查到 codec 末梢的每个组件字段。
+5. **NMS 公共字段即 API**：@Nullable 化（0278）、删字段（0273）、final 剥离都是二进制/
+   行为破坏；懒化收益 ~210B/实例不够支付。fastutil 容量也保持 vanilla——容量改变迭代序。
