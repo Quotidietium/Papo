@@ -1,100 +1,49 @@
-Paper [![Paper Build Status](https://img.shields.io/github/actions/workflow/status/PaperMC/Paper/build.yml?branch=main)](https://github.com/PaperMC/Paper/actions)
-[![Discord](https://img.shields.io/discord/289587909051416579.svg?label=&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/papermc)
-[![GitHub Sponsors](https://img.shields.io/github/sponsors/papermc?label=GitHub%20Sponsors)](https://github.com/sponsors/PaperMC)
-[![Open Collective](https://img.shields.io/opencollective/all/papermc?label=OpenCollective%20Sponsors)](https://opencollective.com/papermc)
-===========
+# Papo
 
-The most widely used, high-performance Minecraft server that aims to fix gameplay and mechanics inconsistencies.
+基于 [Paper](https://github.com/PaperMC/Paper)（Minecraft 1.21.11）的高性能服务端 fork，
+专注于**可证行为等价**的底层性能优化：默认行为与 vanilla/Paper 语义逐位一致，
+每一处优化都附带等价性论证、恒等单测与真实服务器实测验证。
 
+- 游戏版本：Minecraft **1.21.11**（protocol 774）
+- 当前版本：**0.113.0**（`gradle.properties` 的 `papoVersion`，独立于 Paper API 版本演进）
+- 许可：GPL-3.0（随上游 Paper，见 [LICENSE.md](LICENSE.md)）
 
-**Support and Project Discussion:**
-- [Our forums](https://forums.papermc.io/) or [Discord](https://discord.gg/papermc)
+## 核心成果
 
-How To (Server Admins)
-------
-Paperclip is a jar file that you can download and run just like a normal jar file.
+| 战役 | 结果 |
+|---|---|
+| 内存驻留（R5-R22，0.80.0→0.92.0） | 每区块驻留 189.5→101.4KB（**−46.5%**），四重闭合复验 |
+| 分配源（R24-R40，0.92.0→0.105.0） | 流送窗事件 **−32.6%**/按区块 **−51.7%**，同窗吞吐 **+39.7%** |
+| 红石轴（R4，0.59.0→0.80.0） | N=441 环振荡器计划 tick 相位中位 **−19.8%**，振荡速率逐位不变 |
+| 分配普查 | 二十个负载域全覆盖（流送/盘载/实体/红石/爆炸/雷电/村民/流体等），收割面六维终验零回流 |
+| 延迟守护 | 相邻版本三序 MSPT 配对守护全零回归 |
 
-Download Paper from our [downloads page](https://papermc.io/downloads/paper).
+红线：稳定性、安全性、API/行为兼容；优先可证行为等价的改动，判负候选实测留档后回退。
 
-Run the Paperclip jar directly from your server. Just like old times
+## 构建
 
-* Documentation on using Paper: [docs.papermc.io](https://docs.papermc.io)
-* For a sneak peek at upcoming features, [see here](https://github.com/PaperMC/Paper/projects)
+需要 JDK 21 与网络（Mojang / PaperMC 仓库）。Windows 本机构建判例（Gradle daemon、
+网络、补丁工作流踩坑）见 [note/build.md](note/build.md)。
 
-How To (Plugin Developers)
-------
-* See our API [here](paper-api)
-* See upcoming, pending, and recently added API [here](https://github.com/orgs/PaperMC/projects/2/views/4)
-* Paper API javadocs here: [papermc.io/javadocs](https://papermc.io/javadocs/)
-#### Repository (for paper-api)
-##### Maven
-
-```xml
-<repository>
-    <id>papermc</id>
-    <url>https://repo.papermc.io/repository/maven-public/</url>
-</repository>
+```bash
+./gradlew applyPatches            # 应用补丁，生成可编辑源码树
+./gradlew createMojmapBundlerJar  # 编译打包（paper-server/build/libs/）
+./gradlew :paper-server:createPapoJar  # 复制重命名为 Papo-1.21.11-<papoVersion>.jar
+./gradlew test                    # JUnit 测试套件（含 37 个 Papo 恒等/回归测试类）
 ```
 
-```xml
-<dependency>
-    <groupId>io.papermc.paper</groupId>
-    <artifactId>paper-api</artifactId>
-    <version>1.21.11-R0.1-SNAPSHOT</version>
-    <scope>provided</scope>
-</dependency>
-```
-##### Gradle
-```kotlin
-repositories {
-    maven {
-        url = uri("https://repo.papermc.io/repository/maven-public/")
-    }
-}
+## 文档（note/）
 
-dependencies {
-    compileOnly("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
-}
+| 文档 | 内容 |
+|---|---|
+| [note/build.md](note/build.md) | 构建环境、补丁工作流、全部踩坑判例 |
+| [note/optimizations.md](note/optimizations.md) | 优化总日志（批次 1-205，每条含等价性论证） |
+| [note/report/perf/README.md](note/report/perf/README.md) | 性能报告时代索引与终局状态（先读这份） |
+| [note/release/](note/release/) | 逐版本变更记录 |
+| [note/ops-empty-world-ticking.md](note/ops-empty-world-ticking.md) | 运营配置旋钮的源码级语义 |
+| [benchmark/](benchmark/) | JMH 微基准 + 离线协议 bot + 真实服务器测量 harness |
 
-java {
-    toolchain.languageVersion.set(JavaLanguageVersion.of(21))
-}
-```
+## 上游
 
-How To (Compiling Jar From Source)
-------
-To compile Paper, you need JDK 21 and an internet connection.
-
-Clone this repo, run `./gradlew applyPatches`, then `./gradlew createMojmapBundlerJar` from your terminal. You can find the compiled jar in the `paper-server/build/libs` directory.
-
-To get a full list of tasks, run `./gradlew tasks`.
-
-How To (Pull Request)
-------
-See [Contributing](CONTRIBUTING.md)
-
-Old Versions (1.21.3 and below)
-------
-For branches of versions 1.8-1.21.3, please see our [archive repository](https://github.com/PaperMC/Paper-archive).
-
-Support Us
-------
-First of all, thank you for considering helping out, we really appreciate that!
-
-PaperMC has various recurring expenses, mostly related to infrastructure. Paper uses [Open Collective](https://opencollective.com/) via the [Open Source Collective fiscal host](https://opencollective.com/opensource) to manage expenses. Open Collective allows us to be extremely transparent, so you can always see how your donations are used. You can read more about financially supporting PaperMC [on our website](https://papermc.io/sponsors).
-
-You can find our collective [here](https://opencollective.com/papermc), or you can donate via GitHub Sponsors [here](https://github.com/sponsors/PaperMC), which will also go towards the collective.
-
-Special Thanks To:
--------------
-
-[![YourKit-Logo](https://www.yourkit.com/images/yklogo.png)](https://www.yourkit.com/)
-
-[YourKit](https://www.yourkit.com/), makers of the outstanding java profiler, support open source projects of all kinds with their full featured [Java](https://www.yourkit.com/java/profiler) and [.NET](https://www.yourkit.com/.net/profiler) application profilers. We thank them for granting Paper an OSS license so that we can make our software the best it can be.
-
-[<img src="https://user-images.githubusercontent.com/21148213/121807008-8ffc6700-cc52-11eb-96a7-2f6f260f8fda.png" alt="" width="150">](https://www.jetbrains.com)
-
-[JetBrains](https://www.jetbrains.com/), creators of the IntelliJ IDEA, supports Paper with one of their [Open Source Licenses](https://www.jetbrains.com/opensource/). IntelliJ IDEA is the recommended IDE for working with Paper, and most of the Paper team uses it.
-
-All our sponsors!  
-[![Sponsor Image](https://raw.githubusercontent.com/PaperMC/papermc.io/data/sponsors.png)](https://papermc.io/sponsors)
+- [Paper](https://github.com/PaperMC/Paper)（PaperMC）——本 fork 的上游与本体的绝大部分工程量来源
+- 上游漏洞报告与支持请走 [PaperMC 官方渠道](https://github.com/PaperMC/Paper/issues)
