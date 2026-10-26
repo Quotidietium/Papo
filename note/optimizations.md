@@ -4839,3 +4839,35 @@ BUILD SUCCESSFUL；rebuildPatches（首跑 rebuildResourcePatches git stash 128 
 **SmokeJoinVerify 真实冒烟全绿**（joins=10/10·exit=0·logErrors=0·产物 OK·稳态 join p50=22ms）
 ——批次 206+207 全部改动的首次真机验证；另修 harness 起服 JVM 常量腐烂判例（跟随
 java.home）。
+
+---
+
+## 批次 208（2026-10-27）：插件兼容修复第三轮——机械化公开面完备扫描（0312，→0.116.0）
+
+**背景**：前两轮靠子代理注意力找到的 ABI 破坏（PackedData record 组件/configureSerialization
+替换/quickCheck 改名）提示同类可能漏网。本轮不再抽样：对 fork 全部三处代码面做签名级全量比对。
+
+**方法**：正则签名抽取器（public/protected 方法与字段，按名聚合重载）+ 各面正确基线：
+NMS 面=内部仓 0040 父提交（上游 Paper 特性补丁全部应用后）；CraftBukkit 面=e7d7a0f99
+（1.21.11 内容恢复提交，fork 合并点本身含 26.x 污染）；paper-api=fork 全提交清点。
+扫出的候选逐项 pickaxe 归因，排除上游同步（Moonrise/velocity natives 等签名本就是基线）。
+
+**结果（完备性声明）**：
+- NMS 面 254 文件：删除 3（handlerRemoved0/Shulker getXRotD+getYRotD 修复；items 字段
+  描述符安全）、变更 2（均描述符安全）；CraftBukkit 面 22 文件：删除 1（描述符安全）；
+  paper-api：零删除零替换。
+- 两个扫描器判例：①文件清单与内容读取必须同一基线（首版清单用 Papo 边界、内容仍读
+  vanilla base，Moonrise 签名被误报）；②归一化必须 rstrip（尾随空格伪差异淹没真差异）、
+  变更分类按"旧签名是否全部保留"（新增重载=加法）。
+
+**修复（0312）**：
+1. `Varint21FrameDecoder.handlerRemoved0`：0155 删 helperBuf 时误删 protected override——
+   恢复 super 委托（含 `throws Exception`，与上游签名逐字一致）。
+2. `Shulker.getYRotD/getXRotD`：0048 转 boolean 协议时把 Optional 覆盖面转掉——恢复两个
+   委托 override（hasXRotD/hasYRotD 写入的值与被删实现逐位一致）。
+
+**判例**：**公开面兼容审计的终局形态是机械全量比对而非抽样**——正则签名抽取+正确基线
++pickaxe 归因三部曲，把"还有没有漏网"从置信问题变成完备性问题。
+
+**验证**：compileJava 显式 SUCCESSFUL；rebuildPatches（0312 零垃圾名）→applyPatches→
+全量 test 全绿；出包 0.116.0。
