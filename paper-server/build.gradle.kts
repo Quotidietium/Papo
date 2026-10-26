@@ -167,8 +167,8 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter:5.12.2")
     testImplementation("org.junit.platform:junit-platform-suite-engine:1.12.2")
     testImplementation("org.hamcrest:hamcrest:2.2")
-    testImplementation("org.mockito:mockito-core:5.14.1")
-    mockitoAgent("org.mockito:mockito-core:5.14.1") { isTransitive = false } // Configure mockito agent that is needed in newer java versions
+    testImplementation("org.mockito:mockito-core:5.20.0") // Papo - Java 25 migration (batch 209): 5.14's ByteBuddy cannot parse class-file v69
+    mockitoAgent("org.mockito:mockito-core:5.20.0") { isTransitive = false } // Configure mockito agent that is needed in newer java versions
     testImplementation("org.ow2.asm:asm-tree:9.9.1")
     testImplementation("org.junit-pioneer:junit-pioneer:2.2.0") // CartesianTest
 
@@ -294,10 +294,9 @@ fun TaskContainer.registerRunTask(
         .dir(providers.gradleProperty("paper.runWorkDir").getOrElse("run"))
         .asFile
     javaLauncher.set(project.javaToolchains.launcherFor {
-        languageVersion.set(JavaLanguageVersion.of(21))
-        vendor.set(JvmVendorSpec.JETBRAINS)
+        languageVersion.set(JavaLanguageVersion.of(25)) // Papo - Java 25 migration (batch 209); JETBRAINS vendor pin dropped (JBR 25 not guaranteed locally)
     })
-    jvmArgs("-XX:+AllowEnhancedClassRedefinition")
+    // Papo - "-XX:+AllowEnhancedClassRedefinition" removed: JBR-only DCEVM flag, not supported by the standard JDK 25 runtime
 
     if (rootProject.childProjects["test-plugin"] != null) {
         val testPluginJar = rootProject.project(":test-plugin").tasks.jar.flatMap { it.archiveFile }
