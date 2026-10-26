@@ -206,7 +206,10 @@ tasks.jar {
             "Specification-Version" to project.version,
             "Specification-Vendor" to "Papo", // Papo - brand
             "Brand-Id" to "papermc:paper", // Papo - kept for plugin compatibility (isBrandCompatible)
-            "Brand-Name" to "Papo", // Papo - brand
+            "Brand-Name" to "Paper", // Papo - MUST stay "Paper": brandName() feeds Bukkit.getName() and
+            // getServerModName() (client brand payload); a fork-specific value breaks the large class
+            // of plugins that gate Paper-only behavior on the brand string. Papo identity is exposed
+            // via Papo-Version below, ServerBuildInfo.papoVersion() and /version.
             "Papo-Version" to papoVersion, // Papo - papo version
             "Build-Number" to (build ?: ""),
             "Build-Time" to buildTime.toString(),
