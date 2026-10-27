@@ -910,3 +910,43 @@ mojmap bundler jar 固定路径；③bundler 把 libraries 解包进 CWD——re
 
 起服/jcmd 路径改跟随 `java.home`（原 `F:/Java/21` 硬编码已死——与 SmokeJoinVerify 同判例，
 批次 207 判例第二度应用）。
+
+## 2026-10-27 补充：批次 210——工具链全面升级到最新（2026-10-27 查证）
+
+### 升级矩阵（依据源均为当日权威源）
+
+| 组件 | 旧 → 新 | 依据 | 验证 |
+|---|---|---|---|
+| Gradle wrapper | 9.4.1 → 9.8.2 | services.gradle.org/versions/current（9.8.2 构建 2026-10-19） | 双模块全量 build 绿，paperweight beta.19 兼容 |
+| mockito（双模块+agent） | 5.20.0 → 5.24.0 | Maven Central release | 双模块全测试绿 |
+| junit-jupiter | 5.12.2 → 5.14.4 | Maven Central 5 线 latest（6.1.3 被阻，见判例一） | 148+测试类绿 |
+| junit-platform suite/launcher | 1.12.2/无版本 → 1.14.4 显式钉 | 与 jupiter 5.14.4 对齐 | 绿 |
+| junit-pioneer | 2.2.0 → 2.3.0 | 2 线 latest（3.0 仅 RC1） | @CartesianTest 套件绿 |
+| hamcrest | 2.2 → 3.0 | Maven Central release | 绿 |
+| commons-lang3（api test） | 3.17.0 → 3.21.0 | release | 绿 |
+| asm-tree（双模块） | 9.9.1 → 9.11.1 | release | 绿 |
+| classgraph | 4.8.179 → 4.8.199 | 4.8 线 latest（6.0.0 被阻，见判例二） | 绿 |
+| JDK | 25.0.5.0.2（不变） | Adoptium API：most_recent_lts=25 | 已是最新 LTS 线 |
+| JMH | 1.37（不变） | Maven Central release=1.37 | 已是最新 |
+| foojay-resolver | 1.0.0（不变） | plugin portal latest=1.0.0 | 已是最新 |
+| paperweight | 2.0.0-beta.19（**不动**） | 红线：fork 基线（最新 beta.24 有意不取） | — |
+| API 运行时依赖（joml/brigadier/jspecify 等） | 不动 | 属上游 API 兼容面，非工具链 | — |
+| benchmark 镜像库（netty/gson/fastutil） | 不动 | 镜像服务端运行时版本，独立升级=失真 | — |
+
+### 判例一：JUnit 6 跨版被"稳定线纪律"阻断
+
+JUnit 全局 latest=6.1.3，但 `@CartesianTest` 依赖的 junit-pioneer 其 JUnit 6 适配线 3.0.0 仅 RC1
+（非正式版）；稳定线 2.3.0 只配 JUnit 5。为 RC 重写测试基建违背本仓判例（不上非正式版），
+故 JUnit 取 5 线 latest 5.14.4 并全文对齐 platform 1.14.4；pioneer 3.0 GA 后可重评估。
+
+### 判例二：classgraph 6.0.0 删除 4.x 扫描 API——4.8 线收尾
+
+6.0.0 移除了 `whitelistPackages`/`getSubclasses`/`getClassesImplementing`，被 5 个上游测试文件
+使用（EntitySetItemSlotSilentOverride/ShearableDrops/Shearable/BlockPlayerDestroyOverride/
+MetaHandledTags）。为测试扫描库重写上游测试=零收益补丁漂移 → 回退 4.8 线 latest 4.8.199
+（179→199 仍取满 4.8 线补丁）。
+
+### 副证：纯工具链升级不改发布产物
+
+9.8.2 全量构建后 0.117.0 jar 任务 up-to-date（字节未变）——test 栈与 wrapper 变更不进入
+发布产物；无需版本号变更。README 版本行陈旧（0.113.0）顺带修正为 0.117.0。
