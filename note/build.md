@@ -978,3 +978,36 @@ acceptPackages 扫描静默返回 0（编译不报错、测试表现为"found 0 
 ### 验证与产物
 
 双模块 build 全绿（9097 测试，原 5 个失败翻绿）；jar 仍 up-to-date（字节未变，无版本号变更）。
+
+## 2026-10-27：批次 211——兼容复核轮 4（批次 208 基线后的全量增量审计）
+
+**结论：批次 208 审计基线（99dec73b2）之后的所有工作（Java 25 迁移、COH/AOT 稳定特性、
+工具链两轮刷新）对外兼容面零变更，除三项用户明示授权的差异外。**
+
+### 机械证据
+
+- **主源零变更**：`git log 99dec73b2..HEAD -- paper-api/src/main paper-server/src/minecraft
+  paper-server/patches` 为空；src/minecraft 虽被外仓忽略，但补丁集（312 个）未动且内部仓
+  树净、HEAD=0312 系列尾——应用树与审计态一致。
+- **增量分类**：23 文件全部属 文档/构建工具/测试源/基准工具 四类，无一进入发布产物。
+- **发布面零变更**：paper-api 构建文件 diff 中 `api(`/publish 零行；gradle.properties 仅
+  `papoVersion 0.116.0→0.117.0` 一行，`mcVersion/apiVersion=1.21.11` 与 paperweight
+  beta.19 红线未动。
+- **API 背离面复核**：对上游导入点的完整背离仍为 **3 文件 +30/−4**（ServerBuildInfo 的
+  default 方法新增 / getVersionMessage 方法体 / EntityDamageEvent 构造器等价改写），
+  与本轮早晨逐 hunk 审计结论一致——批后零漂移。
+- **运行证据**：0.117.0 jar 字节稳定（多轮构建 up-to-date）；同字节 jar 今日加载 Paper
+  官方 test-plugin 全生命周期绿（含 reobf remap 管线）零异常。
+
+### 获准差异清单（全部经用户目标明示授权，除此之外零对外差异）
+
+1. 类文件版本 v65→v69 与运行时 Java 25 要求（批次 209"全面迁移 Java 25"）——插件编译
+   产物（v65 或更低）在 Papo 上加载运行不受影响（JVM 向后兼容）；
+2. `papoVersion` 0.116.0→0.117.0（版本号例行演进）；
+3. `/version` 品牌文案（早期既有，非本轮）。
+
+### 判例：test 域与构建域升级的兼容结论依据
+
+JUnit 6/classgraph 6/mockito/Gradle 升级不触碰产物的证明不是"测试通过"（代理信号），
+而是**产物字节不变 + 发布面 diff 为零**的直接证据；兼容守卫测试（5 个扫描测试）在
+classgraph 6 下继续验证同一不变量（翻绿）。
