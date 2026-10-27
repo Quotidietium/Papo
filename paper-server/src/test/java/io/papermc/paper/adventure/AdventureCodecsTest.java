@@ -6,11 +6,6 @@ import com.mojang.serialization.DataResult;
 import com.mojang.serialization.DynamicOps;
 import com.mojang.serialization.JavaOps;
 import com.mojang.serialization.JsonOps;
-import io.papermc.paper.util.MethodParameterSource;
-import java.lang.annotation.ElementType;
-import java.lang.annotation.Retention;
-import java.lang.annotation.RetentionPolicy;
-import java.lang.annotation.Target;
 import java.net.URI;
 import java.util.List;
 import java.util.Optional;
@@ -44,9 +39,9 @@ import org.bukkit.support.RegistryHelper;
 import org.bukkit.support.environment.VanillaFeature;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
-import org.junitpioneer.jupiter.cartesian.CartesianTest;
 
 import static io.papermc.paper.adventure.AdventureCodecs.CLICK_EVENT_CODEC;
 import static io.papermc.paper.adventure.AdventureCodecs.COMPONENT_CODEC;
@@ -79,6 +74,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.params.provider.Arguments.arguments;
 
 @VanillaFeature
 class AdventureCodecsTest {
@@ -199,35 +195,29 @@ class AdventureCodecsTest {
         assertEquals(requireNonNull(style.color()).value(), requireNonNull(nms.getColor()).getValue());
     }
 
-    @CartesianTest(name = PARAMETERIZED_NAME)
-    void testDirectRoundTripStyle(
-        @MethodParameterSource("dynamicOps") final DynamicOps<?> dynamicOps,
-        @MethodParameterSource("testStyles") final Style style
-    ) {
+    // Papo - batch 210: cartesian coverage rewritten with native @ParameterizedTest argument
+    // streams; junit-pioneer (JUnit 5-only stable line) is gone with the JUnit 6 upgrade.
+    @ParameterizedTest(name = PARAMETERIZED_NAME)
+    @MethodSource("styleOpsArgs")
+    void testDirectRoundTripStyle(final DynamicOps<?> dynamicOps, final Style style) {
         testDirectRoundTrip(dynamicOps, STYLE_MAP_CODEC.codec(), style);
     }
 
-    @CartesianTest(name = PARAMETERIZED_NAME)
-    void testMinecraftRoundTripStyle(
-        @MethodParameterSource("dynamicOps") final DynamicOps<?> dynamicOps,
-        @MethodParameterSource("testStyles") final Style style
-    ) {
+    @ParameterizedTest(name = PARAMETERIZED_NAME)
+    @MethodSource("styleOpsArgs")
+    void testMinecraftRoundTripStyle(final DynamicOps<?> dynamicOps, final Style style) {
         testMinecraftRoundTrip(dynamicOps, STYLE_MAP_CODEC.codec(), net.minecraft.network.chat.Style.Serializer.CODEC, style);
     }
 
-    @CartesianTest(name = PARAMETERIZED_NAME)
-    void testDirectRoundTripComponent(
-        @MethodParameterSource("dynamicOps") final DynamicOps<?> dynamicOps,
-        @TestComponents final Component component
-    ) {
+    @ParameterizedTest(name = PARAMETERIZED_NAME)
+    @MethodSource("componentOpsArgs")
+    void testDirectRoundTripComponent(final DynamicOps<?> dynamicOps, final Component component) {
         testDirectRoundTrip(dynamicOps, COMPONENT_CODEC, component);
     }
 
-    @CartesianTest(name = PARAMETERIZED_NAME)
-    void testMinecraftRoundTripComponent(
-        @MethodParameterSource("dynamicOps") final DynamicOps<?> dynamicOps,
-        @TestComponents final Component component
-    ) {
+    @ParameterizedTest(name = PARAMETERIZED_NAME)
+    @MethodSource("componentOpsArgs")
+    void testMinecraftRoundTripComponent(final DynamicOps<?> dynamicOps, final Component component) {
         testMinecraftRoundTrip(dynamicOps, COMPONENT_CODEC, ComponentSerialization.CODEC, component);
     }
 
@@ -238,6 +228,26 @@ class AdventureCodecsTest {
             JsonOps.INSTANCE
         )
             .map(ops -> RegistryHelper.registryAccess().createSerializationContext(ops))
+            .toList();
+    }
+
+    static Stream<Arguments> styleOpsArgs() {
+        return dynamicOps().stream()
+            .flatMap(ops -> testStyles().stream().map(style -> arguments(ops, style)));
+    }
+
+    static Stream<Arguments> componentOpsArgs() {
+        return dynamicOps().stream()
+            .flatMap(ops -> testComponents().stream().map(component -> arguments(ops, component)));
+    }
+
+    static List<Component> testComponents() {
+        return Stream.of(
+            testTexts(), testTranslatables(), testKeybinds(), testScores(),
+            testSelectors(), testBlockNbts(), testEntityNbts(), testStorageNbts(),
+            testObjects()
+        )
+            .flatMap(List::stream)
             .toList();
     }
 
@@ -320,16 +330,6 @@ class AdventureCodecsTest {
                 )))
                 .build()
         );
-    }
-
-    @Retention(RetentionPolicy.RUNTIME)
-    @Target({ElementType.PARAMETER, ElementType.ANNOTATION_TYPE})
-    @MethodParameterSource({
-        "testTexts", "testTranslatables", "testKeybinds", "testScores",
-        "testSelectors", "testBlockNbts", "testEntityNbts", "testStorageNbts",
-        "testObjects"
-    })
-    @interface TestComponents {
     }
 
     static List<Component> testTexts() {
