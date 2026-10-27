@@ -950,3 +950,31 @@ MetaHandledTags）。为测试扫描库重写上游测试=零收益补丁漂移 
 
 9.8.2 全量构建后 0.117.0 jar 任务 up-to-date（字节未变）——test 栈与 wrapper 变更不进入
 发布产物；无需版本号变更。README 版本行陈旧（0.113.0）顺带修正为 0.117.0。
+
+## 2026-10-27 续：批次 210 第二轮——两项"阻断"解除，JUnit 6.1.3 + classgraph 6.0.0 落地
+
+### 判例一修订：JUnit 6 解封（pioneer 全仓仅 1 个消费者）
+
+pioneer 的 @CartesianTest 全仓只被 AdventureCodecsTest 一个文件（5 方法）使用，且
+`@MethodParameterSource` 是本地薄封装（MethodParameterSource/Provider 两个 util 文件仅服务它）。
+解法：重写为原生 `@ParameterizedTest` + 笛卡尔 `@MethodSource` 参数工厂（styleOpsArgs/
+componentOpsArgs，@TestComponents 九源合并为 testComponents() 流），删 pioneer 依赖与两个
+util 文件。JUnit 升 **6.1.3**（jupiter/suite-engine/launcher 三件统一 6.1.3，双模块）。
+稳定线纪律不变：没有采用 RC（pioneer 3.0.0-RC1），而是消除了对它的需求。
+
+### 判例二修订：classgraph 6.0.0 落地（4 线已 EOL，升 6 是 JDK25 项目的受支持路径）
+
+官方版本矩阵：4=JDK8-16（**EOL**）、5=17-24、6=25+。端口映射：`whitelistPackages`→
+`acceptPackages`；`getSubclasses`→`getAllSubclasses`；`getClassesImplementing`→
+`getAllClassesImplementing`；`loadClass(es)` 删除→`Class.forName(name, false, 测试类加载器)`
+（Gradle 单类路径等价）；`MethodParameterInfo[]`→`List`（`getLast()`）。
+
+**新坑判例：classgraph 6 默认什么都不扫**——必须显式 `.enableClasspath()`，否则任何
+acceptPackages 扫描静默返回 0（编译不报错、测试表现为"found 0 sub types"或参数源为空）。
+官方发行说明明示此 opt-in 变更；独立探针实证：不加=0 类，加后 127/19/768 类全找回。
+另注意 6.0 拆为多工件（classgraph-classpath/-vfs/-base 传递依赖）——手工类路径探针需
+凑齐四 jar，Gradle 自动解析无感。
+
+### 验证与产物
+
+双模块 build 全绿（9097 测试，原 5 个失败翻绿）；jar 仍 up-to-date（字节未变，无版本号变更）。
