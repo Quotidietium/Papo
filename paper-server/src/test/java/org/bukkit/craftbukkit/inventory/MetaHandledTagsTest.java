@@ -17,12 +17,15 @@ class MetaHandledTagsTest {
     @Test
     public void checkAllMetasHaveHandledTags() {
         try (final ScanResult result = new ClassGraph()
-            .whitelistPackages("org.bukkit.craftbukkit.inventory")
-            .enableClassInfo().scan()) {
-            final ClassInfoList subclasses = result.getSubclasses(CraftMetaItem.class.getName());
+            .acceptPackages("org.bukkit.craftbukkit.inventory")
+            .enableClassInfo()
+            .enableClasspath()
+            .scan()) {
+            final ClassInfoList subclasses = result.getAllSubclasses(CraftMetaItem.class.getName());
             assertFalse(subclasses.isEmpty(), "found 0 sub types");
             for (final ClassInfo subclass : subclasses) {
-                final Class<CraftMetaItem> clazz = subclass.loadClass(CraftMetaItem.class);
+                // classgraph 6 dropped class loading; the test classloader sees the same single classpath
+                final Class<CraftMetaItem> clazz = (Class<CraftMetaItem>) Class.forName(subclass.getName(), false, MetaHandledTagsTest.class.getClassLoader());
                 CraftMetaItem.getTopLevelHandledDcts(clazz); // load into map
                 assertTrue(CraftMetaItem.HANDLED_DCTS_PER_TYPE.containsKey(clazz), subclass.getName() + " not found in handled tags map");
             }

@@ -23,11 +23,12 @@ public class EntitySetItemSlotSilentOverrideTest {
         final List<ClassInfo> classInfo = new ArrayList<>();
         try (ScanResult scanResult = new ClassGraph()
             .enableClassInfo()
+            .enableClasspath()
             .enableMethodInfo()
-            .whitelistPackages("net.minecraft")
+            .acceptPackages("net.minecraft")
             .scan()
         ) {
-            for (final ClassInfo subclass : scanResult.getSubclasses(LivingEntity.class.getName())) {
+            for (final ClassInfo subclass : scanResult.getAllSubclasses(LivingEntity.class.getName())) {
                 final MethodInfoList setItemSlot = subclass.getDeclaredMethodInfo("setItemSlot");
                 if (!setItemSlot.isEmpty()) {
                     classInfo.add(subclass);

@@ -23,11 +23,12 @@ public class BlockPlayerDestroyOverrideTest {
         final List<ClassInfo> classInfo = new ArrayList<>();
         try (ScanResult scanResult = new ClassGraph()
             .enableClassInfo()
+            .enableClasspath()
             .enableMethodInfo()
-            .whitelistPackages("net.minecraft")
+            .acceptPackages("net.minecraft")
             .scan()
         ) {
-            for (final ClassInfo subclass : scanResult.getSubclasses(Block.class.getName())) {
+            for (final ClassInfo subclass : scanResult.getAllSubclasses(Block.class.getName())) {
                 final MethodInfoList playerDestroy = subclass.getDeclaredMethodInfo("playerDestroy");
                 if (!playerDestroy.isEmpty()) {
                     classInfo.add(subclass);
@@ -43,7 +44,7 @@ public class BlockPlayerDestroyOverrideTest {
         final MethodInfoList playerDestroy = overridesPlayerDestroy.getDeclaredMethodInfo("playerDestroy");
         assertEquals(1, playerDestroy.size(), overridesPlayerDestroy.getName() + " has multiple playerDestroy methods");
         final MethodInfo next = playerDestroy.iterator().next();
-        final MethodParameterInfo[] parameterInfo = next.getParameterInfo();
-        assertEquals("boolean", parameterInfo[parameterInfo.length - 1].getTypeDescriptor().toStringWithSimpleNames(), overridesPlayerDestroy.getName() + " needs to change its override of playerDestroy");
+        final List<MethodParameterInfo> parameterInfo = next.getParameterInfo();
+        assertEquals("boolean", parameterInfo.getLast().getTypeDescriptor().toStringWithSimpleNames(), overridesPlayerDestroy.getName() + " needs to change its override of playerDestroy");
     }
 }
