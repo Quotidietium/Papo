@@ -162,19 +162,18 @@ dependencies {
         isTransitive = false // includes junit
     }
 
-    // Papo - batch 210: toolchain refresh (2026-10-27 latest); JUnit held at the 5-line latest because
-    // junit-pioneer 3.0 (the JUnit 6 line) is RC-only and @CartesianTest depends on it.
-    // classgraph held at the 4.8-line latest: 6.0.0 removed whitelistPackages/getSubclasses/
-    // getClassesImplementing, which upstream tests use (rewriting upstream tests = patch drift).
-    testImplementation("io.github.classgraph:classgraph:4.8.199") // For mob goal test
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.14.4")
-    testImplementation("org.junit.jupiter:junit-jupiter:5.14.4")
-    testImplementation("org.junit.platform:junit-platform-suite-engine:1.14.4")
+    // Papo - batch 210: toolchain refresh (2026-10-27 latest). JUnit 6 unblocked by rewriting the
+    // sole @CartesianTest consumer with native @ParameterizedTest streams (pioneer removed).
+    // classgraph 6: whitelistPackages/getSubclasses/getClassesImplementing/loadClass(es) were ported
+    // to acceptPackages/getAllSubclasses/getAllClassesImplementing/Class.forName in the test sources.
+    testImplementation("io.github.classgraph:classgraph:6.0.0") // For mob goal test
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:6.1.3")
+    testImplementation("org.junit.jupiter:junit-jupiter:6.1.3")
+    testImplementation("org.junit.platform:junit-platform-suite-engine:6.1.3")
     testImplementation("org.hamcrest:hamcrest:3.0")
     testImplementation("org.mockito:mockito-core:5.24.0") // Papo - Java 25 migration (batch 209): 5.14's ByteBuddy cannot parse class-file v69
     mockitoAgent("org.mockito:mockito-core:5.24.0") { isTransitive = false } // Configure mockito agent that is needed in newer java versions
     testImplementation("org.ow2.asm:asm-tree:9.11.1")
-    testImplementation("org.junit-pioneer:junit-pioneer:2.3.0") // CartesianTest
 
     implementation("net.neoforged:srgutils:1.0.9") // Mappings handling
     implementation("net.neoforged:AutoRenamingTool:2.0.3") // Remap plugins
