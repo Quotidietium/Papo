@@ -1,0 +1,53 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Tue, 13 Oct 2026 12:16:37 +0800
+Subject: [PATCH] flowing fluid spread de-allocation (SpreadContext isHole
+ de-lambda; cache pre-size tried and reverted byte-negative)
+
+
+diff --git a/net/minecraft/world/level/material/FlowingFluid.java b/net/minecraft/world/level/material/FlowingFluid.java
+index 090d9d4b3257b70a0c44e0d884e566e0a864f8f1..b2257168b11414f009920d164580cac1f320944a 100644
+--- a/net/minecraft/world/level/material/FlowingFluid.java
++++ b/net/minecraft/world/level/material/FlowingFluid.java
+@@ -577,6 +577,11 @@ public abstract class FlowingFluid extends Fluid {
+     protected class SpreadContext {
+         private final BlockGetter level;
+         private final BlockPos origin;
++        // Papo - capacities stay at the vanilla defaults: pre-sizing to the
++        // Manhattan-ball working-set bound was measured byte-NEGATIVE on a paired
++        // 0.112-vs-0.113 storm leg (ladder-copy bytes 44.7MB < up-front array delta
++        // +98.7MB) - unlike R62's persistent ThreadLocal BFS slots, this context is
++        // per-spread-call ephemeral: the ladder is climbed once and dies young.
+         private final Short2ObjectMap<BlockState> stateCache = new Short2ObjectOpenHashMap<>();
+         private final Short2BooleanMap holeCache = new Short2BooleanOpenHashMap();
+ 
+@@ -612,12 +617,23 @@ public abstract class FlowingFluid extends Fluid {
+         }
+ 
+         public boolean isHole(BlockPos pos) {
+-            return this.holeCache.computeIfAbsent(this.getCacheKey(pos), s -> {
+-                BlockState blockState = this.getBlockState(pos, s);
+-                BlockPos blockPos = pos.below();
+-                BlockState blockState1 = this.level.getBlockState(blockPos);
+-                return FlowingFluid.this.isWaterHole(this.level, pos, blockState, blockPos, blockState1);
+-            });
++            // Papo - de-lambda: the original computeIfAbsent(key, s -> {...}) captured
++            // `pos` + `this`, so the JVM built a fresh lambda instance on EVERY call
++            // (cache hit included) - a top allocation site under flowing-fluid storms.
++            // Explicit containsKey/get + miss-path compute is allocation-free on hits and
++            // bit-identical: the map is single-threaded per spread() and the compute body
++            // structurally touches only stateCache (a different map), so miss-path
++            // compute-then-put == computeIfAbsent exactly.
++            final short s = this.getCacheKey(pos);
++            if (this.holeCache.containsKey(s)) {
++                return this.holeCache.get(s);
++            }
++            final BlockState blockState = this.getBlockState(pos, s);
++            final BlockPos blockPos = pos.below();
++            final BlockState blockState1 = this.level.getBlockState(blockPos);
++            final boolean bl = FlowingFluid.this.isWaterHole(this.level, pos, blockState, blockPos, blockState1);
++            this.holeCache.put(s, bl);
++            return bl;
+         }
+ 
+         private short getCacheKey(BlockPos pos) {

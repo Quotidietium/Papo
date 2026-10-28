@@ -1,0 +1,509 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 10 Oct 2026 04:15:29 +0800
+Subject: [PATCH] Papo: batch 149 (R9) canonical shared constant chunk
+ sections. The section/container instance layer was the largest remaining
+ non-content cluster: 398,976 LevelChunkSection shells (40B) + 797,953
+ PalettedContainer shells (24B, two per section) + 398,976 ShortList shells
+ (24B, lazily mapped since batch 142) = 112B per section, and 87% of sections
+ are constant (uniform states + uniform biome: everything above the heightmap
+ plus uniform unexplored underground). A constant section now collapses onto
+ ONE canonical instance per (blockState global id, biome registry id) per
+ level registry - all four shells drop to zero per chunk. UNIFORMITY IS ABOUT
+ THE CELLS, NOT THE PALETTE TYPE: the first paired soak with a
+ SingleValuePalette-only predicate collapsed just 1.4% of sections because
+ worldgen builds uniform sections through the write path with GROWN palettes
+ (a biome container whose resolved biome differs from the default resizes to a
+ one-entry linear palette on its first quart write; a written all-stone
+ section likewise) - PalettedContainer.papoUniformValue() now decides by cell
+ content: zero-bit storage fast path (every cell is id 0), then raw-word
+ equality as a fast reject, then a per-cell pass to settle equal-word cases.
+ Design: the canonical cache hangs on the per-registry biome Strategy instance
+ so it dies with the level and biome ids cannot collide across levels (batch
+ 147 judgment #3; block-state ids are global); canonical containers are built
+ through the batch 147 single-value Data sharing hooks, so they also share
+ Data with the world's other constant containers; canonical counters are
+ analytic (nonEmpty = isAir ? 0 : 4096, tick/special counters zero) and the
+ collapse predicate defensively verifies the section's own counters match
+ before sharing. Writer audit closed the mutation surface to six gates:
+ LevelChunk.setBlockState and ProtoChunk.setBlockState (both behind the
+ existing air-into-air no-op fast path, so the most common write never
+ materialises), ChunkAccess.setBiome, ChunkAccess.fillBiomesFromNoise,
+ NoiseBasedChunkGenerator doFill's two acquisition points, and OreFeature
+ through a new BulkSectionAccess.getWritableSection (read-path getSection
+ stays untouched; the writable variant replaces any cached canonical entry,
+ transferring the acquire). Client packet paths
+ (replaceWithPacketData/replaceBiomes) gate via indexed loops. Every
+ LevelChunkSection mutator
+ (setBlockState/setBiome/fillBiomesFromNoise/read/readBiomes/recalcBlockCounts)
+ carries a loud canary that throws on canonical mutation - an ungated writer
+ fails immediately instead of corrupting every chunk sharing the instance. The
+ legacy Bukkit generator path (CustomChunkGenerator) injects private scratch
+ section objects by whole-slot replacement, which is safe without a gate.
+ Canonicalisation happens at the single LevelChunk main-ctor scan (both
+ creation paths - worldgen promotion and SerializableChunkData disk load -
+ arrive there; blank-slot replacement sections too), using the level's
+ long-lived factory so cache hits are per-world. Randomly-ticking /
+ fluid-ticking / special-colliding uniforms, mixed sections, client sections
+ and unregistered biome holders stay private by predicate; a canonical section
+ saves as a single-value palette, which decodes identically on every version
+ (vanilla's own encoding for never-grown sections) and is smaller. Expected
+ effect: 347k uniform sections x 112B = ~38MB (4.8% of the 801MB soak heap).
+ Coverage: PapoSharedConstantSectionTest 11 tests (collapse identity +
+ per-registry cache isolation, analytic counts + per-biome keys, per-strategy
+ instance isolation, uniform-WRITTEN sections collapse - the regression the
+ first soak caught, ticking/mixed/unregistered rejections, copy-for-write
+ exact values + write isolation, canaries on all six mutators, writable-gate
+ slot replacement + pass-through identity, and a 300-round x 120-write
+ randomized differential of gated writes against always-private mirrors using
+ real block states via Bootstrap and a synthetic biome IdMap).
+
+
+diff --git a/net/minecraft/world/level/chunk/BulkSectionAccess.java b/net/minecraft/world/level/chunk/BulkSectionAccess.java
+index 0b96bbe2018ebbcb538cbbd78f9f631db17bf699..a2f9858324f77cbebea8096f2d3faa8bf625f58f 100644
+--- a/net/minecraft/world/level/chunk/BulkSectionAccess.java
++++ b/net/minecraft/world/level/chunk/BulkSectionAccess.java
+@@ -39,6 +39,39 @@ public class BulkSectionAccess implements AutoCloseable {
+         }
+     }
+ 
++    // Papo start - batch 149 (R9): write-path variant of getSection - chunks arrays may
++    // hold canonical shared constant sections (LevelChunkSection.papoTryCanonicalise),
++    // which must be materialised into a private copy before mutation. The private copy
++    // replaces any cached canonical entry (transferring the acquire, so close() releases
++    // exactly what was acquired); the read-path getSection above stays untouched.
++    public @Nullable LevelChunkSection getWritableSection(BlockPos pos) {
++        int sectionIndex = this.level.getSectionIndex(pos.getY());
++        if (sectionIndex < 0 || sectionIndex >= this.level.getSectionsCount()) {
++            return null;
++        }
++        long packedSectionPos = SectionPos.asLong(pos);
++        LevelChunkSection cached = this.acquiredSections.get(packedSectionPos);
++        final LevelChunkSection result;
++        if (cached == null) {
++            ChunkAccess chunk = this.level.getChunk(SectionPos.blockToSectionCoord(pos.getX()), SectionPos.blockToSectionCoord(pos.getZ()));
++            result = chunk.papoWritableSection(sectionIndex);
++            result.acquire();
++            this.acquiredSections.put(packedSectionPos, result);
++        } else if (cached.papoIsSharedConstant()) {
++            ChunkAccess chunk = this.level.getChunk(SectionPos.blockToSectionCoord(pos.getX()), SectionPos.blockToSectionCoord(pos.getZ()));
++            result = chunk.papoWritableSection(sectionIndex);
++            cached.release();
++            result.acquire();
++            this.acquiredSections.put(packedSectionPos, result);
++        } else {
++            result = cached;
++        }
++        this.lastSection = result;
++        this.lastSectionKey = packedSectionPos;
++        return result;
++    }
++    // Papo end - batch 149 (R9)
++
+     public BlockState getBlockState(BlockPos pos) {
+         LevelChunkSection section = this.getSection(pos);
+         if (section == null) {
+diff --git a/net/minecraft/world/level/chunk/ChunkAccess.java b/net/minecraft/world/level/chunk/ChunkAccess.java
+index 0e9f6430bfacc2614e9c9e38c0ef269943293395..a47008b34dab8f71f241253ec8dbfa24959a4054 100644
+--- a/net/minecraft/world/level/chunk/ChunkAccess.java
++++ b/net/minecraft/world/level/chunk/ChunkAccess.java
+@@ -231,6 +231,22 @@ public abstract class ChunkAccess implements BiomeManager.NoiseBiomeSource, Ligh
+         return this.getSections()[index];
+     }
+ 
++    // Papo start - batch 149 (R9): sections arrays may hold canonical shared constant
++    // instances (see LevelChunkSection.papoTryCanonicalise). Every mutating entry point
++    // in the tree routes through this gate, which materialises a private copy-on-write
++    // into the array slot; read paths keep using getSection(). The section mutators
++    // carry loud canaries, so an ungated writer fails immediately.
++    public LevelChunkSection papoWritableSection(final int index) {
++        final LevelChunkSection section = this.sections[index];
++        if (section.papoIsSharedConstant()) {
++            final LevelChunkSection copy = section.papoCopyForWrite();
++            this.sections[index] = copy;
++            return copy;
++        }
++        return section;
++    }
++    // Papo end - batch 149 (R9)
++
+     public Collection<Entry<Heightmap.Types, Heightmap>> getHeightmaps() {
+         return Collections.unmodifiableSet(this.heightmaps.entrySet());
+     }
+@@ -534,7 +550,7 @@ public abstract class ChunkAccess implements BiomeManager.NoiseBiomeSource, Ligh
+             int maxY = minY + QuartPos.fromBlock(this.getHeight()) - 1;
+             int clampedY = Mth.clamp(y, minY, maxY);
+             int sectionIndex = this.getSectionIndex(QuartPos.toBlock(clampedY));
+-            this.sections[sectionIndex].setBiome(x & 3, clampedY & 3, z & 3, biome);
++            this.papoWritableSection(sectionIndex).setBiome(x & 3, clampedY & 3, z & 3, biome); // Papo - batch 149 (R9): gate canonical sections
+         } catch (Throwable throwable) {
+             CrashReport report = CrashReport.forThrowable(throwable, "Setting biome");
+             CrashReportCategory reportCategory = report.addCategory("Biome being set");
+@@ -551,7 +567,7 @@ public abstract class ChunkAccess implements BiomeManager.NoiseBiomeSource, Ligh
+         LevelHeightAccessor heightAccessorForGeneration = this.getHeightAccessorForGeneration();
+ 
+         for (int sectionY = heightAccessorForGeneration.getMinSectionY(); sectionY <= heightAccessorForGeneration.getMaxSectionY(); sectionY++) {
+-            LevelChunkSection section = this.getSection(this.getSectionIndexFromSectionY(sectionY));
++            LevelChunkSection section = this.papoWritableSection(this.getSectionIndexFromSectionY(sectionY)); // Papo - batch 149 (R9): gate canonical sections
+             int quartPosY = QuartPos.fromSection(sectionY);
+             section.fillBiomesFromNoise(resolver, sampler, quartPosMinX, quartPosY, quartPosMinZ);
+         }
+diff --git a/net/minecraft/world/level/chunk/LevelChunk.java b/net/minecraft/world/level/chunk/LevelChunk.java
+index e1f827578c54fb630faf216ded32ccfccea0a64b..f923d4c0c0f810d0ee88c1a33ca44f871d029035 100644
+--- a/net/minecraft/world/level/chunk/LevelChunk.java
++++ b/net/minecraft/world/level/chunk/LevelChunk.java
+@@ -228,6 +228,20 @@ public class LevelChunk extends ChunkAccess implements DebugValueSource, ca.spot
+         this.level = (ServerLevel) level; // CraftBukkit - type
+         this.gameEventListenerRegistrySections = new Int2ObjectOpenHashMap<>();
+ 
++        // Papo start - batch 149 (R9): single canonicalisation point for both section
++        // creation paths (worldgen promotion via the ProtoChunk ctor and disk load via
++        // SerializableChunkData both arrive here). Uniform constant sections collapse
++        // onto shared instances; writers re-materialise through papoWritableSection.
++        // The scan uses the level's long-lived factory so the canonical cache (on the
++        // biome strategy) is shared across every chunk of the world, and the canonical
++        // containers share their single-value Data with the world's containers
++        // (batch 147 hooks key on the same strategy instances).
++        final PalettedContainerFactory papoFactory = this.level.palettedContainerFactory();
++        for (int papoI = 0; papoI < this.sections.length; papoI++) {
++            this.sections[papoI] = this.sections[papoI].papoTryCanonicalise(papoFactory.blockStatesStrategy(), papoFactory.biomeStrategy());
++        }
++        // Papo end - batch 149 (R9)
++
+         for (Heightmap.Types types : Heightmap.Types.values()) {
+             if (ChunkStatus.FULL.heightmapsAfter().contains(types)) {
+                 this.heightmaps.put(types, new Heightmap(this, types));
+@@ -441,11 +455,13 @@ public class LevelChunk extends ChunkAccess implements DebugValueSource, ca.spot
+     @Override
+     public @Nullable BlockState setBlockState(BlockPos pos, BlockState state, @Block.UpdateFlags int flags) {
+         int y = pos.getY();
+-        LevelChunkSection section = this.getSection(this.getSectionIndex(y));
++        int papoSectionIndex = this.getSectionIndex(y); // Papo - batch 149 (R9)
++        LevelChunkSection section = this.getSection(papoSectionIndex);
+         boolean hasOnlyAir = section.hasOnlyAir();
+         if (hasOnlyAir && state.isAir()) {
+             return null;
+         } else {
++            section = this.papoWritableSection(papoSectionIndex); // Papo - batch 149 (R9): materialise canonical sections after the air no-op fast path
+             int i = pos.getX() & 15;
+             int i1 = y & 15;
+             int i2 = pos.getZ() & 15;
+@@ -828,8 +844,8 @@ public class LevelChunk extends ChunkAccess implements DebugValueSource, ca.spot
+     ) {
+         this.clearAllBlockEntities();
+ 
+-        for (LevelChunkSection levelChunkSection : this.sections) {
+-            levelChunkSection.read(buffer);
++        for (int papoI = 0; papoI < this.sections.length; papoI++) { // Papo - batch 149 (R9): gate canonical sections
++            this.papoWritableSection(papoI).read(buffer);
+         }
+ 
+         heightmaps.forEach(this::setHeightmap);
+@@ -846,8 +862,8 @@ public class LevelChunk extends ChunkAccess implements DebugValueSource, ca.spot
+     }
+ 
+     public void replaceBiomes(FriendlyByteBuf buffer) {
+-        for (LevelChunkSection levelChunkSection : this.sections) {
+-            levelChunkSection.readBiomes(buffer);
++        for (int papoI = 0; papoI < this.sections.length; papoI++) { // Papo - batch 149 (R9): gate canonical sections
++            this.papoWritableSection(papoI).readBiomes(buffer);
+         }
+     }
+ 
+diff --git a/net/minecraft/world/level/chunk/LevelChunkSection.java b/net/minecraft/world/level/chunk/LevelChunkSection.java
+index 201ba8b6ea45f526fbd5292164bb4cb6c066d9a8..0c0131fb31d4c9cde50da6b9c25bfcbb4c448af5 100644
+--- a/net/minecraft/world/level/chunk/LevelChunkSection.java
++++ b/net/minecraft/world/level/chunk/LevelChunkSection.java
+@@ -33,6 +33,20 @@ public class LevelChunkSection implements ca.spottedleaf.moonrise.patches.block_
+     private short specialCollidingBlocks;
+     private final ca.spottedleaf.moonrise.common.list.ShortList tickingBlocks = new ca.spottedleaf.moonrise.common.list.ShortList();
+ 
++    // Papo start - batch 149 (R9): canonical shared constant sections. A section whose
++    // whole content is one non-ticking, non-special-colliding block state with a uniform
++    // registered biome holds no per-chunk state whatsoever (87% of sections in natural
++    // terrain: everything above the heightmap plus uniform unexplored underground), so
++    // such sections collapse onto one canonical instance per (blockState, biome) per
++    // level registry - eliminating the section shell (40B), both container shells (48B)
++    // and the tick-list shell (24B) for every one of them. Canonical instances are
++    // immutable by contract: every writer in the tree routes through
++    // ChunkAccess.papoWritableSection, which copy-on-writes the array slot, and each
++    // mutator below carries a loud canary so an ungated writer fails immediately
++    // instead of corrupting every chunk that shares the instance.
++    private final boolean papoSharedConstant;
++    // Papo end - batch 149 (R9)
++
+     @Override
+     public final boolean moonrise$hasSpecialCollidingBlocks() {
+         return this.specialCollidingBlocks != 0;
+@@ -50,14 +64,93 @@ public class LevelChunkSection implements ca.spottedleaf.moonrise.patches.block_
+         this.tickingFluidCount = section.tickingFluidCount;
+         this.states = section.states.copy();
+         this.biomes = section.biomes.copy();
++        this.papoSharedConstant = false; // Papo - batch 149 (R9): a copy is private by definition
+     }
+ 
+     public LevelChunkSection(PalettedContainer<BlockState> states, PalettedContainer<Holder<Biome>> biomes) { // CraftBukkit - read/write
++        this(states, biomes, false); // Papo - batch 149 (R9)
++    }
++
++    // Papo start - batch 149 (R9): canonical-shared construction and collapsing - see the
++    // field comment above for the contract. The canonical path derives its counters
++    // analytically (validated by the papoTryCanonicalise predicate) instead of running
++    // recalcBlockCounts, whose canary requires a private instance.
++    private LevelChunkSection(PalettedContainer<BlockState> states, PalettedContainer<Holder<Biome>> biomes, boolean papoSharedConstant) {
+         this.states = states;
+         this.biomes = biomes;
+-        this.recalcBlockCounts();
++        this.papoSharedConstant = papoSharedConstant;
++        if (papoSharedConstant) {
++            final BlockState papoUniform = states.get(0, 0, 0);
++            this.nonEmptyBlockCount = (short)(papoUniform.isAir() ? 0 : SECTION_SIZE);
++            // tickingBlockCount / tickingFluidCount / specialCollidingBlocks stay 0: the
++            // predicate rejects randomly-ticking, fluid-ticking and special-colliding
++            // uniforms, so the empty tick list and zero counters are the exact values
++        } else {
++            this.recalcBlockCounts();
++        }
++    }
++
++    public boolean papoIsSharedConstant() {
++        return this.papoSharedConstant;
+     }
+ 
++    public LevelChunkSection papoCopyForWrite() {
++        return new LevelChunkSection(this);
++    }
++
++    /**
++     * If this section's whole content is canonical-shareable, return the canonical shared
++     * instance for it; otherwise return {@code this}. Pure - never mutates this, never
++     * materialises anything (the caller stores the result back into its sections array).
++     */
++    public LevelChunkSection papoTryCanonicalise(
++        final Strategy<BlockState> statesStrategy, final Strategy<Holder<Biome>> biomesStrategy
++    ) {
++        if (this.papoSharedConstant || this.isClient) {
++            return this;
++        }
++        final BlockState papoState = this.states.papoUniformValue();
++        if (papoState == null) {
++            return this;
++        }
++        final Holder<Biome> papoBiome = this.biomes.papoUniformValue();
++        if (papoBiome == null) {
++            return this;
++        }
++        // analytic guard: only content whose counters are fully derivable and whose tick
++        // lists are provably empty - randomly-ticking / fluid-ticking / special-colliding
++        // uniforms stay private (their per-position bookkeeping cannot be shared)
++        if (papoState.isRandomlyTicking() || papoState.getFluidState().isRandomlyTicking()
++            || ca.spottedleaf.moonrise.patches.collisions.CollisionUtil.isSpecialCollidingBlock(papoState)) {
++            return this;
++        }
++        if (this.nonEmptyBlockCount != (papoState.isAir() ? 0 : SECTION_SIZE)
++            || this.tickingBlockCount != 0 || this.tickingFluidCount != 0
++            || this.specialCollidingBlocks != 0 || this.tickingBlocks.size() != 0) {
++            return this;
++        }
++        final int papoBlockId = statesStrategy.globalMap().getId(papoState);
++        final int papoBiomeId = biomesStrategy.globalMap().getId(papoBiome);
++        if (papoBlockId < 0 || papoBiomeId < 0) {
++            return this; // unregistered values never enter a shared set (batch 147 judgment)
++        }
++        final long papoKey = ((long)papoBlockId << 32) | (papoBiomeId & 0xFFFFFFFFL);
++        // the cache hangs on the per-registry biome strategy, so it is collected with the
++        // level (batch 147 judgment #3); block ids are global, biome ids registry-scoped
++        final Object papoCanonical = biomesStrategy.papoSharedConstantSections.computeIfAbsent(papoKey, papoK -> {
++            // both containers share their canonical single-value Data with the rest of
++            // the level (the batch 147 hooks fire inside these constructors)
++            return (Object)new LevelChunkSection(
++                new PalettedContainer<>(papoState, statesStrategy, null),
++                new PalettedContainer<>(papoBiome, biomesStrategy, null),
++                true
++            );
++        });
++        return (LevelChunkSection)papoCanonical;
++    }
++    // Papo end - batch 149 (R9)
++
++
+     // Paper start - Anti-Xray - Add parameters
+     @Deprecated @io.papermc.paper.annotation.DoNotUse
+     public LevelChunkSection(PalettedContainerFactory containerFactory) {
+@@ -66,6 +159,7 @@ public class LevelChunkSection implements ca.spottedleaf.moonrise.patches.block_
+     public LevelChunkSection(PalettedContainerFactory containerFactory, net.minecraft.world.level.Level level, net.minecraft.world.level.ChunkPos chunkPos, int chunkSectionY) {
+         this.states = containerFactory.createForBlockStates(level, chunkPos, chunkSectionY);
+         this.biomes = containerFactory.createForBiomes();
++        this.papoSharedConstant = false; // Papo - batch 149 (R9): freshly created sections are private
+         // Paper end - Anti-Xray
+     }
+ 
+@@ -129,6 +223,9 @@ public class LevelChunkSection implements ca.spottedleaf.moonrise.patches.block_
+     // Paper end - block counting
+ 
+     public BlockState setBlockState(int x, int y, int z, BlockState state, boolean useLocks) {
++        if (this.papoSharedConstant) { // Papo - batch 149 (R9): canary - writers must route through ChunkAccess.papoWritableSection
++            throw new IllegalStateException("[Papo] mutation of a canonical shared chunk section - ungated writer");
++        }
+         BlockState blockState;
+         if (useLocks) {
+             blockState = this.states.getAndSet(x, y, z, state);
+@@ -182,6 +279,9 @@ public class LevelChunkSection implements ca.spottedleaf.moonrise.patches.block_
+     }
+ 
+     public void recalcBlockCounts() {
++        if (this.papoSharedConstant) { // Papo - batch 149 (R9): canary - see setBlockState
++            throw new IllegalStateException("[Papo] mutation of a canonical shared chunk section - ungated writer");
++        }
+         // Paper start - block counting
+         // reset, then recalculate
+         this.nonEmptyBlockCount = (short)0;
+@@ -257,6 +357,9 @@ public class LevelChunkSection implements ca.spottedleaf.moonrise.patches.block_
+     }
+ 
+     public void read(FriendlyByteBuf buffer) {
++        if (this.papoSharedConstant) { // Papo - batch 149 (R9): canary - see setBlockState
++            throw new IllegalStateException("[Papo] mutation of a canonical shared chunk section - ungated writer");
++        }
+         this.nonEmptyBlockCount = buffer.readShort();
+         this.states.read(buffer);
+         PalettedContainer<Holder<Biome>> palettedContainer = this.biomes.recreate();
+@@ -270,6 +373,9 @@ public class LevelChunkSection implements ca.spottedleaf.moonrise.patches.block_
+     }
+ 
+     public void readBiomes(FriendlyByteBuf buffer) {
++        if (this.papoSharedConstant) { // Papo - batch 149 (R9): canary - see setBlockState
++            throw new IllegalStateException("[Papo] mutation of a canonical shared chunk section - ungated writer");
++        }
+         PalettedContainer<Holder<Biome>> palettedContainer = this.biomes.recreate();
+         palettedContainer.read(buffer);
+         this.biomes = palettedContainer;
+@@ -300,11 +406,17 @@ public class LevelChunkSection implements ca.spottedleaf.moonrise.patches.block_
+     }
+     // CraftBukkit start
+     public void setBiome(int x, int y, int z, Holder<Biome> biome) {
++        if (this.papoSharedConstant) { // Papo - batch 149 (R9): canary - see setBlockState
++            throw new IllegalStateException("[Papo] mutation of a canonical shared chunk section - ungated writer");
++        }
+         this.biomes.set(x, y, z, biome);
+     }
+     // CraftBukkit end
+ 
+     public void fillBiomesFromNoise(BiomeResolver biomeResolver, Climate.Sampler climateSampler, int x, int y, int z) {
++        if (this.papoSharedConstant) { // Papo - batch 149 (R9): canary - see setBlockState
++            throw new IllegalStateException("[Papo] mutation of a canonical shared chunk section - ungated writer");
++        }
+         PalettedContainer<Holder<Biome>> palettedContainer = this.biomes.recreate();
+         int i = 4;
+ 
+diff --git a/net/minecraft/world/level/chunk/PalettedContainer.java b/net/minecraft/world/level/chunk/PalettedContainer.java
+index d4a4ae9aefa61efd47154203022b54e672905ec8..8eabdc2c471bbe4ee5de87018ebd679777c68c5c 100644
+--- a/net/minecraft/world/level/chunk/PalettedContainer.java
++++ b/net/minecraft/world/level/chunk/PalettedContainer.java
+@@ -493,6 +493,40 @@ public class PalettedContainer<T> implements PaletteResize<T>, PalettedContainer
+         return new PalettedContainer<>(this, this.presetValues); // Paper - Anti-Xray - Add preset values
+     }
+ 
++    // Papo start - batch 149 (R9): uniform-value read for canonical shared-section
++    // collapsing (LevelChunkSection.papoTryCanonicalise) - returns the container's lone
++    // distinct value, or null when the cells are not uniform. Worldgen-built uniform
++    // sections hold GROWN palettes, not SingleValuePalette (a biome container whose
++    // resolved biome differs from the default resizes to a one-entry linear palette on
++    // its first quart write; a written all-stone section likewise), so the palette type
++    // says nothing about uniformity - the cells do.
++    public T papoUniformValue() {
++        final PalettedContainer.Data<T> data = this.data;
++        final net.minecraft.util.BitStorage papoStorage = data.storage();
++        if (papoStorage.getBits() == 0) {
++            return data.palette().valueFor(0); // zero-bit storage: every cell is id 0
++        }
++        // fast reject: unequal raw words imply unequal cells (words are the packed
++        // cells); equal words are necessary but not sufficient, the per-cell pass below
++        // settles it
++        final long[] papoRaw = papoStorage.getRaw();
++        final long papoFirst = papoRaw[0];
++        for (int papoI = 1; papoI < papoRaw.length; papoI++) {
++            if (papoRaw[papoI] != papoFirst) {
++                return null;
++            }
++        }
++        final int papoId = papoStorage.get(0);
++        final boolean[] papoUniform = {true};
++        papoStorage.getAll(papoCell -> {
++            if (papoCell != papoId) {
++                papoUniform[0] = false;
++            }
++        });
++        return papoUniform[0] ? data.palette().valueFor(papoId) : null;
++    }
++    // Papo end - batch 149 (R9)
++
+     @Override
+     public PalettedContainer<T> recreate() {
+         return new PalettedContainer<>(this.data.palette.valueFor(0), this.strategy, this.presetValues); // Paper - Anti-Xray - Add preset values
+diff --git a/net/minecraft/world/level/chunk/ProtoChunk.java b/net/minecraft/world/level/chunk/ProtoChunk.java
+index fd923d89d4456f0b13d97ef6fa90815a27e2e734..4de10fd5e3bcc2b8bbad9e8dac1a5a6035241072 100644
+--- a/net/minecraft/world/level/chunk/ProtoChunk.java
++++ b/net/minecraft/world/level/chunk/ProtoChunk.java
+@@ -143,6 +143,7 @@ public class ProtoChunk extends ChunkAccess {
+             if (hasOnlyAir && state.is(Blocks.AIR)) {
+                 return state;
+             } else {
++                section = this.papoWritableSection(sectionIndex); // Papo - batch 149 (R9): materialise canonical sections after the air no-op fast path
+                 int relativeBlockPosX = SectionPos.sectionRelative(x);
+                 int relativeBlockPosY = SectionPos.sectionRelative(y);
+                 int relativeBlockPosZ = SectionPos.sectionRelative(z);
+diff --git a/net/minecraft/world/level/chunk/Strategy.java b/net/minecraft/world/level/chunk/Strategy.java
+index 8ff73a8f3715bf4adeac0dc18193e7dbf5915cb2..e9f0894073e226d2b788e60f2cab83282e2f8e39 100644
+--- a/net/minecraft/world/level/chunk/Strategy.java
++++ b/net/minecraft/world/level/chunk/Strategy.java
+@@ -36,6 +36,14 @@ public abstract class Strategy<T> {
+     final java.util.concurrent.ConcurrentHashMap<Integer, Object> papoSharedSingleValues = new java.util.concurrent.ConcurrentHashMap<>();
+     // Papo end - batch 147 (R7)
+ 
++    // Papo start - batch 149 (R9): canonical shared constant sections, keyed by
++    // (blockState id << 32 | biome id). Hangs on the (per-registry) biome strategy so an
++    // unloaded level's cache is collected with it - batch 147 judgment #3. Block-state ids
++    // are global (Block.BLOCK_STATE_REGISTRY); biome ids are scoped by the registry this
++    // strategy was created for, so the composite key cannot collide across levels.
++    final java.util.concurrent.ConcurrentHashMap<Long, Object> papoSharedConstantSections = new java.util.concurrent.ConcurrentHashMap<>();
++    // Papo end - batch 149 (R9)
++
+     public static <T> Strategy<T> createForBlockStates(IdMap<T> globalMap) {
+         return new Strategy<T>(globalMap, 4) {
+             @Override
+diff --git a/net/minecraft/world/level/levelgen/NoiseBasedChunkGenerator.java b/net/minecraft/world/level/levelgen/NoiseBasedChunkGenerator.java
+index d1068a122e5dbd5af274d0f8178ca9f5fa49f930..4e1bd88afd2a61598d6f3cf8082da659b161d4ce 100644
+--- a/net/minecraft/world/level/levelgen/NoiseBasedChunkGenerator.java
++++ b/net/minecraft/world/level/levelgen/NoiseBasedChunkGenerator.java
+@@ -350,7 +350,7 @@ public final class NoiseBasedChunkGenerator extends ChunkGenerator {
+ 
+             for (int i3 = 0; i3 < i1; i3++) {
+                 int i4 = chunk.getSectionsCount() - 1;
+-                LevelChunkSection section = chunk.getSection(i4);
++                LevelChunkSection section = chunk.papoWritableSection(i4); // Papo - batch 149 (R9): this loop writes blocks - gate canonical sections
+ 
+                 for (int i5 = cellCountY - 1; i5 >= 0; i5--) {
+                     noiseChunk.selectCellYZ(i5, i3);
+@@ -361,7 +361,7 @@ public final class NoiseBasedChunkGenerator extends ChunkGenerator {
+                         int sectionIndex = chunk.getSectionIndex(i7);
+                         if (i4 != sectionIndex) {
+                             i4 = sectionIndex;
+-                            section = chunk.getSection(sectionIndex);
++                            section = chunk.papoWritableSection(sectionIndex); // Papo - batch 149 (R9)
+                         }
+ 
+                         double d = (double)i6 / cellHeight;
+diff --git a/net/minecraft/world/level/levelgen/feature/OreFeature.java b/net/minecraft/world/level/levelgen/feature/OreFeature.java
+index c7b46efd4f08067e2c9c5c8b0e8b71a94a79823d..043d58127e882c2ec0a080d2ebf11ee8da29c425 100644
+--- a/net/minecraft/world/level/levelgen/feature/OreFeature.java
++++ b/net/minecraft/world/level/levelgen/feature/OreFeature.java
+@@ -135,7 +135,7 @@ public class OreFeature extends Feature<OreConfiguration> {
+                                                 bitSet.set(i7);
+                                                 mutableBlockPos.set(i4, i5, i6);
+                                                 if (level.ensureCanWrite(mutableBlockPos)) {
+-                                                    LevelChunkSection section = bulkSectionAccess.getSection(mutableBlockPos);
++                                                    LevelChunkSection section = bulkSectionAccess.getWritableSection(mutableBlockPos); // Papo - batch 149 (R9): this site writes blocks
+                                                     if (section != null) {
+                                                         int relativeBlockPosCoord = SectionPos.sectionRelative(i4);
+                                                         int relativeBlockPosCoord1 = SectionPos.sectionRelative(i5);

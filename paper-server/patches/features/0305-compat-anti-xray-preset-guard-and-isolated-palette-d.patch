@@ -1,0 +1,58 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Tue, 27 Oct 2026 00:10:05 +0800
+Subject: [PATCH] compat: anti-xray preset guard and isolated palette decode
+
+Sections with Anti-Xray presetValues are never canonicalised to shared preset-less instances (engine-mode 2/3 clear-text leak); PAP0_LONG_ARRAY decode clones the tag array so decoded containers never alias the tag storage.
+
+diff --git a/net/minecraft/world/level/chunk/LevelChunkSection.java b/net/minecraft/world/level/chunk/LevelChunkSection.java
+index 2a8025bf1d7fb877ab0d0e2d6f331ad02b8d05a8..e7fc9233391d29c4a4335df08e9b6db441cbdeb1 100644
+--- a/net/minecraft/world/level/chunk/LevelChunkSection.java
++++ b/net/minecraft/world/level/chunk/LevelChunkSection.java
+@@ -109,6 +109,12 @@ public class LevelChunkSection implements ca.spottedleaf.moonrise.patches.block_
+         if (this.papoSharedConstant || this.isClient) {
+             return this;
+         }
++        // Papo - compat fix (anti-xray): containers with Anti-Xray presetValues must keep their
++        // private instance - a canonical replacement is constructed preset-less and the obfuscator
++        // (engine-mode 1/2/3) skips sections whose presetValues are null, sending them clear text.
++        if (this.states.papoHasPresetValues()) {
++            return this;
++        }
+         final BlockState papoState = this.states.papoUniformValue();
+         if (papoState == null) {
+             return this;
+diff --git a/net/minecraft/world/level/chunk/PalettedContainer.java b/net/minecraft/world/level/chunk/PalettedContainer.java
+index 97d962c56d2b4a1f94c902504bef290aa8bc7ff7..849c7a63a78650f474523d181978ee4d2746d4da 100644
+--- a/net/minecraft/world/level/chunk/PalettedContainer.java
++++ b/net/minecraft/world/level/chunk/PalettedContainer.java
+@@ -78,7 +78,12 @@ public class PalettedContainer<T> implements PaletteResize<T>, PalettedContainer
+         @Override
+         public <D> DataResult<com.mojang.datafixers.util.Pair<long[], D>> decode(final com.mojang.serialization.DynamicOps<D> ops, final D input) {
+             if (ops instanceof net.minecraft.nbt.NbtOps && input instanceof net.minecraft.nbt.LongArrayTag longArrayTag) {
+-                return DataResult.success(new com.mojang.datafixers.util.Pair<>(longArrayTag.getAsLongArray(), input));
++                // Papo - compat fix: CLONE the tag's backing array. getAsLongArray() hands out the
++                // raw storage; the vanilla path (getLongStream().toArray()) always produced an
++                // isolated copy. Without the clone, a decoded PalettedContainer aliases the tag's
++                // long[], so retaining the tag and mutating either side corrupts the other (NMS
++                // world-edit plugins hold chunk NBT tags).
++                return DataResult.success(new com.mojang.datafixers.util.Pair<>(longArrayTag.getAsLongArray().clone(), input));
+             }
+             return ops.getLongStream(input).map(stream -> new com.mojang.datafixers.util.Pair<>(stream.toArray(), input));
+         }
+@@ -580,6 +585,15 @@ public class PalettedContainer<T> implements PaletteResize<T>, PalettedContainer
+         return new PalettedContainer<>(this, this.presetValues); // Paper - Anti-Xray - Add preset values
+     }
+ 
++    // Papo start - batch 149 (R9) compat fix: anti-xray preset exposure. Sections whose states
++    // container carries Paper Anti-Xray presetValues must never be canonicalised to a shared
++    // preset-less instance - the obfuscator skips sections with null presetValues, so a shared
++    // canonical section would be sent in clear text (and stay clear after materialisation).
++    public boolean papoHasPresetValues() {
++        return this.presetValues != null;
++    }
++    // Papo end
++
+     // Papo start - batch 149 (R9): uniform-value read for canonical shared-section
+     // collapsing (LevelChunkSection.papoTryCanonicalise) - returns the container's lone
+     // distinct value, or null when the cells are not uniform. Worldgen-built uniform

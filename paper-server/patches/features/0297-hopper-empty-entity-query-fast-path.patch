@@ -1,0 +1,191 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Mon, 12 Oct 2026 16:04:40 +0800
+Subject: [PATCH] hopper empty entity query fast path
+
+
+diff --git a/ca/spottedleaf/moonrise/patches/chunk_system/level/entity/ChunkEntitySlices.java b/ca/spottedleaf/moonrise/patches/chunk_system/level/entity/ChunkEntitySlices.java
+index 2dfd412344a0e57f25a08d9c65656a13113baa4e..70ca402ae8aa8985b2117bef72f3088e1e3bf271 100644
+--- a/ca/spottedleaf/moonrise/patches/chunk_system/level/entity/ChunkEntitySlices.java
++++ b/ca/spottedleaf/moonrise/patches/chunk_system/level/entity/ChunkEntitySlices.java
+@@ -217,6 +217,32 @@ public final class ChunkEntitySlices {
+         return this.entities.size() == 0;
+     }
+ 
++    // Papo start - batch 187 (R46): cheap emptiness probe backing the hopper empty-query
++    // fast path (see EntityLookup#papoHasNoEntitiesIn). Mirrors the exact section range the
++    // real query would read (EntityCollectionBySection.getEntities: minY-2 / maxY+2, clamped
++    // to this chunk's sections) and answers "no entity is registered in any of those sections".
++    // allEntities is maintained for every entity regardless of the lazily created class/type
++    // collections (see addEntity/initClass), so a null section list there implies the same for
++    // every class/type-specific collection, which in turn implies any getEntities(...) visit
++    // restricted to that section range is a no-op. Section granularity (not chunk-total count)
++    // matters: players/mobs routinely share the chunk column of a hopper farm at other heights.
++    public boolean papoHasNoEntitiesInSections(final AABB box) {
++        final EntityCollectionBySection all = this.allEntities;
++        if (all.count == 0) {
++            return true;
++        }
++        final int min = Mth.clamp(Mth.floor(box.minY - 2.0) >> 4, this.minSection, this.maxSection);
++        final int max = Mth.clamp(Mth.floor(box.maxY + 2.0) >> 4, this.minSection, this.maxSection);
++        final BasicEntityList<Entity>[] bySection = all.entitiesBySection;
++        for (int section = min; section <= max; ++section) {
++            if (bySection[section - this.minSection] != null) {
++                return false;
++            }
++        }
++        return true;
++    }
++    // Papo end
++
+     public void mergeInto(final ChunkEntitySlices slices) {
+         final Entity[] entities = this.entities.getRawData();
+         for (int i = 0, size = Math.min(entities.length, this.entities.size()); i < size; ++i) {
+diff --git a/ca/spottedleaf/moonrise/patches/chunk_system/level/entity/EntityLookup.java b/ca/spottedleaf/moonrise/patches/chunk_system/level/entity/EntityLookup.java
+index 2d24d03bbdb5ee0d862cbfff2219f58afffafe12..ae584063e66ebd5c2b7be709b8bf0aff2b1da22b 100644
+--- a/ca/spottedleaf/moonrise/patches/chunk_system/level/entity/EntityLookup.java
++++ b/ca/spottedleaf/moonrise/patches/chunk_system/level/entity/EntityLookup.java
+@@ -722,6 +722,60 @@ public abstract class EntityLookup implements LevelEntityGetter<Entity> {
+         }
+     }
+ 
++    // Papo start - batch 187 (R46): conservative empty-world probe for the hopper entity queries.
++    // Mirrors the exact chunk-iteration skeleton of getEntities(Class, Entity, AABB, List, Predicate)
++    // above (same ±2 chunk margin, same region lookup, same FULL-status filter) but only tests
++    // ChunkEntitySlices.papoHasNoEntities(). Returning true ("no entities") implies the real query
++    // would append nothing: every chunk that query would visit is either skipped identically here
++    // or early-returns at its own count == 0 gate. Only the conservative direction exists - a false
++    // "may have entities" simply falls back to the real query, so callers cannot observe any
++    // behavioral difference, only fewer allocations on the empty case (the overwhelming state for
++    // hopper push/suck probes: ~2 queries per hopper action, sampled 33 trips >= 20 threshold in
++    // the R46 mechanical census, A-leg baseline zero).
++    public boolean papoHasNoEntitiesIn(final AABB box) {
++        final int minChunkX = (Mth.floor(box.minX) - 2) >> 4;
++        final int minChunkZ = (Mth.floor(box.minZ) - 2) >> 4;
++        final int maxChunkX = (Mth.floor(box.maxX) + 2) >> 4;
++        final int maxChunkZ = (Mth.floor(box.maxZ) + 2) >> 4;
++
++        final int minRegionX = minChunkX >> REGION_SHIFT;
++        final int minRegionZ = minChunkZ >> REGION_SHIFT;
++        final int maxRegionX = maxChunkX >> REGION_SHIFT;
++        final int maxRegionZ = maxChunkZ >> REGION_SHIFT;
++
++        for (int currRegionZ = minRegionZ; currRegionZ <= maxRegionZ; ++currRegionZ) {
++            final int minZ = currRegionZ == minRegionZ ? minChunkZ & REGION_MASK : 0;
++            final int maxZ = currRegionZ == maxRegionZ ? maxChunkZ & REGION_MASK : REGION_MASK;
++
++            for (int currRegionX = minRegionX; currRegionX <= maxRegionX; ++currRegionX) {
++                final ChunkSlicesRegion region = this.getRegion(currRegionX, currRegionZ);
++
++                if (region == null) {
++                    continue;
++                }
++
++                final int minX = currRegionX == minRegionX ? minChunkX & REGION_MASK : 0;
++                final int maxX = currRegionX == maxRegionX ? maxChunkX & REGION_MASK : REGION_MASK;
++
++                for (int currZ = minZ; currZ <= maxZ; ++currZ) {
++                    for (int currX = minX; currX <= maxX; ++currX) {
++                        final ChunkEntitySlices chunk = region.get(currX | (currZ << REGION_SHIFT));
++                        if (chunk == null || !chunk.status.isOrAfter(FullChunkStatus.FULL)) {
++                            continue;
++                        }
++
++                        if (!chunk.papoHasNoEntitiesInSections(box)) {
++                            return false;
++                        }
++                    }
++                }
++            }
++        }
++
++        return true;
++    }
++    // Papo end
++
+     //////// Limited ////////
+ 
+     public void getEntities(final Entity except, final AABB box, final List<Entity> into, final Predicate<? super Entity> predicate,
+diff --git a/net/minecraft/world/level/Level.java b/net/minecraft/world/level/Level.java
+index acf46137f6061ab8eb3cddba7aa08d813e586d44..9c9b89a1ffe9b5f793f3ffa56336e1db10207e6f 100644
+--- a/net/minecraft/world/level/Level.java
++++ b/net/minecraft/world/level/Level.java
+@@ -228,6 +228,14 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
+         return ret;
+     }
+ 
++    // Papo start - batch 187 (R46): conservative no-entities probe delegating to the entity lookup's
++    // mirror walk (see EntityLookup#papoHasNoEntitiesIn) - true implies getEntitiesOfClass for the
++    // same box would return an empty list. Used by the hopper push/suck empty-query fast paths.
++    public boolean papoHasNoEntitiesIn(final AABB boundingBox) {
++        return ((ca.spottedleaf.moonrise.patches.chunk_system.level.ChunkSystemLevel)this).moonrise$getEntityLookup().papoHasNoEntitiesIn(boundingBox);
++    }
++    // Papo end
++
+     @Override
+     public final List<Entity> moonrise$getHardCollidingEntities(final Entity entity, final AABB box, final Predicate<? super Entity> predicate) {
+         Profiler.get().incrementCounter("getEntities");
+diff --git a/net/minecraft/world/level/block/entity/HopperBlockEntity.java b/net/minecraft/world/level/block/entity/HopperBlockEntity.java
+index 029a75e77b7e67f8011c1c539e4a218e315be7d5..e0f9122c9fb82dfc0bde3f2e268ab020ab212fd3 100644
+--- a/net/minecraft/world/level/block/entity/HopperBlockEntity.java
++++ b/net/minecraft/world/level/block/entity/HopperBlockEntity.java
+@@ -571,7 +571,7 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+             return false;
+         } else {
+             boolean flag = hopper.isGridAligned() && blockState.isCollisionShapeFullBlock(level, blockPos) && !blockState.is(BlockTags.DOES_NOT_BLOCK_HOPPERS);
+-            if (!flag) {
++            if (!flag && !level.papoHasNoEntitiesIn(papoSuckQueryAabb(hopper))) { // Papo - batch 187 (R46): empty-section fast path, see papoSuckQueryAabb
+                 for (ItemEntity itemEntity : getItemsAtAndAbove(level, hopper)) {
+                     if (addItem(hopper, itemEntity)) {
+                         return true;
+@@ -808,25 +808,24 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+     }
+ 
+     public static List<ItemEntity> getItemsAtAndAbove(Level level, Hopper hopper) {
+-        // Papo start - cache the moved suck AABB on block-entity hoppers: getSuckAabb() is the shared
+-        // immutable Hopper.SUCK_AABB constant and a block entity's worldPosition is final (vanilla
+-        // cannot move block entities; a setBlock recreates the BE with a fresh cache), so the moved
+-        // AABB is constant per block entity. AABB itself is immutable and getEntitiesOfClass only
+-        // reads it. Minecart hoppers use a position-keyed cache (AABB.move is a pure function of the
+-        // level-coord doubles); other Hopper implementations keep the per-call computation.
+-        final AABB aabb;
++        final AABB aabb = papoSuckQueryAabb(hopper); // Papo - batch 187 (R46): shared with the suck fast path, see helper
++        return level.getEntitiesOfClass(ItemEntity.class, aabb, EntitySelector.ENTITY_STILL_ALIVE);
++    }
++
++    // Papo start - batch 187 (R46): shared suck-query AABB (was inline in getItemsAtAndAbove).
++    // The empty-section fast path in suckInItems must probe the bit-exact box the query would
++    // use, so the computation (including the per-hopper-kind caching) lives here once.
++    private static AABB papoSuckQueryAabb(final Hopper hopper) {
+         if (hopper instanceof HopperBlockEntity hopperBlockEntity) {
+-            aabb = hopperBlockEntity.papoSuckAabb != null
++            return hopperBlockEntity.papoSuckAabb != null
+                 ? hopperBlockEntity.papoSuckAabb
+                 : (hopperBlockEntity.papoSuckAabb = hopper.getSuckAabb().move(hopper.getLevelX() - 0.5, hopper.getLevelY() - 0.5, hopper.getLevelZ() - 0.5));
+         } else if (hopper instanceof net.minecraft.world.entity.vehicle.minecart.MinecartHopper minecartHopper) {
+-            aabb = minecartHopper.papoSuckAabb();
+-        } else {
+-            aabb = hopper.getSuckAabb().move(hopper.getLevelX() - 0.5, hopper.getLevelY() - 0.5, hopper.getLevelZ() - 0.5);
++            return minecartHopper.papoSuckAabb();
+         }
+-        // Papo end
+-        return level.getEntitiesOfClass(ItemEntity.class, aabb, EntitySelector.ENTITY_STILL_ALIVE);
++        return hopper.getSuckAabb().move(hopper.getLevelX() - 0.5, hopper.getLevelY() - 0.5, hopper.getLevelZ() - 0.5);
+     }
++    // Papo end
+ 
+     public static @Nullable Container getContainerAt(Level level, BlockPos pos) {
+         return getContainerAt(level, pos, level.getBlockState(pos), pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, true); // Paper - Optimize hoppers
+@@ -878,6 +877,12 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+     }
+ 
+     private static @Nullable Container getEntityContainer(Level level, net.minecraft.world.phys.AABB aabb) { // Papo - AABB parameter (was constructed per call from x/y/z)
++        // Papo start - batch 187 (R46): skip the query when no entities exist in any touched
++        // section; an empty result would fall through to the same null below bit-exactly
++        if (level.papoHasNoEntitiesIn(aabb)) {
++            return null;
++        }
++        // Papo end
+         List<Entity> entities = level.getEntitiesOfClass(
+             (Class) Container.class, aabb, EntitySelector.CONTAINER_ENTITY_SELECTOR // Paper - Perf: Optimize hoppers
+         );

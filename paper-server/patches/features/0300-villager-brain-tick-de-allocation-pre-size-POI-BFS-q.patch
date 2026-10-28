@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Tue, 13 Oct 2026 10:40:36 +0800
+Subject: [PATCH] villager brain tick de-allocation: pre-size POI BFS queue to
+ frontier ceiling (kills per-thread grow-ladder re-climb under IO pool
+ rotation)
+
+
+diff --git a/io/papermc/paper/util/PoiAccess.java b/io/papermc/paper/util/PoiAccess.java
+index 60b09fa9fdcf258c5af94030b7ab9ff4fd82a9b0..033d389210fa532de72e4c7e2c408278678974ed 100644
+--- a/io/papermc/paper/util/PoiAccess.java
++++ b/io/papermc/paper/util/PoiAccess.java
+@@ -32,8 +32,12 @@ public final class PoiAccess {
+     // Papo start - BFS workset scratch (R62): per-thread queue/seen reused across POI
+     // queries, cleared at entry of each BFS (see findClosestPoiDataRecords /
+     // findNearestPoiRecords). Primitive backing: clear() keeps capacity and has no
+-    // reference-retention semantics.
+-    private static final ThreadLocal<LongArrayFIFOQueue> PAP0_BFS_QUEUE = ThreadLocal.withInitial(LongArrayFIFOQueue::new);
++    // reference-retention semantics. The queue is pre-sized to the BFS frontier
++    // ceiling (48-block range ≈ 7×7×7 section neighbourhood): without it every
++    // thread's first query re-climbs the fastutil grow ladder (×2 doublings, and IO
++    // pool thread rotation keeps re-triggering the climb — R62 pair leg measured the
++    // resize face flat at 167→160 without pre-sizing).
++    private static final ThreadLocal<LongArrayFIFOQueue> PAP0_BFS_QUEUE = ThreadLocal.withInitial(() -> new LongArrayFIFOQueue(2048));
+     private static final ThreadLocal<LongOpenHashSet> PAP0_BFS_SEEN = ThreadLocal.withInitial(LongOpenHashSet::new);
+     // Papo end
+ 

@@ -1,0 +1,51 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Tue, 27 Oct 2026 01:00:06 +0800
+Subject: [PATCH] compat: keep the baseline protected override surface on
+ Varint21FrameDecoder and Shulker
+
+handlerRemoved0 reappears as a super-delegating override (0155 had removed it with helperBuf); Shulker regains the Optional-returning getXRotD/getYRotD overrides delegating to the 0048 boolean protocol - both restore the upstream binary surface for subclasses compiled against Paper.
+
+diff --git a/net/minecraft/network/Varint21FrameDecoder.java b/net/minecraft/network/Varint21FrameDecoder.java
+index 4ccd15e55b2a051544db97d03c376db7578b63de..697b81a842b03a244015fabdcf3a7c08e54f85f1 100644
+--- a/net/minecraft/network/Varint21FrameDecoder.java
++++ b/net/minecraft/network/Varint21FrameDecoder.java
+@@ -82,4 +82,13 @@ public class Varint21FrameDecoder extends ByteToMessageDecoder {
+         throw new CorruptedFrameException("length wider than 21-bit");
+         // Papo end
+     }
++
++    // Papo start - compat: keep the baseline protected override surface. The upstream override
++    // released helperBuf, which 0155 removed entirely; subclasses compiled against Paper that
++    // reference/override this method keep their binary contract (netty semantics unchanged).
++    @Override
++    protected void handlerRemoved0(ChannelHandlerContext ctx) throws Exception {
++        super.handlerRemoved0(ctx);
++    }
++    // Papo end
+ }
+diff --git a/net/minecraft/world/entity/monster/Shulker.java b/net/minecraft/world/entity/monster/Shulker.java
+index dfff331ddf6461285692654c3c2b6848452a8807..a9745aef4ce3ffb814a0bd32549bd8e710301803 100644
+--- a/net/minecraft/world/entity/monster/Shulker.java
++++ b/net/minecraft/world/entity/monster/Shulker.java
+@@ -717,6 +717,20 @@ public class Shulker extends AbstractGolem implements Enemy {
+             this.xRotD = 0.0F;
+             return true;
+         }
++
++        // Papo start - compat: the Optional-returning override surface is kept for subclasses
++        // compiled against Paper; both delegate to the boolean protocol above (0048), which
++        // computes exactly the values the removed Optional bodies produced.
++        @Override
++        protected Optional<Float> getYRotD() {
++            return this.hasYRotD() ? Optional.of(this.yRotD) : Optional.empty();
++        }
++
++        @Override
++        protected Optional<Float> getXRotD() {
++            return this.hasXRotD() ? Optional.of(this.xRotD) : Optional.empty();
++        }
++        // Papo end
+     }
+ 
+     class ShulkerNearestAttackGoal extends NearestAttackableTargetGoal<Player> {

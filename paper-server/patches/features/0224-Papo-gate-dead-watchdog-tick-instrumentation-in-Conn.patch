@@ -6,7 +6,7 @@ Subject: [PATCH] Papo: gate dead watchdog tick instrumentation in
 
 
 diff --git a/net/minecraft/network/Connection.java b/net/minecraft/network/Connection.java
-index b012498104b0859522b9b8f7dd98fadd71f8e0af..b42ae2eb993b887f7d54d86984ba4438f832c5f5 100644
+index 20179d5f6eb377f33e2d6b794820ac4abaf0aba6..cabc0c32d2b19380b6adfa368cd06c679735ff80 100644
 --- a/net/minecraft/network/Connection.java
 +++ b/net/minecraft/network/Connection.java
 @@ -585,12 +585,16 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {

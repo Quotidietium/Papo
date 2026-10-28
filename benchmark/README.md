@@ -1,8 +1,12 @@
 # Papo 性能基准测试
 
-对 Papo 已交付优化的**优化前/优化后**实现做 JMH 微基准对比。
-基准代码忠实复刻补丁中的真实实现（同一算法、同一数据结构、同一热路径形态），
-在独立 JVM 中运行，无需启动 Minecraft 服务器。
+两类测量仪器：
+
+1. **JMH 微基准**（`src/papo/bench/`，141 类）：对已交付优化做**优化前/优化后**对比。
+   基准代码忠实复刻补丁中的真实实现（同一算法、同一数据结构、同一热路径形态），
+   在独立 JVM 中运行，无需启动 Minecraft 服务器。
+2. **离线协议 bot + 真实服务器测量**（`src/papo/bot/`，35 类 + 根目录腿脚本）：
+   R24 起的主力仪器，真实服务器上的配对腿差分与分配普查，见下文。
 
 ## 运行
 
@@ -66,6 +70,30 @@ cd benchmark
 | `WireTargetMergeBench` | 0258 | 粉目标强度两遍 vs 单遍合并扫描（100 万随机邻域对拍全等；wireMax 位置域/导体扇出方向性定向用例） |
 | `SpawnScanBench` | 0235-0237 | merge 扫描分配 vs 复用（gc 探针 280 B/op 真差）+ despawn HashMap vs 数组 3.75×（含同集合同序/查值一致自检） |
 | `CombatEventGateBench` | 0238-0240 | 战斗事件门控模型 + EntityDamageEvent 构造器 stream vs 循环校验 2.74×（含异常类型/消息对拍自检） |
+| `WireDirtySkipBench` | 0260/0261/0262 | 粉输入脏追踪：epoch 负载模型（mark:eval=1:16 对齐环振荡实测，每 transition 16 次扇出评估 2.4 次 dirty）全量评估 vs 27+6 直通闭包标记+clean 跳过（1.47×）；clean 入口簿记 6.6ns/entry；自检 main：10 万随机通知暴力对照（含自身/邻域/远距 transition 判例）+ 4 线程并发 mark 压力 |
+| `TopologyVerify` | 批次126 | 非性能——wire 脏追踪跳过的拓扑行为验收（真实服务器）：直通强充能（中继器隔石块 on/off）+ 比较器模拟刷新（箱子 1→27 满格→清空，POWERED 不翻转）5 探针，同 jar skip 开/关双腿逐行全等 |
+
+> 上表覆盖微基准时代（批次 23-126）的代表性基准；R24 之后的收割轮改用真实服务器
+> 配对腿验证（下节），微基准不再逐面新增。
+
+## 离线协议 bot 与真实服务器测量（R24+ 主力仪器）
+
+`src/papo/bot/`（35 类）与根目录腿脚本（`alloccensus-*.sh`/`memsoak-*.sh`/`msptload-*.sh` 等 67 个）构成真实服务器测量体系：
+
+- **协议机器人**：`OfflineJoinBot`（最小离线模式 1.21.11/protocol 774 客户端，纯 JDK
+  socket）。包 ID 必须从服务器源码注册序提取（`GameProtocols.java` 的 addPacket 定义序
+  +锚点校准），锚点外推禁用；多线程驱动必须帧级互斥（papoSendLock）。
+- **验证器**（单 bot 隔离协议实证）：`GrowVerify`/`PlaceVerify`/`SmokeJoinVerify`/
+  `BurstJoinVerify` 等——新负载形态先单腿验证探针命中/回显格式/量级三件。
+- **harness**：`MemSoakVerify`（内存浸泡）、`CompositeCensus`（多域复合负载）、
+  `MsptLoadProbe`/`MsptCompositeProbe`（MSPT 槽位采样）、`LongRunGrowth`（长时生长）、
+  `OldObjectSample` 普查等。
+- **腿脚本**：配对腿（同会话相邻二进制 A/B 差分）+ JFR 双事件集
+  （ObjectAllocationSample#1ms + OldObjectSample）+ 探针门；判读判例全在
+  [note/build.md](../note/build.md) 各批次节。
+
+纪律：bot 与 harness 的编译/运行一律钉死 JDK 25（工具链随批次 209 迁移；本机 `C:/Program Files/Java/latest/jdk-25/bin`，起服 JVM 跟随 harness `java.home`）；腿永远串行
+（端口独占门）；原始数据留 `results/`（不入库，大战役收官后清理）。
 
 ## 依赖
 
@@ -80,5 +108,4 @@ concurrentutil 0.0.8 + slf4j-api 2.0.1（批次78 起池 sizing 基准用，与�
   服务器端到端 TPS 收益取决于该路径在真实负载中的占比（如 NBT 读取在区块加载期密集）。
 - before/after 输入数据完全一致；分配敏感的用例（Optional、Vec3）差距包含 GC 压力，
   在真实服务器高分配场景下收益通常比微基准更大。
-| `WireDirtySkipBench` | 0260/0261/0262 | 粉输入脏追踪：epoch 负载模型（mark:eval=1:16 对齐环振荡实测，每 transition 16 次扇出评估 2.4 次 dirty）全量评估 vs 27+6 直通闭包标记+clean 跳过（1.47×）；clean 入口簿记 6.6ns/entry；自检 main：10 万随机通知暴力对照（含自身/邻域/远距 transition 判例）+ 4 线程并发 mark 压力 |
-| `TopologyVerify` | 批次126 | 非性能——wire 脏追踪跳过的拓扑行为验收（真实服务器）：直通强充能（中继器隔石块 on/off）+ 比较器模拟刷新（箱子 1→27 满格→清空，POWERED 不翻转）5 探针，同 jar skip 开/关双腿逐行全等 |
+- JDK 21+ 下 javac 需显式 `-proc:full` 才运行 JMH 注解处理器（run.sh 已内置）。

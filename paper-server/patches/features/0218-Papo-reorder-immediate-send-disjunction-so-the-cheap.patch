@@ -6,7 +6,7 @@ Subject: [PATCH] Papo: reorder immediate-send disjunction so the cheap
 
 
 diff --git a/net/minecraft/network/Connection.java b/net/minecraft/network/Connection.java
-index 2966c2e2b197b0ccda75a051375f339ac84f1340..4925bb96feb0a30f74463ad1ec61b5d9e507115e 100644
+index f9b4c82673f74cbfa961c0b4ff8283e959a03808..b2cf8510c06f5d148412043b7ba5573b1c747cd0 100644
 --- a/net/minecraft/network/Connection.java
 +++ b/net/minecraft/network/Connection.java
 @@ -406,9 +406,17 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {

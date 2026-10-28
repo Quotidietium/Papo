@@ -1,0 +1,478 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 10 Oct 2026 12:16:29 +0800
+Subject: [PATCH] Papo: batch 158
+
+
+diff --git a/ca/spottedleaf/moonrise/patches/starlight/light/BlockStarLightEngine.java b/ca/spottedleaf/moonrise/patches/starlight/light/BlockStarLightEngine.java
+index b623fb6974f5c4875a1ddc09053e72e6e67dda17..109ebb06d86f70e055c4bce5aa8441dfba070ed5 100644
+--- a/ca/spottedleaf/moonrise/patches/starlight/light/BlockStarLightEngine.java
++++ b/ca/spottedleaf/moonrise/patches/starlight/light/BlockStarLightEngine.java
+@@ -51,7 +51,7 @@ public final class BlockStarLightEngine extends StarLightEngine {
+ 
+     @Override
+     protected void setNibbleNull(final int chunkX, final int chunkY, final int chunkZ) {
+-        final SWMRNibbleArray nibble = this.getNibbleFromCache(chunkX, chunkY, chunkZ);
++        final SWMRNibbleArray nibble = this.papoGetWritableNibble(chunkX, chunkY, chunkZ); // Papo - batch 158 (R18)
+         if (nibble != null) {
+             // de-initialisation is not as straightforward as with sky data, since deinit of block light is typically
+             // because a block was removed - which can decrease light. with sky data, block breaking can only result
+@@ -70,7 +70,7 @@ public final class BlockStarLightEngine extends StarLightEngine {
+             return;
+         }
+ 
+-        final SWMRNibbleArray nibble = this.getNibbleFromCache(chunkX, chunkY, chunkZ);
++        final SWMRNibbleArray nibble = this.papoGetWritableNibble(chunkX, chunkY, chunkZ); // Papo - batch 158 (R18)
+         if (nibble == null) {
+             if (!initRemovedNibbles) {
+                 throw new IllegalStateException();
+diff --git a/ca/spottedleaf/moonrise/patches/starlight/light/SWMRNibbleArray.java b/ca/spottedleaf/moonrise/patches/starlight/light/SWMRNibbleArray.java
+index 9733e19ed23ca54d0ca2e0eca4ea22a16e3c2a0c..4d6cefa2c8f6be3909e0f7ef987528395c378146 100644
+--- a/ca/spottedleaf/moonrise/patches/starlight/light/SWMRNibbleArray.java
++++ b/ca/spottedleaf/moonrise/patches/starlight/light/SWMRNibbleArray.java
+@@ -44,14 +44,105 @@ public final class SWMRNibbleArray {
+ 
+     public static SWMRNibbleArray fromVanilla(final DataLayer nibble) {
+         if (nibble == null) {
+-            return new SWMRNibbleArray(null, true);
++            return PAPO_SHARED_NULL; // Papo - batch 158 (R18)
+         } else if (nibble.isEmpty()) {
+-            return new SWMRNibbleArray();
++            return PAPO_SHARED_UNINIT; // Papo - batch 158 (R18)
+         } else {
+             return new SWMRNibbleArray(nibble.getData().clone()); // make sure we don't write to the parameter later
+         }
+     }
+ 
++    // Papo start - batch 158 (R18): frozen-shell canonical sharing. The steady state is
++    // dominated by nibble SHELLS that are born into a chunk's section table and never
++    // written again (batch 157 soak census: 539,188 SWMRNibbleArray instances vs ~30k
++    // materialised byte[2048] payloads) - getFilledEmptyLight fills every section of
++    // every chunk with the identical NULL-state shell, and SaveUtil reloads null-data
++    // sections as NULL/UNINIT shells. Two immutable singletons replace those births.
++    // Every mutating method carries a loud identity canary so a missed copy-on-write
++    // call site fails fast instead of silently corrupting light across every chunk
++    // sharing the shell; the read surface (get*/isDirty/getSaveState/toVanillaNibble/
++    // updateVisible) is value-identical on the shared instances because the frozen
++    // fields are exactly the constructor outputs and never dirty.
++    public static final SWMRNibbleArray PAPO_SHARED_NULL = new SWMRNibbleArray(null, true);
++    public static final SWMRNibbleArray PAPO_SHARED_UNINIT = new SWMRNibbleArray();
++    // PAPO_SHARED_INIT_FULL (full-bright settled sky sections) is declared next to
++    // LONG_VIEW further down: its birth runs the all-full canonicalisation, which needs
++    // the VarHandle - static initialisers run in textual order.
++
++    public final boolean papoIsShared() {
++        return this == PAPO_SHARED_NULL || this == PAPO_SHARED_UNINIT || this == PAPO_SHARED_INIT_FULL;
++    }
++
++    // the private replacement for a frozen shell - a fresh birth with identical semantics
++    public final SWMRNibbleArray papoClonePrivate() {
++        if (this == PAPO_SHARED_NULL) {
++            return new SWMRNibbleArray(null, true);
++        }
++        if (this == PAPO_SHARED_INIT_FULL) {
++            return new SWMRNibbleArray(PAPO_FULL_TEMPLATE, INIT_STATE_INIT);
++        }
++        return new SWMRNibbleArray();
++    }
++
++    // Papo start - batch 158 (R18): settle-swap probe. A published, clean nibble whose
++    // every observable field equals a shared singleton (exact state value included, so
++    // isNull/isUninitialised/isInitialised predicates are preserved bit-for-bit) can be
++    // replaced by that singleton in its holders; the private instance is then garbage.
++    // INIT-uniform-0 and HIDDEN-uniform-{0,15} deliberately have NO singleton: the
++    // former reads isInitialised*() true where UNINIT reads false, the latter converts
++    // to null in vanilla views - engine logic branches on exactly these differences.
++    // Single-writer context only (the light thread's updateVisible epilogues).
++    public SWMRNibbleArray papoFrozenEquivalent() {
++        if (this.papoIsShared()) {
++            return this;
++        }
++        if (this.updatingDirty || this.stateUpdating != this.stateVisible
++                || this.storageUpdating != null || this.storageVisible != null) {
++            return null;
++        }
++        final int state = this.stateUpdating;
++        if (this.updatingUniform == 0 && this.visibleUniform == 0) {
++            if (state == INIT_STATE_NULL) {
++                return PAPO_SHARED_NULL;
++            }
++            if (state == INIT_STATE_UNINIT) {
++                return PAPO_SHARED_UNINIT;
++            }
++            return null;
++        }
++        if (this.updatingUniform == 15 && this.visibleUniform == 15 && state == INIT_STATE_INIT) {
++            return PAPO_SHARED_INIT_FULL;
++        }
++        return null;
++    }
++    // Papo end - batch 158 (R18)
++
++    // save/load birth: null-data sections on disk are exactly NULL/UNINIT (getSaveState
++    // materialises uniform payloads and never writes null-data INIT/HIDDEN), so they map
++    // to the singletons; an all-full payload with state INIT is the round-trip of the
++    // full-bright singleton (save materialises it, the constructor would canonicalise
++    // it back to a private) - map it to the singleton directly; malformed tags keep
++    // today's constructor validation
++    public static SWMRNibbleArray papoFromSave(final byte[] bytes, final int state) {
++        if (bytes == null && state == INIT_STATE_NULL) {
++            return PAPO_SHARED_NULL;
++        }
++        if (bytes == null && state == INIT_STATE_UNINIT) {
++            return PAPO_SHARED_UNINIT;
++        }
++        if (bytes != null && state == INIT_STATE_INIT && isAllFull(bytes)) {
++            return PAPO_SHARED_INIT_FULL;
++        }
++        return new SWMRNibbleArray(bytes, state);
++    }
++
++    private void papoCheckMutable() {
++        if (this.papoIsShared()) {
++            throw new IllegalStateException("Papo: attempt to mutate a shared canonical SWMRNibbleArray - a copy-on-write site was missed (batch 158)");
++        }
++    }
++    // Papo end - batch 158 (R18)
++
+     private int stateUpdating;
+     private volatile int stateVisible;
+ 
+@@ -199,6 +290,16 @@ public final class SWMRNibbleArray {
+ 
+     private static final VarHandle LONG_VIEW = MethodHandles.byteArrayViewVarHandle(long[].class, ByteOrder.nativeOrder());
+ 
++    // Papo start - batch 158 (R18): declared after LONG_VIEW (textual init order) - the
++    // birth runs the all-full canonicalisation in the (bytes, state) constructor, which
++    // reads the VarHandle; full-bright settled sky sections share this frozen shell
++    private static final byte[] PAPO_FULL_TEMPLATE = new byte[ARRAY_SIZE];
++    static {
++        java.util.Arrays.fill(PAPO_FULL_TEMPLATE, (byte)-1);
++    }
++    public static final SWMRNibbleArray PAPO_SHARED_INIT_FULL = new SWMRNibbleArray(PAPO_FULL_TEMPLATE, INIT_STATE_INIT);
++    // Papo end - batch 158 (R18)
++
+     private static boolean isAllZero(final byte[] data) {
+         final int len = data.length / Long.BYTES; // assume divisible
+ 
+@@ -227,6 +328,7 @@ public final class SWMRNibbleArray {
+ 
+     // operation type: updating on src, updating on other
+     public void extrudeLower(final SWMRNibbleArray other) {
++        this.papoCheckMutable(); // Papo - batch 158 (R18)
+         if (other.stateUpdating == INIT_STATE_NULL) {
+             throw new IllegalArgumentException();
+         }
+@@ -280,6 +382,7 @@ public final class SWMRNibbleArray {
+ 
+     // operation type: updating
+     public void setFull() {
++        this.papoCheckMutable(); // Papo - batch 158 (R18)
+         if (this.stateUpdating != INIT_STATE_HIDDEN) {
+             this.stateUpdating = INIT_STATE_INIT;
+         }
+@@ -304,6 +407,7 @@ public final class SWMRNibbleArray {
+ 
+     // operation type: updating
+     public void setZero() {
++        this.papoCheckMutable(); // Papo - batch 158 (R18)
+         if (this.stateUpdating != INIT_STATE_HIDDEN) {
+             this.stateUpdating = INIT_STATE_INIT;
+         }
+@@ -325,6 +429,7 @@ public final class SWMRNibbleArray {
+ 
+     // operation type: updating
+     public void setNonNull() {
++        this.papoCheckMutable(); // Papo - batch 158 (R18)
+         if (this.stateUpdating == INIT_STATE_HIDDEN) {
+             this.stateUpdating = INIT_STATE_INIT;
+             return;
+@@ -337,6 +442,7 @@ public final class SWMRNibbleArray {
+ 
+     // operation type: updating
+     public void setNull() {
++        this.papoCheckMutable(); // Papo - batch 158 (R18)
+         this.stateUpdating = INIT_STATE_NULL;
+         if (this.updatingDirty && this.storageUpdating != null) {
+             freeBytes(this.storageUpdating);
+@@ -348,6 +454,7 @@ public final class SWMRNibbleArray {
+ 
+     // operation type: updating
+     public void setUninitialised() {
++        this.papoCheckMutable(); // Papo - batch 158 (R18)
+         this.stateUpdating = INIT_STATE_UNINIT;
+         if (this.storageUpdating != null && this.updatingDirty) {
+             freeBytes(this.storageUpdating);
+@@ -359,6 +466,7 @@ public final class SWMRNibbleArray {
+ 
+     // operation type: updating
+     public void setHidden() {
++        this.papoCheckMutable(); // Papo - batch 158 (R18)
+         if (this.stateUpdating == INIT_STATE_HIDDEN) {
+             return;
+         }
+@@ -576,6 +684,7 @@ public final class SWMRNibbleArray {
+ 
+     // operation type: updating
+     public void set(final int index, final int value) {
++        this.papoCheckMutable(); // Papo - batch 158 (R18)
+         // Papo start - batch 148 (R8): a uniform flip leaves updatingDirty set with null
+         // storage - materialise whenever storage is absent, not only when clean
+         if (this.storageUpdating == null || !this.updatingDirty) {
+diff --git a/ca/spottedleaf/moonrise/patches/starlight/light/SkyStarLightEngine.java b/ca/spottedleaf/moonrise/patches/starlight/light/SkyStarLightEngine.java
+index cdb679fb6e3d342efc776329124209d1f433cc8f..cc93e28d2dcedb7c1a5f13a88ec8a42a1b3eae47 100644
+--- a/ca/spottedleaf/moonrise/patches/starlight/light/SkyStarLightEngine.java
++++ b/ca/spottedleaf/moonrise/patches/starlight/light/SkyStarLightEngine.java
+@@ -72,7 +72,7 @@ public final class SkyStarLightEngine extends StarLightEngine {
+         if (chunkY < this.minLightSection || chunkY > this.maxLightSection || this.getChunkInCache(chunkX, chunkZ) == null) {
+             return;
+         }
+-        SWMRNibbleArray nibble = this.getNibbleFromCache(chunkX, chunkY, chunkZ);
++        SWMRNibbleArray nibble = this.papoGetWritableNibble(chunkX, chunkY, chunkZ); // Papo - batch 158 (R18): promote a shared shell before the mutator below
+         if (nibble == null) {
+             if (!initRemovedNibbles) {
+                 throw new IllegalStateException();
+@@ -85,7 +85,7 @@ public final class SkyStarLightEngine extends StarLightEngine {
+ 
+     @Override
+     protected void setNibbleNull(final int chunkX, final int chunkY, final int chunkZ) {
+-        final SWMRNibbleArray nibble = this.getNibbleFromCache(chunkX, chunkY, chunkZ);
++        final SWMRNibbleArray nibble = this.papoGetWritableNibble(chunkX, chunkY, chunkZ); // Papo - batch 158 (R18)
+         if (nibble != null) {
+             nibble.setNull();
+         }
+@@ -121,7 +121,7 @@ public final class SkyStarLightEngine extends StarLightEngine {
+ 
+         if (chunkY > lowestY) {
+             // we need to set this one to full
+-            final SWMRNibbleArray nibble = this.getNibbleFromCache(chunkX, chunkY, chunkZ);
++            final SWMRNibbleArray nibble = this.papoGetWritableNibble(chunkX, chunkY, chunkZ); // Papo - batch 158 (R18)
+             nibble.setNonNull();
+             nibble.setFull();
+             return;
+diff --git a/ca/spottedleaf/moonrise/patches/starlight/light/StarLightEngine.java b/ca/spottedleaf/moonrise/patches/starlight/light/StarLightEngine.java
+index c6222bfb75706052df41d821f2fcfc4620ce3672..f485d7292d5290b9c7273ee2eea8bbc1b691bb58 100644
+--- a/ca/spottedleaf/moonrise/patches/starlight/light/StarLightEngine.java
++++ b/ca/spottedleaf/moonrise/patches/starlight/light/StarLightEngine.java
+@@ -95,6 +95,14 @@ public abstract class StarLightEngine {
+     // index = x + (z * 5) + (y * 25)
+     protected SWMRNibbleArray[] nibbleCache;
+ 
++    // Papo start - batch 158 (R18): per-chunk record of the array that fed nibbleCache
++    // (chunk section table / light() working array / relight working array), so
++    // copy-on-write of a shared canonical shell patches the authoritative holder and
++    // not just the transient cache slot. null entries = cache-only nibbles (engine
++    // lazy-init sites) which have no holder to patch, matching pre-share semantics.
++    protected SWMRNibbleArray[][] papoNibbleSourceCache;
++    // Papo end - batch 158 (R18)
++
+     // the exact same as above, except for storing fast access to nibbles to call change callbacks for
+     // for the y chunk section it's from [minLightSection, maxLightSection] or [0, maxLightSection - minLightSection]
+     // index = x + (z * 5) + (y * 25)
+@@ -156,6 +164,11 @@ public abstract class StarLightEngine {
+             if (this.notifyUpdateCache == null || this.notifyUpdateCache.length < minArraySize) {
+                 this.notifyUpdateCache = new boolean[minArraySize];
+             }
++            // Papo start - batch 158 (R18)
++            if (this.papoNibbleSourceCache == null) {
++                this.papoNibbleSourceCache = new SWMRNibbleArray[5 * 5][];
++            }
++            // Papo end - batch 158 (R18)
+         }
+     }
+ 
+@@ -259,7 +272,44 @@ public abstract class StarLightEngine {
+         this.nibbleCache[chunkX + 5*chunkZ + (5 * 5) * chunkY + this.chunkSectionIndexOffset] = nibble;
+     }
+ 
++    // Papo start - batch 158 (R18): copy-on-write fetch for mutation sites. A shared
++    // canonical shell (PAPO_SHARED_*) is replaced by a private clone in the cache slot
++    // AND in the recorded source array; private nibbles and nulls pass through
++    // unchanged. The identity guard on the source element skips cache-only nibbles.
++    protected final SWMRNibbleArray papoGetWritableNibble(final int chunkX, final int chunkY, final int chunkZ) {
++        final SWMRNibbleArray nibble = this.getNibbleFromCache(chunkX, chunkY, chunkZ);
++        if (nibble == null || !nibble.papoIsShared()) {
++            return nibble;
++        }
++        final SWMRNibbleArray copy = nibble.papoClonePrivate();
++        this.setNibbleInCache(chunkX, chunkY, chunkZ, copy);
++        final SWMRNibbleArray[] source = this.papoNibbleSourceCache[chunkX + 5*chunkZ + this.chunkIndexOffset];
++        if (source != null && source[chunkY - this.minLightSection] == nibble) {
++            source[chunkY - this.minLightSection] = copy;
++        }
++        return copy;
++    }
++    // Papo end - batch 158 (R18)
++
+     protected final void setNibblesForChunkInCache(final int chunkX, final int chunkZ, final SWMRNibbleArray[] nibbles) {
++        // Papo start - batch 158 (R18): population sweep. Clean frozen-equivalent
++        // privates (extrude-settled UNINIT, edge-check NULL shells, save round-trips)
++        // never pass the dirty gate of the epilogue settle - collapse them whenever a
++        // chunk's array flows into the cache, before the slots are loaded.
++        if (nibbles != null) {
++            for (int i = 0; i < nibbles.length; ++i) {
++                final SWMRNibbleArray n = nibbles[i];
++                if (n == null) {
++                    continue;
++                }
++                final SWMRNibbleArray settled = n.papoFrozenEquivalent();
++                if (settled != null && settled != n) {
++                    nibbles[i] = settled;
++                }
++            }
++        }
++        // Papo end - batch 158 (R18)
++        this.papoNibbleSourceCache[chunkX + 5*chunkZ + this.chunkIndexOffset] = nibbles; // Papo - batch 158 (R18): record the holder for copy-on-write patching
+         for (int cy = this.minLightSection; cy <= this.maxLightSection; ++cy) {
+             this.setNibbleInCache(chunkX, cy, chunkZ, nibbles == null ? null : nibbles[cy - this.minLightSection]);
+         }
+@@ -279,12 +329,29 @@ public abstract class StarLightEngine {
+             if ((nibble != null && nibble.updateVisible()) || this.notifyUpdateCache[index]) {
+                 lightAccess.onLightUpdate(this.skylightPropagator ? LightLayer.SKY : LightLayer.BLOCK, SectionPos.of(chunkX, chunkY, chunkZ));
+             }
++            // Papo start - batch 158 (R18): settle-swap. A private nibble that published
++            // to a frozen-equivalent shape (empty UNINIT/NULL, full-bright INIT) is
++            // replaced by the shared singleton in the cache slot and in the recorded
++            // holder - the promotion-only shells of an initial light pass collapse here.
++            if (nibble != null) {
++                final SWMRNibbleArray settled = nibble.papoFrozenEquivalent();
++                if (settled != null && settled != nibble
++                        && chunkY >= this.minLightSection && chunkY <= this.maxLightSection) {
++                    this.nibbleCache[index] = settled;
++                    final SWMRNibbleArray[] source = this.papoNibbleSourceCache[chunkX + 5*chunkZ + this.chunkIndexOffset];
++                    if (source != null && source[chunkY - this.minLightSection] == nibble) {
++                        source[chunkY - this.minLightSection] = settled;
++                    }
++                }
++            }
++            // Papo end - batch 158 (R18)
+         }
+     }
+ 
+     protected final void destroyCaches() {
+         Arrays.fill(this.sectionCache, null);
+         Arrays.fill(this.nibbleCache, null);
++        Arrays.fill(this.papoNibbleSourceCache, null); // Papo - batch 158 (R18)
+         Arrays.fill(this.chunkCache, null);
+         Arrays.fill(this.emptinessMapCache, null);
+         if (this.isClientSide) {
+@@ -325,8 +392,7 @@ public abstract class StarLightEngine {
+     }
+ 
+     protected final void setLightLevel(final int worldX, final int worldY, final int worldZ, final int level) {
+-        final int sectionIndex = (worldX >> 4) + 5 * (worldZ >> 4) + (5 * 5) * (worldY >> 4) + this.chunkSectionIndexOffset;
+-        final SWMRNibbleArray nibble = this.nibbleCache[sectionIndex];
++        final SWMRNibbleArray nibble = this.papoGetWritableNibble(worldX >> 4, worldY >> 4, worldZ >> 4); // Papo - batch 158 (R18)
+ 
+         if (nibble != null) {
+             nibble.set((worldX & 15) | ((worldZ & 15) << 4) | ((worldY & 15) << 8), level);
+@@ -367,7 +433,7 @@ public abstract class StarLightEngine {
+     }
+ 
+     protected final void setLightLevel(final int sectionIndex, final int localIndex, final int worldX, final int worldY, final int worldZ, final int level) {
+-        final SWMRNibbleArray nibble = this.nibbleCache[sectionIndex];
++        final SWMRNibbleArray nibble = this.papoGetWritableNibble(worldX >> 4, worldY >> 4, worldZ >> 4); // Papo - batch 158 (R18)
+ 
+         if (nibble != null) {
+             nibble.set(localIndex, level);
+@@ -404,8 +470,8 @@ public abstract class StarLightEngine {
+     private static SWMRNibbleArray[] getFilledEmptyLight(final int totalLightSections) {
+         final SWMRNibbleArray[] ret = new SWMRNibbleArray[totalLightSections];
+ 
+-        for (int i = 0, len = ret.length; i < len; ++i) {
+-            ret[i] = new SWMRNibbleArray(null, true);
++        for (int i = 0; i < totalLightSections; ++i) {
++            ret[i] = SWMRNibbleArray.PAPO_SHARED_NULL; // Papo - batch 158 (R18): every untouched section shares one frozen shell
+         }
+ 
+         return ret;
+@@ -1025,8 +1091,20 @@ public abstract class StarLightEngine {
+ 
+             // make sure nibbles are fully updated before calling back
+             final SWMRNibbleArray[] nibbles = nibblesByChunk.get(CoordinateUtils.getChunkKey(chunkX, chunkZ));
+-            for (final SWMRNibbleArray nibble : nibbles) {
++            for (int i = 0; i < nibbles.length; ++i) {
++                final SWMRNibbleArray nibble = nibbles[i];
++                if (nibble == null) {
++                    continue;
++                }
+                 nibble.updateVisible();
++                // Papo start - batch 158 (R18): settle-swap for the relight working
++                // array - frozen-equivalent published shells collapse to the singletons
++                // before the array is stored on the chunk
++                final SWMRNibbleArray settled = nibble.papoFrozenEquivalent();
++                if (settled != null && settled != nibble) {
++                    nibbles[i] = settled;
++                }
++                // Papo end - batch 158 (R18)
+             }
+ 
+             this.setNibbles(chunk, nibbles);
+@@ -1177,7 +1255,8 @@ public abstract class StarLightEngine {
+                         continue;
+                     }
+ 
+-                    currentNibble.set(localIndex, targetLevel);
++                    // Papo - batch 158 (R18): lazy COW - a shared shell promotes to a private clone only on an actual write
++                    (currentNibble.papoIsShared() ? this.papoGetWritableNibble(offX >> 4, offY >> 4, offZ >> 4) : currentNibble).set(localIndex, targetLevel);
+                     this.postLightUpdate(offX, offY, offZ);
+ 
+                     if (targetLevel > 1) {
+@@ -1236,7 +1315,8 @@ public abstract class StarLightEngine {
+                         continue;
+                     }
+ 
+-                    currentNibble.set(localIndex, targetLevel);
++                    // Papo - batch 158 (R18): lazy COW - a shared shell promotes to a private clone only on an actual write
++                    (currentNibble.papoIsShared() ? this.papoGetWritableNibble(offX >> 4, offY >> 4, offZ >> 4) : currentNibble).set(localIndex, targetLevel);
+                     this.postLightUpdate(offX, offY, offZ);
+ 
+                     if (targetLevel > 1) {
+@@ -1342,7 +1422,8 @@ public abstract class StarLightEngine {
+                                         | (flags | FLAG_WRITE_LEVEL);
+                     }
+ 
+-                    currentNibble.set(localIndex, 0);
++                    // Papo - batch 158 (R18): lazy COW - a shared shell promotes to a private clone only on an actual write
++                    (currentNibble.papoIsShared() ? this.papoGetWritableNibble(offX >> 4, offY >> 4, offZ >> 4) : currentNibble).set(localIndex, 0);
+                     this.postLightUpdate(offX, offY, offZ);
+ 
+                     if (targetLevel > 0) {
+@@ -1425,7 +1506,8 @@ public abstract class StarLightEngine {
+                                         | (flags | FLAG_WRITE_LEVEL);
+                     }
+ 
+-                    currentNibble.set(localIndex, 0);
++                    // Papo - batch 158 (R18): lazy COW - a shared shell promotes to a private clone only on an actual write
++                    (currentNibble.papoIsShared() ? this.papoGetWritableNibble(offX >> 4, offY >> 4, offZ >> 4) : currentNibble).set(localIndex, 0);
+                     this.postLightUpdate(offX, offY, offZ);
+ 
+                     if (targetLevel > 0) { // we actually need to propagate 0 just in case we find a neighbour...
+diff --git a/ca/spottedleaf/moonrise/patches/starlight/util/SaveUtil.java b/ca/spottedleaf/moonrise/patches/starlight/util/SaveUtil.java
+index 95154636727366adfb4fb67e7db8b09f3684f853..05da675db4b4b08067f16f04e8480df70881d660 100644
+--- a/ca/spottedleaf/moonrise/patches/starlight/util/SaveUtil.java
++++ b/ca/spottedleaf/moonrise/patches/starlight/util/SaveUtil.java
+@@ -166,9 +166,9 @@ public final class SaveUtil {
+                 final byte[] blockLight = sectionData.getByteArray("BlockLight").orElse(null);
+                 if (blockLight != null) {
+                     // this is where our diff is
+-                    blockNibbles[y - minSection] = new SWMRNibbleArray(blockLight.clone(), sectionData.getIntOr(BLOCKLIGHT_STATE_TAG, 0)); // clone for data safety
++                    blockNibbles[y - minSection] = SWMRNibbleArray.papoFromSave(blockLight.clone(), sectionData.getIntOr(BLOCKLIGHT_STATE_TAG, 0)); // clone for data safety; Papo - batch 158 (R18): all-full payloads share the full-bright shell
+                 } else {
+-                    blockNibbles[y - minSection] = new SWMRNibbleArray(null, sectionData.getIntOr(BLOCKLIGHT_STATE_TAG, 0));
++                    blockNibbles[y - minSection] = SWMRNibbleArray.papoFromSave(null, sectionData.getIntOr(BLOCKLIGHT_STATE_TAG, 0)); // Papo - batch 158 (R18): frozen null-data sections share the canonical shell
+                 }
+ 
+                 if (canReadSky) {
+@@ -179,9 +179,9 @@ public final class SaveUtil {
+                         // however, for compatibility we store chunks as unlit so vanilla
+                         // is forced to re-light them if it encounters our data. It's too much of a burden
+                         // to try and maintain compatibility with a broken and inferior skylight management system.
+-                        skyNibbles[y - minSection] = new SWMRNibbleArray(skyLight.clone(), sectionData.getIntOr(SKYLIGHT_STATE_TAG, 0)); // clone for data safety
++                        skyNibbles[y - minSection] = SWMRNibbleArray.papoFromSave(skyLight.clone(), sectionData.getIntOr(SKYLIGHT_STATE_TAG, 0)); // clone for data safety; Papo - batch 158 (R18): all-full payloads share the full-bright shell
+                     } else {
+-                        skyNibbles[y - minSection] = new SWMRNibbleArray(null, sectionData.getIntOr(SKYLIGHT_STATE_TAG, 0));
++                        skyNibbles[y - minSection] = SWMRNibbleArray.papoFromSave(null, sectionData.getIntOr(SKYLIGHT_STATE_TAG, 0)); // Papo - batch 158 (R18): frozen null-data sections share the canonical shell
+                     }
+                 }
+             }

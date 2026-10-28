@@ -266,7 +266,12 @@ public final class BurstJoinVerify {
         }
         // 本机 locale 的 socket 错误文案经 sun.jnu.encoding 层产出（-Dfile.encoding 管不到），
         // UTF-8 读取后呈乱码问号串：裸 java.io.IOException + 5 连问号 = 同一突断竞争
-        return l.contains("java.io.IOException:") && l.contains("?????");
+        // 批次142（R5）补：WSAECONNABORTED 的中文文案（"你的主机中的软件中止了一个已建立的
+        // 连接"）——bot 按设计断开与服务端收尾写（system_chat fallback）竞争，同属良性关断噪声
+        // 批次150（R10）补：乱码串实际是 UTF-8 解码器产出的 U+FFFD 替换字符（打印成 ? 但不含
+        // ASCII '?'，两分支皆漏）——B-088@240s 腿 logErrors=3 即此形态，latest.log 内明文可证
+        return l.contains("java.io.IOException:")
+            && (l.contains("?????") || l.contains("\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD") || l.contains("主机中的软件中止了一个已建立的连接"));
     }
 
     private static String checkGzipNbt(final Path dat) {

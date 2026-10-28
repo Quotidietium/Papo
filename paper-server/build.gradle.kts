@@ -162,15 +162,18 @@ dependencies {
         isTransitive = false // includes junit
     }
 
-    testImplementation("io.github.classgraph:classgraph:4.8.179") // For mob goal test
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-    testImplementation("org.junit.jupiter:junit-jupiter:5.12.2")
-    testImplementation("org.junit.platform:junit-platform-suite-engine:1.12.2")
-    testImplementation("org.hamcrest:hamcrest:2.2")
-    testImplementation("org.mockito:mockito-core:5.14.1")
-    mockitoAgent("org.mockito:mockito-core:5.14.1") { isTransitive = false } // Configure mockito agent that is needed in newer java versions
-    testImplementation("org.ow2.asm:asm-tree:9.9.1")
-    testImplementation("org.junit-pioneer:junit-pioneer:2.2.0") // CartesianTest
+    // Papo - batch 210: toolchain refresh (2026-10-27 latest). JUnit 6 unblocked by rewriting the
+    // sole @CartesianTest consumer with native @ParameterizedTest streams (pioneer removed).
+    // classgraph 6: whitelistPackages/getSubclasses/getClassesImplementing/loadClass(es) were ported
+    // to acceptPackages/getAllSubclasses/getAllClassesImplementing/Class.forName in the test sources.
+    testImplementation("io.github.classgraph:classgraph:6.0.0") // For mob goal test
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:6.1.3")
+    testImplementation("org.junit.jupiter:junit-jupiter:6.1.3")
+    testImplementation("org.junit.platform:junit-platform-suite-engine:6.1.3")
+    testImplementation("org.hamcrest:hamcrest:3.0")
+    testImplementation("org.mockito:mockito-core:5.24.0") // Papo - Java 25 migration (batch 209): 5.14's ByteBuddy cannot parse class-file v69
+    mockitoAgent("org.mockito:mockito-core:5.24.0") { isTransitive = false } // Configure mockito agent that is needed in newer java versions
+    testImplementation("org.ow2.asm:asm-tree:9.11.1")
 
     implementation("net.neoforged:srgutils:1.0.9") // Mappings handling
     implementation("net.neoforged:AutoRenamingTool:2.0.3") // Remap plugins
@@ -206,7 +209,10 @@ tasks.jar {
             "Specification-Version" to project.version,
             "Specification-Vendor" to "Papo", // Papo - brand
             "Brand-Id" to "papermc:paper", // Papo - kept for plugin compatibility (isBrandCompatible)
-            "Brand-Name" to "Papo", // Papo - brand
+            "Brand-Name" to "Paper", // Papo - MUST stay "Paper": brandName() feeds Bukkit.getName() and
+            // getServerModName() (client brand payload); a fork-specific value breaks the large class
+            // of plugins that gate Paper-only behavior on the brand string. Papo identity is exposed
+            // via Papo-Version below, ServerBuildInfo.papoVersion() and /version.
             "Papo-Version" to papoVersion, // Papo - papo version
             "Build-Number" to (build ?: ""),
             "Build-Time" to buildTime.toString(),
@@ -291,10 +297,13 @@ fun TaskContainer.registerRunTask(
         .dir(providers.gradleProperty("paper.runWorkDir").getOrElse("run"))
         .asFile
     javaLauncher.set(project.javaToolchains.launcherFor {
-        languageVersion.set(JavaLanguageVersion.of(21))
-        vendor.set(JvmVendorSpec.JETBRAINS)
+        languageVersion.set(JavaLanguageVersion.of(25)) // Papo - Java 25 migration (batch 209); JETBRAINS vendor pin dropped (JBR 25 not guaranteed locally)
     })
-    jvmArgs("-XX:+AllowEnhancedClassRedefinition")
+    // Papo - batch 209: JEP 519 compact object headers are a stable Java 25 feature and measurably
+    // reduce this server's live set (paired soak on 0.117.0, 12 bots: -3.7% / ~-23MB); dev run
+    // servers start in the recommended operator configuration.
+    jvmArgs("-XX:+UseCompactObjectHeaders")
+    // Papo - "-XX:+AllowEnhancedClassRedefinition" removed: JBR-only DCEVM flag, not supported by the standard JDK 25 runtime
 
     if (rootProject.childProjects["test-plugin"] != null) {
         val testPluginJar = rootProject.project(":test-plugin").tasks.jar.flatMap { it.archiveFile }

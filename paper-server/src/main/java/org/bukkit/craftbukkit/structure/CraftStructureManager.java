@@ -38,7 +38,14 @@ public class CraftStructureManager implements StructureManager {
     public Map<NamespacedKey, Structure> getStructures() {
         Map<NamespacedKey, Structure> cachedStructures = new HashMap<>();
         for (Map.Entry<Identifier, Optional<StructureTemplate>> entry : this.structureManager.structureRepository.entrySet()) {
-            entry.getValue().ifPresent(definedStructure -> cachedStructures.put(CraftNamespacedKey.fromMinecraft(entry.getKey()), new CraftStructure(definedStructure, this.registry)));
+            entry.getValue().ifPresent(definedStructure -> {
+                // Papo start - compat: handing out the live instance pins it (vanilla never evicts)
+                if (this.structureManager.structureRepository instanceof net.minecraft.world.level.levelgen.structure.templatesystem.PapoStructureCache papoCache) {
+                    papoCache.papoProtect(entry.getKey());
+                }
+                // Papo end
+                cachedStructures.put(CraftNamespacedKey.fromMinecraft(entry.getKey()), new CraftStructure(definedStructure, this.registry));
+            });
         }
         return Collections.unmodifiableMap(cachedStructures);
     }
@@ -47,10 +54,17 @@ public class CraftStructureManager implements StructureManager {
     public Structure getStructure(NamespacedKey structureKey) {
         Preconditions.checkArgument(structureKey != null, "NamespacedKey structureKey cannot be null");
 
-        final Optional<StructureTemplate> definedStructure = this.structureManager.structureRepository.get(CraftNamespacedKey.toMinecraft(structureKey));
+        final Identifier papoKey = CraftNamespacedKey.toMinecraft(structureKey);
+        final Optional<StructureTemplate> definedStructure = this.structureManager.structureRepository.get(papoKey);
         if (definedStructure == null) {
             return null;
         }
+        // Papo start - compat: handing out the live instance pins it against idle eviction
+        // (vanilla keeps the same instance forever; see PapoStructureCache)
+        if (this.structureManager.structureRepository instanceof net.minecraft.world.level.levelgen.structure.templatesystem.PapoStructureCache papoCache) {
+            papoCache.papoProtect(papoKey);
+        }
+        // Papo end
         return definedStructure.map((s) -> new CraftStructure(s, this.registry)).orElse(null);
     }
 

@@ -11,7 +11,7 @@ subprojects {
 
     extensions.configure<JavaPluginExtension> {
         toolchain {
-            languageVersion = JavaLanguageVersion.of(21)
+            languageVersion = JavaLanguageVersion.of(25) // Papo - Java 25 migration (batch 209): runtime/JIT/GC gains; plugins still target/compile against upstream Paper 1.21.11 (class v65 loads fine on 25)
         }
     }
 }
@@ -21,7 +21,7 @@ val paperMavenPublicUrl = "https://repo.papermc.io/repository/maven-public/"
 subprojects {
     tasks.withType<JavaCompile>().configureEach {
         options.encoding = Charsets.UTF_8.name()
-        options.release = 21
+        options.release = 25 // Papo - Java 25 migration (batch 209)
         options.isFork = true
         options.compilerArgs.addAll(listOf("-Xlint:-deprecation", "-Xlint:-removal"))
     }

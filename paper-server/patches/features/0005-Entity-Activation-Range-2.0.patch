@@ -15,7 +15,7 @@ Adds villagers as separate config
 
 diff --git a/io/papermc/paper/entity/activation/ActivationRange.java b/io/papermc/paper/entity/activation/ActivationRange.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..c18823746ab2edcab536cb1589b7720e3af07e0f
+index 0000000000000000000000000000000000000000..ce6b57eeeeb1bd652f4bb53c19dcfbc05126c7e9
 --- /dev/null
 +++ b/io/papermc/paper/entity/activation/ActivationRange.java
 @@ -0,0 +1,334 @@
@@ -354,7 +354,7 @@ index 0000000000000000000000000000000000000000..c18823746ab2edcab536cb1589b7720e
 +    }
 +}
 diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
-index 7656665352632fc718bea91dcfd3dd41fc436e1f..bdbc15bfbbfeae2bc5b884e300b86cb25c88840f 100644
+index 1e66b338e640a8bf17e23f861cd26b78971ab783..a1068db24d4109c823c2e9bddf571d407964574f 100644
 --- a/net/minecraft/server/level/ServerLevel.java
 +++ b/net/minecraft/server/level/ServerLevel.java
 @@ -830,6 +830,7 @@ public class ServerLevel extends Level implements ServerEntityGetter, WorldGenLe
@@ -521,7 +521,7 @@ index 34ef15867759ebc7296256a6d5ec286eb3a5f895..d3d97b0b6ff6312f1deb0bb8b1beef8b
              movement = this.maybeBackOffFromEdge(movement, type);
              Vec3 vec3 = this.collide(movement);
 diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
-index 56c29f6407256f471156d309fd81bb0256fff756..07b3d08d9c2f9e978379de5a6b846a828029e2fa 100644
+index d4438aeb9b68390f5ac63cfe872e266a55014765..c26b071c942300b3d0d28595c8bd934655e2b970 100644
 --- a/net/minecraft/world/entity/LivingEntity.java
 +++ b/net/minecraft/world/entity/LivingEntity.java
 @@ -3331,6 +3331,14 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
@@ -540,7 +540,7 @@ index 56c29f6407256f471156d309fd81bb0256fff756..07b3d08d9c2f9e978379de5a6b846a82
      public void tick() {
          super.tick();
 diff --git a/net/minecraft/world/entity/Mob.java b/net/minecraft/world/entity/Mob.java
-index 95c99f266f259042d5946e891f9bab04d2fdba2a..92175cc019750e829fcad7691a937024c2649882 100644
+index a556fe851b9bdfe1b3c434dd19aa4a42f7226d68..fc29ec18a33eb8f25af1878cf74e73344f389a09 100644
 --- a/net/minecraft/world/entity/Mob.java
 +++ b/net/minecraft/world/entity/Mob.java
 @@ -217,6 +217,20 @@ public abstract class Mob extends LivingEntity implements EquipmentUser, Leashab
@@ -674,7 +674,7 @@ index 768adc0205a2ec5221045c9c2ca0fdeec9f734b6..e82bb8f2d2b0e771dc371fd7e709116e
      public void tick() {
          if (this.getItem().isEmpty()) {
 diff --git a/net/minecraft/world/entity/npc/villager/Villager.java b/net/minecraft/world/entity/npc/villager/Villager.java
-index 10a66bb3c093a1d31f3c985b418acb9232cc882c..89844d7e804cc8a2110b694e448bc5993991bea7 100644
+index 10a66bb3c093a1d31f3c985b418acb9232cc882c..5bcf58c70798d7267261e3311c95c191f5185c13 100644
 --- a/net/minecraft/world/entity/npc/villager/Villager.java
 +++ b/net/minecraft/world/entity/npc/villager/Villager.java
 @@ -269,11 +269,35 @@ public class Villager extends AbstractVillager implements ReputationEventHandler

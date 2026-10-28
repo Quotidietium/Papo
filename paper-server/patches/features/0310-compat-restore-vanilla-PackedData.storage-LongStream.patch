@@ -1,0 +1,107 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Tue, 27 Oct 2026 00:32:38 +0800
+Subject: [PATCH] compat: restore vanilla PackedData.storage LongStream ABI
+
+The R31 long[] record component changed the public accessor descriptor (NMS binary break); field codec, unpack and pack are back to the vanilla LongStream shape (R32 two-phase repack retained on the pack side).
+
+diff --git a/net/minecraft/world/level/chunk/PalettedContainer.java b/net/minecraft/world/level/chunk/PalettedContainer.java
+index 849c7a63a78650f474523d181978ee4d2746d4da..566897456ab0fc4118508197f685727146cf0d64 100644
+--- a/net/minecraft/world/level/chunk/PalettedContainer.java
++++ b/net/minecraft/world/level/chunk/PalettedContainer.java
+@@ -63,49 +63,13 @@ public class PalettedContainer<T> implements PaletteResize<T>, PalettedContainer
+                             .listOf()
+                             .fieldOf("palette")
+                             .forGetter(PalettedContainerRO.PackedData::paletteEntries),
+-                        PAP0_LONG_ARRAY.lenientOptionalFieldOf("data").forGetter(PalettedContainerRO.PackedData::storage) // Papo - batch 172 (R31)
++                        Codec.LONG_STREAM.lenientOptionalFieldOf("data").forGetter(PalettedContainerRO.PackedData::storage) // Papo - compat fix: vanilla field codec restored (R31's long[] component was an NMS ABI break on PackedData)
+                     )
+                     .apply(instance, PalettedContainerRO.PackedData::new)
+             )
+             .comapFlatMap(packedData -> unpacker.read(strategy, (PalettedContainerRO.PackedData<T>)packedData), container -> container.pack(strategy));
+     }
+ 
+-    // Papo start - batch 172 (R31): long[] field codec. The NBT fast path aliases the
+-    // backing LongArrayTag array (single decode per tag on the parse path - see
+-    // PalettedContainerRO.PackedData); every other ops goes through getLongStream +
+-    // toArray exactly like Codec.LONG_STREAM did, so wire bytes/values are unchanged.
+-    private static final Codec<long[]> PAP0_LONG_ARRAY = new Codec<long[]>() {
+-        @Override
+-        public <D> DataResult<com.mojang.datafixers.util.Pair<long[], D>> decode(final com.mojang.serialization.DynamicOps<D> ops, final D input) {
+-            if (ops instanceof net.minecraft.nbt.NbtOps && input instanceof net.minecraft.nbt.LongArrayTag longArrayTag) {
+-                // Papo - compat fix: CLONE the tag's backing array. getAsLongArray() hands out the
+-                // raw storage; the vanilla path (getLongStream().toArray()) always produced an
+-                // isolated copy. Without the clone, a decoded PalettedContainer aliases the tag's
+-                // long[], so retaining the tag and mutating either side corrupts the other (NMS
+-                // world-edit plugins hold chunk NBT tags).
+-                return DataResult.success(new com.mojang.datafixers.util.Pair<>(longArrayTag.getAsLongArray().clone(), input));
+-            }
+-            return ops.getLongStream(input).map(stream -> new com.mojang.datafixers.util.Pair<>(stream.toArray(), input));
+-        }
+-
+-        @Override
+-        public <D> DataResult<D> encode(final long[] input, final com.mojang.serialization.DynamicOps<D> ops, final D prefix) {
+-            // Papo start - batch 183 (R42): NbtOps fast path skips the LongStream round-trip.
+-            // NbtOps.createLongList(stream) is exactly new LongArrayTag(stream.toArray()), and
+-            // Arrays.stream(input).toArray() is a content-identical clone of input - so routing
+-            // the NBT singleton directly to a cloned LongArrayTag yields the same tag (fresh
+-            // backing array, same wire bytes) without the spliterator/node-builder machinery
+-            // per saved hash-paletted container. NbtOps has a private constructor (strict
+-            // singleton), so identity is exact; wrapper ops (e.g. RegistryFileOps) take the
+-            // generic path below and keep vanilla behavior byte-for-byte.
+-            if (ops == net.minecraft.nbt.NbtOps.INSTANCE) {
+-                return DataResult.success((D) new net.minecraft.nbt.LongArrayTag(input.clone()));
+-            }
+-            // Papo end - batch 183 (R42)
+-            return DataResult.success(ops.createLongList(java.util.Arrays.stream(input))); // createLongList returns the value directly in this DFU
+-        }
+-    };
+-    // Papo end - batch 172 (R31)
+ 
+     // Papo start - batch 147 (R7): canonical shared Data for single-value containers.
+     // The 0.84.0 soak census measured 576k live single-value containers (87% of all chunk
+@@ -433,12 +397,12 @@ public class PalettedContainer<T> implements PaletteResize<T>, PalettedContainer
+                 palette = configurationForPaletteSize.createPalette(strategy, list);
+                 bitStorage = ZeroBitStorage.papoShared(entryCount); // Papo - batch 145 (R6): shared immutable
+             } else {
+-                Optional<long[]> optional = packedData.storage();
++                Optional<LongStream> optional = packedData.storage(); // Papo - compat fix: vanilla LongStream form restored
+                 if (optional.isEmpty()) {
+                     return DataResult.error(() -> "Missing values for non-zero storage");
+                 }
+ 
+-                final long[] longs = optional.get(); // Papo - batch 172 (R31): NBT path aliases the tag array (no toArray copy)
++                final long[] longs = optional.get().toArray(); // Papo - compat fix: single isolated copy, exactly vanilla
+ 
+                 try {
+                     if (!configurationForPaletteSize.alwaysRepack() && configurationForPaletteSize.bitsInMemory() == i) {
+@@ -483,10 +447,10 @@ public class PalettedContainer<T> implements PaletteResize<T>, PalettedContainer
+             // Papo end - batch 173 (R32)
+             Configuration configurationForPaletteSize = strategy.getConfigurationForPaletteSize(hashMapPalette.getSize());
+             int i = configurationForPaletteSize.bitsInStorage();
+-            Optional<long[]> optional; // Papo - batch 172 (R31)
++            Optional<LongStream> optional; // Papo - compat fix: vanilla LongStream form restored
+             if (i != 0) {
+                 SimpleBitStorage simpleBitStorage = papoReencodedStorage(bitStorage, palette, hashMapPalette, i, entryCount); // Papo - batch 173 (R32)
+-                optional = Optional.of(simpleBitStorage.getRaw()); // Papo - batch 172 (R31): encode copies via stream toArray, byte-identical
++                optional = Optional.of(java.util.Arrays.stream(simpleBitStorage.getRaw())); // O(1) wrap; encode copies at write - vanilla parity
+             } else {
+                 optional = Optional.empty();
+             }
+diff --git a/net/minecraft/world/level/chunk/PalettedContainerRO.java b/net/minecraft/world/level/chunk/PalettedContainerRO.java
+index 7b42fd3977c3f7be6b8a41a1ac2cf0d086e5e416..89ed5d36e548b02efef7fb7d8a446f0252f8a47e 100644
+--- a/net/minecraft/world/level/chunk/PalettedContainerRO.java
++++ b/net/minecraft/world/level/chunk/PalettedContainerRO.java
+@@ -42,10 +42,10 @@ public interface PalettedContainerRO<T> {
+     // retains). The NBT decode path in PalettedContainer now aliases the tag's own
+     // array; the tag is single-use on the parse path, and in-tree each section field is
+     // decoded exactly once before the tag tree is discarded.
+-    public record PackedData<T>(List<T> paletteEntries, Optional<long[]> storage, int bitsPerEntry) {
++    public record PackedData<T>(List<T> paletteEntries, Optional<LongStream> storage, int bitsPerEntry) { // Papo - compat fix: component restored to vanilla LongStream (R31 had changed it to long[], an NMS ABI break)
+         public static final int UNKNOWN_BITS_PER_ENTRY = -1;
+ 
+-        public PackedData(List<T> paletteEntries, Optional<long[]> storage) {
++        public PackedData(List<T> paletteEntries, Optional<LongStream> storage) {
+             this(paletteEntries, storage, -1);
+         }
+     }

@@ -9,7 +9,7 @@ worlds 相位占主线程 37-39%，其中 tickPending+misc 22-23% 为**空维度
 - **配置路径**：`config/paper-world-defaults.yml`（或 per-world `paper-worlds/<世界>.yml`）
   → `unsupported-settings.disable-world-ticking-when-empty`
 - **默认值**：`false`（`WorldConfiguration.java:501`，Papo 不改默认）
-- **机制**（`ServerLevel.java:820-830`）：开启后，仅当 `chunkSource.hasActiveTickets()`
+- **机制**（`ServerLevel.java:826-836`）：开启后，仅当 `chunkSource.hasActiveTickets()`
   为真才重置 `emptyTime`；无活跃票据的世界 `emptyTime` 累计，**达到 300 tick（20 TPS 下
   15 秒）后跳过实体段**。
 

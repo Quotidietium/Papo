@@ -15,7 +15,7 @@ volatile 不可变持有者原子发布——两个独立 volatile 在两次 dat
 省去每区块一次 HashMap 分配。
 
 diff --git a/net/minecraft/world/level/chunk/ChunkGenerator.java b/net/minecraft/world/level/chunk/ChunkGenerator.java
-index 7b98964eb77a619bdaaf5a9d331e3cfe080b52a4..c0c54cd39e428ab633e5446eb02ad534a41826da 100644
+index 7b98964eb77a619bdaaf5a9d331e3cfe080b52a4..5a8e7e21cc3ca87158565d821b5383cd72697c8c 100644
 --- a/net/minecraft/world/level/chunk/ChunkGenerator.java
 +++ b/net/minecraft/world/level/chunk/ChunkGenerator.java
 @@ -85,6 +85,17 @@ public abstract class ChunkGenerator {
@@ -33,7 +33,7 @@ index 7b98964eb77a619bdaaf5a9d331e3cfe080b52a4..c0c54cd39e428ab633e5446eb02ad534
 +
 +    private volatile PapoStructuresByStep papoStructuresByStep;
 +    // Papo end
-
+ 
      public ChunkGenerator(BiomeSource biomeSource) {
          this(biomeSource, biome -> biome.value().getGenerationSettings());
 @@ -340,7 +351,17 @@ public abstract class ChunkGenerator {

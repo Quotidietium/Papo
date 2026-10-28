@@ -1,0 +1,57 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 9 Oct 2026 22:54:40 +0800
+Subject: [PATCH] Papo: batch 143 (R5) release the per-chunk NoiseChunk after
+ the carvers step - the only readers of ChunkAccess.noiseChunk are the
+ BIOMES/NOISE/SURFACE/CARVERS generation steps (NoiseBasedChunkGenerator via
+ getOrCreateNoiseChunk); chunks parked between carvers and FULL (the
+ features/light/spawn worldgen ring around loaded areas, measured to cover
+ roughly the same area as the full chunks themselves) otherwise retain the
+ whole per-chunk tree indefinitely: the mapped density-function subtree
+ (HolderHolder/Holder.Direct keys in NoiseChunk.wrapped, CubicSpline
+ Multipoint/Coordinate, MulOrAdd nodes), the interpolator double[] buffers and
+ the aquifer caches; the field is @Nullable and lazily recreated by design so
+ clearing is behavior-neutral (a hypothetical later reader rebuilds it
+ identically), and per-chunk step sequencing means the write cannot race a
+ reader
+
+
+diff --git a/net/minecraft/world/level/chunk/ChunkAccess.java b/net/minecraft/world/level/chunk/ChunkAccess.java
+index 54ddcf92e72b9cbd0eb442e5d0faa83c0cf3b33b..0e9f6430bfacc2614e9c9e38c0ef269943293395 100644
+--- a/net/minecraft/world/level/chunk/ChunkAccess.java
++++ b/net/minecraft/world/level/chunk/ChunkAccess.java
+@@ -483,6 +483,22 @@ public abstract class ChunkAccess implements BiomeManager.NoiseBiomeSource, Ligh
+         return this.noiseChunk;
+     }
+ 
++    // Papo start - batch 143 (R5): release the per-chunk NoiseChunk once worldgen no longer
++    // reads it. The only readers are the BIOMES/NOISE/SURFACE/CARVERS steps (via
++    // getOrCreateNoiseChunk in NoiseBasedChunkGenerator); chunks parked between carvers and
++    // FULL (features/light/spawn rings around loaded areas) otherwise retain the whole
++    // per-chunk tree for their lifetime: the mapped density-function subtree
++    // (HolderHolder/Holder.Direct keys in NoiseChunk.wrapped, CubicSpline
++    // Multipoint/Coordinate/MulOrAdd nodes), the interpolator double[] buffers and the
++    // aquifer caches - measured scaling with the worldgen ring. The field is @Nullable and
++    // lazily (re)created by design, so clearing it is behavior-neutral: a hypothetical later
++    // reader would just rebuild it identically. Steps are strictly sequenced per chunk by
++    // the chunk system, so this write cannot race a reader of the same chunk.
++    public void papoReleaseNoiseChunk() {
++        this.noiseChunk = null;
++    }
++    // Papo end - batch 143 (R5)
++
+     @Deprecated
+     public BiomeGenerationSettings carverBiome(Supplier<BiomeGenerationSettings> caverBiomeSettingsSupplier) {
+         if (this.carverBiomeSettings == null) {
+diff --git a/net/minecraft/world/level/chunk/status/ChunkStatusTasks.java b/net/minecraft/world/level/chunk/status/ChunkStatusTasks.java
+index d620862e95abf9f098bb53a76825883f2b1f4bbf..da2cf170359beb98a890e9082e9f91ce6c356960 100644
+--- a/net/minecraft/world/level/chunk/status/ChunkStatusTasks.java
++++ b/net/minecraft/world/level/chunk/status/ChunkStatusTasks.java
+@@ -136,6 +136,7 @@ public class ChunkStatusTasks {
+                 serverLevel.structureManager().forWorldGenRegion(worldGenRegion),
+                 chunk
+             );
++        chunk.papoReleaseNoiseChunk(); // Papo - batch 143 (R5): carvers is the last noiseChunk reader
+         return CompletableFuture.completedFuture(chunk);
+     }
+ 

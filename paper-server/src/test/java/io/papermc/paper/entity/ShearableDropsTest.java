@@ -18,11 +18,12 @@ class ShearableDropsTest {
     static Iterable<ClassInfo> parameters() {
         try (ScanResult scanResult = new ClassGraph()
             .enableClassInfo()
+            .enableClasspath()
             .enableMethodInfo()
-            .whitelistPackages("net.minecraft")
+            .acceptPackages("net.minecraft")
             .scan()
         ) {
-            return new ArrayList<>(scanResult.getClassesImplementing(Shearable.class.getName()));
+            return new ArrayList<>(scanResult.getAllClassesImplementing(Shearable.class.getName()));
         }
     }
 

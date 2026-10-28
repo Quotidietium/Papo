@@ -5,7 +5,7 @@ Subject: [PATCH] Papo: trade select zero-listener gate
 
 
 diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-index 40f149726a91fd8e804cc3a17b4b949edf5ca5a6..b7c6d237aa5606515f633ac4508d98491d5650ad 100644
+index 40d8edbb56a4d5b38a4c51a7a04b849f6dd1c467..64d15ad5a0b5b88b5e1c1325f7f08b7e377b6e1b 100644
 --- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 +++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 @@ -1289,11 +1289,15 @@ public class ServerGamePacketListenerImpl

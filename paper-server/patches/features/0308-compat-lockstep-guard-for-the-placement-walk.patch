@@ -1,0 +1,64 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Tue, 27 Oct 2026 00:10:06 +0800
+Subject: [PATCH] compat: lockstep guard for the placement walk
+
+papoForEachPosition dispatches to the loop twin only when getPositions and forEachPosition are overridden in lockstep; a getPositions-only subclass (plugin shape) keeps driving placement through its own override.
+
+diff --git a/net/minecraft/world/level/levelgen/placement/PlacedFeature.java b/net/minecraft/world/level/levelgen/placement/PlacedFeature.java
+index 1eabb060828600270bad12e67a62c20317d9884b..298d657219e397a6644ce6262962e552e0fb5cb0 100644
+--- a/net/minecraft/world/level/levelgen/placement/PlacedFeature.java
++++ b/net/minecraft/world/level/levelgen/placement/PlacedFeature.java
+@@ -92,7 +92,7 @@ public record PlacedFeature(Holder<ConfiguredFeature<?, ?>> feature, List<Placem
+             } else {
+                 this.depth++;
+                 try {
+-                    this.owner.placement.get(this.depth - 1).forEachPosition(this.context, this.source, pos, this);
++                    this.owner.placement.get(this.depth - 1).papoForEachPosition(this.context, this.source, pos, this); // Papo - compat: guarded dispatch (plugin getPositions-only overrides keep driving)
+                 } finally {
+                     this.depth--;
+                 }
+diff --git a/net/minecraft/world/level/levelgen/placement/PlacementModifier.java b/net/minecraft/world/level/levelgen/placement/PlacementModifier.java
+index d070e86584ce24a6200778dfa0c553af641d2290..7413ab185d61e058448d07c56a666420ff0f58e4 100644
+--- a/net/minecraft/world/level/levelgen/placement/PlacementModifier.java
++++ b/net/minecraft/world/level/levelgen/placement/PlacementModifier.java
+@@ -26,6 +26,39 @@ public abstract class PlacementModifier {
+     public void forEachPosition(PlacementContext context, RandomSource random, BlockPos pos, Consumer<BlockPos> emitter) {
+         this.getPositions(context, random, pos).forEach(emitter);
+     }
++
++    // Papo start - batch 176 (R35) compat fix: dispatch guard for plugin subclasses. A subclass
++    // that overrides ONLY getPositions (the pre-Papo surface plugins compile against) must keep
++    // having that override drive placement - virtual dispatch of forEachPosition alone would
++    // silently run the vanilla subclass loop instead. The driver (PlacedFeature) therefore goes
++    // through the final papoForEachPosition, which uses the loop twin only when getPositions and
++    // forEachPosition are overridden in lockstep (same declaring class, or neither overridden so
++    // the bridge above applies); any other shape falls back to the getPositions bridge.
++    private static final ClassValue<Boolean> PAPO_LOCKSTEP = new ClassValue<>() {
++        @Override
++        protected Boolean computeValue(final Class<?> type) {
++            try {
++                final Class<?> getPositionsDeclaring = type
++                    .getMethod("getPositions", PlacementContext.class, RandomSource.class, BlockPos.class)
++                    .getDeclaringClass();
++                final Class<?> forEachDeclaring = type
++                    .getMethod("forEachPosition", PlacementContext.class, RandomSource.class, BlockPos.class, Consumer.class)
++                    .getDeclaringClass();
++                return forEachDeclaring == getPositionsDeclaring
++                    || forEachDeclaring == PlacementModifier.class;
++            } catch (final NoSuchMethodException e) {
++                return Boolean.FALSE; // unreachable: both methods are declared on this class
++            }
++        }
++    };
++
++    public final void papoForEachPosition(PlacementContext context, RandomSource random, BlockPos pos, Consumer<BlockPos> emitter) {
++        if (PAPO_LOCKSTEP.get(this.getClass())) {
++            this.forEachPosition(context, random, pos, emitter);
++        } else {
++            this.getPositions(context, random, pos).forEach(emitter);
++        }
++    }
+     // Papo end - batch 176 (R35)
+ 
+     public abstract PlacementModifierType<?> type();

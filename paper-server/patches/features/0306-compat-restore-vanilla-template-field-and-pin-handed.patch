@@ -1,0 +1,109 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Tue, 27 Oct 2026 00:10:06 +0800
+Subject: [PATCH] compat: restore vanilla template field and pin handed-out
+ structures
+
+TemplateStructurePiece.template (protected final) is restored for NMS binary compatibility; PapoStructureCache protects entries handed out through the Bukkit API from idle eviction (vanilla keeps the same instance forever).
+
+diff --git a/net/minecraft/world/level/levelgen/structure/TemplateStructurePiece.java b/net/minecraft/world/level/levelgen/structure/TemplateStructurePiece.java
+index 170c0dfb81ef10199405544b6fe0876fe0323e6b..46b94bdecddad7e39995e7c48d46d7ead107b89a 100644
+--- a/net/minecraft/world/level/levelgen/structure/TemplateStructurePiece.java
++++ b/net/minecraft/world/level/levelgen/structure/TemplateStructurePiece.java
+@@ -30,15 +30,14 @@ import org.slf4j.Logger;
+ public abstract class TemplateStructurePiece extends StructurePiece {
+     private static final Logger LOGGER = LogUtils.getLogger();
+     protected final String templateName;
+-    // Papo start - batch 150 (R10): pieces live inside StructureStarts held by
+-    // resident chunks, so a held template instance pinned the whole block-info
+-    // payload of every generated structure for the chunk's lifetime and defeated
+-    // any cache bound. Pieces now keep only the manager + identifier and fetch
+-    // the (immutable while placed) template at use time; the disk format is
+-    // unchanged because vanilla already serializes the template NAME, never the
+-    // instance.
+-    protected final StructureTemplateManager structureTemplateManager;
+-    private final Identifier papoTemplateLocation;
++    // Papo start - batch 150 (R10) field RESTORED (compat fix): vanilla declares a
++    // `protected final StructureTemplate template` here; R10 removed it in favor of a
++    // manager+identifier lazy fetch, which is an NMS binary break for custom structure
++    // pieces that reference/inherit the field (NoSuchFieldError). The constructors already
++    // call getOrCreate (for the bounding box), so restoring the field costs no extra
++    // lookups; it does pin the template for the piece's lifetime - exactly the vanilla
++    // residency behavior, accepted for compatibility.
++    protected final StructureTemplate template;
+     // Papo end
+     protected StructurePlaceSettings placeSettings;
+     protected BlockPos templatePosition;
+@@ -54,10 +53,9 @@ public abstract class TemplateStructurePiece extends StructurePiece {
+     ) {
+         super(type, genDepth, structureTemplateManager.getOrCreate(location).getBoundingBox(placeSettings, templatePosition));
+         this.setOrientation(Direction.NORTH);
++        this.template = structureTemplateManager.getOrCreate(location); // Papo - batch 150 (R10) compat: restored vanilla field (second getOrCreate is a cache hit)
+         this.templateName = templateName;
+         this.templatePosition = templatePosition;
+-        this.structureTemplateManager = structureTemplateManager; // Papo - batch 150 (R10)
+-        this.papoTemplateLocation = location; // Papo - batch 150 (R10)
+         this.placeSettings = placeSettings;
+     }
+ 
+@@ -72,10 +70,9 @@ public abstract class TemplateStructurePiece extends StructurePiece {
+         this.templateName = tag.getStringOr("Template", "");
+         this.templatePosition = new BlockPos(tag.getIntOr("TPX", 0), tag.getIntOr("TPY", 0), tag.getIntOr("TPZ", 0));
+         Identifier identifier = this.makeTemplateLocation();
+-        this.structureTemplateManager = structureTemplateManager; // Papo - batch 150 (R10)
+-        this.papoTemplateLocation = identifier; // Papo - batch 150 (R10)
++        this.template = structureTemplateManager.getOrCreate(identifier); // Papo - batch 150 (R10) compat: restored vanilla field
+         this.placeSettings = placeSettingsFactory.apply(identifier);
+-        this.boundingBox = structureTemplateManager.getOrCreate(identifier).getBoundingBox(this.placeSettings, this.templatePosition); // Papo - batch 150 (R10): transient fetch, no field
++        this.boundingBox = this.template.getBoundingBox(this.placeSettings, this.templatePosition);
+     }
+ 
+     protected Identifier makeTemplateLocation() {
+@@ -94,7 +91,7 @@ public abstract class TemplateStructurePiece extends StructurePiece {
+     public void postProcess(
+         WorldGenLevel level, StructureManager structureManager, ChunkGenerator generator, RandomSource random, BoundingBox box, ChunkPos chunkPos, BlockPos pos
+     ) {
+-        StructureTemplate structureTemplate = this.template(); // Papo - batch 150 (R10): fetch once per placement pass
++        StructureTemplate structureTemplate = this.template; // Papo - batch 150 (R10) compat: restored field
+         this.placeSettings.setBoundingBox(box);
+         this.boundingBox = structureTemplate.getBoundingBox(this.placeSettings, this.templatePosition);
+         if (structureTemplate.placeInWorld(level, this.templatePosition, pos, this.placeSettings, random, Block.UPDATE_CLIENTS)) {
+@@ -140,12 +137,10 @@ public abstract class TemplateStructurePiece extends StructurePiece {
+         return this.placeSettings.getRotation();
+     }
+ 
+-    // Papo start - batch 150 (R10): lazy fetch - the manager's bounded cache keeps
+-    // generation-time templates hot, and eviction is safe because templates are
+-    // immutable while being placed (reload-on-miss reproduces identical content)
+-    // Papo end
++    // Papo - batch 150 (R10): getter now returns the restored vanilla field (stable instance
++    // for the piece's lifetime, like upstream); callers through the getter are unaffected.
+     public StructureTemplate template() {
+-        return this.structureTemplateManager.getOrCreate(this.papoTemplateLocation);
++        return this.template;
+     }
+ 
+     public BlockPos templatePosition() {
+diff --git a/net/minecraft/world/level/levelgen/structure/templatesystem/PapoStructureCache.java b/net/minecraft/world/level/levelgen/structure/templatesystem/PapoStructureCache.java
+index 9b18169088e8f21e7858f7c58bbe4f0d4ab90aa5..9fae11c1bd0e91e92598fa2383826ac86d5644c7 100644
+--- a/net/minecraft/world/level/levelgen/structure/templatesystem/PapoStructureCache.java
++++ b/net/minecraft/world/level/levelgen/structure/templatesystem/PapoStructureCache.java
+@@ -125,6 +125,18 @@ public final class PapoStructureCache extends ConcurrentHashMap<Identifier, Opti
+     }
+     // Papo end
+ 
++    // Papo start - batch 150 (R10) compat fix: Bukkit getStructure/getStructures hand the LIVE
++    // cached instance to plugins; vanilla keeps that same instance forever, so unsaved in-memory
++    // modifications survive. Once an entry is handed out through those API surfaces it must be
++    // protected from idle eviction like a put() entry - evicting it would (a) discard plugin
++    // modifications on the next reload and (b) make later getStructure calls return null where
++    // vanilla returns the instance. Worldgen-internal tryLoad entries stay evictable.
++    public void papoProtect(Identifier key) {
++        this.papoProtected.add(key);
++        this.papoTouch(key);
++    }
++    // Papo end
++
+     // Papo start - batch 150 (R10): stamping collection views. keySet() is NOT
+     // overridden (ConcurrentHashMap declares a covariant KeySetView return type,
+     // and no in-repo caller iterates keys without also calling get); entrySet()

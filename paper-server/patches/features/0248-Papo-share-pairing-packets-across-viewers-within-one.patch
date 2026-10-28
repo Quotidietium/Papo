@@ -6,7 +6,7 @@ Subject: [PATCH] Papo: share pairing packets across viewers within one
 
 
 diff --git a/net/minecraft/server/level/ChunkMap.java b/net/minecraft/server/level/ChunkMap.java
-index 1076ff789e673a43ec30e9224cd275105571211f..1d0a89b70d2603c8bcc19bba5f055a3ca5ea3231 100644
+index 1076ff789e673a43ec30e9224cd275105571211f..079a471b6cdde36ab6d31c7ab86625e5901b2966 100644
 --- a/net/minecraft/server/level/ChunkMap.java
 +++ b/net/minecraft/server/level/ChunkMap.java
 @@ -1476,9 +1476,35 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
@@ -33,7 +33,7 @@ index 1076ff789e673a43ec30e9224cd275105571211f..1d0a89b70d2603c8bcc19bba5f055a3c
 +                && io.papermc.paper.event.player.PlayerUntrackEntityEvent.getHandlerList().getRegisteredListeners().length == 0;
 +            if (papoSharePairings) {
 +            this.serverEntity.papoBeginPairingShare();
-+            }
+             }
 +            try {
 +                for (ServerPlayer serverPlayer : playersList) {
 +                    this.updatePlayer(serverPlayer, papoEffectiveRange); // Papo - hoisted range
@@ -42,13 +42,13 @@ index 1076ff789e673a43ec30e9224cd275105571211f..1d0a89b70d2603c8bcc19bba5f055a3c
 +                if (papoSharePairings) {
 +                this.serverEntity.papoEndPairingShare();
 +                }
-             }
++            }
 +            // Papo end - pairing packet sharing across this one continuous sweep
          }
      }
  }
 diff --git a/net/minecraft/server/level/ServerEntity.java b/net/minecraft/server/level/ServerEntity.java
-index c622d07f8fa13216132fff5021273e89c67b89c3..a80b8394b01d0d29fce7bf3d2511af805725d791 100644
+index c622d07f8fa13216132fff5021273e89c67b89c3..c99d768f9a1ce4ab538aa3315480c2bb9bafb71c 100644
 --- a/net/minecraft/server/level/ServerEntity.java
 +++ b/net/minecraft/server/level/ServerEntity.java
 @@ -357,13 +357,54 @@ public class ServerEntity {

@@ -1,0 +1,151 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Fri, 9 Oct 2026 19:29:28 +0800
+Subject: [PATCH] Papo: batch 141 (R5) TTL eviction of the chunk packet caches
+ - the 0241 serialized payload cache on LevelChunk (heightmaps + full wire
+ buffer, tens to hundreds of KB per chunk) and the 0242 shared packet on
+ ChunkHolder (fresh light arrays + PapoSharedWireMemo) stay resident for the
+ whole loaded lifetime of every chunk ever sent, reaching GB scale with many
+ players holding many loaded chunks (accepted defect 0269; the R5 memory
+ mandate makes it a fix target); the caches only pay off for sends clustered
+ in time (multi-viewer bursts are paced by the sender quota over seconds), so
+ a send-free window means the residency is pure footprint;
+ ServerChunkCache.tick now sweeps all holders every TTL/2 game ticks and drops
+ both caches of any holder that has not served a send within the TTL (default
+ 600 ticks = 30s; -Dpapo.chunkPacketCacheTtlTicks overrides for diagnosis, <=0
+ disables eviction and reproduces 0.80.0 residency on the same binary); a late
+ viewer after expiry takes the pre-0241 fresh-serialisation path, in-flight
+ queued sends keep their own references, all accesses stay on the main thread
+ (sends and sweep alike), and the chunk-level payload of block-entity chunks
+ (cached payload, no shared packet) is evicted through the same holder stamp
+ so both levels clear independently
+
+
+diff --git a/net/minecraft/server/level/ChunkHolder.java b/net/minecraft/server/level/ChunkHolder.java
+index 046b4135e76c840562a03ca2d23fbe1e52a0eb1e..45c1a5a8a02fc4860c0a3b41e97301c26e62ac20 100644
+--- a/net/minecraft/server/level/ChunkHolder.java
++++ b/net/minecraft/server/level/ChunkHolder.java
+@@ -298,12 +298,20 @@ public class ChunkHolder extends GenerationChunkHolder implements ca.spottedleaf
+     private ClientboundLevelChunkWithLightPacket papoSharedChunkPacket;
+     private long papoSharedChunkPacketDataVersion = Long.MIN_VALUE;
+     private long papoSharedChunkPacketLightVersion = Long.MIN_VALUE;
++    // Papo start - batch 141 (R5): game-time stamp of the last shared-packet request (hit or
++    // fill). The periodic sweep in ServerChunkCache drops the holder's shared packet (with its
++    // wire memo and light arrays) and the chunk's payload cache once no send has touched this
++    // holder for the TTL window - the multi-viewer burst benefit lives inside the window, the
++    // residency beyond it is pure footprint (0269). Long.MIN_VALUE = never sent since last evict.
++    private long papoLastChunkSendGameTime = Long.MIN_VALUE;
++    // Papo end - batch 141 (R5)
+ 
+     void papoBumpLightVersion() {
+         this.papoLightVersion++;
+     }
+ 
+     public ClientboundLevelChunkWithLightPacket papoGetSharedChunkPacket(LevelChunk chunk, LevelLightEngine lightEngine) {
++        this.papoLastChunkSendGameTime = chunk.getLevel().getGameTime(); // Papo - batch 141 (R5): touch for TTL eviction
+         ClientboundLevelChunkWithLightPacket cached = this.papoSharedChunkPacket;
+         long chunkDataVersion = chunk.papoChunkDataVersion();
+         if (cached != null
+@@ -335,6 +343,27 @@ public class ChunkHolder extends GenerationChunkHolder implements ca.spottedleaf
+         }
+         return packet;
+     }
++
++    // Papo start - batch 141 (R5): TTL eviction (called from ServerChunkCache's periodic sweep,
++    // main thread). Drops the shared packet (light arrays + wire memo become garbage; queued
++    // in-flight sends keep their own references) and the chunk's serialised payload cache once
++    // no send has touched this holder within the TTL window. Resetting the stamp to MIN_VALUE
++    // makes further sweeps skip this holder until the next send re-stamps it. The chunk-level
++    // cache can outlive the holder-level packet (block-entity chunks cache the payload but not
++    // a shared packet), so eviction must clear both independently of each other.
++    public void papoEvictStaleChunkPacketCaches(final long nowGameTime, final long ttlTicks) {
++        final long lastSend = this.papoLastChunkSendGameTime;
++        if (lastSend == Long.MIN_VALUE || nowGameTime - lastSend < ttlTicks) {
++            return;
++        }
++        this.papoSharedChunkPacket = null;
++        final LevelChunk chunk = this.getChunkToSend();
++        if (chunk != null) {
++            chunk.papoEvictChunkPacketCache();
++        }
++        this.papoLastChunkSendGameTime = Long.MIN_VALUE;
++    }
++    // Papo end - batch 141 (R5)
+     // Papo end - shared chunk packet for multi-viewer sends
+ 
+     public void broadcastChanges(LevelChunk chunk) {
+diff --git a/net/minecraft/server/level/ServerChunkCache.java b/net/minecraft/server/level/ServerChunkCache.java
+index b60e45756eb29c0f6e6bb413c5b6f72cb01fcfc7..5588499aaa83f905c1ce2d7480f850ea28793e38 100644
+--- a/net/minecraft/server/level/ServerChunkCache.java
++++ b/net/minecraft/server/level/ServerChunkCache.java
+@@ -492,9 +492,46 @@ public class ServerChunkCache extends ChunkSource implements ca.spottedleaf.moon
+         profilerFiller.popPush("unload");
+         this.chunkMap.tick(hasTimeLeft);
+         profilerFiller.pop();
++        this.papoEvictChunkPacketCaches(); // Papo - batch 141 (R5): TTL sweep of chunk packet caches
+         this.clearCache();
+     }
+ 
++    // Papo start - batch 141 (R5): periodic TTL eviction of the 0241/0242 chunk packet caches.
++    // Those caches pay off only for sends clustered in time (multi-viewer bursts: joins, group
++    // travel, chunk-sender quota pacing spreads a burst over seconds, not minutes). Beyond that
++    // window the residency is pure footprint: the serialised chunk payload on LevelChunk plus the
++    // shared packet (light arrays + wire-compression memo) on ChunkHolder stay alive for the whole
++    // loaded lifetime of every chunk ever sent to any player - GB scale with many players holding
++    // many chunks (accepted defect 0269; the R5 memory mandate makes it a fix target).
++    //
++    // Mechanism: every TTL/2 game ticks, sweep all holders and drop the caches of any holder that
++    // has not served a chunk send within the TTL window (600 ticks = 30s default). A late viewer
++    // after expiry simply takes the pre-0241 fresh-serialisation path. In-flight sends are never
++    // touched: eviction only clears the holder/chunk fields - packets already queued on
++    // connections keep their references until the writes complete. All field accesses are
++    // main-thread (chunk sends and this sweep both run on the server thread).
++    //
++    // -Dpapo.chunkPacketCacheTtlTicks=N overrides the TTL for diagnosis (<=0 disables eviction,
++    // reproducing the 0.80.0 residency behaviour on the same binary).
++    private static final long PAPO_CHUNK_PACKET_CACHE_TTL_TICKS = Long.getLong("papo.chunkPacketCacheTtlTicks", 600L);
++    private long papoNextChunkCacheSweepGameTime = Long.MIN_VALUE;
++
++    private void papoEvictChunkPacketCaches() {
++        if (PAPO_CHUNK_PACKET_CACHE_TTL_TICKS <= 0) {
++            return; // eviction disabled (diagnostic leg)
++        }
++        final long now = this.level.getGameTime();
++        if (now < this.papoNextChunkCacheSweepGameTime) {
++            return;
++        }
++        this.papoNextChunkCacheSweepGameTime = now + Math.max(1L, PAPO_CHUNK_PACKET_CACHE_TTL_TICKS / 2);
++        for (final ChunkHolder holder : ((ca.spottedleaf.moonrise.patches.chunk_system.level.ChunkSystemServerLevel)this.level)
++            .moonrise$getChunkTaskScheduler().chunkHolderManager.getOldChunkHoldersIterable()) {
++            holder.papoEvictStaleChunkPacketCaches(now, PAPO_CHUNK_PACKET_CACHE_TTL_TICKS);
++        }
++    }
++    // Papo end - batch 141 (R5)
++
+     private void tickChunks() {
+         long gameTime = this.level.getGameTime();
+         long l = gameTime - this.lastInhabitedUpdate;
+diff --git a/net/minecraft/world/level/chunk/LevelChunk.java b/net/minecraft/world/level/chunk/LevelChunk.java
+index 17f6cd7af12fa98ea411f2a4ed6052bbae0bd00d..e1f827578c54fb630faf216ded32ccfccea0a64b 100644
+--- a/net/minecraft/world/level/chunk/LevelChunk.java
++++ b/net/minecraft/world/level/chunk/LevelChunk.java
+@@ -152,6 +152,19 @@ public class LevelChunk extends ChunkAccess implements DebugValueSource, ca.spot
+     public byte[] papoPacketBufferCache() {
+         return this.papoPacketBufferCache;
+     }
++
++    // Papo start - batch 141 (R5): TTL eviction of the packet payload cache. The buffer is the
++    // full serialised chunk payload (~tens to hundreds of KB) and by 0241/0242 it stays resident
++    // for the chunk's whole loaded lifetime - with many players holding many loaded chunks this
++    // reaches GB scale (accepted defect 0269). The cache only ever pays off for sends clustered
++    // in time (multi-viewer bursts), so dropping it after a send-free window re-serialises for
++    // late viewers at worst; correctness is unaffected (null cache = the pre-0241 fresh-build
++    // path). Main thread only, called from ChunkHolder's sweep.
++    public void papoEvictChunkPacketCache() {
++        this.papoPacketHeightmapsCache = null;
++        this.papoPacketBufferCache = null;
++    }
++    // Papo end - batch 141 (R5)
+     // Papo end - multi-viewer chunk packet data cache
+ 
+     @Override

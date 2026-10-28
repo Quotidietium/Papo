@@ -2989,3 +2989,1903 @@ netstat 随连接生死；wire 跟踪条带阀失败方向=stalness；0230 计�
 永不完成"是一等挂死类——消费点默认有界；行为调优后文档双向跟随——核查范围含补丁正文
 本体）。审计轮不 bump 不发布。报告：
 [note/report/2026-09-14-lifecycle-timing-audit-batch140.md](report/2026-09-14-lifecycle-timing-audit-batch140.md)。
+
+## 批次 141（2026-10-09）：R5 轮1——区块包缓存 TTL 驱逐 + 内存浸泡测量基建（0.80.0 → 0.81.0）
+
+R5（内存占用主线）轮1：**0241/0242 多观众区块包缓存由终身驻留改为 TTL 驱逐**
+（已接受缺陷 0269 在 R5 目标下转 fix）。0267 补丁三文件：ChunkHolder 打戳
+（papoGetSharedChunkPacket 命中/填充都经首行）+ `papoEvictStaleChunkPacketCaches`
+（清共享包 + 经 getChunkToSend 清 LevelChunk payload；区块实体区块只有 payload
+一层，经同一 holder 戳独立清空）；LevelChunk `papoEvictChunkPacketCache`；
+ServerChunkCache.tick 每 TTL/2 game tick 扫全 holder，默认 TTL 600 tick，
+`-Dpapo.chunkPacketCacheTtlTicks` 可调（≤0 禁用=诊断腿复现 0.80.0 驻留）。
+正确性：缓存读写全主线程、在飞发送持自有引用、过期观众走 0241 前的全新序列化
+路径、版本计数器不动（批 133 判例兼容）、命中也打戳（活跃窗口不驱逐）。
+
+测量基建（新增）：`benchmark/src/papo/bot/MemSoakVerify`——真服（-Xms4G -Xmx4G
+固定种子 papo90，view=10）+ 12 bot 完整协议径向行走 150s + 驻留 180s 持票，
+驻留第 120s jcmd 双 Full GC → heap_info + class_histogram（WATCH 表含
+LevelChunk/共享包实例/byte[] 等）；`benchmark/memsoak-legs.sh` 三腿编排
+（A=0.80.0 / B=0.81.0 默认 / C=0.81.0 TTL=0 同二进制对照）。
+
+bot 栈三处修复（报告 §5 判例）：(1) **double 小端 bug**——手写 wire 双端端序
+不一致时解码为次正规数 ≈0.0（不抛异常），三坐标恒 (0,0,0) 触发每 tick
+moved-too-quickly 纠偏；(2) **spectator**——内存基准 bot 用 gamemode=spectator
+豁免全部移动验证（noPhysics），加载票据同制，消除地形交互类不确定性；
+(3) PLAYER_POSITION（C 0x46：varint id+3+3 double+2 float+int mask）采纳 +
+ACCEPT_TELEPORTATION（S 0x00）回确认；MOVE_PLAYER_POS（S 0x1D）尾部为
+**单字节打包双布尔**（1.21.2+ 代际）。**勘误**：批 90/93-96 TickSurveyBench
+的"行走 bot"前提从未成立（该轮 bot 从未发送 MOVE 包）——tick 数字有效但
+不得引用为行走负载证据；MemSoakVerify 为首个真行走 bot 栈。
+
+结果（12 bot × 150s 行走 + 180s 驻留，4.4k 区块，双 Full GC 后）：B(0.81.0)
+vs A(0.80.0) 堆 941.0→856.1MB（**−9.0%**），byte[] 176.8→94.4MB（−46.6%），
+缓存共享包 2,108→0；byte[] 降额 82.4MB ≈ 堆降额——收益全落缓存 payload，
+归因闭合。C(TTL=0) 同二进制复原驻留（2,741 包/5,564 区块 = 0.49/区块 ≈
+A 的 0.48/区块）。验证：rebuildPatches 0267 生成 + applyPatches
+全量重放 EXIT=0（内部仓重建 HEAD=batch141）+ compileJava --rerun-tasks
+BUILD SUCCESSFUL + :paper-server:test BUILD SUCCESSFUL EXIT=0 + 三腿浸泡门全绿（logErrors=0 exit=0）+ check_patch_counts 全仓 ALL OK。
+报告：
+[note/report/perf/2026-10-09-memsoak-r5-batch141.md](report/perf/2026-10-09-memsoak-r5-batch141.md)。
+
+## 批次 142（2026-10-09）：R5 轮2——每 section 随机刻列表惰性化（0.81.0 → 0.82.0）
+
+轮1 画像异常追因：Short2ShortOpenHashMap 实例数 299,568 == LevelChunkSection
+实例数（逐个对应）——Moonrise `ShortList`（LevelChunkSection.tickingBlocks，
+随机刻方块位置表）构造器急切 `new Short2ShortOpenHashMap()`（容量 16：map
+对象 + short[16] 键 + short[16] 值），自然地形绝大多数 section 随机刻方块数
+为零（石头/深板岩/空气/水不随机刻），空表付全价：~83MB/4.4k 区块
+（[S] 64.1MB 的绝大部分 + map 19.2MB，堆的 ~9.7%）。
+
+修复（src/main 直提交，无补丁号）：`map` 惰性化——null 直到首次 `add()`；
+`remove`/`clear` 的 null 态与空 map 态逐位同构；`setMinCapacity` 的
+ensureCapacity 仅已分配时执行（唯一调用点后紧跟 add 序列，无行为差）；
+size/getRaw 本就读字段。消费面全树盘点闭合（填充=section 重算+setBlockState
+翻转；读取=ServerLevel 随机刻循环，外层已有 isRandomlyTickingBlocks 门；
+ChunkAccess 的 ShortList 是 fastutil 接口另一物）。
+
+验证：ShortListVerify 语义差分（插入序+末位交换删除 ArrayList 参照模型；
+空态 remove/clear/setMinCapacity、首 add、remove 到空复活边界 + 20 万随机
+指令全量快照逐位断言）ALL OK + compileJava/test BUILD SUCCESSFUL + 浸泡两腿
+（绿门复跑，6,088 vs 6,055 区块配对，无关类 ±1%）：堆 1,034.7→933.9MB
+（**−9.7%**）；Short2Short map 395,712→15,163（**96% section 本就空表**），
+[S] short[] 85.0→17.8MB（−67.2MB）；该簇合计 −91.5MB 与堆降额同量级归因
+闭合。判例：首跑门被 WSAECONNABORTED 文案变体击中（bot 关断竞争），门过滤
+补认后复跑绿门——宿主并发构建的 fork 压力会污染浸泡门。
+报告：
+[note/report/perf/2026-10-09-memsoak-r5-batch142.md](report/perf/2026-10-09-memsoak-r5-batch142.md)。
+
+## 批次 143（2026-10-09）：R5 轮3——NoiseChunk 后置释放（0.82.0 → 0.83.0）
+
+轮2 后画像随区块线性放大的 worldgen 对象族追因（全源码持有链盘点）：
+`ChunkAccess.noiseChunk`（BIOMES 步创建）持有映射 DF 子树
+（NoiseChunk.wrapped 键=HolderHolder{Holder.Direct} + CubicSpline
+Multipoint/Coordinate + MulOrAdd）+ 插值器 double[] + 含水层缓存；唯一读者
+=BIOMES/NOISE/SURFACE/CARVERS 四步；FULL 转换本就丢弃，但 carvers→FULL
+之间状态的区块（features/light/spawn 环，持有数实测≈full 区块数）留整棵树
+到卸载。修复（0268）：generateCarvers 末尾 `papoReleaseNoiseChunk()` 置
+null——字段本为 @Nullable 惰性重建设计（行为中立），步骤按区块严格串行
+（写不与读者竞争）。
+
+验证：rebuildPatches 0268 + applyPatches 全量重放 EXIT=0 + compileJava
+--rerun-tasks + test BUILD SUCCESSFUL + 0.83.0 jar；浸泡两腿（0.82.0 vs
+0.83.0，6,064 vs 6,112 区块配对，门全绿）：堆 941.2→876.2MB（**−6.9%**），
+DF/Holder/样条簇实例 −65.5%，**插值器 double[] −61%**（41.8→16.2MB），
+堆降额 65.1MB 与该簇+邻接对象归因闭合；残留 372 NoiseChunk=carvers 前活环
+（仍需读取）保留正确。R5 三轮累计（分腿复利估算）≈ −23.4%；**终测头条（0.80.0 vs 0.83.0 同场景
+配对腿，6,081 vs 6,112 区块，门全绿）：1,154,349 → 873,548 KB = −280.8MB
+（−24.3%）**。
+报告：
+[note/report/perf/2026-10-09-memsoak-r5-batch143.md](report/perf/2026-10-09-memsoak-r5-batch143.md)。
+
+### 批次143 附：后续目标评估（未采纳判例）
+
+碰撞形状簇 66MB（initCache 注册期物化，光照线程常读——惰性化=数据竞争
+风险）；单值 PalettedContainer 三件套 interning ~45MB（被 read() 的就地
+palette 改写否决——可 intern 前提=COW 替换独占 mutation 面）；StructurePiece
+块表 24MB+（保存路径重序列化消费）。剩余大项（[J/[B/palette Object[]）
+为区块内容活数据本体。详见轮3 报告 §6。
+
+## 批次 144（2026-10-09）：R5 轮4——HPROF 持有链归因，HashMap$Node 簇与 byte[] 逐项确证，R5 收束（0.83.0 保持）
+
+轮3 后画像两大未归因簇（HashMap$Node ~118/区块、[B 成分）的持有链归因轮。
+工具：MemSoakVerify 加 `-Dmemsoak.dump=true`（测量点 GC.heap_dump）+ 新增
+HeapRefAttr（HPROF 三遍流式解析器，982MB/10s，段内子记录字节级对账 fail-loud；
+Node 归属走 Node[] 表持有者而非 next 链，语义层=键值类对统计）。对 0.83.0
+绿门浸泡转储（12 bot 径向+驻留，982MB）归因：byte[] 84.9MB 中 70.8% 为
+Starlight SWMRNibbleArray 光照半字节表（29,322×2048B，逐 section 活数据，
+光照正确性红线）、14.7% String 本体、~12% zip 读缓存（boot 常量）；Node
+363,420 个零未归因——区块缩放成分=NoiseChunk DF 包装簇 ~118.8k（已被
+0268 界定为 carvers 前活环，轮3 实证 −65.5%），其余为玩家缩放进度
+（advancements ~83.4k，存档性）、boot 常量 DFU schema ~54k、注册表 Holder
+~18.9k。**逐项确证无下一个红线内可安全回收的区块缩放驻留 → 依指令判例归档，
+R5 内存主线正式收束：四轮累计 0.80.0→0.83.0 = 1,154,349→873,548 KB
+（−280.8MB，−24.3%，同场景配对腿）**。
+
+判例：HPROF 以 heapDumper.cpp 实值为准（根子记录编号偏移+堆数据全在 0x1C
+段内，规格文本先验会静默错位）；尺寸表缺项（primLen 漏 int）病征是错位点后
+数 MB 伪合法记录——自描述长度流中错位可自愈，唯字节级对账能在本地暴露；
+"返回消费长度"必须与读操作逐字节同源；归因轮确证无可回收项时收束本身是
+合法产出。
+报告：
+[note/report/perf/2026-10-09-memsoak-r5-batch144.md](report/perf/2026-10-09-memsoak-r5-batch144.md)。
+
+## 批次 145（2026-10-10）：R6 轮1——常量容器载荷消除（0.83.0 → 0.84.0）
+
+批次144 收束 R5 后其归因工具继续扩展（[J/[Object 三类归因 + String 重复值普查 +
+均匀 nibble 普查），在已收束画像上发现两个安全回收项，内存主线以 R6 延续（R5
+判例全部维持）。普查定性：[J 活跃 129.8MB 主项=方块 palette/高度图内容本体（红
+线）+碰撞 BitSet（boot）+自建 PapoPosTypeSet 6.0MB+fastutil/光照活数据；[Object
+85.5MB 高度碎片化无单一簇；**String 386k 实例 47.6% 冗余（−7~9MB，轮2 立项）**；
+均匀 nibble 26.2%（15.8MB）判例出局（光照并发读协议改造不值 1.8%）。落地
+（0269）：**ZeroBitStorage 按尺寸共享**（构造后不可变、copy() 本就返回 this、无
+身份比较；570k→2 实例）+ **PapoPosTypeSet 惰性分配**（自然地形多数区块永不调度
+刻，192B/容器急切对改首 add 分配，空态短路）。验证：PapoPosTypeSetLazyTest（20
+万随机指令 HashSet 模型对拍，含空态/引用语义/resize 交织）+ ZeroBitStorage 共享
+契约测试——经新增 PapoRegressionTestSuite 聚合（测试任务只收 *TestSuite 且
+bukkit suite 不选 net.minecraft 树）；对拍首版未对齐两侧 add 返回值约定
+（HashSet=新插入 true vs Papo=已存在 true，142 判例重演）修正后 8/8 全绿；
+rebuildPatches 0269 + applyPatches 重放 EXIT=0 + compileJava --rerun-tasks + 全量
+test BUILD SUCCESSFUL + check_patch_counts ALL OK。浸泡两腿（6,064 vs 6,089 区块
+配对，门全绿）：堆 876,325→869,221 KB（**−6.94MB/−0.81%**），ZeroBitStorage 从
+top-20（570,518 实例/9.1MB）跌出 top-25，降额与簇归因闭合。
+报告：
+[note/report/perf/2026-10-10-memsoak-r6-batch145.md](report/perf/2026-10-10-memsoak-r6-batch145.md)。
+
+## 批次 146（2026-10-10）：R6 轮2——String 反序列化规范化三准入设计实测判负，运行时回退（0.84.0 保持，负结果）
+
+批次145 §1.3 立项的 String 冗余（386k 实例 47.6% 冗余 ≈ −7~9MB）作为独立完整
+角度做完：在 CompoundTag.papoReadUtf（compound 键 + StringTag 值唯一读取路径）
+与 AdvancementProgress.CODEC apply（判据键）两个选择点接入有界规范化池，连续
+实现三个准入设计并全链验证（单测 6 项 ×3 版、rebuildPatches + applyPatches 重放
++ compileJava --rerun-tasks + check_patch_counts 918 ALL OK ×2 版）：**v1 先到先得**
+（池被 worldgen/启动一次性串冻结于垃圾词汇，−22,897 实例均为边缘种群）、**v2
+4-bit 计数草图**（被自身单测证伪：碰撞误收 2,773 个一次性串 + 持续流量饱和退化为
+准入恒真，未浸泡即弃）、**v3 精确近期窗口**（2,048 首见整窗轮转 + 窗口内二见
+准入；配对浸泡 −21,773 实例与 v1 统计等效 ≈ −1MB，但 1,016MB 转储逐值普查证明
+Name ×6,964 / has_the_recipe ×2,916 / north ×3,149 / true+false ×8,983 与无池
+基线逐字一致——论文目标种群零命中，冗余比例变化全由区块数缩放解释）。机制：
+并发首见洪峰（12 并发 .dat + worldgen 模板 NBT）下共享 2k 窗口转速快于任何
+跨源复发间隔，二见永远落空。**算术闭包**：接住跨源复发所需状态（窗口 ≈50~100k
+瞬态 + 池 ≈64k × 完整 worldgen 词汇 ≈8~9MB）≈ 论文目标本身——任何"正确"的
+通用设计净收益趋零，设计空间整体判负。可达面拆账：boot 常量（DFU/反射，
+非反序列化产物）不可达、方块状态属性值在 worldgen 热路径、join-only 判据键
+41,724 中冗余 ≈38.7k ≈ 2.2MB（0.25%）低于行动线。**处置：运行时全部回退**
+（内仓 reset 回批次145、版本回 0.84.0、0.85.0 jar 删除未发布）；回退触发
+paperweight 直接文件机制新增合成 0001-paper-File-Patches（PaperHooks 独立化）
++ 原 269 补丁顺移，以逐 hunk 字节等价 + 全量重放 EXIT=0 + 918 ALL OK +
+compile/test 全绿（批145 8 项维持）三证收口。测量判例：首腿 B 区块 −28%/终点
+×0.75 曾疑 v3 热路径回归，复跑配对（6,154/6,092）证为环境噪声插曲（批85 判例
+重演——单腿异常先复跑再归因）；memsoak B 腿转储开关修复（env 前缀不达 bash
+函数 → 直接置 harness java 命令行）。String 规范化角度关闭。
+报告：
+[note/report/perf/2026-10-10-memsoak-r6-batch146.md](report/perf/2026-10-10-memsoak-r6-batch146.md)。
+
+## 批次 147（2026-10-10）：R7 轮1——单值 PalettedContainer 规范 Data 共享（0.84.0 → 0.85.0）
+
+批次146 负结果收束后重基线 0.84.0（1,205MB 转储全量普查；勘误：0.83.0 时代普查腿实为
+~4.4k 区块的慢机插曲，跨代对比按区块数归一后逐项一致）。最大非内容簇=常量节容器三层
+状态：394,848 节中 87% 单值（343,650 方块 + 232,765 生物群系容器），各 80B
+（Data+SingleValuePalette+moonrise$palette Object[1]）仅依赖 (strategy, 值)。落地
+（0270）：**每 (strategy, 注册表 id) 一个规范共享 Data**——键选注册表 id（规范实例即
+驻留实例，idFor 引用比较逐位不变）；发布后永不结构突变（增长换属主容器 data、就地写
+仅引用幂等、唯一就地重写的 buffer-read 路径守卫私有化且服务端不走）；缓存挂 Strategy
+实例字段（随 level 卸载回收、上界=注册表大小）；出生点双钩（生成路径公共构造器 +
+codec 解码规范化，损坏空 palette 保持私有）；Anti-Xray preset 容器自然跳过。验证：
+PapoPalettedSharedDataTest 8 项（合成 IdMap 无需 bootstrap：共享/隔离/同值写不脱离/
+增长脱离共享者无扰/codec 规范化+pack 恒等/copy 独立/未注册值直通/buffer-read 双形态
+守卫/8 线程收敛）+ 批145 两套件维持；rebuildPatches 0270 + applyPatches 重放 EXIT=0 +
+compileJava --rerun-tasks + check_patch_counts 918 ALL OK；浸泡两腿（6,072 vs 6,114
+区块配对，门全绿）：堆 865,311→831,599 KB（**−33.7MB/−3.90%**，B 多 42 块，区块调整
+后净 ≈−37MB）；普查归因闭合：单值缓存数组 **569,100→11**、多值档逐档不变、容器实例
+数不变。判例：共享审计以"发布后结构突变"为判据（惰性缓存须预构建于发布前）/共享键选
+注册表 id 消灭等值异引用/缓存挂属主字段收口泄漏与上界/跨代普查必须按区块数归一/配对
+差分先做区块调整。内存主线 0.80.0→0.85.0 = 1,154.3→831.6MB（**−28.0%**）。
+报告：
+[note/report/perf/2026-10-10-memsoak-r7-batch147.md](report/perf/2026-10-10-memsoak-r7-batch147.md)。
+
+## 批次 148（2026-10-10）：R8——SWMRNibbleArray 紧凑 uniform 表示（0.85.0 → 0.86.0）
+
+重开批144 均匀 nibble 判例：否决前提双双失效（占比 1.8%→2.65% 翻倍；审计 441 行全类
+确认存储字段全私有、所有读写经类方法路由——"无数组"表示不经由当时恐惧的"共享数组"
+路径，并发读协议原样）。落地（0271）：整节 4096 nibble 全 0/全 15 的节两个存储数组
+保持 null，值承载于 SWMR 同款纪律的 uniform 字段对（写者 plain updatingUniform +
+读者 volatile visibleUniform；不变量 uniform≠0 ⇒ storage==null ∧ state∈{INIT,HIDDEN}；
+载荷打包格式 u|u<<4）。六个值等价缝逐缝证明：读者 null 存储读 uniform；干净 null 上
+setFull/setZero 翻转不分配（真值变化独立置 dirty——翻转不变 state，"state 差异⇒发布"
+会静默丢发布）；首写物化围绕 uniform 打包填充（全亮节边缘写不丢其余 15）；发布对沉降
+数组 isAllZero/isAllFull 扫描紧缩回 uniform（256 long 比它替代的 2048 字节拷贝便宜）；
+extrude 的 null 源解析 setFull/setZero（调用方先 setNonNull，状态编排同数组路径）；
+toVanillaNibble/getSaveState 物化回数组（**盘上格式与跨版本世界兼容字节恒等**）、
+盘载双构造器规范化全 0xFF 回 uniform（全零保留物化形保 INIT-with-zero/UNINIT 可分）。
+出航前随机差分（200 轮×500 操作 vs 物化镜像模型）抓到两个写者协议洞：uniform 翻转的
+dirty+null 中间态上 set()（仅 !dirty 时物化）与 extrudeLower dirty 复用分支写穿 null
+数组——三处守卫统一"存储缺失即物化"（swap 提前返回放宽为 dirty&&storage!=null；
+extrude 物化分支保留翻转态 INIT/HIDDEN 仅干净 UNINIT/NULL 提升 INIT），确定性回归
+一一对应入库。验证：PapoSWMRUniformNibbleTest 11 项全绿（批145/147 三套件维持）；
+rebuildPatches 0271 + applyPatches 重放 EXIT=0 + compileJava --rerun-tasks +
+check_patch_counts ALL OK；0.86.0 jar 内嵌字节码 javap 复核；浸泡两腿（6,086 vs
+6,145 块配对，门全绿）：堆 817,354→801,373 KB（**−15.98MB/−1.96%**，B 多 59 块，
+区块调整后净 ≈−21.1MB）；普查归因精确闭合：SWMRNibbleArray byte[]
+84.15→62.36MB（**−21.79MB**）、均匀数组 **10,836→4**（残 4=瞬态）、非均匀每块率
+4.95/块不变、long[] +0.87MB（=59 块增量）、String/容器持平。判例：否决判例复检以
+"否决前提是否还成立"为准/私有存储+全方法路由的类可做表示层替换（六缝等价清单即
+审计模板）/紧凑表示发布须显式 dirty/随机差分须覆盖新中间态的后继操作（set-after-
+flip 最小复现+确定性回归一一对应）/跨会话绝对值漂移 ±2%（同二进制两会话 831.6 vs
+817.4MB——绝对水平只会话内可比，主线以配对差链陈述）。内存主线 0.80.0→0.86.0 =
+1,154.3→801.4MB（**−352.9MB/−30.6%**）。
+报告：
+[note/report/perf/2026-10-10-memsoak-r8-batch148.md](report/perf/2026-10-10-memsoak-r8-batch148.md)。
+
+## 批次 149（2026-10-10）：R9——常量节规范化共享（0.86.0 → 0.87.0）
+
+节/容器实例层（残余画像最大非内容簇）：398,976 节壳 40B + 792k 双容器壳 48B/节 +
+398,976 ShortList 壳 24B（批142 已惰性化）+ 私有 uniform 容器双 Data 壳 64B 与单条
+目 palette 壳 48B ≈ 224B/节。0272 落地：整内容=单一非随机刻/非流体刻/非特殊碰撞方
+块状态+uniform 注册 biome 且计数解析一致的节坍缩为每 (方块全局 id, biome 注册表
+id) 每注册表一个规范实例（缓存挂 biome Strategy 随 level 回收，批147 判例③；复合
+键跨世界不碰撞；容器经批147 钩子与全服共享 Data；计数解析式 + 谓词防御性核验）。
+关键设计修正（首 soak 判负腿定位）：均匀性以格子判不以 palette 型判——世界生成经
+写路径构造均匀节（biome 容器首写非默认 biome 即扩容单条目 LinearPalette；整节写
+石头同理；dump 直方图全服 SingleValuePalette 仅 11 个=批147 共享集），
+papoUniformValue() 零位快路径→raw long 全等否决→等词逐格裁决。写者面全树枚举收口
+六门（LevelChunk/ProtoChunk.setBlockState 均在 air-into-air no-op 后、setBiome、
+fillBiomesFromNoise、doFill 双获取点、OreFeature 经新增 BulkSectionAccess
+getWritableSection 含缓存 canonical 项置换与 acquire 转移）+ 客户端 read/readBiomes
+索引门 + 每个节变更器响亮金丝雀（漏门写者崩溃而非跨 chunk 静默腐蚀）；旧 Bukkit
+生成器整槽置换私有 scratch 节核安全免门。规范化单点=LevelChunk 主构造器扫描（晋升
+/盘载两路），level 长寿命 factory 保证缓存按世界命中；规范节以 vanilla 单值
+palette 编码落盘（逐格恒等、更小、全版本可解码）。验证：
+PapoSharedConstantSectionTest 11 项全绿（Bootstrap 真实方块+合成 biome IdMap；
+uniform-写路径坍缩回归=首 soak 缺陷确定性复现；300 轮×120 写差分对拍）；全链
+rebuildPatches 0272+applyPatches EXIT=0+compileJava --rerun-tasks+counts ALL OK+
+0.87.0 jar javap 复核。浸泡三跑：首跑谓词缺陷（坍缩 1.4%）→ dump 直方图证伪修
+正；二跑 B 区块 −29.6% 配对门破（boot 15.9 vs 16.6s 零错误排除服务端）→ 批146
+判例复跑；三跑门绿（6,080 vs 6,098 块 +0.30%）：堆 797,078→780,005 KB
+（**−16.7MB/−2.14%**，区块调整 ≈−18.2MB）；普查归因：节 −76,126（−19.2%）/
+容器 −152,252/Data 222k→150k，76,126×224B=17.0MB 闭合；内容面 SWMR byte[] 每
+区块 4.939 vs 4.946 持平、long[] −1.6MB=释放微型均匀存储非内容。判例：复合谓词
+可行率按分量交集预估（87% 方块侧单值 → 双均匀实测 19.2%，外推动辐 4 倍）/均匀性
+以格子判不以表示型判（dump 直方图是谓词假设直接证伪面）/响亮金丝雀优于静默防御
+（浸泡=全写路径回归）/配对门破先复跑再归因（第三次应用）/实例层收益按随宿主死掉
+的全部壳计（112B 立项 → 224B 实账）。内存主线 0.80.0→0.87.0 = 1,154.3→780.0MB
+（**−374.3MB/−32.4%**，会话链 ±2% 漂移判例内）。
+报告：
+[note/report/perf/2026-10-10-memsoak-r9-batch149.md](report/perf/2026-10-10-memsoak-r9-batch149.md)。
+
+## 批次 150（2026-10-10）：R10——结构模板驻留解耦（0.87.0 → 0.88.0）
+
+0.87.0 树重基线化（同会话配对浸泡 A-087 782,611KB/6,096 块 + 转储普查）后残余非
+内容簇归因：voxel shape 族（AABB 345,829 + ArrayVoxelShape 141,516 +
+BitSetDiscreteVoxelShape 140,060 + CachedToAABBs 141,161 ≈ 51.4MB）三数相同 =
+每 BlockStateBase$Cache（29,492）~4.8 形状的**注册表界 vanilla 恒定成本**，红线
+判负出局；结构模板簇（495,771 StructureBlockInfo 11.9MB + ~495k BlockPos
+11.9MB + palette/列表/NBT ≈ 26-28MB）由仅 412 个 StructureTemplate 持有、挂全服
+单例管理器无界映射——**随探索单调增长**，入选。钉扎审计（实现前完成）：单纯上
+界无效——TemplateStructurePiece 强持 template 字段而 piece→StructureStart→常驻
+区块。0273 双修：① piece 惰性取（manager+Identifier 现取，字段本不序列化=盘格式
+零变化，postProcess 每 pass 单实例，放置期模板不可变故 miss 重载恒等；六处直接
+字段访问改访问器——实现期编译抓漏 RuinedPortalPiece:146，首查 grep 被 head 截
+断）；② PapoStructureCache（运行时类型替换，声明字段保 `Map` 描述符=插件二进制
+兼容）：120s idle-TTL + tickServer 每 512 tick 清扫 + **put 即保护**（vanilla
+getOrCreate 先 get/tryLoad 只在无源可载才 put——保护域恰为不可重载来源全集：
+getOrCreate 新建空模板 + Bukkit register/load-with-register；tryLoad 背书永远可
+驱逐）+ **全读路径打戳**（get/containsKey/computeIfAbsent/entrySet/values 迭代
+——Bukkit getStructure/getStructures 轮询插件语义逐字节不变，缓存驱逐只影响
+"无人读过 120s"的条目）+ 256 可驱逐上限最老先逐 + reload clear 连保护域清。
+验证：PapoStructureTemplateCacheTest 10 项（注入时钟：TTL 驱逐/put 保护扛
+10,000s/访问戳热窗/clear 重置保护/entrySet+get 打戳保真/上限序（300→256+保护
+者，首插先逐）/驱逐后透明重载/Map 契约同实例/背靠背幂等）+ 全链 rebuildPatches
+0273+applyPatches EXIT=0+counts ALL OK+compileJava --rerun-tasks+8,952 测试全
+绿+0.88.0 jar javap 复核。浸泡：门对 782,611→757,348KB（−24.7MB/−3.23%，区块
+6,096 vs 6,046 −0.82% 门内零错误）；同会话转储对（A 复跑 775,404/6,048 vs B
+757,348/6,046 近完美配对，A 腿会话内复跑 ±0.9% 漂移）**−18.1MB/−2.33% 保守取
+值**；归因：StructureBlockInfo −227,169/BlockPos −222,500/Object[] −1.69MB/
+类级净 −15.4MB ≈ 85% 闭合（余为堆填充与独类抖动）；残留 268k infos = TTL 热窗
+边界（测量点驻留+120s 恰逢 TTL，末段生成/驻留早段精炼重戳在窗内）；**无玩家稳
+态腿（MEASURE_AT=240s>DWELL，bot 断开后 60s 无玩家区块尽卸）：B-088 转储模板
+簇全零行（缓存清扫至空、保护域亦空=412 全 tryLoad 背书自证），0.87.0 对照仍持
+全部 412 模板/495,771 infos（堆 271,526 vs 243,125KB）= −28.4MB 全簇释放**——
+长跑无界增长闭环证明。B 腿 logErrors=3 溯源为 bot 断开与 system_chat 收尾写的
+WSAECONNABORTED 良性竞争（latest.log 明文可证；批142 过滤器漏 U+FFFD 替换字符
+形态——打印成 ？ 非 ASCII ?，已就地补 BurstJoinVerify.isBenignCloseRace）。判
+例：grep 枚举不许截断（head 漏类编译才抓到，审计面完备性不能靠采样）/加界前先
+找钉扎链（上界收益=可驱逐集真实可达性，holder 图审计必须先于实现；本场景 dump
+piece 恰零常驻但真实服务器常驻非空 start 会让纯映射上界归零——惰性取是上界生效
+前提而非锦上添花）/保护域按进入路径划不按内容猜（put 即保护精确捕获不可重载来
+源，无需内容启发式）/读路径打戳是原始映射暴露面的保真义务（插件可拿原始 Map，
+每个缓存优化都须假设有轮询者）/TTL 与测量点的相位（驻留型基准测量延迟=TTL 时残
+留恰为热窗半衰减，稳态结论需延迟≥TTL+清扫间隔的补充腿）。内存主线
+0.80.0→0.88.0 = 1,154.3→757.3MB（**−397.0MB/−34.4%**，±2% 漂移判例内）。
+报告：
+[note/report/perf/2026-10-10-memsoak-r10-batch150.md](report/perf/2026-10-10-memsoak-r10-batch150.md)。
+
+## 批次 151（2026-10-10）：R11——残余画像常驻性审计与收敛论证（审计轮，0.88.0 保持）
+
+以 B-088 驻留转储（6,046 块 757,348KB）对同二进制无玩家稳态转储（区块尽卸
+243,125KB）差分为常驻性示差器，新工具 **papo.bot.ShellRefAttr**（壳实例持有链归
+因：两遍流式扫描——HPROF 无拓扑序收集/扫描必须分遍；四目标实例数与 jcmd 直方图
+逐位对账 291,843/29,813/37,741/140,109；开发期修三处自身缺陷均有定位证据链：
+CLASS_DUMP 实例字段误跳值字节/readIdAt 8 字节端序反/LOAD_CLASS serial 按 id 误读）。
+指令点名簇全数归因判负：**DoubleArrayList 291,843 → ArrayVoxelShape 424,515 引用**
+（xs/ys/zs 载荷，形状族=每注册方块状态碰撞/遮挡缓存，注册表界）；**[J 281,720 →
+BitSet 词位 140,109 + CachedShapeData 140,060 + 光引擎/传播器/队列固定缓冲**（配置
+定容）；**Object2ObjectOpenHashMap 29,813 → CompoundTag 底衬映射 29,525**（注册表/
+数据包 NBT 内容，dwell 增量 18,880 随区块=方块实体内容）；连带 BitSet→形状族+
+RegionBitmap、Object2ObjectArrayMap→DFU codec 树、StringTag 63,844→CompoundTag 映
+射表、ArrayList 150,919→**CachedToAABBs 141,156**、HashMap$Node 133,570 键值对全为
+String→DFU Schema λ（34.5k）/ResourceKey→Holder$Reference（18.9k）/NBTMapType 链
+——永久集=JVM+注册表+DFU+固定缓冲，与区块/玩家/时长全无关。区块驱动集分解：
+palette 位存储 ~135MB 与光照 61.4MB=内容红线；壳层已批142-149 四轮最小化；
+**heightmap 新证据=LevelChunk 晋升只留 FINAL 四型（LevelChunk.java:295 逐条过滤，
+vanilla 本就修剪，否决 WG 残留猜想）**；HashMap +109,120（18/块）=方块实体/刻/POI
+映射内容邻近；调度状态 ChunkCompletion 86,176 随 holder 生死（moonrise 内部件稳
+定性风险≫2.1MB 收益，审慎判负）。收敛论证三轴封闭：时间轴（模板批150/包缓存批
+141 后无第三类无界簇，永久集跨腿恒定 243.1MB）、区块轴（125.2KB/块中红线内容占
+主体，结构壳已最小化，heightmap/刻/POI=内容或已修剪）、玩家轴（贡献全在区块轴
+内）。结论：**"结果一致"约束下内存主线收敛**——后续收益仅可能来自内容表示改写
+（palette/光照编码，恒等语义红线）或注册表结构重铸（DFU/形状缓存，注册表语义红
+线），均出授权。无补丁无版本 bump（审计轮惯例同批132-140）；服务端零变更，批150
+全链门维持。判例：无玩家稳态腿是常驻性的干净示差器（同二进制内差=区块+玩家全体
+贡献）/壳簇归因必须落到持有者类（"fastutil 容器多"不是判定，持有者是谁才是——
+同一 DoubleArrayList 在不同宿主下判负/可攻两论）/工具先对账再使用（实例数与直方
+图逐位一致才可信，工具自身缺陷三处全靠交叉证据链定位）/审计轮交付=证据而非代码
+（收敛论证的强度=每簇持有者证据×三轴封闭）。
+报告：
+[note/report/perf/2026-10-10-memsoak-r11-batch151-residual-convergence.md](report/perf/2026-10-10-memsoak-r11-batch151-residual-convergence.md)。
+
+## 批次 152（2026-10-10）：R12——长时生长审计，时间轴收敛闭合（审计轮，0.88.0 保持）
+
+R11 收敛论证的时间轴柱只靠 5-6 分钟浸泡+无玩家腿——本轮以新工具补齐：
+**papo.bot.LongRunGrowth**（长时生长 harness）+ **OfflineJoinBot
+joinWalkCyclesAndDisconnect**（往复循环：同一径向往返，出腿甩出视距触发卸载、
+回腿重访走盘载重载路径，刻意制造 加载→卸载→重访重载 周期=短浸泡覆盖不到的
+慢增长暴露面）。12 bot × 40 分钟（腿 240s，出腿 1,200 格），每腿末双 Full GC
+采样，10 样本，腿长=采样周期→奇数=远端分散态（10.3k 块+生成管线）、偶数=原点
+聚合态（2.5k 块），同相位隔一比对。门 logErrors=0 exited=true（批150 修的
+U+FFFD 良性关断过滤器 40 分钟长跑零误报首证）。结果：**远端稳态
+#3/#5/#7/#9=1,005,399/1,020,592/995,624/1,000,869KB（±1.25% 持平；#1 高 25%
+=首腿全新生成 vs #3 起盘载重访，本身即重访不累积证明）；原点稳态 ±1.9% 持平
+且 LevelChunk/ChunkHolder 逐位 2,499×4 确定性复现**；RegionFile 19→68 后八采
+样恒定（区域文件缓存有界）；NewChunkHolder 与 ChunkHolder 全程逐位相等（调度
+状态随 holder 生死）；批150 模板缓存有界振荡（壳 216-262/infos 290k-344k 带
+内）非单调。远端 ~1.0GB vs 原点 ~480MB 的 2× 振幅=场景几何（12 分离视域），
+随集散即时伸缩、回原点精确落回=无滞后残留的直接证据。判例：**慢增长审计必须
+构造卸载-重访周期**（单向扩散浸泡只暴露加载驻留面，重访重载路径才是泄漏高发
+面）/同相位比较是振荡型长跑的唯一有效比对（相位差是几何不是增长）/确定性复现
+（逐位区块数）比百分比持平更强的持平证据/首样本与稳态样本分开陈述（全新生成
+态与盘载态是两种合法活集）。**内存主线终局：0.80.0→0.88.0 = 1,154.3→757.3MB
+（−397.0MB/−34.4%），区块/注册表轴（批151 持有链归因）+ 时间轴（本腿多周期
+持平）双闭合，"交互体验一致"红线内收敛终局。**
+报告：
+[note/report/perf/2026-10-10-longrun-growth-r12-batch152.md](report/perf/2026-10-10-longrun-growth-r12-batch152.md)。
+
+## 批次 153（2026-10-10）：R13——palette 簇判负理由勘误 + 位宽实证（审计轮，0.88.0 保持）
+
+R11 报告 §2 称 palette 位存储"改表示=改盘格式/网络格式，超出'结果一致'授权"——
+括号理由**技术上不成立**：内存表示可独立于盘/网络格式改写（批148 SWMR uniform、
+批149 常量节正是先例，序列化经编解码器恒等）。判负结论维持但理由须为实证形式：
+HeapRefAttr 对 B-088 转储的 SimpleBitStorage 尺寸直方图（177,575 归因数组全量）——
+elems=1（58,382）与 elems=2（32,945）= biome 容器（64 格×1-2 bit）；elems=37
+（28,141）= heightmap（256 格×9 bit，6,046×4 型 ✓）；**elems=256（49,990）=
+方块 palette 全质量（4,096 格×4 bit ≈103MB），3/5-bit 档几乎为零**——即全部为
+9-16 值真混合节。判负三支柱（正面理由）：①定宽随机访问下 4-bit 已近实用下界，
+进一步压缩需变长编码（格子分布熵 ~1.5-2.5 bit 可省约半）但 getBlockState 是全服
+最热路径，逐 tick 变长解码代价直接踩交互体验红线；②优势值+例外补丁表示盈亏为
+负（例外 ~800+/节 × 2B ≈ 现行 2KB 定宽）；③100% 单值档已批147/149 收割。判例：
+**"改表示必改格式"是伪约束（内存表示层独立可改），判负理由必须正面（熵下界+
+热路径 CPU 交换+盈亏算术）不能负面（"不能改"）**。勘误正文入 R11 报告 §5。无
+补丁无版本 bump；服务端零变更。
+报告：
+[note/report/perf/2026-10-10-memsoak-r11-batch151-residual-convergence.md](report/perf/2026-10-10-memsoak-r11-batch151-residual-convergence.md)（§5 勘误）。
+
+## 批次 154（2026-10-10）：R14——内存主线收官直对 0.80.0 vs 0.88.0 同会话配对（测量轮，0.88.0 保持）
+
+主线头号数字 −397.0MB/−34.4% 由逐轮同会话相邻版本配对差链拼接、两端点绝对值
+跨会话（批146 判例：会话级区块装载量漂移，4.4k/6.0k 腿并存）。本腿同会话同参数
+直对首尾两个已发布二进制：A-080 两次（932,700/935,225KB，区块 4,365/4,387，
+自复现 0.27%/0.50%）vs B-088（643,644KB，4,481 区块，转储 901MB 留存）。**收官
+数字：原始配对 −284.7MB（−31.2%，保守界）/ 每区块 213.2→143.6KB（−32.7%）/
+边际每区块 157.7→89.4KB（−43.3%）**，与跨会话链量级互证。簇级胜负表全兑现：
+区块包缓存三包类 2,120→零行（批141 TTL）、LevelChunkSection 每区块 68.2→55.5
+（批149）、PalettedContainer 136.4→111.1（批145/147）、HolderHolder/Holder$Direct/
+CubicSpline 三簇齐 −64.8%（批142 惰性化族）、NoiseChunk 906→316（批143）；无
+WATCH 簇反向增长。配对门 +2.14% 超限：两次 A 采样同向低于 B=系统性偏差——固定
+墙钟行走阶段下 tick 更快的 0.88.0 覆盖更多地面装载更多区块（ChunkHolder +2.3%
+佐证），方向保守故双口径放行。判例：**跨代 ±1% 区块门在优化改变装载速度时系统
+性不可达，偏差方向保守且机制写明时以每区块归一双口径并陈**/**门破复跑一次，
+同向即改判系统性偏差并转机制归因（批149 判例延伸）**/**收官数字必须同会话直对
+产生，跨会话差链只作旁证**。无补丁无版本 bump；服务端零变更。
+报告：
+[note/report/perf/2026-10-10-memsoak-campaign-final-paired.md](report/perf/2026-10-10-memsoak-campaign-final-paired.md)。
+
+## 批次 155（2026-10-10）：R15——tick 性能与交互延迟守护，内存主线 CPU 面终验（测量轮，0.88.0 保持）
+
+内存批 141-150 改动多条每 tick 热路径（容器读共享/光照 uniform 分支/节访问
+分支/包缓存 TTL 重编码/模板惰性取），但全程未量化延迟面——"交互体验一致"
+红线包含延迟。新工具 MsptLoadProbe（MemSoakVerify 逐字同场景 + 控制台
+stdin mspt 六槽采样：流送期 3 槽 + 驻留期 3 槽；剥 ANSI 解析 5s/10s/1m 三窗
+avg/min/max）。主跑 A-080→B-088 + 倒序复跑 B→A 四腿门全绿。**判定无可检测
+回退**：槽位跨跑复现 ≤0.3ms（槽=相位确定）→ 复跑槽位配对差 0.0/+0.1/+0.2/
+0.0/0.0/−0.1ms 两序一致≈零；池化均值 6.31→6.38ms（+1.0%≈0.06ms）；主跑
+流送期 +0.7~1.0ms 槽差倒序复跑归零=机器瞬态；boot 5 腿 A 16.58-18.35s vs
+B 17.16-17.72s 带内无差；开荒尖峰 621-695ms 同量级；绝对 5-8ms @ 12 玩家
+流送距 50ms 预算一个量级。分辨率界限如实：亚 1% 系统差在本场景地板不可分辨，
+距可感知阈值两个量级。判例：**延迟守护必须与内存守护同场景（场景复用是结论
+前提）/MSPT 槽位相位确定→槽位配对差强于池化均值/单跑异常差先倒序复跑再
+归因**。红线两轴（内存 −34.4% / 延迟≈零差）均有量化证据，0.88.0 终局维持。
+无补丁无版本 bump；服务端零变更。
+报告：
+[note/report/perf/2026-10-10-mspt-load-guard-r15-batch155.md](report/perf/2026-10-10-mspt-load-guard-r15-batch155.md)。
+
+## 批次 156（2026-10-10）：R16——shape 族规范共享，"注册表界恒定成本"判据证伪与收割（0.88.0→0.89.0，0274）
+
+R10/R11 的 shape 族判负用的是**有界**判据而非**不可约**判据——族内结构重复率从未
+量化。新工具 ShapeDupCensus（解析核心逐字复制 ShellRefAttr）：B-088 转储 AABB
+345,808 实例仅 **3,256 个不同几何=99.1% 结构重复**（Top=栅栏柱×74,022/墙柱×
+65,832/全立方×7,643）；持有链双层归因=全部质量随 ArrayVoxelShape 生死（Object[]
+toAabbs 背板 20.9 万+字段 14.7 万），形状挂点=面向惰性数组 43.4 万引用+每状态
+Cache/occlusionShape+块类静态表。0274：PapoShapeCache（CHM<结构键,VoxelShape>；
+仅 ArrayVoxelShape+BitSet 背书参与；**只挂长寿命缓存点绝不挂构造点**（瞬态不入
+表，表大小被注册表不同几何数上界）；Shapes.empty()/block() 单例永不被替换）+
+BlockBehaviour 两挂点（Cache ctor collisionShape、initCache occlusionShape）——
+两根规范后 faces[6]/toAabbs/CachedShapeData/mergedORCache 全部惰性子结构随规范
+根每几何一份。验证：PapoShapeInternTest 7 项（**楼梯跨类型共享**=改动前异实例
+几何恒等的强判别器；首跑两败=测试输入退化（全立方 OR 被 join 短路成单例），换
+非退化输入）+ :paper-server:test 8,960 全绿；重放 EXIT=0+counts ALL OK+compile
+--rerun-tasks+jar 0.89.0。浸泡三试（晨窗机器负载致同二进制区块装载 ±11% 漂移）：
+rep3 双门绿 A-088 630,304KB@4,384 vs B-089 589,259KB@4,522（B 多载 3.15% 保守
+向）=**原始 −41,045KB（−40.1MB/−6.52%）**、每区块 143.8→130.3KB（−9.4%）、boot
+无回退；rep2 转储腿门败 422（实为 3 个）经盘上取证=44.2s dump STW 冻结与终存
+竞争的瞬态自愈（文件齐全+All dimensions are saved+exit 0），非服务端缺陷。
+归因 census（逐位确定、机器无关）：AABB −79.3%（每区块 57.2→15.8）/
+ArrayVoxelShape −72.6%/BitSetDiscreteVoxelShape −73.3%/DoubleArrayList −70.4%；
+族 ~51MB→残余 ~16-20MB；残余 96.4% 重复=块类静态形状表（注册表固定量，留档
+后续角度）。判例：**"有界"≠"不可约"，族级判负必须测结构重复率/解析器复制不
+重写（两遍手写皆错位，纯复制一次过）/转储腿门败先盘上取证后定罪（自愈三证据
+齐=伪影，不入良性过滤器）/机器晨窗漂移下复跑到同向+保守向+census 互证即收**。
+主线：0.80.0→0.89.0 跨会话链 ≈1,154.3→~720MB（−37.6%+），shape 族移出判负清单。
+报告：
+[note/report/perf/2026-10-10-shape-intern-r16-batch156.md](report/perf/2026-10-10-shape-intern-r16-batch156.md)。
+
+## 批次 157（2026-10-10）：R17——shape 族静态形状表收割，咽喉点外科手术（0.89.0→0.90.0，0275）
+
+R16 后残余归因（B-089 转储双层）：规范表仅 **517 条目**（26,753 状态→517 碰撞
+几何）；ImmutableMapEntry 持有 10,887 引用=块类每状态形状表+惰性派生≈31k 实例=
+残余主体；实体动态 ~770。R16 风险记档"Shapes 工厂拦截需瞬态排除"实测后整个
+消失——**块类每状态形状表全部经 Block.getShapeForEachState 两重载建造**（17
+文件调用，引导期一次性，ImmutableMap 随块永久持有）：建造点即长寿命持有点，
+瞬态从不流经。0275=两 collect 值包 papoCanonical（+导入），零其他改动；HopperBlock
+手搓表（~15 形状）留档。单测补 2 项（跨楼梯类型视觉形状 assertSame=强判别器+
+栅栏跨木种+楼梯 half 各异，总 9 项）；test 全绿六套件维持；重放 EXIT=0+counts
+ALL OK（0275）+compile --rerun-tasks+jar 0.90.0。配对浸泡（A-089→B-090 带转储，
+**双门绿、区块 +0.60% 门内**）：684,904@6,043 vs 670,399@6,079=**原始 −14.2MB
+（−2.12% 保守向）**、每区块 113.3→110.3KB、boot 无回退。census 闭合：AABB
+345,808→71,467→**20,333（−94.1%）**、ArrayVoxelShape→**8,064（−94.3%）**、
+BitSetDiscreteVoxelShape→**7,842（−94.4%）**、DoubleArrayList→**16,640（−94.3%）**；
+族 ~51MB→~4-6MB（两轮配对 −54.3MB 跨窗互证）；残余重复率 99.1%→84.0%=地板
+（3,251 几何+根面向形状二阶重复 <1MB 判不值得+实体+hopper）。判例：**咽喉点
+搜索先于风险设计（风险记档随测量更新）/"建造点=长寿命持有点"是最强 intern
+挂点/转储腿可与门腿合并（冻结伪影负载相关非必然）**。主线 0.80.0→0.90.0：
+每区块 189.5→110.3KB（−41.8%），总堆 ≈−42%（链式）。palette/光照变长编码
+（红线相邻）按目标新条款呈报用户决策。
+报告：
+[note/report/perf/2026-10-10-shape-static-tables-r17-batch157.md](report/perf/2026-10-10-shape-static-tables-r17-batch157.md)。
+
+**批 157 补记（用户裁定）**：palette 变长编码（~−50MB）与光照 nibble 变长表示
+（~−30MB）两个红线相邻提案已于 2026-10-10 按目标新条款（先询问）呈报用户，
+用户裁定**均不做**（采纳推荐：热路径 CPU 交换与写路径抖动的交互体验风险）。
+两角度自此为用户决策终局，非仅工程判负。
+
+## 批次 158（2026-10-10）：R18——SWMRNibbleArray 冻结壳规范共享，三迭代+census 状态普查驱动（0.90.0→0.91.0，0276）
+
+批 157 收官 census 的下一质量：SWMRNibbleArray **539,188 壳×32B=17.3MB vs 30,276
+真实载荷**（壳/载荷 18:1）——94% 是"生而冻结、从未写入"的空壳。出生面全库枚举：
+getFilledEmptyLight 每 chunk 每节填 NULL 壳（质量主体）+SaveUtil 空数据段+fromVanilla；
+写者面 11 站点/3 文件（批 149 六门同量级）。设计三件套：**3 不可变单例**
+（NULL/UNINIT/INIT_FULL——后者声明必须晚于 LONG_VIEW，静态初始化文本序判例）+
+**源数组追踪 COW**（setNibblesForChunkInCache 记录喂给缓存的每 chunk 数组，统一
+chunk 活表/light() 局部/relight 工作数组三类持有者；身份守卫跳过 cache-only 惰性
+建点）+**全变更器身份 canary**。INIT-uniform-0 与 HIDDEN×{0,15} 刻意无单例
+（谓词独占：isInitialised*()读 true/vanilla 视图转 null，引擎恰在这些差异上分支）。
+
+三迭代实证链：v1 出生点收敛+写路径 COW→B 腿 census 308,078（−43%）；v2 补
+updateVisible 双出口定居交换（dirty 槽发布后换回单例）→**计数不动**——写
+SWMRStateCensus（HPROF 行走复制 ShellRefAttr+CLASS_DUMP 字段布局+逐实例状态组合）
+直测 308k 分布：175,499 NULL-clean+90,632 UNINIT-clean+7,617 INIT-15 = 27 万清洁
+私有壳泄漏（extrudeLower→setUninitialised 直出 clean/rewriteNibbleCacheForSkylight
+逐节发布在定居点外/存档往返材质化再载回私有）；v3 population sweep（灌入点全扫
+clean 等值壳）+载入 all-full→INIT_FULL——**canary 立即抓到 performLightIncrease/
+Decrease 4 个直接 .set 站点**（站点普查 grep 变量名大小写陷阱判例：`nibble\.set(`
+漏 `currentNibble.set(`）；v4 四站点惰性 COW（仅真写时提升，读密集 continue 路径
+零 churn）→全绿。单测 PapoSWMRSharedNibbleTest 12 项（读面出生恒等/9 变更器
+canary/clone 私有化/定居契约四项含谓词独占态留私有/INIT_FULL 完整契约含存档往返）；
+SharedConstants.tryDetectVersion 必须先于 Bootstrap.bootStrap 否则级联毒化套件 JVM
+判例。全链：0276/重放 282 提交/counts/compile --rerun-tasks/test 六套件（Paletted
+并发测试一次瞬态重跑绿）/jar 0.91.0；**rebuildPatches 与 applyPatches 不得链式
+单调用**（未声明输出依赖+UP-TO-DATE→内部仓库重置中断，--rerun-tasks 强制重生成）。
+
+配对浸泡六对（v1×1/v2×1/v3×1 红门抓漏/v4×3 绿门），±1% 区块配对门被本会话机器
+负载窗（4.2k~6.1k 摆动）全部践踏——R8 先例双口径收口：**census 主口径（机器无关，
+v4 三对独立复验）SWMR 每区块 95.x→18.x 实例（−80~−82%）、类字节 −10.7~−11.0MB、
+A 侧 415k~423k/B 侧 77k~88k 跨对恒稳、byte[2048] 载荷侧不变**；区块调整辅助口径
+每区块全堆 −3.0%（中位；+0.2%/−3.0%/−6.5%，末对保守向 B 多载 13.4% 仍更轻）。
+残差 77k=21,093 载荷+2,047 INIT-0（判 23k 不可约地板）+53.9k sweep 滞后（静默
+chunk 值恒等未坍缩，持续游戏收敛）；save 侧清扫经评估放弃（与光照线程 updating
+字段竞态，~1.6MB 不值红线风险）。判例：**状态普查先于机制猜测/canary 是共享设计的
+运行时验证器/单写者探针不得漂移线程/census 是负载窗不稳时的硬归因口径**。
+报告：
+[note/report/perf/2026-10-10-swmr-shared-shells-r18-batch158.md](report/perf/2026-10-10-swmr-shared-shells-r18-batch158.md)。
+
+## 批次 159（2026-10-10）：R19——残余收敛审计+主线收官直对 0.80.0→0.91.0（审计测量轮，版本保持 0.91.0）
+
+R18 后残余 top-25 逐簇归因（HeapRefAttr/ShellRefAttr/源码复核三背书）：[J 145.8MB=4-bit
+palette 内容（R13 正面判负+用户裁定）；[B 83.3MB 归因 74.5MB——SWMR 真实光照载荷 24,706×
+2048B=50.6MB+String 12.3MB（批146 关）+zip/jar 10.1MB 固定；[Object 69.0MB=多小持有者散布
+（fastutil map 内部+Data.moonrise$palette 124k，平均 ~13 元素，无单一规范质量——**计数相关
+性（1:1 容器）必须过持有者归因才可立项，presetValues 猜想源码证伪：控制器单例按引用返回**）；
+HashMap 簇 17MB=真实每块（4/块 heightmap 图）+每玩家（19,008=12×1,584 进度）+每实体 PDC 状态；
+Holder 族 5.5MB=每世界密度函数图常量；ShortList 壳/载荷=批142 惰性完好；模板簇=R10/R12 有界
+振荡。**正面判负：无未收割结构壳面，每行落位内容/真实状态/常量/瞬态四类之一**。[J 归因工具
+长度读取 quirk 留档（以 R13 尺寸 census 为准）。**收官直对（同会话，双门绿）：A-080
+1,133MB@6,128 块 vs B-091 542MB@4,574 块（−25.3% 窗漂）——原始 −52.2%（混杂参考界）、
+每区块 189.3→121.3KB=−35.9%（主口径），链式互证成立（R14 −32.7%×R16~R18 ≈预期 ~127±4，
+实测 117.3~124.8）**。判例：归因到持有者类是判负最低标准/1:1 计数相关是假线索温床/审计轮
+交付=证据。主线 0.80.0→0.91.0 于"结果一致"约束下收敛终局封存。
+报告：
+[note/report/perf/2026-10-10-residual-audit-r19-batch159.md](report/perf/2026-10-10-residual-audit-r19-batch159.md)。
+
+## 批次 160/161（2026-10-11）：R20——R19 判定对抗复核闭合+两残余面收割（0.92.0）
+
+对抗复核推翻 R19 两处弱归因并收割：(1) **[D 12.3MB 缺口 97% 是仪器盲区**——HeapRefAttr
+只扫两类对象数组元素边，类型化引用数组（[[D 外层）整体漏网；新工具 PapoStaticRefCensus
+（静态交叉+根直指+全类型元素边+逐字节滑窗持有者归因+类探针）三层闭合后锁定：10.58MB =
+**318 个 pre-carver 停机 ProtoChunk** 持有的 NoiseChunk 树（2544 interpolator×2 切片=5088
+[[D 外层分毫不差）；静态仅 0.17MB、根直指 0、活集口径直方图与转储 [D 计数逐个相等。
+批次143 钩子在 carvers 出口，pre-carver 环永远到不了——批次160：主线程每 2048 tick
+（~102s，-Dpapo.noiseParkSweepTicks 可诊断禁用）对停机 ProtoChunk（排除 Imposter）周期
+释放 noiseChunk。**恒等三件套**：跨步读面仅 preliminarySurfaceLevel（纯记忆化）+aquifer
+（确定性记忆化），切片仅 doFill 消费；Blender.of 与区域半径无关（固定 ±7 环）+Beardifier
+种子确定 → 任意步闭包重建等价；在途步骤持局部引用 → 竞态无害。(2) **O2O 弱归因拆解**：
+ChunkAccess.java:79 blockEntities 每 chunk 急切分配（LevelChunk 4947+ProtoChunk 3916+
+Imposter 4947，~8.9k 永空含 imposter 继承死字段）——批次161：字段 @Nullable 懒分配，
+papoBlockEntitiesView()（不可变空视图，写穿透即抛=金丝雀）/Writable()（首变更分配），
+19 触点全改（ChunkAccess/LevelChunk 8/ProtoChunk 4/CraftChunk 2/CraftWorld 1）。单测
+PapoNoiseChunkParkReleaseTest 4 项+PapoLazyBlockEntitiesTest 5 项入套件。
+**验证（同窗配对双门绿+类级 census）**：A-080 1,159,239KB@6,085 vs B-092 620,102KB@6,114
+（配对 0.48%<1%）：raw −46.5%、每区块 190.4→101.4KB=**−46.7%**（R19 的 −35.9% 因 B 腿
+低载窗为保守方向，本对两腿同 ~6.1k 制式为干净数）；census：[[D 外层 5088→**0**、
+NoiseChunk 318→**0**、元素边→[D 10.58MB→**0**、[D 直方图 11.79→0.41MB（−96.5%）、
+O2O 45,899→32,583（LevelChunk 4947→462 仅真 BE、Imposter 4947→**0**、Proto 3916→23）、
+CompoundTag 内容态不变。链全绿：rebuildPatches（0277/0278）/applyPatches 重放/compile
+--rerun-tasks/套件/createPapoJar 0.92.0。判例：归因闭合三口径（静态/根/实例合计仍缺→先
+疑仪器）/HPROF 滑窗两坑（1B 字段错位须逐字节、idAt 必须大端）/释放恒等三件套（读面盘点→
+闭包差异消除→竞态无害化）/继承死字段是包装类双倍静默税。工程事故：fastutil sources 缓存
+一年前截断（jar tf 过 zipfs 不过，FROM-CACHE 还原损坏需 --rerun-tasks 绕过+手动 curl
+续传取整 22.6MB）+downloadMappings 网络截断，同源本机网络大文件单连接截断。
+报告：
+[note/report/perf/2026-10-11-residual-harvest-r20-batch160-161.md](report/perf/2026-10-11-residual-harvest-r20-batch160-161.md)。
+
+## 批次 162（2026-10-11）：R21——0.92.0 基线残余归因审计轮（版本保持 0.92.0）
+
+三候选面全部判负，每面把既有判负理由从相关性升级为状态级/公式级硬证据。基线=
+0.92.0 收官转储（620,102KB@6,114 区块），对照=同会话 A-080 腿（6,128 区块，配对 0.23%）。
+新工具 PapoO2OStateCensus（O2O 状态普查+[J 构成归因+字段级采样三合一，fastutil-8.5.18
+控制转储 {0,3,38} 三尺寸实证 size 声明序偏移后放行）。**(a) CompoundTag O2O 30,452 张**：
+空率实测 **0.6%**（187 张，成本 0.04MB），中位 2-3 条=真实 NBT 内容；持有者=[Object 嵌套树
+14,893+Dynamic 7,182/NBTMapType 6,956 转码在途视图（与 NewChunkHolder 批量 1:1）+
+NewChunkHolder 4,312 全部指向共享空实例（Moonrise 自带共享空表示）；每区块 5.23→4.98 稳定；
+表示改写（intern/COW）触可变 NBT 热路径=R6 负结果判例+别名化红线 → 判负维持 R11。
+**(b) [J 175.4MB 构成**：85.1% 直接归因（SBS 139.5MB+BitSet 9.7MB）+残余 26.2MB 滑窗闭合
+（PapoPosTypeSet 7.4MB=计划刻真内容[批123/145 自有]、fastutil linked-map link[] 7.3MB
+[link 字段本身是 long[]，2^k+1 容量指纹]、光引擎/传播器/netty 常量 ~5MB）；**R13 边界以
+valuesPerLong 公式恒等重验**：SBS 存储长=ceil(size/(64/bits)) 不跨 long 边界——4-bit=256×
+50,951=105.6MB（每区块 17.3KB，B-088 时 23.0KB 下降）、5-bit=342×7,464=20.7MB（字段级
+解码 bits=5/mask=0x1F/size=4096 实证；B-088 时 ≈0 → 世界内容成熟化队列，17-32 态真混合段）、
+heightmap=37×28,402 与 R13 的 28,141 逐位级一致、biome 1/2-bit ×129k、**跨边界 320 档恰好
+缺席=公式恒等证明**；变长编码=用户终局（R17 裁定不做）维持。**(c) 逐区块差分 A-080 vs
+B-092**：31 个达标类**全部负向**（[B −22.9KB/区块、[S −11.0、[D −6.8、[Object −5.8、
+[J −3.0、shape 族 −3.4~−1.0……），零正回归零新热点，0.80→0.92 收割弧线类粒度单调。
+判例四条入库：hprof 实例 blob 序=CLASS_DUMP 声明序非内存布局序（oop 宽=idSize，idSize=8 时
+data@0 后 bits 在 @8；CLASS_DUMP 可重复出现须去重）/字段级采样优于猜测（sampleCls 定位
+link:2 字段 10 分钟排障）/SBS ceil 公式+长度指纹=palette 位宽容备识别器（320 缺席即证明）/
+审计轮价值形态=判负结论的证据等级须高于立项。主线终态：0.80.0→0.92.0 每区块
+189.5→101.4KB（−46.5%），"结果一致"约束下结构收割面穷尽（R11 三轴+R19 直对+R20 盲区修复
++R21 状态级复核四层）。零代码变更零补丁零版本 bump。报告：
+[note/report/perf/2026-10-11-residual-attribution-r21.md](report/perf/2026-10-11-residual-attribution-r21.md)。
+
+## 批次 163（2026-10-12）：R22——0.92.0 长时生长复验+转码视图对抗复核（版本保持 0.92.0）
+
+R12 方法论在 0.92.0 复跑（LongRunGrowth 12bot×40min 往复循环、每腿末双 Full GC 采样、
+同相位比对；WATCH 扩容 Dynamic/NBTMapType/CompoundTag）。**门全绿（活集口径）**：远端
+同相位活集 779/788/782/790MB ±0.7%、老年代 ±0.4%（优于 R12 ±1.25%）；origin 活集 ±0.6%
+（R12 ±1.9%）；LevelChunk/ChunkHolder/NewChunkHolder 逐位复现（origin 2,447×2→2,448×3）；
+RegionFile 68 后九采样一字不动；模板有界振荡（origin 全 0=TTL 彻底驱逐）；**批158-161 机制
+周期负载专项**：NoiseChunk 腿末全 0（sweep 生效，生成风暴瞬态 515→25→0→18→0 不跨腿累积）、
+O2O ±0.1%（懒 map）、SWMR 每区块 10.97→11.79 增量递减非单调（收敛动力学 +64KB）、[B +0.24%。
+**远端 heapUsed ±41% 之谜破案**：全为 young 区再填充（3 秒采样窗撞上重访重流送突发 444MB），
+老年代/活集持平——判例：同相位堆门必须用老年代或直方图活集，raw used 的持平是时序巧合。
+**对抗复核（R21 最薄面）推翻主体解读并更强判负**：新工具 HolderProbe（数组类+静态字段+根
+三支持，补 ShellRefAttr 数组类洞）静态定位 [MapType×2←HelperBlockFlatteningV1450.FLATTENED_
+BY_ID/BLOCK_DEFAULTS（4096 硬上界 1.13 扁平化查表）+ [Dynamic×2←vanilla BlockStateData——
+包装视图主体是两张 boot 常量表（~1.9MB，两表并存=上游架构事实）；动态直测 Dynamic 7,183/
+NBTMapType 6,956 十采样逐位一字不动，双定位互证；连带修正 R21(a)：30,452 张 CompoundTag 中
+~4,318（14%）为表条目常量，判负更保守。**origin 老年代 +4MB 定性**：Moonrise TickTime
+9,754→18,000 恰好=15 分钟窗上限（收敛签名）+LongAdder/CHM 配套+spark 栈缓存预热，零慢增长。
+判例四条：同相位堆门用老年代/活集（raw used 平持=巧合）/静态常量表双重定位法（静态字段+时序
+逐位互证）/滚动统计窗到顶签名（恰好=上限值是充填收敛决定性判据）/HPROF OBJ_ARRAY 的
+numElements 先于 classOID（与 INSTANCE 分支必须分开写）。时间轴在 0.92.0 二次闭合。零代码
+变更零补丁零版本 bump。报告：
+[note/report/perf/2026-10-12-longrun-r22-batch163.md](report/perf/2026-10-12-longrun-r22-batch163.md)。
+
+## 批次 164（2026-10-12）：R23——0.92.0 延迟守护复验，红线两轴双闭合（版本保持 0.92.0）
+
+批158-161（SWMR COW 写面/懒 map 读面/主线程停机 sweep）此前只有内存面验证（R20 浸泡对+
+R22 长跑），延迟面自 R15（0.88.0）后未复验——本轮补 0.92.0 延迟腿。**隔离对比 A=0.91.0（批
+158-161 前最后代码态）vs B=0.92.0**（两腿间恰只有三个待验机制）。MsptLoadProbe 六槽采样
+（R15 场景逐字复用），**六腿三序**：主跑 A→B、倒序 B→A、加跑同序第三对 A→B。六腿门全绿
+（logErrors=0/exit0/boot 19.2-19.8s 同带）。**判定无可检测回退**：run1 均匀正差 +0.35ms
+（6/6 槽）在换序复跑 −0.07ms 与**同序复跑 −0.12ms**（4/6 槽 B 更低）中双双不复现=机器瞬态+
+时间趋势（A 自身跨腿漂移 +0.6ms 直接解释 run1 正差）；池化 36 样本 A 6.87 vs B 6.92=
+**+0.06ms（+0.8%）**亚噪声（R15 无回退接受带=池化 +1.0%）；尖峰 B 侧更低（35 vs 229ms）；
+机制旁证：COW 仅变异时拷贝、懒 map 仅 null 判、sweep 2048tick 摊销——无一可持续计入每 tick。
+**红线两轴 0.92.0 双闭合**：内存轴（R22 活集 ±0.4-0.7%）+延迟轴（本轮池化亚噪声两序 B≤A）。
+判例：同序复跑强于换序复跑（真系统差同序必复现，不复现即瞬态）/噪声带先于信号声明（先测同
+二进制复现性再谈 A/B 差，本轮无 run3 则 +0.35 均匀差会被误读为回归）/R15 槽位配对判例再次
+应用加强。分辨率如实陈述：本会话跨腿散布 ±0.6-0.7ms（R15 时 ≤0.3ms），对 <0.5ms 系统差
+分辨率有限但距可感知阈值两个量级。零代码变更零补丁零版本 bump。报告：
+[note/report/perf/2026-10-12-mspt-guard-r23-batch164.md](report/perf/2026-10-12-mspt-guard-r23-batch164.md)。
+
+## 批次 165（2026-10-12）：R24——堆外归因判负 + 分配源归因收割：SurfaceRules 热路径零分配化（0.92.0→0.93.0，0279）
+
+内存主线四层穷尽后的两个未量化面：(a) 堆外/直接内存从未归因；(b) R22 年轻代再填充突发
+（±41% raw used、eden 扩张 >1GB）的分配源从未站点级归因——分配率同时服务内存（瞬态/GC
+自适应）与 CPU（GC 工时）两面。**方法**：alloccensus-r24.sh（MemSoakVerify 同场景 +
+NMT summary/diff + Metaspace + Thread.print + 流送峰窗 JFR ObjectAllocationSample
+threshold=1ms 60s，9,252 事件三键聚合）。**面 (a) 判负**：Class/Metadata +71MB 全为惰性
+类加载、Code +65MB JIT 封顶内、129-130 线程=R1 形态、Other（Netty direct）~13.5MB——无
+可收敛堆外驻留。**面 (b) 普查**：worker 占 90%+；计数口径 top：updateY memoize 族 14.3%+
+SequenceRule ArrayItr 8.5%（**SurfaceRules 逐方块求值，22.8% trips**）、密度树 mapAll 拷贝
+族 20.7%（vanilla 架构判负：Marker 逐区块绑定、组合节点大多在 Marker 上、驻留零收益+MSPT
+无痛点）、fillArray/RNG/流族 vanilla 语义。**巨权伪影判例**：tick:848 fastIterator 权重口径
+596MB 实为单个 595.7MB 事件（线程自上次过界全部分配涂到过界站点）——站点可信度以计数+阈值
+（≥20）为准，权重只作区间（原始/净化双口径）。**收割（0279，单文件封闭）**：Context.updateY
+的 Supplier<Holder> biome → 手工 memoization（biome()+computed 标志；惰性/每窗口至多一次/
+坐标首用时读取与 vanilla λ 延迟 apply 同构/抛出重试=Guava 语义；两调用点 updateXZ→updateY→
+tryApply 窗口内字段无突变故字段值≡捕获参数）+ SequenceRule.tryApply 增强 for → 索引循环。
+单测 PapoSurfaceRulesAllocTest 5 用例入套件全绿。**验证**：目标族归零（Context$Lambda
+733→0/memoize 590→0/Supplier 590→0/ArrayItr 786→33 残为非本面站点）；总 trips 9,252→8,123
+（−12.2% 无偏计数），估重 26,681→16,866MB（原始 −36.8%/净化 −35.3%）；**世界生成恒等**：
+密度树驻留 HolderHolder 1,098/Holder$Direct 1,665/Multipoint 525 两腿逐位相等；内存对旧代
+活集 675,083→674,201KB（−0.13%），Metaspace 同量；**MSPT 四段证据链**：三跑两序 +0.34ms 同向复现→零生成对照排除（补丁不运行时倒序 5/5 槽逐位相等）→GC 窗 B 严格更优（young 7→5/STW −31%）→**钉 NewSize=1G 隔离 G1 自适应 eden 分叉（A 535 区 vs B 1,127 区）后 B 六槽全快（−0.45ms）**——未钉配置的 +0.34=分配削减后 G1 吞吐启发式扩 eden 的摊销效应非补丁成本，TPS 恒 20.0。指令预期
+候选对账：包序列化=残量 68MB/60s（批 141 已收主体）、光照=计数口径 absent（批 148/149
+旁证）、DFU=absent（全新生成窗+R22 已证常量表）。判例：JFR 单站点巨权不可归因（计数为准）/
+计数与权重双估计器（方向一致才硬）/分配收割立项三门槛（封闭单文件+恒等可证+簇级份额）/
+种子派生链是绝对红线（RNG 构造分配与份额无关直接出局）。版本 0.93.0。报告：
+[note/report/perf/2026-10-12-allocsource-r24-batch165.md](report/perf/2026-10-12-allocsource-r24-batch165.md)。
+
+## 批次 166（2026-10-12）：R25——实体密集面画像与寻路滞留收割（0.93.0→0.94.0，0280）
+
+R1-R24 全场景 peaceful+spectator，实体对象图从未被内存画像（唯一未演习轴）。新工具
+EntitySoakCensus（逐字同 MemSoakVerify 协议，仅 difficulty=normal+spawn-monsters=true，
+驻留 300s；**首要发现：spectator bot 同样触发自然刷怪**，实体面轮可直接复用）。census：
+~679 mob，实体前缀 61,810 实例/2.84MB+支撑结构 ≈6MB=**0.75% 堆——量级面立判**；全表
+语义判定（Brain 7 张 codec 驱动 map/属性/goal/控制对象/DataItem 跟踪=内容本体；懒化候选
+pathfindingMalus+附魔 EnumMap ~250KB@700mob 低于簇级份额门槛）。**唯一结构异常**：
+pathfinder.Node 26,683 实例/1.71MB 对账 Path 仅 78 条（39/mob）——源码归因
+**BinaryHeap.clear() 只置 size=0 不清引用**（frontier+历史增长尾槽滞留）+ PathFinder.neighbors
+Node[32] 同族；合计 2.2MB@679mob（3.2KB/mob，随 mob 数与搜索长度无界放大）——"最后读者后
+释放"第三例（NoiseChunk 停车/SurfaceRules 分配同族）。**恒等三件套**：堆数组 size 外槽位
+搜索逻辑从不读/getHeap() 返回 copyOf 快照使 DebugData 调试面免疫（先证隔离再动刀）/neighbors
+以返回计数为界全量重写。实现=clear() 全数组 fill(null)+findPath 出口 neighbors 清（每次寻路
+≤4KB memset，较搜索本体四个数量级以下）。PapoBinaryHeapReleaseTest 4 用例（跨 clear 堆序
+逐位/快照隔离/反射直读全槽位无引用/增长容量尾槽）。**A/B**：Node 26,683→16,476（−10,207/
+−653KB=−38.3%），残差=当前 Path 自有节点（677×~24 对账），容量壳保留（scratch 先例）；
+两腿门绿、实体群同量级；raw heapUsed 差=相位窗负载（R22 判例）。延迟面不设独立对（主线程
+零触点+成本四个数量级以下，R15 场景复用前提不满足——比例性说明入报告）。判例：新场景轴先
+census 后立项/vanilla "clear 只置零"保留反例族系统性存在（遇 clear/reset 只置零默认怀疑）/
+清引用前先证序列化调试面隔离/spectator 触发刷怪协议实证。版本 0.94.0。报告：
+[note/report/perf/2026-10-12-entityface-r25-batch166.md](report/perf/2026-10-12-entityface-r25-batch166.md)。
+
+## 批次 167（2026-10-12）：R26——"clear 只置零"反例族全仓清扫，判负（版本保持 0.94.0）
+
+R25 判例指出该反例族系统性存在（NoiseChunk 停车/批160、SurfaceRules 分配/批165、
+BinaryHeap/批166 三例同族已收）。本轮体级静态清扫全仓（clear/reset 体含计数器置零且无
+null/clear()/fill）：**7 处 size-置零位点中 6 处 vanilla/Paper 已正确清引用**（SortedArraySet
+等即范例），**唯一纯置零位点 LocalSampleLogger.reset()（debugchart）后备为原生 long[]——
+无引用滞留语义，判负**；扩大名变体（invalidate/rewind/drain/truncate）无新位点。运行时交叉：
+R21 区块面 [J/[B/[Object 全归因 + R24 JFR + R25 实体直方图四面无未归因容量/滞留壳，静态与
+运行时互证。**族判定：穷尽**。判例：怀疑清单快速分诊序=①原生后备立即判负②引用数组+计数界
+读面走 R25 恒等三件套③无后备无面。零代码变更零补丁零版本 bump。报告：
+[note/report/perf/2026-10-12-clearfamily-sweep-r26-batch167.md](report/perf/2026-10-12-clearfamily-sweep-r26-batch167.md)。
+
+## 批次 168（2026-10-12）：R27——高并发玩家面画像，判负 + 测量工具并发缺陷修复（版本保持 0.94.0）
+
+历轮全部浸泡 ≤12 bot，每玩家状态图从未在规模下画像。**首跑暴露 harness 并发裂批**：60 bot
+直方图每玩家类=31，服务端日志证明裂成 31+29 两批（第二批在首批断开后才启动）——
+runAsync 走 commonPool（并行度≈31）阻塞任务超限排队且门照常全绿（bot 全部最终完成）。
+修复=专用定长线程池；**历史有效性核验**：历轮 bots≤12≤31 全并发不受影响。判例：bot 池并发
+上限必须显式，规模腿必要门=测量点在线数（joined−left=bots）验收。60/60 census（门绿，
+heap 1,013,123KB，区块内容主导 5,681 区块）：每玩家图全语义（ServerPlayer 1,248B/
+监听器 328B/Connection 176B/加载器 136B/GameMode 72B/进度 64B/Inventory 40B/配方书
+32B——壳候选全量 <50B/玩家远低于三门槛）；**[LServerPlayer; 33,748 数组/3.19MB 归因
+NearbyPlayers.TrackedChunk**（每跟踪区块×6 视图类型 ReferenceList 类型化后备，31→60 人
+数组 1.36×/字节 1.78× 内容缩放，Moonrise 核心结构）；waypoint EntityChunkConnection
+52/玩家语义。**每玩家边际 6.9MB 拆解**：走廊新区块≈99%，**状态本体 ≈45KB/玩家（0.65%）**
+——拆分后判负成立。判例：每玩家边际必须拆状态/内容（原始边际会误立项）/类型化数组行是
+结构指纹（[LServerPlayer;→ReferenceList 后备→语义三步链可复用）。零服务器代码变更零补丁
+零版本 bump。报告：
+[note/report/perf/2026-10-12-playerface-r27-batch168.md](report/perf/2026-10-12-playerface-r27-batch168.md)。
+
+## 批次 169（2026-10-12）：R28——DFU 盘载旧数据转码面实测，判负（版本保持 0.94.0）
+
+历轮浸泡均为全新生成窗，数据修复转码路径从未执行。本轮构造盘载旧数据重载腿：
+RegionDowngrade（.mca 原位 DataVersion 降级器；**勘误判例：NBT 宽度表 Long/Double=8B**，
+4B 误跳=根遍历错位）把 R25 残留世界 16 region/10,296 区块全部降 3465（1.20.1，跨数百
+schema），DfuSoakCensus 12 bot 专用池复走同款走廊+60s JFR，门全绿（logErrors=0）。
+**驻留面位相同证据**：驻留末首见 com.mojang.datafixers.types.templates.* ≈151k 实例
+4.4MB（Product/Sum/Tag/Const/Named），与 R27 未执行转码基线（bot 数、世界内容均不同）
+**逐位相同**——纯启动 schema 注册常量，DFU 执行零增量驻留；DCF 侧零驻留。**分配面**：
+JFR 60s 窗采样 3,842MB 中 DFU 归因 66.0MB（1.7%），大头为 NBT→codec 反序列化机器
+（DataResult$Success.map 389MB 等）全瞬时。判定：**判负**——无收割面（常量+零增量+瞬态
+微量）；重写引擎/缓存模板（已是常量）/复用 DataResult（不可变值语义）均触旧世界兼容
+红线。判例：①位相同直方图行=零增量驻留最强廉价证据；②NBT 宽度表勘误；③旧数据腿先验
+降版覆盖率再起服。零服务器代码变更零补丁零版本 bump；RegionDowngrade.java+
+DfuSoakCensus.java 入库。报告：
+[note/report/perf/2026-10-12-dfuface-r28-batch169.md](report/perf/2026-10-12-dfuface-r28-batch169.md)。
+
+## 批次 170（2026-10-12）：R29——盘载反序列化分配面：recalcBlockCounts 计数重写收割（→0.95.0）
+
+R28 JFR 首照盘载窗，帧级归因出第一分配面非 DFU 引擎而是区块加载计数重建：SimpleBitStorage
+.moonrise$countEntries 为每 palette id 物化坐标 ShortArrayList（air/stone 大列表 64→4096
+倍增链），366 trips/815.8MB=60s 窗 21.2%；消费方 recalcBlockCounts 只需每 id 计数，坐标
+仅 randomly-ticking 态需要。收割（补丁 0281，四处）：接口加 countByIndex（计数-only 遍历，
+与旧遍历同形）+collectIndices（单 id 延迟收集）；SimpleBitStorage 实现；ZeroBitStorage 全零
+快路径；recalcBlockCounts 改两遍法——flat int[paletteSize] 计数（唯一小分配）+仅 totalTicking
+≠0 时对 ticking id 收坐标（ShortList 精确预容）。恒等：四计数器交换求和恒等；tick 列表集恒等
+（唯一消费方均匀随机索引，序不可感知）；FULL_LIST 分支原样。验证：恒等单测 4 件（旧实现保留为
+oracle 同树对拍+混合 section 与 setBlockState 增量簿记一致——勘误 lava BlockState 本身随机
+tick）全绿；8,994 套件绿；链门全过。配对腿（同源世界降 3465×2）：A=0.94.0 旧面 366 trips/
+815.8MB → B=0.95.0 **0 trips/0MB**（面消灭，新面 6 trips/6.1MB）；驻留零变化（差分全内容
+缩放，ShortList↔Section 增量 1:1）；启动常量第三腿逐位相同；门双绿。判例：盘载窗是独立分配
+面需专用腿/物化-需求差收割范式（先问消费方要什么）/旧实现留树作 oracle=零成本最强恒等证据。
+第二面 CompoundTag 流式 O2O 增长链判负（NBT 流式无计数字段，格式即红线）。版本 0.95.0。
+报告：[note/report/perf/2026-10-12-blockcount-r29-batch170.md](report/perf/2026-10-12-blockcount-r29-batch170.md)。
+
+## 批次 171（2026-10-12）：R30——NBT 读取通路：papoReadUtf 零分配重写收割（→0.96.0）
+
+R29 B 腿 JFR 残余簇帧级归因：LongArrayTag.copy 113MB=56/56 全走 MoonriseRegionIO
+InProgressRead.complete 防御性深拷贝（读共享设计结构性代价，并发所有权改写触稳定性红线
+判负留观察）；O2O ctor 149MB=流式无计数固有再散列（loadCompound 已 (8,0.8f)、copy 已按
+size 预容，判负维持）；unpack 5 trips<20 阈判负；papoReadUtf 83.5MB/94 trips 立项——
+每次调用 new byte[len]+new String，而 NBT 键/id 值词汇表极小且海量重复。收割（补丁
+0282）：线程局部读 scratch（镜像 papoWriteUtf 模式，8KB 起按需倍增）+≤48B 短 ASCII 串
+4,096 槽直接映射有界去重（碰撞替换，重复读返回同一不可变 String——语义恒等：NBT 全程
+equals/hashCode，写侧按值编码）+非 ASCII 回退原位前缀移位。恒等单测 6 件（oracle=JDK
+modified-UTF-8 编解码往返：ASCII 长度族跨边界/多字节 NUL/assertSame 去重/>48B 旁路/
+替换风暴逐值精确）绿+全套 EXIT=0+链门全过。第三腿实测：papoReadUtf 面 94 trips/
+83.5MB→2 trips/2.0MB（**−97.9%**），窗总量 −17.6%；驻留 String −5.4k/[B −8.1MB（覆盖
+还少 35%）；缓存本体有界 ≤0.5MB；启动常量第四腿逐位相同；R29 面维持 0。判例：读侧物化
+三重奏（scratch 消载体+去重消重复值+原位前缀消回退副本）/不可变值共享是零语义面收割
+（前提=逐点排除身份依赖）/有界缓存须自证三性质（定尺寸+入口门+发布安全）。实现勘误
+（自查捕获）：去重比较须区间 Arrays.equals，全数组比较在 scratch 增长后永假。版本 0.96.0。
+报告：[note/report/perf/2026-10-12-nbtread-r30-batch171.md](report/perf/2026-10-12-nbtread-r30-batch171.md)。
+
+## 批次 172（2026-10-12）：R31——盘载窗第三面 PackedData 数组别名收割+批170/171 MSPT 守护闭环（→0.97.0）
+
+红线轴：MsptLoadProbe 0.94.0 vs 0.96.0 双序四腿全绿，**全槽 B≤A**（主序 −18.0%/倒序
+−7.0%）——批 170/171 全在 IO 线程的改动对 tick 零回归（改善=加载期 GC 争用外溢减少）。
+第三面归因：readAccounted 本体=内在载荷，但 NbtOps.getLongStream→Arrays.stream(tagArray)
++unpack 的 toArray() 构成**重复物化**（#1 tag 载荷→垃圾；#2 toArray→滞留者，构造器本就
+别名 #2）。收割（补丁 0283，波及两文件）：PackedData.storage Optional<LongStream>→
+Optional<long[]>；字段 codec NbtOps+LongArrayTag 别名直取（单次解码契约：parse 每
+section 恰一次+tag 树弃置），其余 ops 走 getLongStream+toArray 与 Codec.LONG_STREAM
+同形；pack 交 getRaw() 同形 encode（写侧仍拷贝线上字节恒等）。恒等单测 4 件：NbtOps
+全内容往返+assertSame(tag数组,滞留getRaw()) 别名铁证/二次编码线形逐字节相同/均匀容器
+共享 ZeroBitStorage/JsonOps 回退——全绿+全套 EXIT=0+链门全过。同世界配对腿（新源世界
+10,355/10,355 降 3465 双腿门绿）：unpack 框内 51/109.7MB→14/11.8MB（−89%）；流 toArray
+框内 −69%；驻留内容缩放无异常+LongArrayTag 零滞留（别名不泄 tag）；每 section
+3.26→3.10KB。判例：流形态=隐藏拷贝（集合→Stream→toArray 保证一次额外物化，载荷直取
+要求单次消费契约可证）/别名三问（谁持有/谁改/失败路径）/守护腿串行纪律（MSPT 期间禁
+并发重腿——本轮违例自查捕获重跑）。DFU8 勘误：createLongList 返回裸值非 DataResult。
+工具注：旧源世界被 Temp 清理，新源世界 MemSoakVerify 再生。版本 0.97.0。报告：
+[note/report/perf/2026-10-12-packeddata-r31-batch172.md](report/perf/2026-10-12-packeddata-r31-batch172.md)。
+
+## 批次 173（2026-10-12）：R32——批172 MSPT 守护+稳态普查复验→palette 重编码数组消面收割（→0.98.0）
+
+红线轴：0.96 vs 0.97 主序+倒序+钉年轻代三对九槽地板符号乱翻=当日噪声地板主导（单腿
+槽间 7→15ms），机械不在 tick 路径+R31 先例→零回归；判例补全：符号翻转跨序=噪声、两序
+同号=信号（R24 #5 判别式另一半）。稳态普查（0.97.0 同 seed 流送窗 6,347 样本）：Ap2/
+mapAll/RNG/散布面维持判负；新晋面 reencodeContents 316 trips/429.1MB——帧级归因 316/316
+全在 pack()（区块保存序列化）：palette 重编码 int[4096]（16KB/次）中间物化，唯一消费者
+是打包循环。收割（补丁 0284）：SimpleBitStorage 加函数式打包 ctor（循环与 int[] 版逐行
+同形）+两阶段——papoPopulateAscending 升序 RLE memo 发出与旧循环逐次相同的 idFor 序列
+（固定 palette id 分配=线字节恒等），papoReencodedStorage memo 闭包直接打包（idFor 全
+命中序无关）；旧管线留树为测试 oracle。**两次自查纠偏**：①删急切调用后空 palette 上算
+configuration→bits=0→无 data 字段解析崩（alias 测试红灯捕获）；②打包循环按 long 内降序
+读格，朴素函数重打包会改首现序→id 分配变→线字节变——两阶段同时解决。恒等单测 3 件
+（bits 交叉随机 run-交织逐位对拍+memo 计数=新存储访问序精确期望/ZeroBitStorage 单 run/
+pack() 线字节与旧管线 oracle 一致）全绿+全套 EXIT=0+链门全绿。普查配对腿：A 316/429.1MB
+→B **0/0MB 面消灭**，替代路径零采样分配，门双绿。判例：线格式是 id 分配序的函数（消数组
+必须两阶段）/急切求值的隐藏依赖（删调用先查副作用被谁读）/符号翻转判别式。版本 0.98.0。
+报告：[note/report/perf/2026-10-12-reencode-r32-batch173.md](report/perf/2026-10-12-reencode-r32-batch173.md)。
+
+## 批次 174（2026-10-12）：R33——0.98.0 普查残余帧级归因→Climate 检索 scratch + Beardifier 索引循环收割（→0.99.0）
+
+普查残余判定（8,391 样本）：立项 toParameterArray 165 trips（全仓唯一调用者=
+ParameterList.search，数组为树搜索只读输入不逃逸、距离度量纯算术无重入——TL scratch
+安全前提全成立）+ Beardifier.compute 228 trips（全为 enhanced-for 的 ListItr：结构邻接
+区块每噪声格一次×两条不可变 List）；判负维持/新增：StructureTemplate 处理族（vanilla
+模板放置架构，门槛不过）、OreFeature.doPlace（逐位放置本体）、散布 BlockPos/
+EnvironmentScanPlacement、NoiseChunk.wrap/mapAll 复审维持 R24 判负（per-chunk Marker
+绑定=世界生成核心架构）。收割（补丁 0286）：Climate 加 PAP0_SEARCH_SCRATCH
+ThreadLocal long[7]（每线程一份惰性分配后零分配，逐字段填充与 toParameterArray 逐值
+恒等，findValueBruteForce 走 fitness 不受影响）；Beardifier 双循环索引化（同序同算术
+零分配）。恒等单测 2 件：Climate 32 轮×5 交错点×2 实例对 bruteForce oracle 逐次
+assertSame（共享静态 scratch 泄漏探头）；Beardifier 五臂逐臂公式断言+junction+核外零+
+可加性+两早退零，oracle 逐调用同形（kernel 由初始化表达式 Math.pow(Math.E,·) 含 float
+存储位精确复刻，delta=0）。**测试自身三轮纠偏（判例素材）**：①Parameter record
+(long,long) 无单参构造；②middle=5000×6 恰为精确等距平局，树/暴力各自合法破平局
+assertSame 必炸——oracle 输入须先破平局；③BEARD_THIN 的 i5 取值臂走 BURY（i4）而
+贡献公式臂才与 BEARD_BOX 共享——逐臂断言捕获臂间错位（红灯同时纠正 i5=4 手算滑误）。
+链门 rebuild/apply/test/compile 全 EXIT=0；0.99.0 出包。普查配对腿：Climate 165→0、
+Beardifier ListItr 228→0（两面消灭；ListItr 总量 372→124 残余属他位点）；替代路径
+零采样；无 ≥20 新面；门双绿。判例：assertSame 级 oracle 要求输入无精确平局/公式复刻
+逐调用同形（pow(E,·)≠exp 位级）/双 switch 臂错位须逐臂断言。版本 0.99.0。
+报告：[note/report/perf/2026-10-12-climatescratch-beardifier-r33-batch174.md](report/perf/2026-10-12-climatescratch-beardifier-r33-batch174.md)。
+
+## 批次 175（2026-10-12）：R34——批174 三序守护→CubicSpline 流形态消面收割（→0.100.0）
+
+红线轴：0.98 vs 0.99 主/倒/钉三对（msptload-r34legs.sh 新增 pinned 模式入库）：地板 B≤A
+主序 3/6、倒序 4/6、钉死 5/6 含全部 dwell 槽；唯一同号 stream 槽3（min +2.1/+1.0/+1.0、avg
+仅 +0.2~0.7）无 tick 路径机械通道（批174 全在 gen worker 严格减分配）且幅度<腿内摆幅 1.5ms
+——噪声地板+良性相位效应（gen 吞吐略升→流送窗竞争略强，dwell 全优佐证），零回归成立、槽3
+如实入档。判例补全：符号翻转跨序=噪声；同号但幅度<腿内摆幅且无机械通道+多数槽反向=仍噪声
+（R24 #5 真回归全条件=同号+复现+机制）。0.99.0 普查残余归因：CubicSpline$Multipoint 单簇
+≈459 trips 立项（ListItr 97+流机械 Head/$3/NodeBuilder/toArray/Spliterator——mapAll 的
+values().stream().map().toList() + create() enhanced-for，每生成区块重包密度树时每样条节点
+重建一次；封闭单文件+恒等可证：列表内容序不变、record 只读持有、codec 路径本用 Guava
+ImmutableList 故具体 List 实现非可观察契约）；判负维持 NoiseChunk wrap/HolderDirect/Marker
+族（per-chunk 树重物化架构）、Xoroshiro/Gaussian 469（SurfaceRules 逐列 at() 种子红线）；
+新判负 PlacementModifier.getPositions 流契约族（HeightRange/InSquare/Filter/RandomOffset
+逐位 Stream.of(pos)——B 腿残余 236 Head 全部来源，接口契约散射）；Aquifer 72<阈。工具判例：
+单代表栈外推会被栈截断误导（in-stack 计数是下界非全量；"Head 301 全属 CubicSpline"初判实为
+~99 可见+截断隐藏，簇精确边界以配对腿差分定）。收割（补丁 0287）：mapAll 填定容 ArrayList
+（同序同元素）+ create 索引循环。恒等单测 3 用例一次全绿：legacy 流形式 oracle 逐项
+（parityString/min/max/apply×10 含嵌套区间）+双 mapAll 复合（第二遍跑在新 ArrayList 上=
+实现变化不可观察）+原树不变；CoordFunc 内容 toString 保 parityString 可比。链门全 EXIT=0；
+0.100.0 出包。普查配对腿：簇全灭（ListItr 97→0/Head-in-stack 99→0/Spliterator 34→0/$3
+85→0/NodeBuilder 40→0/toArray 49→0），替代 ArrayList 47 trips，合法结果对象 71→88 配对
+波动，无 ≥20 新面，门双绿。版本 0.100.0。
+报告：[note/report/perf/2026-10-12-splinemapall-r34-batch175.md](report/perf/2026-10-12-splinemapall-r34-batch175.md)。
+
+## 批次 176（2026-10-12）：R35——批175 三序守护→PlacementModifier 流契约族接口级收割（→0.101.0）
+
+红线轴：0.99 vs 0.100 主/倒/钉三对：地板 B≤A 3/6、3/6（翻号重）、4/6（≤0.6），无三序同号
+劣化槽；R34 记录的 stream 槽3 同号模式本轮主序反号——噪声判读获跨轮佐证（判例：跨轮不
+重现的同号=噪声，单轮三序同号才构成候选信号还须机制）；批175 全在 gen worker 无 tick 通道
+→零回归。立项复审（R34 判负面按指令做接口级评估）：PlacementModifier.getPositions 流契约族
+236 Head——封闭性成立（全仓唯一调用者=PlacedFeature.placeWithContext flatMap 链；19 实现单包；
+codec 面零触碰；抽象类加具体方法=二进制兼容）；恒等可证（flatMap 顺序语义=深度优先+每修饰器
+随机量调用时急切采样，DFS 驱动逐镜像；关键不变量：多重发射修饰器全部随机量先于首个发射——
+vanilla Stream.builder/IntStream.range 在 getPositions 内急切构建）；判负维持 Ap2.fillArray/
+wrap λ/HolderDirect-Marker 族/Xoroshiro-Gaussian 族。收割（补丁 0288）：forEachPosition
+(ctx,random,pos,Consumer) 双路——默认=getPositions().forEach（插件兼容路径）+11 处 override
+收束 3 组（PlacementFilter final emit-if 盖 5 过滤器零分配复用输入/RepeatingPlacement 循环
+盖 4 计数族 count 先采样/7 直接子类逐一镜像：CountOnEveryLayer 先全采样后发射、EnvironmentScan
+控制流谓词序同形发 mutable 同别名）+ PlacedFeature 驱动 flatMap 链→PapoPlacementWalk DFS 走查
+（每放置调用一对象、每发射零驱动侧分配；顺序发射契约下单实例 depth 记账安全）。恒等单测 2 件：
+驱动序等价（fake 只 override getPositions 走默认路+内联 vanilla 链 oracle：发射序列逐位相等+
+跑后随机残余态 nextLong 对拍；空链/各 arity/多重发射居中/三层×多 seed）——自查纠偏 2 项（fake
+计数器须双建实例/硬编码叶数按单 origin 首档位展开=3 非 4，红灯暴露测试自身）；逐 impl 对拍
+（同 seed 双随机 forEach 表==流表⇒随机消费等价；HeightRange 用 absolute 锚 null context 安全）
++结构性收束匿名子类+默认路径委托+混合链。链门全 EXIT=0——自查纠偏：首轮 test 绿是假绿（新
+测试未注册进 *TestSuite 聚合器；判例：套件外的新测试=未执行），补注册重跑全绿。普查配对腿：
+placement 流机械归零（Head-in-stack 235→0/StreamBuilder 74→0/Spliterator 31→0/InSquare
+getPositions 面 28→0），替代 PapoPlacementWalk 仅 15，唯一新面=BlockPos 值位点平移 28→26
+（数据非机械），placement-in-stack 627→301 残余为数据面，无 ≥20 新机械面，门双绿。判例：流
+契约接口零分配收割三件套（不动旧签名+遍历双路默认桥接+驱动换走查）/多重发射随机时序不变量/
+套件外新测试=未执行/跨轮不重现同号=噪声。版本 0.101.0。
+报告：[note/report/perf/2026-10-12-placementwalk-r35-batch176.md](report/perf/2026-10-12-placementwalk-r35-batch176.md)。
+
+## 批次 177（2026-10-12）：R36——批176 三序守护→谓词偏移 scratch+OreFeature 访问器提升双面收割（→0.102.0）
+
+红线轴：0.100 vs 0.101 主/倒/钉三对：地板 B≤A 3/6（≤0.5）、**倒序 6/6 全优**、钉死 4/6（含
+全部 dwell 槽），跨序翻号 3 槽、无三序同号劣化槽；批176 全在 gen worker 无 tick 通道→零回归。
+运维判例：会话中断杀后台守护腿（A-100r 只到槽1）——按 log gate 行核对完整性后补跑单腿，不盲
+重跑整对。立项 2：blockpredicates 偏移族 134（StateTesting 116+HasSturdyFace 18——每候选位置
+pos.offset 新分配；查询链坐标只读不持有=vanilla 特征循环自传 mutable 先例）+OreFeature λ 146
+（绑定方法引用每候选位置×每目标态循环内新建，机械提升）。判负：PacketEncoder byte[] 179=共享
+编码 memo 的快照分配（**既优化的代价面**——一次快照换 N 连接 codec 重走，重开无净收益证明）；
+immutable 残余散布调用者全 <阈；判负维持 Ap2/wrap λ/HolderDirect-Marker 族/Xoroshiro-Gaussian
+族。收割（补丁 0289）：PapoPredicateScratch（ThreadLocal MutableBlockPos，offsetBlockState
+置值即查询+offset 供 HasSturdyFace 两连读序贯消费）+StateTestingPredicate（final test 盖全部
+子类）/HasSturdyFacePredicate 改走+OreFeature.doPlace 访问器提升出循环巢。恒等单测（Papo
+BlockPredicateScratchTest，Proxy fake 只路由 getBlockState——手写 fake 连撞 Paper/Moonrise
+接口扩展 4 追加方法，判例：Paper 接口面 fake 用 Proxy 单方法路由免疫）：查询坐标=输入+offset
+精确断言（ZERO 常量/新建零偏移/负分量/命中未命中）+100 轮交错证明 scratch 不泄漏（记录侧
+即时拷贝坐标）；接线为单行复合由 helper 测试+链门+普查配对腿覆盖。链门全 EXIT=0；0.102.0
+出包。普查配对腿：blockpredicates 偏移族 **134→0**、OreFeature λ **146→4**（残余=每 doPlace
+一个合法访问器）、immutable 总量 162→14、blockpredicates-in-stack 136→2，无 ≥20 新面，门
+双绿。判例：既优化的代价面判负（普查可见≠可收割，重开须先证净赢）/Paper 接口 fake 用 Proxy/
+守护腿按 gate 行核对补跑。版本 0.102.0。
+报告：[note/report/perf/2026-10-12-predicateoffset-r36-batch177.md](report/perf/2026-10-12-predicateoffset-r36-batch177.md)。
+
+## 批次 178（2026-10-12）：R37——批177 三序守护→水体/气候/特征五面收割（→0.103.0）
+
+红线轴：0.101 vs 0.102 主/倒/钉三对：主序 B≤A 2/6（劣化 ≤+0.3）、倒序 5/6 零劣化
+（1 平）、钉死 0/6（+0.1..+0.4）——**第二腿劣势伪影**（判例：A 先跑两对的后跑腿
+系统性吃亏、B 先跑对反转，勿将钉死 6/6 读作回归）；无三序同号劣化槽（候选槽5
++0.3/0.0/+0.1 幅度<腿内摆幅 1.8-2.5ms 且无机制）；批177 全在 gen worker 无 tick
+通道→零回归。立项 5：Aquifer MutableDouble 121（computeSubstance 的 NaN 哨兵
+barrierNoise 懒记每调用 new——**所有权即线程 confinement** 判例：aquifer 每
+NoiseChunk 一实例单 worker 独占→实例字段化+入口重置）；SinglePointContext 77+33
+（Climate.Sampler.sample←fillBiomesFromNoise 每群系列 + getCarveState 每雕刻块——
+纯 3-int record、全仓无 instanceof/equals 观察、消费坐标只读同步无重入→
+PapoContextScratch 线程局替身）；Geode LinkedList$ListItr 110（betweenClosed 33³×
+两内层增强 for 每 geode ~7 万迭代器→ArrayList+索引循环）；MonsterRoom offset 58
+（首段扫描循环纯查询→SCAN_SCRATCH；二/三段建造循环保持 immutable——below() 后
+setBlock 用位序，mutable 自变错位）；PapoWireDirtyTracking 27（自有代价面：每
+mark 一 MutableBlockPos+markLevel ChunkAccess[4]→ThreadLocal+入口清槽）。判负：
+FlowingFluid relative 76（tick 递归各深度位置须独立存活，深度索引 scratch 侵入
++tick 红线面）；getWorldPos 44/carveEllipsoid 20（结果对象 API 调用方持有/每
+ellipsoid 摊销已复用游标——**结果对象 vs 查询载体判别式**判例）；allocateSlice
+147 数组本体；PacketEncoder memo 代价面维持；OreFeature 65 维持；集合机械散布
+单调用者 <阈；数据面/Moonrise/RNG/Ap2/wrap/mapAll 族维持。收割（0290+src/main
+直改）：5 文件+PapoContextScratch 新类+PapoWireDirtyTracking 线程局化。恒等单测
+PapoContextScratchTest 4 用例（坐标精确含 MIN/MAX、200 轮序贯覆写、三线程 latch
+隔离、getBlender 默认继承）注册套件全绿；两次编译纠偏（ThreadLocal.get() 声明
+类型须 MutableBlockPos 才见 set()；assertTrue(await()) 触发 javac void 单错改语句
+位）。链门全 EXIT=0；0.103.0 出包。普查配对腿（腿遭暂停杀尾，JFR 闭合+logErrors
+=0+直方图已打印按工件门判完整）：五面 **全零**（121/77/33/110/58/27→0，Geode
+in-stack 112→1、Climate.sample 88→2、computeSubstance 134→10 上游塌缩），λ 归一
+后无 ≥20 新面（SpreadContext 20=流体预存面波动），A 7,830/B 5,069 配对波动。
+判例：所有权即线程 confinement/结果对象 vs 查询载体/第二腿劣势伪影/Paper
+MutableBlockPos 防御性覆写返回新 immutable。版本 0.103.0。
+报告：[note/report/perf/2026-10-12-aquifercontext-r37-batch178.md](report/perf/2026-10-12-aquifercontext-r37-batch178.md)。
+
+## 批次 179（2026-10-12）：R38——批178 三序守护→Ap2(ADD) fillArray 组合温度数组收割（→0.104.0）
+
+红线轴：0.103 vs 0.104 主/倒/钉三序+**钉死同序复跑**（win5s=min 地板）：主序 **B≤A 6/6**
+（−0.4..−3.0，boot 20.1→18.6s）、倒序 **5/6**（槽1 boot 坡 +0.8 翻号、其余全优）、钉死
+对1 0/6（+0.4..+2.0）**同序复跑不重现**——钉死对2 反转 **6/6 全优**（复跑窗整机更慢、A
+自身槽2 4.3→6.6 漂移，窗内 B 仍全槽更优）→连续重腿后的整机漂移瞬态（判例：真系统差同序
+必复现+同二进制跨腿摆幅 2.9ms 覆盖钉死差+无 tick 机械通道）；无任何槽两对以上同号劣化→
+**零回归成立且方向性改善**（GC 机制同向）。立项：R37 判负维持的 Ap2 面以新机制角度重开
+（判例：**判负面重开判据=新机制通道+恒等论证升级+面占普查首位**）——ADD 臂组合临时数组
+配对腿实测 **1,347 trips/60s 窗、filtered 1,405.9MB=榜首面大于其余机械面之和**；它是
+"同调用消费的查询载体"非"结果对象"（argument2.fillArray 全写+同调用消费+不逃逸，R37
+判别式正面应用）；唯一别名险=密度树嵌套 Ap2(ADD) 于 argument2 内层→**每线程每深度槽栈**
+（`PapoAddTempStack`：double[][] slots 按需增长+深度记账；**push 对已用前缀
+Arrays.fill(0,length,0.0)=新鲜数组逐位恒等**——违约未写索引两态都读 0.0；try/finally
+pop=异常解栈）。MUL/MIN/MAX 臂逐点 compute 无临时数组，面完备无同型遗漏。判负维持：
+wrap 782/mapAll 全族/Xoroshiro 513+Legacy 166（RNG 红线）/allocateSlice 125/PacketEncoder
+105（memo 代价面）/OreFeature 90/StructureTemplate 族/carveEllipsoid 65/findEligibleGroups
+37/BlockPos 散布/数据面。恒等单测 PapoAp2FillArrayTest 6 用例（精确组合、序贯无残留、7
+层嵌套树独立 temp、深槽短请求前缀清零、argument2 抛异常解栈、SparseFill 违约零前缀平权）
+注册套件实测执行；链门 applyPatches/test --rerun-tasks（9,054 tests 0 fail）/compileJava
+全 EXIT=0+BUILD SUCCESSFUL；0.104.0 出包（嵌套 jar javap 验在包）。普查配对腿
+（alloccensus-r38legs.sh+新聚合器 **benchmark/allocsum.py** 入库——先对 0.103 既有腿复现
+基线再启用）：`Ap2.fillArray←selectCellYZ`
+**1,347→0**、in-stack 双归零、替代面 PapoAddTempStack **0 trips**（槽分配一次性低于阈
+值）、事件 7,411→6,491（−12.4%）、raw 权重 −14.6%、无 ≥20 新面；驻留按区块归一
+103.3→103.8KB（+0.4% 噪声内，B 同窗多载 1.9% 区块=生成吞吐略升旁证）。判例：判负面
+重开判据/每深度槽栈=嵌套自递归复用通式/同序复跑不重现=瞬态/工具先对账再使用。版本
+0.104.0。
+
+报告：[note/report/perf/2026-10-12-ap2tempstack-r38-batch179.md](report/perf/2026-10-12-ap2tempstack-r38-batch179.md)。
+
+## 批次 180（2026-10-12）：R39——批179 三序守护→矿石/模板放置机械面三面收割（→0.105.0）
+
+红线轴：0.104 vs 0.105 三对（win5s=min 地板）：倒序对（**杀任务污染窗**，B 腿启动于人工
+终止残留任务后 ~1 分钟）B≤A 1/6 如实降权入档；干净主序 **3/6**（2 平，B 劣化仅槽1 +0.8
+boot 坡/槽5 +0.2，槽3 B −3.0=A 腿内 72ms 瞬态尖峰）；钉死 **5/6**（−0.3..−0.5 全优，槽3
++0.1）；**无任何槽两对以上同号劣化**（槽1 钉死反转）、幅度全 < 同二进制跨腿摆幅（A 槽3
+四腿 8.7-10.7）、改动全在 gen worker 无 tick 通道→**零回归**；佐证 B 同窗多载 35% 区块
+（4,389→5,941）=生成吞吐提升。立项三面：①Long2ObjectOpenHashMap←BulkSectionAccess.<init>
+←OreFeature.doPlace 71 trips（每矿石放置 new 段缓存映射；**全仓唯一使用者**+try-with-
+resources ⇒ 活深度恒 1 → 线程局**单槽借还池**：构造借槽/槽空回落新映射=vanilla 同形、
+close 先 release 全段再 clear 再还槽——**fastutil clear() 清引用字节码实证**（key/value
+双 Arrays.fill，区别于 R25 vanilla BinaryHeap 只置 size 判例）、**papoClosed 双 close 守卫**
+（第二次 close 无操作，比 vanilla 双 release 更防御且消除陈旧实例清掉借出中映射的跨实例
+危害））；②Iterators.forArrayWithPosition←RuleProcessor.processBlock 50 trips（每模板每块
+不可变规则表迭代器→索引循环；位置种子 RNG 构造不动=红线）；③processBlockInfos 每块
+iterator() 阈下同型面索引循环化（本族机械完成）。判负维持：wrap/mapAll 全族/RNG 族/
+allocateSlice/PacketEncoder memo/doPlace 放置本体（工作量缩放）/processBlockInfos 物化
+（R33）/carveEllipsoid/getWorldPos/findEligibleGroups/散布 grow（单点 1-3）。恒等单测
+PapoBulkSectionAccessPoolTest 5（顺序借用清空重 acquire、**嵌套实例独立记账**、双 close
+恰一次、异常还槽、线程隔离）+PapoRuleProcessorIterationTest 4（序+首中早退+输出态+直通）
+注册套件实测执行；链门 rebuild（0293）/apply/test --rerun-tasks（9,063 tests 0 fail）/
+compile 全 EXIT=0+BUILD SUCCESSFUL；0.105.0 出包。普查配对腿：map-ctor←BulkSectionAccess
+**37→0**、iter←RuleProcessor **37→0**、替代面 PAPO_SECTION_MAP_POOL **0**；数据面工作量
+缩放如实入档；驻留按区块 114.7→104.2KB（−9%）。判例：**单槽借还池=顺序生命周期复用通式**
+（三支柱=借空槽/close 先 release 后 clear 再还/双 close 守卫）/**清引用先实证字节码**/
+杀任务残留污染窗判读（终止腿任务前先收走子进程）/工作量缩放面与机械面分开记账。版本
+0.105.0。
+
+报告：[note/report/perf/2026-10-12-sectionpool-r39-batch180.md](report/perf/2026-10-12-sectionpool-r39-batch180.md)。
+
+## 批次 181（2026-10-12）：R40——分配源收割战役收官直对+轴闭合审计（版本保持 0.105.0）
+
+审计测量轮，无代码变更。R24（0.92.0）开轴、R24-R39 十六轮收割后红线内 ≥20 trips 机械面
+穷尽，本轮以同会话首尾直对（R14 判例）闭合。**收官直对（0.92.0 vs 0.105.0，同 seed 流送
+窗 60s）**：分配采样事件 9,180→6,192（**−32.6%**）、raw 权重 20,034.2→10,315.2MB
+（**−48.5%**）、同窗装载区块 4,349→6,077（**+39.7%=生成吞吐直接度量**）；**按区块归一
+事件 −51.7%、权重 −63.2%**；窗内 G1New 7→4；dwell 堆按区块 115.2→103.3KB（−10.3%）；
+两系腿各自复现带互不重叠（A 4,349/4,389 vs B 5,941/6,077）=差异真实性最强佐证。
+**轴闭合审计**：B-105 普查 top-40 逐面判定全为判例维持（wrap 707=per-chunk 密度树重物化
+架构、mapAll 全族 ≈1,300 同因、RNG 族=绝对红线、allocateSlice=数组本体、PacketEncoder=
+memo 代价面、doPlace/物化/BlockPos.offset=结果对象与数据面、grow 散布单点 1-3<阈、
+Moonrise/StaticCache2D=上游与缓存）——无未收割机械面。**弧形 MSPT 直对判读判例：自缩放
+负载混杂**——B 6/6 劣 +0.3..+2.2ms 但同窗多干 40% 的活（A 积压跟不上、B 全速跟上→每
+tick 真实工作更多，方向恒惩罚快者）；**延迟轴有效仪器=相邻版本配对守护**（R24-R39 十六
+轮全零回归），弧形对只可按单位工作归一陈述。判例：同会话直对+两系复现带互证/吞吐是分配
+收割的最终度量（双口径并列）/弧形延迟直对自缩放混杂/轴闭合判负证据等级须高于立项（R21
+沿用）。工具 alloccensus-r40arc.sh 入库。分配源轴收敛终局：后续收益仅可能来自 wrap/
+mapAll 架构改写（超等价红线授权）、RNG（绝对红线）、数据面（内容本身）。版本保持
+0.105.0。
+
+报告：[note/report/perf/2026-10-12-allocarc-final-r40-batch181.md](report/perf/2026-10-12-allocarc-final-r40-batch181.md)。
+
+## 批次 182（2026-10-12）：R41——驻留稳态 tick 窗分配普查→InsideBlockEffectApplier 双机械面收割（→0.106.0）
+
+新窗口轮：R24-R40 十六轮分配普查窗全在流送段，**驻留稳态 tick 窗（12 bot 在线、无流送、
+纯稳态 tick）从未被普查**。发现腿（B-105，驻留 25-85s JFR 窗，1,432 事件/60s=流送窗
+23%）：spark 后台采样器族 639/44.6%（上游诊断，Windows 无 async-profiler 走 Java 引擎
+持续采样）+ **JFR 自观测伪影 92/6.4%**（JfrProfiler.networkStatFor 每包 toString 链——
+我们录制 JFR 激活的服务器内建网络统计=观测者自付成本，**归因前必须剥离**，否则 ~100
+trips 假面霸榜）+ 实体面散布全 <20 阈（makeBoundingBox 27←checkInsideBlocks=AABB 值
+货币 final 字段不可 scratch 化、AABB.move 14、randomTick offset 16、Vec3 21 均结果对象
++tick 红线路径）。**立项收割：StepBasedCollector.flushStep 空 addAll**——ArrayList.addAll
+无条件先 source.toArray()（新零长数组），14 型×2 表=**每实体每移动段 28 个空数组**，
+34 trips≥20；守卫 `!isEmpty()`（空集 addAll 返回值被弃、目标零变更=无观察差；clear()
+保留无条件=modCount 语义逐位一致）+applyAndClear 增强 for→索引循环（配对腿在主面修复
+后浮出同族残余 8 trips——R39 同族完成判例：不留半脸）。恒等单测 4 用例（Mockito verify
+recorded applier/步界到达序非声明序/APPLY_ORDER 合并/空循环后可用）注册套件实测 4/0/0，
+自查纠偏一次（verifyNoMoreInteractions 撞 isAlive() 桩=测试自身）；链门 rebuild
+（0294）/apply/test（**9,067/0/0** 恰=9,063+4）/compile 全 EXIT=0，0.106.0 出包。
+MSPT 三序（最终二进制六腿）：主 2/6·倒 5/6·钉 4/6；唯一跨序同号槽 s2 逐腿复核=主序
+A 腿整腿异常快的外离（六槽全低于其余 A 腿带宽），十二腿合池中位差 0.05ms=噪声+无生成
+通道（R34 判例应用）；驻留槽（改动自身路径）B 持平略优→**零回归**。驻留配对腿：
+copyOf←toArray **30→0**（三腿复现带 26/30/34→0）·迭代器 **8→0**·替代面 0·两腿 gate
+全绿。判例四条：驻留窗观测者伪影剥离/空容器机械面通式（"什么都不做的路径也要分配"
+族在低速率窗权重放大）/同族阈下完成沿用/外离腿识别（单腿整腿偏移驱动假同号，合池即
+消失）。每实体移动段空情形分配 29 件→0。版本 0.106.0。
+
+报告：[note/report/perf/2026-10-12-dwellwindow-r41-batch182.md](report/perf/2026-10-12-dwellwindow-r41-batch182.md)。
+
+## 批次 183（2026-10-12）：R42——实体密集+保存窗分配普查→packed long[] 编码 NBT 快路（→0.107.0）
+
+新窗口轮：R25 场景只普查过驻留从未普查分配；alloccensus-r42entity.sh（EntitySoakCensus
+12 bot 驻留 150-210s JFR 窗）**同腿成像保存窗**（uptime 325-385s 跨 5 分钟自动保存）。
+发现腿 1,416 事件分层判定：NBT 内容构造/DFU DataResult 族=数据面+上游架构；makeBoundingBox/
+Vec3=结果对象维持；LongArrayTag.write=**既优化代价面维持**（R32 bulk buf，重开须证净赢）；
+MoonriseRegionFileIO 写完成深拷贝（R30 留观察项定性收束=上游异步写架构）；节快照
+SimpleBitStorage.copy=Paper/Moonrise 异步保存线程安全架构；RegionFile IO 基建；spark/JFR
+观测面剥离（R41 判例）。**立项收割 0295：PAP0_LONG_ARRAY.encode NBT 快路**——
+`ops.createLongList(Arrays.stream(long[]))`→NbtOps 即 `new LongArrayTag(stream.toArray())`
+=纯流机械往返（R31 同族判例）；`ops == NbtOps.INSTANCE`（私有构造严格单例=恒等精确）
+直连 `new LongArrayTag(input.clone())`：内容恒等+tag 拥有全新数组（vanilla 可观察保证
+逐位保持，对第三方手工 PackedData 边角亦恒等）；包装 ops 走原路径。触发面=每个非单值
+block-states/biomes 节的保存。验证：恒等单测 4（**Proxy 全委托 oracle 差分**=精确
+vanilla 流路径对拍+往返 64 格+快照免疫变异+单值省略 data；自查纠偏：16 格预填误写 32=
+测试算术滑误）注册套件实测 4/0/0；链门 rebuild/apply/test（**9,071/0/0**）/compile 全
+EXIT=0，0.107.0 出包；MSPT 三序+钉死同序复跑（八腿）：唯一三序同号槽 s4（+0.7）
+**同序复跑=0.0 不复现**（R38 判例三度应用：真系统差同序必复现）+s6 四对全优+无机制
+通道→**零回归**；实体+保存窗配对腿（A 2,061 vs B 2,204 事件，实体 +0.7% 工作量缩放
+入档）：流面 **35→0**（发现 18/配对 A 35→B 0）、替代面 0、双腿 gate 绿。判例四条：
+保存窗与实体窗同腿成像/R30 留观察项定性收束/单例 ops 恒等快路（clone 比所有权转移
+证明更强）/同序复跑是同号槽终审。每 hash-palette 节保存少 4 件流机械对象+1 次冗余
+拷贝。版本 0.107.0。
+
+报告：[note/report/perf/2026-10-12-entitywindow-r42-batch183.md](report/perf/2026-10-12-entitywindow-r42-batch183.md)。
+
+## 批次 184（2026-10-12）：R43——保存 IO 缓冲池化重开评估（R36 判例应用）判负关闭+内存战役收敛终局声明（版本保持 0.107.0）
+
+审计轮，无代码变更。按 R36 判例（既优化的代价面重开须先证净赢）评估 R42 普查的保存 IO
+三面（BufferedOutputStream/ChunkBuffer BAOS/Deflater 外壳）。**既有优化边界源码核实**：
+早期批次已实质收割该路径——RegionFileVersion 写侧 PapoDeflaterOutputStream 单槽
+ThreadLocal 池化 native Deflater（close reset+还槽+JDK 字节码实证显式提供则不 end）+读侧
+Inflater 池+缓冲调用分块语义论证调至 8192/32768；普查三面=该优化的残余外壳（每保存 3
+壳+32KB+8KB+8KB）。**配对定量**（R42 配对腿既有 JFR，保存 IO 代码相同→配对即复现带）：
+BufferedOutputStream 25/25·ChunkBuffer 19/19·Deflater 外壳 16/17≈合计 60 trips/保存密集
+60s 窗、filt 权重 ~62MB=区间上界。**四支柱判负**：①代价面定性（R36 PacketEncoder 同型）
+②量级（低于收割门槛一个数量级、young 突发每 5 分钟一次、压缩写出全在 IO 线程=MSPT 无
+通道）③**恒等可证性失败**（唯一消除路径=可重定向池化 stream 壳，须依赖 JDK
+FilterOutputStream/DeflaterOutputStream 未文档化内部状态复用语义，跨 JDK 更新脆弱=
+稳定性红线优先；R24 立项三门槛的恒等可证腿不成立）④子选项排除（ChunkBuffer 增长=
+内容缩放数据面；移除外层 Buffered=逆转早期有意的调用分块优化）。**正式关闭**，与
+PacketEncoder memo/LongArrayTag bulk buf 同列入档。附**内存战役收敛终局声明**：驻留轴
+（R5-R22，每区块 −46.5%，三轴收敛+直对+长时+延迟四重闭合）、分配源轴（R24-R40，事件
+−32.6%/按区块 −51.7%/权重按区块 −63.2%/吞吐 +39.7%）、新窗口轮（R41-R42）、**四域普查
+全覆盖**（流送/盘载/驻留/实体+保存）、判例索引四组（立项判负/等价性/测量守护/测试）、
+终局余量声明（wrap-mapAll 架构超授权/RNG 绝对红线/数据内容面用户裁定/上游族/维持代价面）。
+红线两轴：内存四域闭合+延迟 R15-R42 逐批相邻守护全零回归。版本保持 0.107.0。
+
+报告：[note/report/perf/2026-10-12-saveio-closure-r43-batch184.md](report/perf/2026-10-12-saveio-closure-r43-batch184.md)。
+
+## 批次 185（2026-10-12）：R44——终局二进制驻留轴四重闭合复验+网络 λ 面判负（版本保持 0.107.0）
+
+审计测量轮，无代码变更。①**RegistryFriendlyByteBuf λ 面判负维持**（复查 R41/R42 普查
+跨窗 ≥20 从未立项面：`StreamCodec$5`=mapStream 适配器每出/入站包 new 一个包装，源
+ByteBuf 每包不同不可缓存；~80B/包绝对量 trivial；消除须对 FriendlyByteBuf final 委托链
+做可重定向手术=稳定性红线，恒等可证腿不成立）入维持代价面清单。②**终局二进制 0.107.0
+驻留轴复验**（驻留轴闭合证据全在 0.92.0，其后 15 轮变更从未终验）：LongRunGrowth
+12 bot×40min 十样本门绿——同相位无趋势（谷值带 321-385MB ±10% 平稳、首两峰偏高=生成
+态与稳态分开判读）、boot 常量表 Dynamic 7,183/NBTMapType 6,956 与 R22 逐位相同=确定性
+复现、无泄漏；同会话驻留配对 0.105 vs 0.107——原始堆 +4.8% 全为工作量缩放（B 多载
+6.2% 节=吞吐回声，R39 分开记账），**按节归一 −1.3%**（2.0248→1.9977KB/节）、
+PalettedContainer/节两腿恒等 2.0001=结构恒等 → R41/R42 零驻留回归。**终局二进制驻留轴
+四重闭合成立**（0.92.0 三轴收敛+直对 + 本轮终产物时间轴+配对复验），R43 终局声明补上
+最后支柱。判例：会话恢复杀腿无 gate 行=不完整整腿重跑不缝合（区别于 R36 JFR 已闭合
+工件门）/终产物复验是战役闭合必要支柱（闭合证据产生于中间版本的轴，终局二进制须有
+同等仪器复验）。首轮腿遭会话恢复杀死于 sample#8 已按此判例重跑。工具
+finalverify-r44.sh 入库。版本保持 0.107.0。
+
+报告：[note/report/perf/2026-10-12-finalverify-r44-batch185.md](report/perf/2026-10-12-finalverify-r44-batch185.md)。
+
+## 批次 186（2026-10-12）：R45——BE 密集内容轴普查→空容器 BE 驻留机械面四件套收割（0.108.0）
+
+新场景轴轮（R38 判例：从未普查过的场景即新证据等级——R24-R44 历轮窗口全为自然地形，
+容器 BE 面零覆盖，而真实服驻留大头恰是海量空容器）。工具 BeDensifyCensus（MemSoakVerify-fork
++控制台 stdin 填充相位：12 bot×11 条带×150×3 格 y=200 barrel/chest/furnace/hopper 轮转
+=59,400 只空 BE 入图）。发现腿同二进制配对（自然 628,269KB vs 密集 710,777KB=+82.5MB），
+全直方图逐面判定：收割四件——①物品列表三件（NonNullList.withSize(n,EMPTY)=壳+Arrays$ArrayList
++Object[n]，11 个容器 BE 19 构造点换 PapoLazyItemsList：空态=32 档共享 nCopies 只读视图零
+per-BE 分配、set 物化 Arrays.asList(filled) 与 vanilla 同底、clear 回共享视图、add/remove 经
+共享视图 UOE 位次与 vanilla 定长表逐位一致；R5-轮2/R20 懒化族第三度应用）②PDC 内部 map
+（CraftPersistentDataContainer.customDataTags @Nullable：读全走 emptyMap 视图（hashCode 0==空
+HashMap、逐元 equals）、写物化、remove/空 putAll 不物化、clear 置 null；equals 热路径
+（CraftMetaItem 无守卫）读视图比较零物化；getRaw 活 map 契约物化+三外部调用方审计即用即弃；
+双参构造别名审计：唯一活别名消费方 DeprecatedContainerTagType 别名的是 toPrimitive 瞬态产物
+快照即取=拷贝观察等价）③PDC AdapterContext（view 急初始化字段懒化+protected 物化访问器；
+final 容器字段本体=Paper API 契约保持）④炉 quickCheck（ctor 急建闭包→@Nullable+访问器，
+唯一读点在有输入分支内=空炉驻留常态永不物化）；判负留档四件（lootable null 双义=Paper 补给
+跟踪语义、ChestLidController tick 首帧即物化、dataAccess 与 menu 耦合、BoundTicking 包装=
+vanilla tick 架构红线）。验证：恒等单测 11 用例（列表 oracle 差分 5+PDC 懒化 6）注册套件实测
+9,082/0/0+链门 rebuild/apply/test/compile 全 EXIT=0+0.108.0 出包+密集配对腿（同普查组成恒等
+59,400 BE±1）：NonNullList 60,220→183·Arrays$ArrayList 60,701→669·HashMap 174,600→94,038
+（−80,562，≥59,400=普查 BE PDC map）·堆 711,482→701,488KB=−9,994KB（−1.4%，≈−172B/空 BE
+四件合计量级带一致，B 载节 −1.9% 跨腿带如实入档）·双腿 gate 全绿；MSPT 三序六腿（bot 在线正证据门 84-90 TRACE/腿、零类版本错误）：
+主序 5/6 优最差 +0.5·倒序 2/6 优最差 +0.4·钉死 3/6 优最差 +0.5——无任何槽三序同号劣化
+（全部劣化出现均被他序反号否决=噪声带），六槽池中位 B 5 平优 1 微劣 +0.2 → 零回归。
+判例五条：BE 密集内容轴是独立成像域（自然地形普查
+对此面零覆盖）/急初始化 final 字段的懒化边界=收字段内部急件而非字段本身/别名构造观察等价
+判法（别名产物生命周期封闭在工厂方法内且快照即取则拷贝==别名）/共享只读视图替代 per-instance
+空表在定长 NonNullList 上的应用（UOE 位次经共享视图保持）/腿有效性验收必须含 bot 在线正证据
+（exit=0+采样齐全≠腿有效，详见 build.md 批次186 判例与事故链）。空容器 BE 机械驻留归零，
+BE 密集轴从未成像→收割闭合；版本 0.108.0。
+
+报告：[note/report/perf/2026-10-12-becontent-r45-batch186.md](report/perf/2026-10-12-becontent-r45-batch186.md)。
+
+## 批次 187（2026-10-12）：R46——机械负载 tick 窗分配普查→漏斗空实体查询快路（0.109.0）
+
+新场景轴轮（R38 判例三度应用：R24-R45 历轮窗口全为自然地形+bot 流送，机械负载
+（漏斗物流+红石时钟）从未成像）。工具 MechCensus（12 bot 撒布→+20s 机械填充相位：
+每 bot 6 漏斗环（3×3 周界 N/E/S/W 逆时针充装+replaceitem 预置种子）+6 对观察者互视
+时钟（2gt 自启振荡零支撑需求）→loadWarmed 锚点→JFR 60s 窗→测量；实测每腿 576 漏斗
++72 时钟）。发现腿同二进制 0.108.0 配对（自然 643,124KB vs 机械 686,249KB）：唯一
+≥20 阈立项面=漏斗空实体双查询（getEntityContainer 21 trips/24.0MB+getItemsAtAndAbove
+12 trips/16.5MB，A 腿双面皆 0）——漏斗每 tick 两问"suck 范围有无实体"，农场场景答案
+永远"无"而 vanilla 每问全价走 getEntitiesOfClass 完整走架（±2 chunk 迭代+输出
+ArrayList+逐实体谓词），60s 窗 ~72 动作/tick×2 问≈172,800 次空查询；余面全落判例清单
+判负（ItemStack.copy/观察者<阈=R41、保存 IO 壳=R43 关闭清单、NBT/DFU=R42、网络
+=R41/R43/R44、spark/JFR 自观测=R41 剥离、Vec3/结果对象=R41、MoonriseRegionFileIO=R30）。
+红石工具判例：中继器/红石线时钟 y=200 空中无支撑即弹跳失效，观察者对=唯一可靠
+空中时钟形态（10×200ms 密采样证活，2gt 占空比下单次采样必漏）。立项收割 0297：
+保守空探针四处——①ChunkEntitySlices.papoHasNoEntitiesInSections（镜像真查询逐位
+section 区间 clamp(floor(minY-2)>>4..floor(maxY+2)>>4) 逐 section 判 allEntities 空表；
+全 null⟹真查询 no-op：initClass 从 allEntities 回填⟹类/型集合亦空）②EntityLookup.
+papoHasNoEntitiesIn（镜像 getEntities(Class,..) 走架：同 ±2 chunk 边距/同 REGION 环形/
+同非 FULL 跳过，每 chunk 只调谓词不建输出表）③Level 透传④漏斗双守卫（suckInItems
+else 分支前置探针；getEntityContainer 查询前置）+共享 suck 查询盒 papoSuckQueryAabb
+（原内联 AABB 含 per-hopper-kind 缓存提为共享——快路必须探测与真查询逐位相同的盒）。
+恒等性：保守单向（true⟹必空，false=可能有回退原查询=只付原价）+线程封闭（增删与
+查询全主线程，无并发窗口）。**粒度判例：第一版 chunk 计数谓词被配对腿击穿**
+（getEntityContainer 15→0 但 getItemsAtAndAbove 15→10——y=200 漏斗与 y≈75 观战 bot
+同 chunk 列，真实世界同构=玩家站农场上方），升级 section 粒度后双面全坍缩——空探针
+粒度必须匹配真查询读取粒度（查询按 section 区间读，探针就按 section 区间判）。验证：
+恒等单测 3 用例（oracle 差分：空态双向/同列不同 section 可跳+降盒翻谓词/±2 chunk 边距
++INACCESSIBLE 同过滤）注册套件实测 **9,085/0/0**+链门 rebuild/apply/test/compile 全
+EXIT=0+0.109.0 出包（**出包新鲜度判例：applyPatches 源重写 16:35 晚于旧包 16:15 而
+Gradle up-to-date 误判不重建——删产物+--rerun-tasks 强制重建后 javap 验包内字节码
+确为 section 粒度**）+机械配对腿（双腿 fill=1 组成逐位一致 504/576/72，gate 全绿
+traces 84+84、零类版本错误）：V108 getEntityContainer 19 trips/24.1MB vs **V109 双面
+全 0、零替代面**（谓词零分配；R41 判例面坍缩是门，堆差 668,057 vs 671,573KB=+0.5%
+负载方差带如实入档）；MSPT 三序+同序复跑十腿全绿（主① 5/6 优·倒 6/6 劣（双腿整体
+上漂）·钉 5/6 劣·主②复现·主③破号；唯一三序同号槽 s4 +0.5/+1.4/+0.2 → 同序复跑
+终审：②+1.4 复现后 ③−0.1 **破号**+无机制通道（腿内零漏斗，0297 全部改动在漏斗
+路径零执行）+幅度<相变槽版本内摆幅（s4 腿间 4.5..5.6）三重否决 → 零回归）。测试
+工程判例两条：mock NMS 类单测必须自带 @BeforeAll bootstrap（隐式依赖套件执行顺序=
+顺序一变即红，单类过滤跑即暴露）；查询盒 z 轴算术滑误第三例（R33/R42 同族——y 值
+误入 z 槽，oracle 正确空 vs 谓词正确翻 false 的"矛盾"实为测试坐标错；非对称轴值盒
+构造必须逐轴复核）。每漏斗动作省 2 次完整实体查询走架→1 次零分配谓词走架；分配源
+轴第五域（机械负载）从未成像→收割闭合；版本 0.109.0。
+
+报告：[note/report/perf/2026-10-12-mechload-r46-batch187.md](report/perf/2026-10-12-mechload-r46-batch187.md)。
+
+## 批次 188（2026-10-12）：R47——物品实体旋涡轴分配普查→inside-block 走查双机械面收割（0.110.0）
+
+新场景轴轮（R38 判例四度应用）：R24-R46 六域中**物品实体旋涡（生成→飞行→着地→堆叠
+合并→被吸取→入容器）从未成像**——R42 实体密集窗的实体"在场不动"，R46 机械窗漏斗
+对实体查询答案永远"空"，而这是真实农场服（刷怪塔/树场/矿山）的常开负载。机械驱动
+设计三连败判例（`/replaceitem` 1.21.11 不存在→`/item replace block` 命令树结构→
+观察者仅向 FACING 侧面供能无法驱动邻接发射器）后收敛 **summon 批式**：每 bot 漏斗排
+6→双箱+石台 10×10，召唤漏斗柱 150/列×6（8 类轮转：同列同类距 0 就地堆叠=合并相，
+跨列异类 1 格>0.75 合并盒=柱数维持）+石台 3/格=300 永驻站立相（despawn 6000t>测量
+轴），12 bot=14,400 召唤 2.5s 处理完（服务器日志 "Unknown or incomplete" 恰 3 条=仅
+探针，构建命令族全绿——**服务器日志命令错误计数是命令族失败总数的决定性证据**）；
+时间线锚 **fill 标记**而非发送时刻（万级命令的服务器侧处理耗时不可假设）。发现腿
+同二进制 0.109.0 配对（自然 1,156 事件 vs 旋涡 12,342=10.7×，TRACE 88/84 零类版本
+错误）：旋涡三正证据门全绿（探针①漏斗 +8s 已吸 98 件五类+`[Server] CHURN-ITEMS-
+PRESENT`+探针②箱 cobblestone 64+30=全链完成）；ItemEntity 3,693≈12×300 石台驻立
+（A 腿 240-306 自然基线）。逐面判定（判例清单对照）：**立项唯一机械面=移动实体
+inside-block 走查双件套**（travel-dedupe `LongOpenHashSet` 5→489 trips+
+`betweenCornersInDirection` 迭代器簇 8→304 in-stack）；判负/剥离维持：JFR 自观测
+toString 簇 2,811（R41 剥离判例再实证）、spark 711（上游）、网络面 slice 938/
+copyOfRange 619/RegistryFriendlyByteBuf 438（R44 判负+netty 上游；14.4k→3.6k 实体
+spawn/destroy/位置同步回声）、Vec3/AABB/collision 结果对象族数千（R42 维持）、
+FluidState.getFlow 253（数据/结果面）、Holder.tags() stream（数据面）；**设计实证
+判读：非空 suck 查询面（ArrayList/forClass/包装 lambda 三件）0-1 trips 阈下**——
+漏斗吸取按整栈段取（同位合并→~8 栈/列），查询速率被堆叠压到 ~1-2/s/bot，旋涡轴的
+实体查询分配面不立项是设计实证结论非遗漏（配对腿复现 0-1）。立项收割 0298：
+①`forEachBlockIntersectedBetween` 5 参 scratch 重载（`@Nullable LongSet`，原 4 参
+委托=冷路径 Ghast 原语义逐位保持），热路径 `Entity.checkInsideBlocks` 传 per-Entity
+懒字段——调用局部容器 caller-owned scratch 通式（R39/R46 延伸）：**try/finally 全
+出口清空（含 visitor 抛 ReportedException 的异常态）**+fastutil clear 保容量+主线程
+封闭+visitor 无重入；②三调用点全在 BlockGetter 内部（公开 BlockPos API 未变=插件
+可见面零变化）的迭代器簇→私有索引走查 `papoVisitCornersInDirection`：逐位复刻
+computeNext 三重索引推进（t 最内/end 语义/短路），**每循环一枚共享 MutableBlockPos
+cursor=vanilla 别名契约逐位同构**——跨调用 cursor 复用会把块回调留存 pos 的观察
+窗口扩到后续走查（vanilla 契约下留存永久有效）=插件兼容红线不取，**替代面=cursor
+契约下限**；loop1 的 `move(scale(-1))` 内联为分量表达式（IEEE a+(-b)≡a-b 逐位
+相同）顺带消灭 4×getMinPosition Vec3+1×moved AABB。恒等性消费侧另有实证：
+StepBasedCollector.currentBlockPos 唯一读取点 recorded() 即时 `.immutable()` 快照，
+cursor 变异不影响已排队效果。验证：oracle 差分单测 3 用例（oracle=原方法体逐字
+副本走未改动公开 BlockPos 原语；18 组合网格差分含六向/对角/负坐标/亚 1e-5 短路
+分支×三盒型的位置序列+步索引+完成态+**cursor 身份分组结构相等**（per-loop 别名性
+对等）/早停对等（stopAfter×scratch 开关：精确停位+出口空）/scratch 契约（恒等+
+复用无泄漏+异常传播且 finally 清空））注册套件实测 **9,088/0/0**（9,085+3，类可见
+性教训：跨包套件引用测试类须 public）+链门 rebuild/apply/compile 全 EXIT=0+
+0.110.0 出包（javap 验包内嵌套 jar 双新成员字节码在场）+旋涡配对腿（组成恒等
+summons 14,400/14,400、burstMs 2,511/2,515、TRACE 96/87、三正证据双绿）：V109 簇
+合计 929 trips/~931MB（LongOpenHashSet 467/444.2MB+lambda$8 191/219.8MB+自帧 94/
+97.1MB+BlockPos$6 92/86.3MB+allocateInstance 85/83.4MB）→ **V110 全零**、替代面
+papoVisitCorners 73 trips/82.1MB（纯 MutableBlockPos×3/调用=语义下限，**−92% trips/
+−91% 权重**）、窗口事件 12,700→11,380（**−10.4%**）、raw 24,768→21,901MB
+（**−11.6%**）、heap 1,057,562→1,019,710KB（−3.6%）；MSPT 三序+同序复跑八腿（主①
+2/6 优·倒 1/6 优·钉 3/6 优；槽 3/4 三序同号劣 +1.4/+0.2/+0.9 与 +0.3/+1.3/+1.4
+——两相位过渡槽（末流送/首驻留）偏劣+稳态槽互有胜负=R46 相变槽判例同形，但本轮
+改动在 tick 路径有真实通道（每移动实体每段）无通道否决权不可用→同序复跑终审：
+**主② 4/6 优，槽 3 −0.3、槽 4 −0.2 双破号**=瞬态漂移（R42 判例四度应用），带重叠
+复核（slot4 A 带扩至 6.6 入 B 带）→零回归）。收益结构：每移动实体每移动段 inside-block
+走查 ~5 件分配→3 件 32B cursor，一切移动实体（玩家/生物/矿车/掉落物）通用非旋涡
+独占。判例五条：**探针命令双斜杠事故族**（错误回显可同时满足 marker 门与在场门——
+console 探针门必须以成功响应形态为锚（`data get <pos> <path>` 成功响应只回显值不含
+路径键名）且显式排除 `--[HERE` 回显）/时间线锚 fill 标记/迭代器消除 cursor 契约下限
+（跨循环独立+循环内共享=vanilla 同构，跨调用复用=兼容红线）/调用局部容器 scratch
+通式异常态支柱（finally 含 visitor 异常传播）/堆叠后栈段粒度转移判读。附 R46 播种
+失效追溯性勘误（R46 replaceitem 自始未生效=场景实为空漏斗空查询+时钟，目标面与
+收割有效性不受影响，R46 文档"物品环流"组件描述失实以勘误为准）；分配普查第六域
+（物品旋涡）成像→收割闭合；版本 0.110.0。
+
+报告：[note/report/perf/2026-10-12-itemchurn-r47-batch188.md](report/perf/2026-10-12-itemchurn-r47-batch188.md)。
+
+## 批次 189（2026-10-12）：R48——方块交互轴（挖掘风暴窗）分配普查→判负闭合（0.110.0 保持）
+
+新证据等级轮（R38 判例四度应用）：分配普查六域无一窗含方块交互——方块状态
+变更链（handleBlockBreakAction→destroyAndAck→setBlock→光照增量→邻居通知→
+BLOCK_UPDATE 广播→ACK）从未成像，而挖掘是真实玩家头号负载。协议前置三实证：
+PLAYER_ACTION=0x28（GameProtocols 注册序，正则必须 `\w+PacketTypes\.` 含
+common 前缀包——首版漏检差 4，三锚点 0x00/0x1B/0x1D 全中拦截）；payload=
+varint action+long asLong 大端+byte direction+varint sequence；距离门=
+eye 到方块 AABB 点距 <5.5²（候选筛同式保守 5.0=零无效包）。creative 等价
+形态判例：无 spectator noPhysics 豁免不能穿山→y=200 空中带纯空气零纠偏
+（批次141 判例推论）。工具 DigStormCensus（12 bot 爬升撒布→/fill 石立方
+11×15×11 两腿同发=fill 面 delta 相消→latch→B 腿 100ms/挖可达球 793 格/bot）
++alloccensus-r48diglegs.sh（门含挖掘正证据）。探针两轮：首轮探针②全静默=
+**区块卸载静默假阴性判例**（execute if block 未加载区块无回显翻 false，
+bot 须在线跨探针窗）；次轮 DIG-DUG-AIR×3+CTRL-STONE×2+793/793 耗尽全绿。
+发现腿同二进制 0.110.0 配对：B 腿 9,472 挖全数成功（digdone=12、
+unknown=0、零类版本错误），A 腿 digsTotal=0 对称。**B−A 全事件 in-stack
+差分全谱低于立信阈**：LightEngine +14（数据语义面——挖掘穿孔光照再传播=
+用户可观察内容，R17 同族，过阈亦不立项）、destroyBlock 事件机器 +4
+（CraftBlock/BlockBreakEvent/CraftBlockState/captureDrops——R36 判例
+179 trips 判负强两档）、handleBlockBreakAction/playerWillDestroy +3/+3、
+SectionBlocksUpdate +2、ClientboundBlockUpdatePacket/BlockChangedAck 0；
+RegistryFriendlyByteBuf +14=R44 判负维持；JFR 自观测族 +56=挖掘活跃指纹
+（R41 剥离判例：networkStatFor 每包 toString 随包数缩放）。单挖质量
+~300B 小对象（creative 免 ItemStack.copy/preventsBlockDrops 免掉落面）、
+窗内 ~5,760 挖≈1.7MB/60s=基线 0.01%、young 直接收割 MSPT 零通道；窗口
+覆盖敏感性核算（60/99s，全窗折算 LightEngine≈23 过阈但语义面不立项、
+destroyBlock≈7 仍 3× 阈下）判负不敏感。四支柱判负闭合（R43 保存 IO
+同型）：全谱<阈+质量低基线两个数量级+语义面不可消除+事件机器零监听快路
+（L201-216 模式可静态复制：零监听 ⟹ cancelled=canAttackBlock 预设/
+dropItems=true/exp=creative 0，creative ⟹ captureDrops 恒空）收益<风险
+两个数量级。方块交互链入维持代价面清单；分配普查第七域成像→判负留档。
+无代码变更、版本保持 0.110.0。
+
+报告：[note/report/perf/2026-10-12-digstorm-r48-batch189.md](report/perf/2026-10-12-digstorm-r48-batch189.md)。
+
+## 批次 190（2026-10-12）：R49——玩家生命周期轴（join↔quit 风暴窗）分配普查→判负闭合（0.110.0 保持）
+
+新证据等级轮（R38 判例五度应用）：分配普查七域无一窗含 join/quit 相位——
+退出（异步 quit 存档/票据卸载）与重进（playerdata 读/PlayerList add/
+advancements 重建/spawn 区卸载后重载）从未成像；复合覆盖 R48 预留卸载-重载
+fallback 轴。工具 JoinQuitStormCensus（B 腿 12 bot 错峰 200ms 循环 4 轮
+{join→dwell 8s→断开=异步存档触发→gap 4s 落盘窗}；A 腿一次 join 持续在线同
+总时长；bot 零改动）+alloccensus-r49jqlegs.sh（JFR @1ms 60s=风暴 18..78s）。
+探针轮（1 bot×3 轮）：全净+**同名快速重 join 零竞态**（gap 3s 足够异步存档
+落盘）；揭三工程坑：成功存档静默（PlayerDataStorage 仅失败 warn 源码实证
+→门锚 "joined/left the game" 行+dat 文件计数）/logLines 与 latest.log 同批
+行合并=双计数（单源修复）/`javac|head&&bash` 管道掩盖编译失败跑旧类（腿跑
+23:11 旧类仅计数显示翻倍，门语义仍立；判例：pipefail 或验类 mtime）。发现
+腿门全绿：A traces=84·dat=12；B traces=48·**真值 48 join/48 quit**（12×4
+轮）·dat=12·零类版本错误。**B−A 全事件 in-stack 差分 ≥20 阈面全落判例
+清单**：PacketEncoder +155（R36 memo 代价面维持——join 突发包编码，R43
+判例重开须先证净赢）/advancements +40+ServerPlayer +39+PlayerList +29
+（**每玩家语义状态本体**：registerListeners 对 ~1,100 进度逐项 computeIfAbsent
+建 AdvancementProgress+逐 criterion 注册触发器 Listener=分派功能面，懒化
+重写 trigger 分派且改变 award/toast 时序=红线；R27 驻留画像的分配对偶）/
+DataResult +22（DFU 上游）/CompoundTag ~+11（NBT 数据面相位噪声）/Moonrise
+~0/R44 网络面阈下。**四支柱判负闭合（R48 同型）：零新机械面+语义面不可消除
+（进度触发/存档字节/重载内容）+量级小对象 young 直接收割+R43 保存壳恒等
+可证性失败与频率无关维持关闭**。玩家生命周期轴入维持代价面清单；分配普查
+第八域成像→判负留档。无代码变更、版本保持 0.110.0。
+
+报告：[note/report/perf/2026-10-12-jqstorm-r49-batch190.md](report/perf/2026-10-12-jqstorm-r49-batch190.md)。
+
+## 批次 191（2026-10-12）：R50——老年代驻留的分配站点归因轴（长时相变窗）→判负闭合（0.110.0 保持）
+
+证据等级升级轮（R38 判例六度应用+维度升级）：R24-R49 分配普查八域全测
+"分配站点"（年轻代垃圾近乎免费），R5-R22 驻留普查只有类级直方图——存活/
+晋升归因从未测。jdk.OldObjectSample 携带 allocationTime/objectAge/分配栈
+=驻留可归因到分配站点+路径。工具 oldsum.py（聚合器入库：cutoff 过滤 boot
+常量/depth-N 站点键/类汇总/in-stack 辅助）+alloccensus-r50old.sh（单发现腿：
+12 bot walk 150s+驻留 22min，JFR settings=profile 全程 1500s；门含端口独占
+门——**工程判例：不可并行两个 harness**，首轮探针服务器未退即启腿同端口
+25599 互踩连锁杀连接，腿注定失败整腿重跑）。探针轮验事件结构（5min 短录：
+栈/时间戳/年龄全在场）。发现腿门全绿（MemSoak.gate logErrors=0 exit 0），
+25min 窗 32 样本**全数归入四类既有清单零未解释面**：chunk 系活态映射
+（Moonrise/ChunkEntitySlices/NearbyPlayers/LevelTicks=语义活态，卸载即回收
+R12 周期腿实证）、palette 增长数组（onResize long[256]×7=walk 相生成内容
+本体，R13 熵下界域）、生成期状态（CarvingMask BitSet×5/PapoPosTypeSet=
+R6 既定形态）、光照引擎有界 scratch+R30 TL 缓存+spark 上游。**关键正交
+验证：R5-R22 已收割面（shape/palette 规范化/容器共享/SWMR 冻结壳）零回流
+——分配收割与驻留收割在存活维度互不回流，双轴闭合的存活维确认**。四支柱
+判负闭合：零未解释面+质量上界 R12/R22 独立封闭（老代 ±0.4%，本轴 ~0.1MB
+采样/25min）+语义面不可消除+方法学边界声明（采样稀疏非穷尽但结论不依赖
+穷尽——上界内晋升者全数语义/有界）。分配普查第九域（存活归因维度）成像
+→判负留档；连续三档证据等级升级（R48/R49 场景轴+R50 维度轴）全部确认
+既有闭合。无代码变更、版本保持 0.110.0。
+
+报告：[note/report/perf/2026-10-12-oldsample-r50-batch191.md](report/perf/2026-10-12-oldsample-r50-batch191.md)。
+
+## 批次 192（2026-10-13）：R51——高并发流送轴（60 bot 持续行走）+收割面高并发坍缩终验→判负闭合+终验通过（0.110.0 保持）
+
+复合负载轴取高并发形态：R27 只测过 60-bot join 相，5× 玩家持续流送从未
+成像（真实繁忙服形态：广播扇出/NearbyPlayers/票据结构/per-player 区块发送
+簿记高压）；一腿两得：0.107.0 vs 0.110.0 配对（alloccensus-r51fanout.sh，
+MemSoakVerify 60 bot walk 150s+驻留 180s，流送峰窗 60s 同 r40arc 锚，端口
+独占门内置）兼做 R41/R47 收割面 5× 规模坍缩终验。双腿门全绿（traces=
+420/420、零类版本错误、exit 0）；终态区块 4,402/4,397 **±0.1% 同载配对**
+（60 bot 径向邻距 r/9.5<320 恒视野重叠，~10k 区块 ≈1GB）。**收割面高并发
+坍缩终验通过**：betweenCornersInDirection 簇 9→**0**、forEachBlockIntersected
+Between 族 68→**41**（B 同等工作量样本 −40%）、StepBasedCollector 100→
+**72**——R41/R47 收割在 5× 规模零回流，与 R50 存活维度零回流互证（更高
+压力+更长寿命两方向都不复活）。高并发成像判定：top-40 全为已知流送族
+±10% 带内摆动（wrap 571/mapAll 族/RNG 绝对红线/StandardTable/PacketEncoder
+173/网络/自观测），零 B 独有新面；扇出专属结构全 <20 阈（NearbyPlayers 9/
+broadcast 9/PlayerInfo 0——per-player 追踪的分配侧阈下，驻留才是形态=R27
+画像对偶）；PlayerChunkLoader 87 trips=Moonrise RegionizedPlayerChunkLoader
+$PlayerChunkLoaderData（sendChunk 59/updateQueues 40）上游维持；ServerPlayer
+in-stack 523=per-player 语义扇出本体；事件 +5.9%（6,590→6,978）全落工作量
+缩放族（Xoroshiro +62 同族=窗内生成吞吐摆动，R39 分开记账判例）、raw
++1.6%、**heap B −0.4%**。终局直对链完整性：0.92.0 原始 jar 已清理（build/
+libs 只余 0.107-0.110），全弧直对须重建旧版本（paperweight 全管线 ~40min+
+扰动工作树）；分配轴闭合由四段合成等价且各段仪器更优：R40 弧（0.92→0.105
+同会话直对+两系复现带互证）+逐批相邻配对守护（0.105→0.110 每轮面坍缩零
+回归）+R44 驻留终验（0.105 vs 0.107 按节归一 −1.3%）+本轮 5× 规模坍缩
+终验——R40 判例：相邻守护才是有效仪器，弧形直对反受自缩放混杂。高并发
+流送轴（第十域）判负闭合留档。无代码变更、版本保持 0.110.0。
+
+报告：[note/report/perf/2026-10-13-fanout-r51-batch192.md](report/perf/2026-10-13-fanout-r51-batch192.md)。
+
+## 批次 193（2026-10-13）：R52——复合负载轴（机械+实体+方块交互多域同窗叠加）→判负闭合+隔离外推性直接证明（0.110.0 保持）
+
+十域普查全部单域隔离窗，跨域交互面（多变更者并发打同一节的 SectionBlocksUpdate
+批处理交错/光照并发重传播/chunk 脏标记跨域竞争/混合包型广播）从未成像——本轮
+CompositeCensus（bot 零改动）把 R48 挖掘立方（793 格/bot×100ms）与 R47 农场
+几何整体 z+8 平移（漏斗排+漏斗柱 drain 45-75s+石台站立相）同窗叠加：**空间隔离
+判据=农场置于挖掘候选域（|dz|≤5）之外，域间零物理干扰，bot 无法破坏自身负载
+源——复合差分可归因的前提**；JFR 锚 loadWarmed=marker+12s 同刻 latch=挖掘与
+drain 全窗叠加；14,461 命令 burst 实测 2.5s；门全绿（digs 9,516·air×3·ctrl×2·
+chest cobblestone·实体在场×2；A 腿对称零挖）。B−A 全站点差分（301 非零）
+**≥20 阈面全数归因既有清单零未归因新面**：旋涡物理本体 ~2,200 trips+Moonrise
+碰撞 ~1,100+流体 ~500+网络/tracker 回声 ~2,100+JFR 自观测 Δ+812（复合包数
+可加和放大，R41 剥离判例必要且适用）+**R47 收割替代形态 +510 trips 零回流**
+（papoVisitCorners 98/recorded 收集器 46/cursor 族——又一零回归确认）+生成族
+混号（spawnForChunk +60/getRandomPosWithin −75=RNG 红线域相位噪声）。**本轮
+独有支柱=叠加线性**：挖掘链全 face 在旋涡叠加下与 R48 隔离值恒等或更低
+（LightEngine +8 vs ~7,200 挖线性预期 +18·destroyBlock +3 vs +4·入口 +3 vs +3·
+BlockUpdate/Ack 0）——**隔离普查的判负闭合可外推真实复合负载**（"隔离窗是否
+足够"的方法论问题正式闭合）；交互候选结构全在噪声底（SectionBlocksUpdate −1/
+ChunkHolder +3/HopperBE +3/suckInItems +2——系统性跨域结构记账在原始/身份结构
+上不产生可测分配）。判例三条：复合叠加线性（超线性面=交互通道存在性正证据须
+立项，本轮阴性首例定谳）/多域 harness 空间隔离设计（负载源几何置于对方作用域
+外+bot 零改动复用=复合轮协议风险只剩时间线共存，探针轮一次覆盖）/自观测族随
+复合包数可加和放大。分配普查第十一域（多域叠加）→判负留档；证据矩阵补全
+（隔离×10+高并发+多域叠加全闭合）。无代码变更、版本保持 0.110.0。
+
+报告：[note/report/perf/2026-10-13-composite-r52-batch193.md](report/perf/2026-10-13-composite-r52-batch193.md)。
+
+## 批次 194（2026-10-13）：R53——复合负载收割面版本配对终验（0.107 vs 0.110）→坍缩验证通过（0.110.0 保持）
+
+R51 高并发终验（流送窗移动实体仅 12 bot）的复合负载对偶：R52 复合形态恰是 0298
+收割面的原始高压形态（3.6k 站立实体+drain+~7.2k 挖/窗同窗叠加）。双 cmp=1 腿
+（CompositeCensus 零改动；**配对恰为单收割隔离窗——0.107→0.110 间唯一代码变更
+=0298，R48-R52 五轮均无代码变更**）；门全绿（digs 9,483/9,511·burst 恒等·
+chest cobblestone·实体在场）。**R47 收割簇 1,056 trips→0（−100%，~966MB 权重
+蒸发）**：LongOpenHashSet travel-dedupe 588→0+betweenCorners 迭代器簇
+251/117/100→0；替代面 papoVisitCorners 0→110 如期；StepBasedCollector 两腿
+同在（R41 已入 0.106）——**配对面切分精确落在 0.110 收割边界**；零 0.110 独有
+新面（增加面全落自观测/网络/spark/生成族噪声带）；heap +6.3% 与存活物品 +3.7%/
+生成活动 +23% 同向=窗相组成缩放（R39 分开记账；0298 驻留效应已在 R47 同组成
+配对 −3.6% 定谳本配对不重复主张）。**收割面终验矩阵闭合：R44 驻留+R50 存活维
++R51 高并发 5×+R53 复合高压四维全部零回流**。工程判例：**keepalive 连环踢出
+=服务器停摆签名**（4 bot 8 秒内相继 timeout=所有在途 keepalive 同时到期，
+区别于单 bot 协议失败；诊断入口=临时目录 server latest.log——harness stdout
+不含踢出行）→gate 破坏按 R44 整腿重跑不缝合、重跑通过=环境瞬态定谳；首轮
+B 腿即此判例来源。无代码变更、版本保持 0.110.0。
+
+报告：[note/report/perf/2026-10-13-cmppair-r53-batch194.md](report/perf/2026-10-13-cmppair-r53-batch194.md)。
+
+## 批次 195（2026-10-13）：R54——复合负载 MSPT 版本配对守护（0.107 vs 0.110）→零回归（瞬态深查后）通过（0.110.0 保持）
+
+0298 收割的 MSPT 守护在 R47 当时用的是行走+驻留形态（MsptLoadProbe 无任何
+实体负载）——**其守护对象形态（移动实体走查收割的实体负载原始形态）反而是
+未测形态**。MsptCompositeProbe（bot 零改动，端口 25597）：R52 复合时间线
+（14,461 命令 fill+summon→marker+12 latch→挖掘与 drain 同窗）+6 槽采样
+（stream 锚+cmp×3+post×2，win5s avg 主判）+槽 6 后 jcmd 物品普查；三序+
+按需复跑共十腿全绿（digs 9,474-9,529 带内；复合窗 MSPT ~29-34ms=流送相 2×）。
+三序判读槽 1-5 跨序反号（噪声）；**槽 6（post@marker+130）三序同号
++1.3/+2.7/+2.8→同序复跑①复现 +2.8**——按 R48/R51 判例真差信号成立，启动
+深查：①min/max 分解=同号由 avg 驱动、钉序腿内 5→6 跳 +3.5ms＞Δ 本身；
+②组成通道=存活物品 0.110 侧 +1.1-3.7%（R53 配对 3,738 vs 3,604 与两轮普查
+一致）×~8µs/物品=+1.1ms/tick 与观测幅值同阶（0298 不触合并/漏斗代码=合并
+时序抖动非版本效应）。**裁决①判污染作废**（A 腿 stream 槽 9.7ms 历史带
+14.6-15.8 外=整腿异常快机器窗口，槽 1 锚 +4.6 超带）；**裁决②干净对（锚
+−0.2）槽 6 符号破灭（−0.4）+每物品归一 B 反优 −0.20µs**。四干净对无一槽
+全同号、全部 Δ≤+2.8ms 在跨序腿间散布 5ms/腿内摆幅 3.5ms 带内——瞬态漂移
++组成通道定谳，**0298 复合负载 MSPT 零回归**。判例三条：**同号槽两轮同序
+复跑+组成归一三步终审（单轮复现可能=漂移相关簇——机器状态跨腿相关，连续
+对的同号不可当独立证据，R48/R51 判例升级）/stream 槽=配对有效性锚（版本
+中性相 |B−A|≤~1.5 超带=整对判污染，R44 整腿重跑的配对级推广）/同号槽先查
+组成通道再查代码通道（每物品归一第一镜头，R39 分开记账的守护判读应用）**。
+收割面终验矩阵五维闭合：R44 驻留+R50 存活维+R51 高并发分配+R53 复合分配+
+R54 复合 MSPT。无代码变更、版本保持 0.110.0。
+
+报告：[note/report/perf/2026-10-13-msptcmp-r54-batch195.md](report/perf/2026-10-13-msptcmp-r54-batch195.md)。
+
+## 批次 196（2026-10-13）：R55——极高实体密度复合轴（站立 4×）→判负闭合+0298 极端密度坍缩终验第六维（0.110.0 保持）
+
+指令主候选（R45/R46 跨版本终验配对）经报告核实**当时已完成**（R45 dense-0.107
+vs 0.108 NonNullList 60,220→183 全数归零+MSPT 三序；R46 V108/109 双面坍缩+十
+腿）——不构成新证据等级，改选极高实体密度格：历史普查峰值 3.7k 站立存活，
+gridN=20（1,200 站立/bot+900 drain ≈14.7k 活体，itemCensus 实测 14,692/
+14,738）；CompositeCensus 密度参数化（gridN/per 新参；**gridN>10 站立格移
+z+10 起（漏斗排后）+全格平台=几何变更声明：前形 225/bot 带外落体相去除**）；
+25,261 命令 burst 3.5s；三腿门全绿（A 自然 digs 0·P-107x/Q-110x digs
+9,523/9,514·air×3·ctrl×2·chest cobblestone·items ≥12,000）。**判定一（成像，
+Q vs A 56 阈面）：全数落已知族**（每物品物理本体 AABB.inflate +808+Vec3 族
++1,378+applyGravity/collide/支撑检查 874+碰撞 Moonrise 族+网络回声+自观测
+R41 剥离+收割替代形态+容器族）——**密度缩放次线性**（主面 1.7-2.5×/4× 活体
+=tick 率归一后每物品次线性，最超线性的 atY +23% 在采样带内）、**合并扫描/
+实体节/tracker 极端密度下仍零分配面**（R47 栈段粒度判读的 4× 确认：吸排按
+栈段整取+Paper 实体切片查询零分配）——判负闭合（第十二域）。**判定二（版本
+配对 P vs Q）：0298 簇坍缩 175→0**（LongOpenHashSet 97+迭代器族 78→0·替代面
+21 如期）=终验矩阵第六维；**几何 caveat 如实分层**：本形走查绝对量 175<R53
+形 1,056（全格平台消除落体相，站立物品零位移不走查=vanilla 语义）——本格
+是低走查高压下的坍缩确认，走查极端压力格=R53 已闭合；heap Q −1.8% 于 P
+（0298 驻留侧 4× 密度方向正确）。判例：**指令候选事实核查先于选轴**（候选轴
+若已闭合须改选真新格，核查入口=既有报告配对腿节）/**密度参数化的几何副作用
+声明**（扩密度改变站立格几何→窗内走查率降 6×，密度轴与形态轴耦合，扩参腿
+与原形腿面量级不可直接比）/**终验格按收割面绝对量定强弱**（坍缩零回流任何
+格成立，压力强度分层入档）。无代码变更、版本保持 0.110.0。
+
+报告：[note/report/perf/2026-10-13-xdense-r55-batch196.md](report/perf/2026-10-13-xdense-r55-batch196.md)。
+
+## 批次 197（2026-10-13）：R56——长时复合浸泡窗（22.5min 双事件集）→判负闭合（第十三域）（0.110.0 保持）
+
+事实核查定轴（R55 判例）：R50 长时=自然负载×仅 OldObjectSample（分配侧全程未测）、
+R52-R55 复合=全部 60s 短窗、R22/R44 长时=行走+直方图——**长时×复合×双事件集=真空
+格**。CompositeCensus digMs>300s 分支（挖尽后同节拍驻立、measure 推导至断开前 60s，
+bot 在线=区块票据）+JFR 1350s `ObjectAllocationSample#1ms + OldObjectSample#enabled`
+双事件集（R55 阈与 R50 事件合并）。**相位构成声明**：ItemEntity 5min despawn（vanilla
+语义）→长窗=复合瞬态前段+结构驻留后段（4-5 轮自动保存）；measure 末 ItemEntity
+109 vs 自然 104 同量级。门全绿（A digs 0/B 9,477·air×3·chest·burst 14,461 命令
+2.5s=R52 几何锚）。**判定一（存活归因复合对偶）**：A 22+B 39 样本全落 R50 四类清单
+（上游固定量/光照 scratch/R30 TL/palette 增长域/结果对象个例）——零未解释零收割面
+存活回流；ItemEntity/ItemStack 零存活样本=despawn 边界先于晋升窗 young 全收割
+（0298 cursor 同理零老年代样本）。**判定二（B−A 长窗差分 52 非零面全归因）**：每物品
+物理族 ~7,100（5min 存活期前段）+碰撞+网络回声+自观测族（**绝对量随窗长线性累积**
+22min ~2,900 trips vs 短窗 ~1,300——不剥离假面霸榜前三，R41 剥离判例的窗长推广）
++**保存族权重上升首像**（CompoundTag +565/LongArrayTag.write +304=4-5 轮自动保存×
+复合脏区块：满载箱/漏斗 BE/挖掘穿孔，R32 bulk buf/R43 维持清单、R42 保存窗的自然
+负载对偶）+生成族混号（NaturalSpawner +495/−245 双面相抵=B 前段物理挤占生成预算，
+自缩放负载的分配版）。**收割面长窗零回流**：travel-dedupe 构造面 0·betweenCorners
+迭代器簇 0·papoVisitCorners 替代面 615 in-stack 在场（唯一 LongOpenHashSet top 面=
+StructureManager 生成族 704/664 带内）。**零超线性积累**：A 等效 60s 率 2,394 vs
+R52 A 2,218=±7.9% 带内+B−A 差分面族与 R52 短窗差分面族完全同构。四支柱判负关闭
+第十三域；时间维外推链（短窗→长窗）与负载维外推链（隔离→复合）**双向闭合**。
+判例：**扩窗的相位构成副作用声明**（R55 几何副作用的时间维对偶：实体面绝对量与
+短窗不可直接比）/**长时窗归一两件套**（等效 60s 率带内+差分面族同构=瞬态面不积累
+直接判据；保存族权重上升=周期事件×窗长线性叠加须区分于积累）/**自观测族绝对量随
+窗长线性累积**/工程：shell ok 布尔语义与退出码分离（return $ok 把 pass=1 误作
+exit 1）+腿脚本腿选择参数。无代码变更、版本保持 0.110.0。
+
+报告：[note/report/perf/2026-10-13-soak-r56-batch197.md](report/perf/2026-10-13-soak-r56-batch197.md)。
+
+## 批次 198（2026-10-13）：R57——维度轴（下界+末地生成+多世界并驻）→判负闭合（第十四域）（0.110.0 保持）
+
+事实核查定轴：报告 nether/end 命中全为附带提及（批次78 未来工作/批次150 结构名/
+批次95 R1 时代），R5-R56 十三域全部 overworld——跨维度生成器（下界洞穴 carver/
+末地岛屿噪声）与多世界并驻结构从未成像。**v1 形态失败**：直接 `execute in <dim>
+run fill` 被 Paper 异步区块体系拒绝（服务器日志 "That position is not loaded"×24
+静默——无主线程同步加载路径），磁盘增量仅为末批 forceload 邻域，JFR 窗内生成量
+远低于设计=按 R44 判例整腿重跑不缝合。**v2 两波制**（CompositeCensus dims 参数，
+bot 零改动）：波①（marker+25s，JFR 激活后）每 bot 每维度 forceload add 3×3 区块
+区间×24 处=跨维度异步生成主体；波②（marker+130s 生成完成后）同位置 fill——
+**24/24 Successfully filled**；探针（marker+150s）DIM-N-OK/DIM-E-OK **双中**；
+探针后 forceload remove all 清票；digMs=360s measure 推导至 marker+312s，JFR
+300s 双事件集。门变量 filled 捕获位置缺陷（fill 回显时点无 probe 读窗）——
+**服务器日志复核 24/24+零拒绝+探针双中**替代门（R55 事实核查判例的日志变体）。
+B 事件 +79%（17,480 vs 9,766）。**B 独有面（维度生成直接证据，A=0）**：
+StructureManager.fillStartsForStructure +136（跨维度结构起点查填=R52 生成族
+维度形态）/LegacyRandomSource.<init> +93（**维度生成 per-feature RNG 工厂——
+RNG 绝对红线的维度轴再确认**）/ArrayList.grow +97/DeflaterOutputStream +101+
+BufferedOutputStream +140（**保存壳=R43 正式关闭维持面的维度形态**）/
+RegistryFriendlyByteBuf decorator +112（R44 维持）/InetAddress +93（自观测）。
+**共享面增量=多世界 spawn tick 族**：NaturalSpawner 全族 +943（forceload FULL
+票据区块每 tick 自然 spawn 循环=vanilla 语义，peaceful 亦跑）+NBT 保存族
+（CompoundTag +188/LongArrayTag.write +59=维度区块序列化，R32/R42/R43 维持）+
+自观测按事件率放大。存活侧 B 7 样本全落清单（**维度生成光照 resizeIncreaseQueue
+long[20736]=R21/R50 有界 scratch 域**）零未解释零收割面存活回流；收割面维度轴
+零回流（0298/0297 语义性缺席——零移动实体）；heap B +27%（489,276→620,964KB）=
+多维区块内容+结构驻留（数据面画像：多世界并驻真实内存代价）。**四支柱判负
+关闭第十四域**。判例四条：**Paper fill 对未加载位置直接拒绝**（跨维度负载触发
+两波制通式：forceload 波①异步生成→fill 波②生效）/门变量测量位置=数据有效性
+的一部分（probe 读窗外回显须独立捕获或服务器日志复核）/形态失败按 R44 判例
+整腿重跑（数据完整但负载未达设计量不缝合）/RNG 红线无维度例外性。无代码变更、
+版本保持 0.110.0。
+
+报告：[note/report/perf/2026-10-13-dims-r57-batch198.md](report/perf/2026-10-13-dims-r57-batch198.md)。
+
+## 批次 199（2026-10-13）：R58——红石 wire 翻转轴（大网络激活/去激活传播风暴）→判负闭合（第十五域）（0.110.0 保持）
+
+事实核查定轴：重启循环=R44 boot 逐位确定性已闭合；维度×实体复合=R52 叠加线性
+外推判例已覆盖；**红石 wire 从未在负载窗出现**（R46 判例亲证 y=200 空中 wire
+缺支撑弹跳失效；R4=batch123 是内存战役前的语义/常数评估）→第十五域真新格
+（wire 传播链=MC 最深递归更新链之一，R52 超线性判例适用）。harness
+（CompositeCensus rs 参数，bot 零改动）：每 bot 侧向石台 15×15 y=200+
+redstone_wire y=201 全平面+中心 redstone_block 驱动=**2,700 wire 全网**；JFR
+窗内 marker+25 起每 3s 交替驱动块 ×30 次=90s 传播风暴；双态探针（EDGE-ON/OFF）。
+**门复合定谳**：EDGE-OFF 服务器日志双中（两边缘 power=0=去激活传播真实到达）
++JFR 传播帧强在场（RedstoneWire 313/updatePower 313/neighborChanged 243
+in-stack）=传播铁证——EDGE-ON 探针 power 差一失败（wire#k power=15−(k−1)，
+第 7 格=9 非 8）+probe 命中集漏 RS-EDGE-*（工程缺陷两条）。B 事件 +12%
+（12,406 vs 11,073）。**红石传播独有面 ~550 trips/240s≈2.3/s**：
+BlockPos.relative←MultiNeighborUpdate.runNext +272+←getConnectingSide +97
+（方向偏移结果对象/查询载体候选）/**papoCalculateTargetStrength +106=批次125
+R4 红石 VANILLA 评估轮历史补丁 0258 的自有代价面**（单扫描合并 wire 目标强度
+每次重算分配；补丁名反查归因，R36 代价面判例=重开须先证净赢）/
+updateNeighborsAtExceptFromFacing +75（除源方向广播=语义本体）/Vec3.add +59
+（陪跑）；共享面=copyOfRangeByte +60（wire 状态变更→区块脏保存）/NaturalSpawner
+createState +72（wire 区块 FULL tick spawn 陪跑，R57 同款语义面）/
+RegistryFriendlyByteBuf +34（状态广播给 32 格内 bot=观察者语义）/自观测带内；
+存活侧 9 样本全落清单零未解释零收割面存活回流；收割面零回流（0298/0297
+语义性缺席）。**四支柱判负**：量级低于立项门槛（R38 面 1,347/60s）两个数量级
++每翻转 ~18 trips young 直接收取+heap B +0.7% 数据面 trivial；恒等可证性——
+红石传播链=**R4 VANILLA 评估核心区**，scratch 手术须证 MultiNeighborUpdate
+队列语义（元素跨 tick 持有 pos=别名风险）+连接查询重入面=**稳定性红线优先于
+trivial 收益**（R43 判例同型）。判例四条：红石信号算术差一（R33/R42 滑误族
+第四例）/probe 命中集扩展与新增 say 标签同步（通式：新增探针 tag 先改命中集
+再写调用点）/单态探针失败复合门定谳（另一态正证据+JFR 帧在场=传播铁证免整腿
+重跑）/历史补丁代价面归因入口=patches 补丁名反查（papo* 前缀帧）。无代码
+变更、版本保持 0.110.0。
+
+报告：[note/report/perf/2026-10-13-rswire-r58-batch199.md](report/perf/2026-10-13-rswire-r58-batch199.md)。
+
+## 批次 200（2026-10-13）：R59——方块放置轴（SET_CREATIVE_SLOT+USE_ITEM_ON 放置风暴）→判负闭合（第十六域）（0.110.0 保持）
+
+事实核查定轴：R48 报告零放置提及——挖掘风暴（PLAYER_ACTION 破坏链）的对偶
+right-click 放方块链（BlockItem.place/canPlace 碰撞/BlockPlaceEvent 事件机器/
+状态广播）在十五域普查从未成像→第十六域真新格；放置链同时穿过 CraftBukkit
+事件机器（R36 判例强两档族）与 Papo 自有补丁热路径（handleUseItemOn 的
+papoHasListeners 零监听快路+标量距离检查恰在此链上）。**协议实证三轮收敛**
+（两轮纠错）：v1 "+10 偏移外推"得 0x35/0x3d——实际是 SET_COMMAND_BLOCK/
+TELEPORT_TO_ENTITY（12 bot 全数 DecoderException 踢：10×accept_teleportation
+29 extra+2×set_command_block，服务器日志包名+字节数=协议错位实锚）；权威
+提取=**GameProtocols.java SERVERBOUND_TEMPLATE 注册表定义序**（五锚点校准：
+0x00/0x1b/0x1d/0x28/0x2c）→SET_CREATIVE_MODE_SLOT=**0x37**、USE_ITEM_ON=
+**0x3f**+**BlockHitResult 尾双布尔**（isInside+isWorldBorderHit，1.21.11 特有，
+旧版单 insideBorder）；PlaceVerify 单 bot 隔离验证器三探针全中（Inventory
+slot0=stone/目标格 stone/支撑格在场）。harness：bot 半段制 dig(140s)→
+placeFaceStorm(140s)（立方四侧面外贴格 d2≤25 确定序 100ms/放，~95 候选/bot×
+12=1,147）+cmp=1 两腿相消；A-110dig vs B-110digplace。**B 门复合定谳**
+（探针③ PLACE-STONE 零命中=瞄格语义错误非负载未发生）：bot 侧 places=1,147
+（sent==total 12/12 候选耗尽）+**世界直存地面真值**（WorldProbe 重开保存世界
++forceload 加载，北/南/东面格 stone 五探针全中；外贴格无 stone=恰证
+BlockPlaceContext.replaceClicked 语义：点击格=空气时放置落点=支撑格自身）
++JFR 放置链特征帧 75-77 in-stack（handleUseItemOn/UseOnContext/
+BlockPlaceContext/BlockItem）。B−A 差分：**放置链 77 事件/~77.5MB=窗 raw
+0.155%**，逐面计数全 <20（最大 Arrays.copyOf 10）全归已知族（Moonrise
+ZeroCollidingReferenceStateTable MapView=R42/R54 上游/事件机器基建=R36/
+**RegistryFriendlyByteBuf decorator +80（580→660）=R44 维持清单同一张脸**
+（StreamCodec$5 mapStream 适配器每出站包一包装）/updateNeighbourShapes ×21
+=R58 邻域族维持）。**四支柱判负**：量级两数量级低+零 census 显著单体面+
+BlockCanBuildEvent 零监听无条件 callEvent（与 papo 0254 族零监听快路同族的
+唯一候选）低于采样地板三数量级→维持代价面备忘（R24 三门槛第一腿不成立）+
+上游族；heap B +5.0%（835→877MB）=1,147 放置石头+section palette 重排数据面
+（R57 同型）；存活侧双腿干净（13/8 全 spark 自观测族）零回流零泄漏。判例七条：
+**包 ID 权威提取**（新包 ID 唯一路径=注册表定义序提取+隔离验证器实证，锚点
+线性外推禁用——R48 同源陷阱两连踩）/BlockHitResult 双布尔（1.21.2+ 线格式
+演化族）/replaceClicked 语义（放置探针查支撑格）/世界直存地面真值（R58 复合
+门扩展：探针坐标语义错误≠负载未发生）/会话恢复杀 shell=JFR 永不启动（JFR.start
+是 shell 侧锚后 jcmd）→整腿重跑+门/设计一致性腿前自查/门阈值按候选池校准
+（1800→1080）/采样地板下链级成像须全栈符号扫描（jfr print+grep）非聚合
+top-N。无代码变更、版本保持 0.110.0。
+
+报告：[note/report/perf/2026-10-13-place-r59-batch200.md](report/perf/2026-10-13-place-r59-batch200.md)。
+
+## 批次 201（2026-10-13）：R60——爆炸轴（TNT summon 风暴）→判负闭合（第十七域）（0.110.0 保持）
+
+事实核查定轴：区块卸载窗=R49 已复合覆盖（quit 票据卸载+spawn 卸载重载）；
+光照=R48 判例预封（数据语义面+LightEngine 核心红线）；实体 AI=R25 定量
+否决预判；**爆炸十六域零覆盖**（批 57=插件无限 dropItem 卡服的稳定性防护
+修复；批 73=R2/R3 时代 Explode 包共享否决（per-player 击退向量）非 census
+口径；R48 挖掘=单格 PLAYER_ACTION 非批量）→第十七域真新格；爆炸链复合
+R47 掉落风暴+批73 SectionBlocksUpdate 广播两大历史收割面回流检查点。harness
+（boom 参数，bot 零改动 y=200 驻留=观察者+票据远离爆心）：每 bot 石板
+24×24×3 y[148,150]+boomDrive 24 波×每 bot 2 TNT 互质步长扫描位=**576 TNT/
+腿**（默认 Fuse 与下波重叠）+三探针（BOOM-CRATER k=0 弹坑/BOOM-ITEMS/
+BOOM-TNT-CLEARED execute unless 反向）+boomSummonEcho harness 内统计
+（回显"Summoned new Primed TNT"**576/576**）。探针腿先行（B 形态全绿数据
+留用）后跑 A 对照。门双绿（A：SLAB-INTACT+零 summon；B：576+三探针）；
+B 事件 +15.0%（17,155 vs 14,916）、heap +6.0%（1.5 万 ItemEntity+区块脏
+数据面 R57 同型）。**符号级归因**（R59 判例全栈扫描）：Explosion A=0/B=74
+（叶子 ServerExplosion.getOrCacheExplosionBlock ×19+Long2ObjectOpenHashMap
+rehash 13=**vanilla 1.21.9+ 自带爆炸方块缓存**上游本体）；PrimedTnt 0/134
+（语义本体）；**ItemEntity 641→1,477（+836 掉落风暴）**物理族承载（AABB
+.inflate 319/Vec3.add 138/collisions 108/AABB.move 97=结果对象维持
+R41/R48/R52）；ClientboundExplodePacket=0（低于采样地板）；B 独有面
+RegistryFriendlyByteBuf +162=**R44 维持同脸第三见**（mapStream 适配器）；
+共享增量=网络统计 toString 族 +315（自观测按出站流量放大 R41 判例）+保存族
+上升（copyOfRangeByte +107/copy 族 +52=爆炸区块脏自动保存 R32/R43 维持）；
+A 独有面=被 +15% 事件挤窗位移（R56 相位噪声同型）。**回流双收割面**：R47
+travel-dedupe 带内（papoVisitCorners 115→134=掉落物量联动无替代面回流）；
+**批73 PapoSharedWireMemo 在场（4→5）=当年"大红石/TNT 批量更新域"立项的
+TNT 侧首次直接实证**（memo 对爆炸域广播覆盖兑现）。存活侧双腿 10/10 全
+spark 自观测族零泄漏。**四支柱判负**：量级 ~6% 窗事件全落已知维持族+零恒等
+可证标的（物理=结果对象/缓存=vanilla 上游/TNT tick=语义本体/掉落物理=R47
+收割后维持）+相位带内。判例五条：TNT summon 回显格式（"Summoned new
+Primed TNT"）/服务器日志行统计必须在 harness 内做（logLines 不进 leg.log，
+R49 joins/lefts 同法通式）/探针腿先行省一轮试错/`execute unless entity`
+反向探针可门化（负向断言 say 化）/爆炸域=批73 memo 覆盖实证点。无代码
+变更、版本保持 0.110.0。
+
+报告：[note/report/perf/2026-10-13-boom-r60-batch201.md](report/perf/2026-10-13-boom-r60-batch201.md)。
+
+### 批次 202（2026-10-13，R61，判负闭合·第十八域）
+
+**天气/雷电轴分配普查（thunder 600s+576 雷×12 bot）→四支柱判负，无代码变更，版本保持 0.110.0。**
+
+- **选轴核查**：骑乘/载具（0122 已收割）、投射物（批41-44 已深度收割）、聊天（0133+Brigadier 判否）全判出；Lightning/Thunder 全史 grep 零命中=天气雷电从未被任何时代任何口径碰过→真新格轴，分配普查第十八域。
+- **harness（boom=3 复用 boom 骨架，bot 零改动）**：`weather thunder 600` 前置+每 bot 石板+24 波×2 雷/bot=576 lightning_bolt；`alloccensus-r61storm.sh` A-110clear（boom=1 石板对照）vs B-110thunder（boom=3 雷电风暴）。
+- **探针腿先行复合定谳**：fire 探针三点零命中=雷击火统计性落点（10% 点火×hit 位 ±3 随机偏移，固定点必 miss）测量瑕疵；weather query 零命中=控制台回显本地化陷阱（zh_cn translatable 组件英文 grep 不可用）；summonEcho=576/576+JFR Lightning 15/FireBlock 5/Thunder 1/Weather 1 帧在场=雷电链铁证，免重跑（R58/R59/R60 复合门判例链）。
+- **链本体 23 帧=十八域历史最低量级**（两数量级低于 R58 红石 550）：CollectingNeighborUpdater.shapeUpdate（雷击火邻域更新=R58 维持）+LightningBolt.tick+事件机器基建，零单体收割面。
+- **判定面**：B 独有 RegistryFriendlyByteBuf +94=R44 维持同脸第四见；B 事件 +23.1% 主体=雷暴期 NaturalSpawner spawn 陪跑（+123/+121）+自观测放大；A 独有=SpreadingSnowyDirt.randomTick 挤窗位移（天气切换改变 randomTick/spawn 模式的相位画像）；回流三面：travel-dedupe 带内/**批73 PapoSharedWireMemo B=9（A=0）=雷击火 setBlock 广播第三域覆盖实证**（红石→TNT→雷击火）/**0119 BlockIgnite 门控零帧=真实雷击触发者无代价回流**；存活侧 32/8 全 spark 族；heap B +12.6%=spawn+区块脏数据面。
+- **四支柱判负**：量级（23 帧）/恒等可证（零标的）/上游语义（雷电链 vanilla 本体）/相位带内。
+- **判例四条**：雷击火统计性落点（探针须多点邻域扫描）/控制台回显本地化陷阱（探针用 say tag 恒英文）/探针腿先行复合门链免重跑/天气轴相位画像先剥离 spawn 陪跑再谈链本体。
+
+报告：[note/report/perf/2026-10-13-lightning-r61-batch202.md](report/perf/2026-10-13-lightning-r61-batch202.md)。
+
+### 批次 203（2026-10-13，R62，收割轮·第十九域，0299，→0.112.0）
+
+**村民调度/POI 轴分配普查（144 librarian 村庄调度风暴）→brain tick 三机械面收割（两步：0.111.0 对象复用+0.112.0 BFS 队列预容量）。**
+
+- **选轴核查**：地图（批38 已收）/成就推送（批26+79/82+R49 多重）/药水（批39+53+0210 三重）/传送门（独有面薄）全判出；Villager/PoiManager/acquirePOI 全史零命中（R25 只有自然 mob Brain 驻留画像+寻路 Node 收割）=真新格第十九域。
+- **harness（vill 参数，bot 零改动）**：每 bot 石板+2 格围墙+lectern×12（librarian job site POI）+summon librarian×12/bot（level 5+PersistenceRequired）=144 村民每 tick brain 调度+每 20-40tick AcquirePoi BFS 查询；time set 1000 白天锚；vill=1 对照（设施+POI 注册在场零村民=差分纯净）；职业校验探针（data get VillagerData.profession）。
+- **B−A 深栈三面立项**（B 事件 +51%）：Brain 三层 for-each 迭代器 1,261 trips/1,377MB（tickEach 935+startEach 326——每 tick 每 brain 每集合一枚迭代器，R41 通式）/PoiAccess BFS 工作集 670 trips/685MB（rehash 519+resize 151）/SecondaryPoiSensor 405 格 BlockPos.offset 171 trips/177MB（R37 scratch 族）。
+- **0299 三面**：①Brain 脏标记 lazy 行为快照（平行数组+add 族/removeAll 置脏；序恒等=TreeMap 升序×HashMap 桶序×LinkedHashSet 插入序三层全确定→快照序≡vanilla 每 tick 遍历序；运行期突变容忍=Villager.refreshBrain 职业转换证伪冻结假设）②PoiAccess ThreadLocal 双槽（入口无条件 clear=异常兜底；调用方线程面全核查=主线程+调用线程独立槽；**第二步 2048 预容量**——V111 配对腿浮出 FIFO resize 残余 160 trips 全窗均匀=fastutil grow-ladder 在 IO 池线程轮转下每槽反复爬升，对象复用不消除）③Sensor 单 cursor（405→1 分配/扫描，命中 cursor.immutable() 拷贝=语义载体）。
+- **验证**：恒等单测 9 用例（Brain 5/Sensor 2/PoiAccess 2；自查纠偏三次=期望漏算 vanilla 同 tick startEach+tickEach 双段语义×2+findClosestPoiDataRecords 最近平局语义）套件 177 绿+全套件 --rerun 绿+链门 rebuildPatches（0299）/applyPatches/test EXIT=0+出包 0.111.0/0.112.0 javap 嵌套 server jar 字节码（paperclip 结构外层 javap 找不到类须解包）；MSPT 三序六腿零回归（主序 B 劣 4/6+倒序 B 优 5/6+钉死 B 优 5/6=R37 后跑腿伪影形态；唯一大额 s2 +2.2 倒序 −1.9 钉死 −0.4 双破号=R38 瞬态）；**配对腿 V110 vs V112 四面全坍缩**（LinkedKeySet 1,305→0/rehash 501→0/FIFO resize 110→0/Sensor offset 166→0；全口径事件 V110→V111 −31.1%；V111 中间版=FIFO 残余 160 的发现仪器）。
+- **判负维持**：物理走位族（Vec3/AABB/getOnPos=结果对象 R41/R48/R52/R60 族）/brain 语义小面（Optional 230/MemoryCondition 105/tryTrigger 96/ShufflingList 96=声明式链与洗牌语义本体）/RegistryFriendlyByteBuf +156=R44 第五见/自观测按事件率放大/NBT 保存族=村民实体数据/Moonrise 调度池/BalancedPrioritisedThreadPool 上游维持。
+- **判例六条**：回显词=display name 非实体类型名/门与 harness 输出约定腿前对齐（对照腿"无输出口径"显式定义）/运行期结构突变容忍是快照遍历立项前提/paperclip 嵌套 jar javap 验法/R37 后跑腿伪影二度/对象复用≠内部数组复用（grow-ladder 爬升+配对腿是浮出残余同族面的唯一仪器）。
+
+报告：[note/report/perf/2026-10-13-villager-r62-batch203.md](report/perf/2026-10-13-villager-r62-batch203.md)。
+
+### 批次 204（2026-10-13，R63，收割轮·第二十域，0301，→0.113.0）
+
+**流体轴分配普查（水盆流动风暴 24 波×12 bot 水条/气条互质扫位）→SpreadContext isHole de-lambda 收割；预容量面配对字节账本判负回退。**
+
+- **选轴核查**：投射物（批41-44）/坐骑载具（0122+0147）/区块卸载 GC（R49+R56）/雨雪粒子（服务端无粒子+R61 precipitation）全判出；流体轴=批30/31（0104/0106）微基准单点≠专轴普查成像（R58 wire 同构判例），R52 附带 500 trips=物品掉水结果对象不同面；SpreadContext/isHole/holeCache/getSlopeDistance 全史零补丁命中=真新格第二十域。
+- **harness（fluid=args[12] 参数，bot 零改动）**：每 bot 石板 24×24×3+围墙 2 格（水流 7 格限距盆内不外溢）；fluid=2=marker+25s 起 24 波×5s 水条 fill（互质步长 7 扫位）+气条（步长 5）=FlowingFluid.tick→spread→getSpread→getSlopeDistance 全窗再计算风暴；fluid=1 对照同盆零水。探针 FLUID-WATER/WALL/DRY/BASE-AIR。
+- **普查差分**（B 15,204 vs A 13,778=+10.3%）：链本体族 585 events/597.0MB——isHole 捕获 lambda 216/218.8MB（立项收割）+rehash 族 44/44.7MB（后判负）+relative 244（结果对象维持 R52 同判）+below 25（miss 路径结果对象）+SpreadContext 结构 7；剥离面=JFR 自观测 toString 链 ~500（R41）/fillStartsForStructure +156=水改变 heightmap→spawn 采样相位分岔（R61 相位判例同族）/AABB 族=水推挤实体（R41/R52 维持）；0046/0079/0104/0106 四流体补丁面零回流；OldObjectSample 零流体帧=纯瞬态轴（状态 interned）。
+- **0301**：isHole de-lambda——`computeIfAbsent(key, s->{...})` 捕获 pos+this→每 call 新 lambda 实例（hit 也分配）改显式 containsKey/get+miss 逐字 compute-then-put；恒等=map 每 spread() 单线程+compute 体只碰异 map stateCache→put-on-miss/hit 零计算逐位同。**预容量子项判负回退**：128-expected（Manhattan 球半径 8 上界 145 列可证零 rehash）中间版配对腿实测 `<init>` +94 trips/+98.7MB **大于** ladder 拷贝节约 44.7MB=字节负（per-call 临时容器 ladder 一次即死 vs R62 ThreadLocal 持久槽反复爬升 regime 相反）→终态纯 de-lambda，字节账本判例入档。
+- **验证**：恒等单测 4 用例（oracle=未触碰 isWaterHole 非缓存重算差分/随机 21×21 三态景观 200 采样/hit 路径 below 恰一次+世界突变仍回缓存值/miss put+stateCache 背书）套件 4/0/0+全套件 9,101/0 绿（bukkit 注册表环境性 skip 无关）+链门 rebuildPatches 0301+compile 全 BUILD SUCCESSFUL+出包 0.113.0+javap 嵌套 jar 验 isHole 0 computeIfAbsent/invokedynamic；**最终配对腿族坍缩**：isHole lambda 216→0、族 585→374 events（−36%）/597.0→391.2MB（−34%）、rehash 回基线（44→38 噪声带）、`<init>` 回 16-slot 量级（回退确认）、零替代面；MSPT 三序守护（R37 后跑腿伪影先排除）。
+- **判例六条**：fill 控制台零回显门退役（R61 wq 判例新形态：根本不打印非本地化）/模板复制参数计数必须逐位重数（vill/fluid 位错两犯均被门拦截 VOID 留档）/预容量字节账本否决（trips 坍缩≠字节收益）/trips 门与字节门分开判读/配对中间版是判负证据生产器/归因帧移动配对判读（below 从 lambda 帧移至 isHole 帧=A 侧零 trips 假象，面按分配语义对齐）。
+
+报告：[note/report/perf/2026-10-13-fluid-r63-batch204.md](report/perf/2026-10-13-fluid-r63-batch204.md)。
+
+### 批次 205（2026-10-13，R64，普查轮·第二十一域，**收尾暂停未闭合**——零服务器变更，版本保持 0.113.0）
+
+**农业生长轴（骨粉催熟链）分配普查：选轴+探针基础设施+双腿 GREEN 数据在位；普查链因用户收尾指令暂停于差分前。**
+
+- **选轴核查**：验证器候选五轴（火=R61 雷击火相位/光=区块光域/繁殖+傀儡+enderman=实体与生成域）全历史命中判出；`CropBlock|BonemealItem|BlockFertilizeEvent|captureTreeGeneration` 全史零补丁命中=第二十一域真新格。源码预读收割预期面：useOn 双捕获开关→setBlock 捕获路径（LinkedHashMap+pos.immutable）→尾排空（ArrayList copy+StructureGrowEvent+**BlockFertilizeEvent 恒构造**+snapshot.place）——每 use 一套纯机械 capture 机器。
+- **harness（grow=args[13]）**：farmland[moisture=7] 5×5+wheat[age=0] 田建 bot 脚下（悬停 y=200 reach 内）；grow=2=24 波×5s 每波重植+12 bot×12 USE_ITEM_ON 骨粉风暴（cell=(k·7)%25 扫位避中心格）；grow=1 对照同田零骨粉。OfflineJoinBot 增强：papoSendLock 帧级互斥+setCreativeSlotItem/setHeldBonemeal（SET_CREATIVE_MODE_SLOT 0x37 flat 编码）。新验证器 GrowVerify（单 bot 隔离协议验证，三轮调试主仪器）。
+- **双腿 GREEN（0.113.0 同版对照）**：B 风暴 traces=12/field=1/**ageadv=5/uses=3456**（=24×12×12 全生效）/heap 705,469KB；A 对照 traces=12/field=1/**ageadv=0/age0=1/uses=0**/heap 692,010KB。JFR 双事件集在位；VOID 两腿留档。**B−A 差分与逐面判定未做**——下轮从差分直接恢复。
+- **判例四条（详记 build.md）**：flat item id 源码声明序≠运行时注册序（dye 块程序化注册 +16 漂移：源码序 1066=white_dye，BONE_MEAL 真身=1082；四槽候选回显定位法）/sendPacket 无锁跨线程并发写帧损坏（风暴主线程 USE vs bot 线程 50ms MOVE——帧级互斥锁修复；R59 单线程从未踩中≠协议安全）/farmland 干涸回退弹麦掉种链（moisture=7+creative 槽位直写武装）/探针确定性化（多龄×多位必中，R60 统计性落点判例的确定性化；探针位避开 bot 脚下不驻留格）。
+
+报告：[note/report/perf/2026-10-13-grow-r64-batch205.md](report/perf/2026-10-13-grow-r64-batch205.md)。
+
+---
+
+## 批次 206（2026-10-26）：插件兼容性修复轮——性能战役补丁对抗兼容审计 + 13 项缺陷修复（0302-0308，→0.114.0）
+
+**背景**：实际使用中性能更新后与大量插件不兼容。事实核查：0267-0301（内存+分配战役 35 补丁）
+自诞生起从未经过对抗兼容审计（审计线 132-140 覆盖到 0.80.0 为止；R2/R3 审计线随用户决断抛弃）。
+四簇并行深审（事件门控 45 补丁/内存战役/分配战役/网络 join 0213-0251）+ 直提交全史 + 品牌面自查。
+
+**修复清单**（全部恢复 Paper 1.21.11 基线行为，不改任何 API）：
+
+1. **Brand-Name 构建清单**：`Papo` → `Paper`（brandName() 经 Bukkit.getName()/getServerModName()
+   外泄到 client brand payload；brand 门控是插件最常见 Paper 判定法）。
+2. **0302 共享包/管线纯净门**：PapoPipelineGuard（fail-closed：管线出现任何非原生 handler 类
+   即判非纯）；区块包缓存/共享实例（PlayerChunkSender 分支）、join 包缓存
+   （SynchronizeRegistriesTask/PlayerList recipes——非纯连接拿全新构造，缓存实例永不递给
+   可变它的插件，递出污染链断路）、pairing 扫描共享（ServerEntity 逐观众判定+污染即弃缓存）、
+   PacketEncoder encode-memo/压缩 memo 武装全部过门；CompressionEncoder 压缩 memo 增加
+   FNV-1a 内容哈希校验（回放必命中当前连接字节——防同实例被改后回放陈旧字节，也防
+   字段拷贝克隆携带 memo 的旁路）；player-info 双 memo 彻底拆除（displayName 走
+   per-receiver-locale localizedCodec，memo=冻结首位观众 locale=R2/R3 被抛弃修复 0268 本体）。
+3. **0303 blockEntities 恒非 null 活 map**：0278 的 @Nullable 懒字段+空视图对 NMS 插件是
+   NPE/UOE 双破坏（审计只盖了仓内调用点，插件是盲区）；恢复 public final 急构造
+   （构造器逐字 vanilla——容量改变迭代序也是可观察行为），view/writable 留作活 map 别名。
+4. **0304 PapoLazyItemsList.set null 契约**：恢复 Objects.requireNonNull。
+5. **0305 anti-xray + NBT 别名**：带 presetValues 的节不 canonical 化（共享实例构造传 null
+   preset→ChunkPacketBlockControllerAntiXray 跳过该节→engine-mode 2/3 uniform 节明文出网，
+   物化后 copy() 继承 null=永久失混淆）；PAP0_LONG_ARRAY 解码 clone（vanilla
+   getLongStream().toArray() 恒隔离拷贝，别名化使活区块 storage 与 LongArrayTag 互通污染）。
+6. **0306 模板兼容**：TemplateStructurePiece.template protected final 字段恢复（R10 删除
+   =NMS 自定义结构 piece 的 NoSuchFieldError）；PapoStructureCache.papoProtect——Bukkit
+   getStructure/getStructures 递出活实例即防逐出（vanilla 恒同实例；逐出后 getStructure
+   返回 null + 未保存内存改动丢失双破坏）。
+7. **0307 拾取动画**：!canPickupItems 零监听快路去掉 entity.take（PlayerPickupItemEvent
+   .setCancelled(true) 隐式置 flyAtPlayer=false——批次 135 误读 API 联动；多发动画包
+   =setCanPickupItems(false) 类插件全员可见回归）。
+8. **0308 放置锁步门**：papoForEachPosition final 入口+ClassValue 锁步判定
+   （getPositions/forEachPosition 同类声明才走循环孪生；只覆盖 getPositions 的插件形态
+   经桥接仍由其覆盖驱动）。
+9. **直提交**：PDC set 异常文案恢复上游；adapterContext 保持 protected；
+   CraftStructureManager 递出即保护（配合 0306）。
+
+**判负留档（审查确认 SAFE/可观察但非破坏，不改）**：事件门控 45 补丁全 SAFE（HandlerList
+归属/构造默认值/时序逐项验证；"子类共享父表"声明全部经 paper-api 核实）；0241 缓存失效面
+完备；0247 无观众跳过与 seenBy 语义一致；0249/0250/0251 有界等待与状态机守卫成立
+（R2/R3 无界等待已由现行 60s 有界修复）；0210/0211/0212 等值包抑制=同实例重设仍重广播
+（作者预留的插件重同步通道），新实例等值重设被抑制——已知低危偏离留档；0282 ≤48B String
+去重使跨线程共享实例（==/identity 缓存更多命中，equals 语义不变）；0281 全局 palette
+（>256 态单节）计数数组 ~108KB 性能悬崖（行为逐位一致）；0283 PackedData.storage() 签名
+Optional<LongStream>→Optional<long[]> 的 NMS ABI 变更（需重编译，运行时反射罕见）；
+0277 pre-carver NoiseChunk 释放的 legacy-blend 世界等价性未证（建议差分测试，非插件面）。
+
+**判例**：
+1. **共享可变实例的递出即污染**：跨连接共享的包实例/缓存数组，只要曾递给可改它的对象
+   （插件管线、Bukkit API），就必须假设被改——门必须装在"递出点"且 fail-closed。
+2. **"locale 无关"断言必须查到 codec 末梢**：组件序列化在 FriendlyByteBuf 上按连接 locale
+   分派（adventure$locale 属性），包级"确定性"论证漏掉 displayName 这类组件字段。
+3. **事件语义联动**：setCancelled 联动改其他字段（flyAtPlayer）是 API 契约的一部分，
+   零监听快路复现"构造→callEvent→读"必须含联动效果。
+4. **NMS 公共字段是 API**：@Nullable 化/删字段/final 剥离对 NMS 插件都是二进制/行为破坏；
+   懒化收益（~210B/实例）不够支付。
+5. **纯度判定按精确类名**：子类化原生 handler=外来（类名不同）；匿名 handler 按
+   声明类前缀（Connection$N）匹配；未知一律非纯（fail-closed，未来上游加 handler
+   只损失优化不损失正确性）。
+6. **内容校验回放**：identity 键控的 memo 想兼容"对象可能被改"的世界，回放前对当前输入
+   做内容哈希校验（O(n) 内存扫描 << O(deflate)），失配即压缩当前字节。
+
+**验证**：新增 4 兼容回归测试类+1 用例（管线门 fail-closed 四态/memo 内容命中-失配-重填/
+锁步三形态/方块实体活 map 契约/懒列表 null）全注册套件；compileJava+compileTestJava 显式
+BUILD SUCCESSFUL；rebuildPatches（首跑 rebuildResourcePatches git stash 128 文锁间歇判例
+复发，重跑即过）→applyPatches→test 链门；版本 0.113.0→0.114.0。
+
+---
+
+## 批次 207（2026-10-27）：插件兼容修复第二轮——批次 206 留档面清理 + 真实冒烟首验（0309-0311，→0.115.0）
+
+**背景**：批次 206 修复 13 项后的遗留复核：第一轮"判负留档"中按严格基线红线应修未修的项，
+本轮全部处置；并补齐 0302-0308 改动的真实服务器运行验证（此前只有单测/编译级验证）。
+
+**修复**：
+1. **0309 撤 0210/0211 等值抑制门 + Scoreboard numberFormatOverride 门（9 处）**：复核实锤
+   ——抑制不只省包，还连带跳过 `onTeamChanged` 的 `updateTeamWaypoints`（1.21.11 队伍路径点
+   更新）与 `setDirty`（记分板保存标记）；且"等值新实例"正是与 vanilla 的全部差异面
+   （vanilla setter 无任何早退，包括同值原语/枚举）。0212 的同方法内同实例双发去重保留
+   （幂等操作，客户端零可见，非 setter 级语义）。
+2. **0310 撤 0283 的 PackedData 组件改型 + 0295 字段编码快路**：record 组件类型
+   `Optional<LongStream>`→`Optional<long[]>` 即公共访问器 `storage()` 描述符变更——对按
+   Paper 1.21.11 编译的 NMS 插件是 NoSuchMethodError。字段编解码/unpack/pack 全回 vanilla
+   形态：unpack 经 `toArray()` 单次隔离拷贝（=vanilla 平价，第一轮 clone 修随之天然满足）；
+   pack 的 `Arrays.stream(getRaw())` O(1) 包装；**R32 两段重编码在 pack 侧完整保留**。
+   代价：0283 的 unpack 拷贝消除（−89% 窗口面）与 0295 的保存窗 35 trips 收益回吐。
+3. **0311 quickCheck 字段名 + configureSerialization 重载**：`papoQuickCheck`→`quickCheck`
+   （vanilla 字段名，反射兼容；懒物化保留）；0225 曾把 4 参
+   `configureSerialization(pipeline,flow,memoryOnly,monitor)` 原地替换为 6 参——现恢复 4 参
+   委托重载（null counters），6 参保留。
+
+**判例**：
+1. **record 组件类型=公共访问器 ABI**：改组件即改访问器描述符，任何"内部数据形状"优化不得
+   触碰公开 record 的组件类型。
+2. **setter 级"等值跳过"必须连坐审查回调的全部副作用**：省一个包的同时可能省掉
+   waypoint/dirty 等旁路效果——门的语义边界必须逐副作用核对。
+3. **方法改造用重载不用替换**：加参数的"内部"工厂方法（configureSerialization）对按旧签名
+   编译的外部调用者就是删方法。
+4. **兼容修复轮也需要运行时首验**：0302 改动横跨连接管线/记分板/区块路径，单测绿≠开机绿
+   ——SmokeJoinVerify（boot+10 join+产物/零异常门）是收尾必备门。
+
+**验证**：compileJava/compileTestJava 显式 SUCCESSFUL；rebuildPatches 311 补丁（0309-0311
+零垃圾名）→applyPatches→全量 test 全绿（上游 PlayerProfileTest 两项网络条件测试的环境性
+翻转留档 build.md；批次 147 自有测试的 ArrayList 丢失写竞态顺手修复）；出包 0.115.0；
+**SmokeJoinVerify 真实冒烟全绿**（joins=10/10·exit=0·logErrors=0·产物 OK·稳态 join p50=22ms）
+——批次 206+207 全部改动的首次真机验证；另修 harness 起服 JVM 常量腐烂判例（跟随
+java.home）。
+
+---
+
+## 批次 208（2026-10-27）：插件兼容修复第三轮——机械化公开面完备扫描（0312，→0.116.0）
+
+**背景**：前两轮靠子代理注意力找到的 ABI 破坏（PackedData record 组件/configureSerialization
+替换/quickCheck 改名）提示同类可能漏网。本轮不再抽样：对 fork 全部三处代码面做签名级全量比对。
+
+**方法**：正则签名抽取器（public/protected 方法与字段，按名聚合重载）+ 各面正确基线：
+NMS 面=内部仓 0040 父提交（上游 Paper 特性补丁全部应用后）；CraftBukkit 面=e7d7a0f99
+（1.21.11 内容恢复提交，fork 合并点本身含 26.x 污染）；paper-api=fork 全提交清点。
+扫出的候选逐项 pickaxe 归因，排除上游同步（Moonrise/velocity natives 等签名本就是基线）。
+
+**结果（完备性声明）**：
+- NMS 面 254 文件：删除 3（handlerRemoved0/Shulker getXRotD+getYRotD 修复；items 字段
+  描述符安全）、变更 2（均描述符安全）；CraftBukkit 面 22 文件：删除 1（描述符安全）；
+  paper-api：零删除零替换。
+- 两个扫描器判例：①文件清单与内容读取必须同一基线（首版清单用 Papo 边界、内容仍读
+  vanilla base，Moonrise 签名被误报）；②归一化必须 rstrip（尾随空格伪差异淹没真差异）、
+  变更分类按"旧签名是否全部保留"（新增重载=加法）。
+
+**修复（0312）**：
+1. `Varint21FrameDecoder.handlerRemoved0`：0155 删 helperBuf 时误删 protected override——
+   恢复 super 委托（含 `throws Exception`，与上游签名逐字一致）。
+2. `Shulker.getYRotD/getXRotD`：0048 转 boolean 协议时把 Optional 覆盖面转掉——恢复两个
+   委托 override（hasXRotD/hasYRotD 写入的值与被删实现逐位一致）。
+
+**判例**：**公开面兼容审计的终局形态是机械全量比对而非抽样**——正则签名抽取+正确基线
++pickaxe 归因三部曲，把"还有没有漏网"从置信问题变成完备性问题。
+
+**验证**：compileJava 显式 SUCCESSFUL；rebuildPatches（0312 零垃圾名）→applyPatches→
+全量 test 全绿；出包 0.116.0。
+
+---
+
+## 批次 209（2026-10-27）：Java 25 全面迁移（用户决断，→0.117.0）
+
+**变更**：工具链/`options.release` 21→25（根 build.gradle.kts）；run 任务去 JBR vendor 钉+
+移除 DCEVM 旗标；mockito 5.14.1→5.20.0（v69 类文件支持）；类文件版本 v65→v69（包内 javap
+实证）。
+
+**验证**：`compileJava --rerun-tasks --no-configuration-cache`（工具链 25）一次通过——
+paperweight 2.0.0-beta.19 与反编译源码在 javac 25 下零错误；全量测试套件全绿（mockito 升级
+后；升级前 142/297 挂全为 ByteBuddy 不识 v69 单根因）；出包 0.117.0；**JDK 25 真机冒烟**
+SmokeJoinVerify 全绿（10/10 join、exit=0、logErrors=0、dat/stats/advancements OK、稳态
+join p50=22ms）。
+
+**判例**：见 build.md 批次 209 节（测试栈是迁移真实坑/harness 空格路径/daemon 本就在 25）。
+**性能口径**：运行时收益待配对浸泡量化（COH/ZGC/JIT 入口已记入 build.md 运维注记）；
+**兼容口径**：插件零影响（编译目标仍是上游 Paper 1.21.11 v65；Papo 不发布 api 工件）。

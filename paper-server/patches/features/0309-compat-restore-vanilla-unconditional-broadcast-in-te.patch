@@ -1,0 +1,143 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Tue, 27 Oct 2026 00:32:38 +0800
+Subject: [PATCH] compat: restore vanilla unconditional broadcast in
+ team/objective/score setters
+
+The equal-value suppression gates also skipped onTeamChanged side effects (updateTeamWaypoints, setDirty) beyond the packet; vanilla has no early returns in any of these setters.
+
+diff --git a/net/minecraft/world/scores/Objective.java b/net/minecraft/world/scores/Objective.java
+index 3632572bc55093bfe8022bfb0bd4415873252d70..ad3dc8f24ae127753ff6688af54e98d3faaf397d 100644
+--- a/net/minecraft/world/scores/Objective.java
++++ b/net/minecraft/world/scores/Objective.java
+@@ -85,13 +85,6 @@ public class Objective {
+     }
+ 
+     public void setDisplayName(Component displayName) {
+-        // Papo start - skip redundant objective broadcast when a different-but-equal value is set
+-        // (same-instance re-set keeps vanilla re-broadcast so an in-place mutated NMS MutableComponent
+-        // still refreshes clients; content-equal new instances are provable client no-ops)
+-        if (displayName != this.displayName && displayName.equals(this.displayName)) {
+-            return;
+-        }
+-        // Papo end
+         this.displayName = displayName;
+         this.formattedDisplayName = this.createFormattedDisplayName();
+         this.scoreboard.onObjectiveChanged(this);
+@@ -102,31 +95,16 @@ public class Objective {
+     }
+ 
+     public void setRenderType(ObjectiveCriteria.RenderType renderType) {
+-        // Papo start - skip redundant objective broadcast (see setDisplayName)
+-        if (renderType == this.renderType) {
+-            return;
+-        }
+-        // Papo end
+         this.renderType = renderType;
+         this.scoreboard.onObjectiveChanged(this);
+     }
+ 
+     public void setDisplayAutoUpdate(boolean displayAutoUpdate) {
+-        // Papo start - skip redundant objective broadcast (see setDisplayName)
+-        if (displayAutoUpdate == this.displayAutoUpdate) {
+-            return;
+-        }
+-        // Papo end
+         this.displayAutoUpdate = displayAutoUpdate;
+         this.scoreboard.onObjectiveChanged(this);
+     }
+ 
+     public void setNumberFormat(@Nullable NumberFormat numberFormat) {
+-        // Papo start - skip redundant objective broadcast (see setDisplayName)
+-        if (numberFormat != this.numberFormat && Objects.equals(numberFormat, this.numberFormat)) {
+-            return;
+-        }
+-        // Papo end
+         this.numberFormat = numberFormat;
+         this.scoreboard.onObjectiveChanged(this);
+     }
+diff --git a/net/minecraft/world/scores/PlayerTeam.java b/net/minecraft/world/scores/PlayerTeam.java
+index 713bdca1d23633fb68b1dbb476b3d66dc7d643e6..c64b1b0cc5099f63458fc5d0fe59ee79537a5097 100644
+--- a/net/minecraft/world/scores/PlayerTeam.java
++++ b/net/minecraft/world/scores/PlayerTeam.java
+@@ -84,25 +84,12 @@ public class PlayerTeam extends Team {
+         if (name == null) {
+             throw new IllegalArgumentException("Name cannot be null");
+         } else {
+-            // Papo start - skip redundant team broadcast when a different-but-equal value is set
+-            // Same-instance re-set keeps vanilla behavior (re-broadcast), so an in-place mutated
+-            // NMS MutableComponent still refreshes clients via re-set; content-equal new instances
+-            // are provably no-ops for clients (they already hold an equal rendering).
+-            if (name != this.displayName && name.equals(this.displayName)) {
+-                return;
+-            }
+-            // Papo end
+             this.displayName = name;
+             this.scoreboard.onTeamChanged(this);
+         }
+     }
+ 
+     public void setPlayerPrefix(@Nullable Component playerPrefix) {
+-        // Papo start - skip redundant team broadcast (see setDisplayName)
+-        if (playerPrefix != this.playerPrefix && java.util.Objects.equals(playerPrefix == null ? CommonComponents.EMPTY : playerPrefix, this.playerPrefix)) {
+-            return;
+-        }
+-        // Papo end
+         this.playerPrefix = playerPrefix == null ? CommonComponents.EMPTY : playerPrefix;
+         this.scoreboard.onTeamChanged(this);
+     }
+@@ -112,11 +99,6 @@ public class PlayerTeam extends Team {
+     }
+ 
+     public void setPlayerSuffix(@Nullable Component playerSuffix) {
+-        // Papo start - skip redundant team broadcast (see setDisplayName)
+-        if (playerSuffix != this.playerSuffix && java.util.Objects.equals(playerSuffix == null ? CommonComponents.EMPTY : playerSuffix, this.playerSuffix)) {
+-            return;
+-        }
+-        // Papo end
+         this.playerSuffix = playerSuffix == null ? CommonComponents.EMPTY : playerSuffix;
+         this.scoreboard.onTeamChanged(this);
+     }
+@@ -151,11 +133,6 @@ public class PlayerTeam extends Team {
+     }
+ 
+     public void setAllowFriendlyFire(boolean friendlyFire) {
+-        // Papo start - skip redundant team broadcast (see setDisplayName)
+-        if (friendlyFire == this.allowFriendlyFire) {
+-            return;
+-        }
+-        // Papo end
+         this.allowFriendlyFire = friendlyFire;
+         this.scoreboard.onTeamChanged(this);
+     }
+@@ -166,11 +143,6 @@ public class PlayerTeam extends Team {
+     }
+ 
+     public void setSeeFriendlyInvisibles(boolean friendlyInvisibles) {
+-        // Papo start - skip redundant team broadcast (see setDisplayName)
+-        if (friendlyInvisibles == this.seeFriendlyInvisibles) {
+-            return;
+-        }
+-        // Papo end
+         this.seeFriendlyInvisibles = friendlyInvisibles;
+         this.scoreboard.onTeamChanged(this);
+     }
+diff --git a/net/minecraft/world/scores/Scoreboard.java b/net/minecraft/world/scores/Scoreboard.java
+index 2d3e467ea9280c1b9ea907ebc189be5a30ea2e35..6ba703884375577d4ab27866492d75ffce498004 100644
+--- a/net/minecraft/world/scores/Scoreboard.java
++++ b/net/minecraft/world/scores/Scoreboard.java
+@@ -125,12 +125,8 @@ public class Scoreboard {
+ 
+             @Override
+             public void numberFormatOverride(@Nullable NumberFormat format) {
+-                // Papo start - skip redundant score packet (same gate as display(), above)
+-                if (mutableBoolean.isTrue() || !Objects.equals(format, score.numberFormat())) {
+-                    score.numberFormat(format);
+-                    this.sendScoreToPlayers();
+-                }
+-                // Papo end
++                score.numberFormat(format); // Papo - compat fix: setter-level equal-value suppression removed (vanilla always broadcasts; onChanged also drives waypoints/save-dirty)
++                this.sendScoreToPlayers();
+             }
+ 
+             @Override

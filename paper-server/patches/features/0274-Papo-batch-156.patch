@@ -1,0 +1,160 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 10 Oct 2026 10:17:25 +0800
+Subject: [PATCH] Papo: batch 156
+
+
+diff --git a/net/minecraft/world/level/block/state/BlockBehaviour.java b/net/minecraft/world/level/block/state/BlockBehaviour.java
+index c5953d5751e655e121e459aaab35e7719948e69e..520dc02a4ec01d88f46f570698df7b1adbc0d5ee 100644
+--- a/net/minecraft/world/level/block/state/BlockBehaviour.java
++++ b/net/minecraft/world/level/block/state/BlockBehaviour.java
+@@ -80,6 +80,7 @@ import net.minecraft.world.phys.AABB;
+ import net.minecraft.world.phys.BlockHitResult;
+ import net.minecraft.world.phys.Vec3;
+ import net.minecraft.world.phys.shapes.CollisionContext;
++import net.minecraft.world.phys.shapes.PapoShapeCache; // Papo - batch 156 (R16)
+ import net.minecraft.world.phys.shapes.Shapes;
+ import net.minecraft.world.phys.shapes.VoxelShape;
+ import org.jspecify.annotations.Nullable;
+@@ -583,7 +584,7 @@ public abstract class BlockBehaviour implements FeatureElement {
+             this.shapeExceedsCube = this.cache == null || this.cache.largeCollisionShape; // Paper - moved from actual method to here
+ 
+             this.legacySolid = this.calculateSolid();
+-            this.occlusionShape = this.canOcclude ? this.owner.getOcclusionShape(this.asState()) : Shapes.empty();
++            this.occlusionShape = PapoShapeCache.papoCanonical(this.canOcclude ? this.owner.getOcclusionShape(this.asState()) : Shapes.empty()); // Papo - batch 156 (R16): canonical state-cached shape
+             this.solidRender = Block.isShapeFullBlock(this.occlusionShape);
+             if (this.occlusionShape.isEmpty()) {
+                 this.occlusionShapesByFace = EMPTY_OCCLUSION_SHAPES;
+@@ -1054,7 +1055,7 @@ public abstract class BlockBehaviour implements FeatureElement {
+ 
+             Cache(BlockState state) {
+                 Block block = state.getBlock();
+-                this.collisionShape = block.getCollisionShape(state, EmptyBlockGetter.INSTANCE, BlockPos.ZERO, CollisionContext.empty());
++                this.collisionShape = PapoShapeCache.papoCanonical(block.getCollisionShape(state, EmptyBlockGetter.INSTANCE, BlockPos.ZERO, CollisionContext.empty())); // Papo - batch 156 (R16): canonical state-cached shape
+                 if (!this.collisionShape.isEmpty() && state.hasOffsetFunction()) {
+                     throw new IllegalStateException(
+                         String.format(
+diff --git a/net/minecraft/world/phys/shapes/PapoShapeCache.java b/net/minecraft/world/phys/shapes/PapoShapeCache.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..467975b3d944da19a38cf2f2b7573d8a0d13cd86
+--- /dev/null
++++ b/net/minecraft/world/phys/shapes/PapoShapeCache.java
+@@ -0,0 +1,118 @@
++package net.minecraft.world.phys.shapes;
++
++import it.unimi.dsi.fastutil.doubles.DoubleList;
++import java.util.Arrays;
++import java.util.concurrent.ConcurrentHashMap;
++import java.util.concurrent.ConcurrentMap;
++import net.minecraft.core.Direction;
++
++// Papo start - batch 156 (R16): canonical sharing of state-cached voxel shapes.
++//
++// Census on the 0.88.0 dwell dump (benchmark/src/papo/bot/ShapeDupCensus.java): the
++// retained AABB family is 345,808 instances with only 3,256 distinct geometries
++// (99.1% structural duplicates); the whole shape family (~51MB: ArrayVoxelShape
++// 141,519 / BitSetDiscreteVoxelShape 140,060 / DoubleArrayList 291,870 / AABBs and
++// their lists) is per-state-cached mutable-lazy state over that tiny distinct set.
++// This cache collapses state-held roots onto one canonical instance per structural
++// key, so every lazily materialised substructure (face shapes, toAabbs, Moonrise
++// collision caches, merged-OR cache) is computed once per distinct geometry instead
++// of once per block state. This is the proven batch 147/149 canonical-sharing
++// pattern applied to another immutable value family.
++//
++// Red lines: shapes are immutable value objects; sharing changes identity only,
++// never geometry, and no vanilla contract compares state-cached shapes by identity
++// against anything but the Shapes.empty()/block() singletons (which this cache
++// passes through untouched and never replaces). The intern map is written only at
++// long-lived cache points (BlockBehaviour.BlockStateBase.Cache/initCache), never at
++// ArrayVoxelShape construction - transient runtime shapes (dynamic-shape blocks,
++// offset queries) never enter the map, so its size is bounded by the distinct
++// geometry of the block-state registry itself (strictly <= state count).
++public final class PapoShapeCache {
++
++    private static final ConcurrentMap<ShapeKey, VoxelShape> PAPO_CANONICAL = new ConcurrentHashMap<>(1 << 12);
++
++    private PapoShapeCache() {
++    }
++
++    /** Returns the canonical instance for a state-cached shape; passthrough for anything not a bitset-backed array shape. */
++    public static VoxelShape papoCanonical(final VoxelShape shape) {
++        if (!(shape instanceof final ArrayVoxelShape array)) {
++            return shape;
++        }
++        if (!(array.shape instanceof final BitSetDiscreteVoxelShape bits)) {
++            return shape;
++        }
++        final ShapeKey key = new ShapeKey(
++            toDoubles(array.getCoords(Direction.Axis.X)),
++            toDoubles(array.getCoords(Direction.Axis.Y)),
++            toDoubles(array.getCoords(Direction.Axis.Z)),
++            bits.getXSize(), bits.getYSize(), bits.getZSize(),
++            bits.xMin, bits.yMin, bits.zMin, bits.xMax, bits.yMax, bits.zMax,
++            bits.storage.toLongArray());
++        final VoxelShape prev = PAPO_CANONICAL.putIfAbsent(key, shape);
++        return prev != null ? prev : shape;
++    }
++
++    private static double[] toDoubles(final DoubleList list) {
++        return list.toDoubleArray();
++    }
++
++    /** Structural key: three point tables, voxel grid extent + bounds, occupancy words. */
++    static final class ShapeKey {
++        final double[] xs;
++        final double[] ys;
++        final double[] zs;
++        final int xSize, ySize, zSize;
++        final int xMin, yMin, zMin, xMax, yMax, zMax;
++        final long[] words;
++
++        ShapeKey(final double[] xs, final double[] ys, final double[] zs,
++                 final int xSize, final int ySize, final int zSize,
++                 final int xMin, final int yMin, final int zMin, final int xMax, final int yMax, final int zMax,
++                 final long[] words) {
++            this.xs = xs;
++            this.ys = ys;
++            this.zs = zs;
++            this.xSize = xSize;
++            this.ySize = ySize;
++            this.zSize = zSize;
++            this.xMin = xMin;
++            this.yMin = yMin;
++            this.zMin = zMin;
++            this.xMax = xMax;
++            this.yMax = yMax;
++            this.zMax = zMax;
++            this.words = words;
++        }
++
++        @Override
++        public boolean equals(final Object obj) {
++            if (!(obj instanceof final ShapeKey o)) {
++                return false;
++            }
++            return Arrays.equals(this.xs, o.xs) && Arrays.equals(this.ys, o.ys) && Arrays.equals(this.zs, o.zs)
++                && this.xSize == o.xSize && this.ySize == o.ySize && this.zSize == o.zSize
++                && this.xMin == o.xMin && this.yMin == o.yMin && this.zMin == o.zMin
++                && this.xMax == o.xMax && this.yMax == o.yMax && this.zMax == o.zMax
++                && Arrays.equals(this.words, o.words);
++        }
++
++        @Override
++        public int hashCode() {
++            int h = Arrays.hashCode(this.xs);
++            h = 31 * h + Arrays.hashCode(this.ys);
++            h = 31 * h + Arrays.hashCode(this.zs);
++            h = 31 * h + this.xSize;
++            h = 31 * h + this.ySize;
++            h = 31 * h + this.zSize;
++            h = 31 * h + this.xMin;
++            h = 31 * h + this.yMin;
++            h = 31 * h + this.zMin;
++            h = 31 * h + this.xMax;
++            h = 31 * h + this.yMax;
++            h = 31 * h + this.zMax;
++            return 31 * h + Arrays.hashCode(this.words);
++        }
++    }
++}
++// Papo end - batch 156 (R16)

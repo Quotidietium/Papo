@@ -1,0 +1,94 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sun, 11 Oct 2026 07:09:49 +0800
+Subject: [PATCH] batch 171 (R30): papoReadUtf zero-alloc rewrite -
+ thread-local read scratch (mirrors papoWriteUtf) + bounded 4096-slot
+ direct-mapped dedup for short ASCII strings (<=48B: NBT key vocabulary is
+ tiny and massively repetitive; returns the SAME immutable String instance -
+ equality semantics unchanged). Fixed-size cache, replace-on-collision,
+ entries own byte copies, JMM final-field publication. Non-ASCII fallback
+ prefixes in-place on the scratch (same-array arraycopy is spec-safe). Ranged
+ Arrays.equals fix: full-array compare would never hit after scratch growth.
+
+
+diff --git a/net/minecraft/nbt/CompoundTag.java b/net/minecraft/nbt/CompoundTag.java
+index c7dedd199cbbc244ab83847abc876cb5a14a6d89..8f410e11598dc7a2e71ffe655b6cafc63a3a3122 100644
+--- a/net/minecraft/nbt/CompoundTag.java
++++ b/net/minecraft/nbt/CompoundTag.java
+@@ -180,22 +180,66 @@ public final class CompoundTag implements Tag {
+     // via a length-prefixed buffer. Avoids readUTF's per-string char[]/StringBuffer allocation
+     // for the ASCII majority of NBT keys/values.
+     static String papoReadUtf(java.io.DataInput input) throws java.io.IOException {
+-        int length = input.readUnsignedShort();
++        final int length = input.readUnsignedShort();
+         if (length == 0) {
+             return "";
+         }
+-        byte[] bytes = new byte[length];
+-        input.readFully(bytes, 0, length);
++        // Papo start - batch 171 (R30): read into a thread-local scratch instead of a
++        // per-call byte[], and deduplicate short ASCII strings through a bounded
++        // direct-mapped cache. NBT tag keys and id-like values repeat with an extremely
++        // small vocabulary across a world's tags, so most reads return the SAME immutable
++        // String instance (equality semantics are unchanged - String is immutable and NBT
++        // only ever compares keys by equals/hashCode). The cache is fixed-size (4096 slots,
++        // replace-on-collision, entries carry their own byte copy) so adversarial content
++        // cannot grow it; strings longer than 48 bytes bypass it entirely. Publication is
++        // safe under the JMM final-field freeze: a reader sees null, the old entry, or the
++        // fully initialized new entry. Together with the scratch this turns the repetitive
++        // majority of NBT string reads into zero-allocation operations.
++        byte[] scratch = PAPO_READ_SCRATCH.get();
++        if (length + 2 > scratch.length) { // +2: the modified-UTF-8 fallback prefixes in place
++            PAPO_READ_SCRATCH.set(scratch = new byte[Math.max(scratch.length << 1, length + 2)]);
++        }
++        input.readFully(scratch, 0, length);
+         for (int i = 0; i < length; i++) {
+-            if (bytes[i] < 0) {
+-                byte[] prefixed = new byte[2 + length];
+-                prefixed[0] = (byte) (length >>> 8);
+-                prefixed[1] = (byte) length;
+-                System.arraycopy(bytes, 0, prefixed, 2, length);
+-                return new java.io.DataInputStream(new java.io.ByteArrayInputStream(prefixed)).readUTF();
++            if (scratch[i] < 0) {
++                // same-array copy with a higher destination offset is specified to behave
++                // as if through a temporary buffer
++                System.arraycopy(scratch, 0, scratch, 2, length);
++                scratch[0] = (byte) (length >>> 8);
++                scratch[1] = (byte) length;
++                return new java.io.DataInputStream(new java.io.ByteArrayInputStream(scratch, 0, 2 + length)).readUTF();
++            }
++        }
++        if (length <= PAPO_UTF_DEDUP_MAX) {
++            int hash = 0;
++            for (int i = 0; i < length; i++) {
++                hash = 31 * hash + scratch[i];
++            }
++            final PapoUtfEntry cached = PAPO_UTF_DEDUP[(hash & 0x7fffffff) & (PAPO_UTF_DEDUP.length - 1)];
++            if (cached != null && cached.bytes.length == length && java.util.Arrays.equals(cached.bytes, 0, length, scratch, 0, length)) {
++                return cached.string;
+             }
++            final String ret = new String(scratch, 0, length, java.nio.charset.StandardCharsets.ISO_8859_1);
++            PAPO_UTF_DEDUP[(hash & 0x7fffffff) & (PAPO_UTF_DEDUP.length - 1)] =
++                new PapoUtfEntry(java.util.Arrays.copyOf(scratch, length), ret);
++            return ret;
++        }
++        // Papo end - batch 171 (R30)
++        return new String(scratch, 0, length, java.nio.charset.StandardCharsets.ISO_8859_1);
++    }
++
++    private static final ThreadLocal<byte[]> PAPO_READ_SCRATCH = ThreadLocal.withInitial(() -> new byte[8192]);
++    private static final int PAPO_UTF_DEDUP_MAX = 48;
++    private static final PapoUtfEntry[] PAPO_UTF_DEDUP = new PapoUtfEntry[4096];
++
++    private static final class PapoUtfEntry {
++        final byte[] bytes;
++        final String string;
++
++        PapoUtfEntry(final byte[] bytes, final String string) {
++            this.bytes = bytes;
++            this.string = string;
+         }
+-        return new String(bytes, 0, length, java.nio.charset.StandardCharsets.ISO_8859_1);
+     }
+ 
+     // Papo start - fast NBT string write: ASCII fast path mirroring papoReadUtf above.

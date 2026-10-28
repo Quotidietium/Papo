@@ -82,13 +82,14 @@ dependencies {
     api("org.jspecify:jspecify:1.0.0")
 
     // Test dependencies
-    testImplementation("org.apache.commons:commons-lang3:3.17.0")
-    testImplementation("org.junit.jupiter:junit-jupiter:5.12.2")
-    testImplementation("org.hamcrest:hamcrest:2.2")
-    testImplementation("org.mockito:mockito-core:5.14.1")
-    testImplementation("org.ow2.asm:asm-tree:9.9.1")
-    mockitoAgent("org.mockito:mockito-core:5.14.1") { isTransitive = false } // configure mockito agent that is needed in newer java versions
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    // Papo - batch 210: toolchain refresh (2026-10-27 latest); JUnit on the current 6.x line.
+    testImplementation("org.apache.commons:commons-lang3:3.21.0")
+    testImplementation("org.junit.jupiter:junit-jupiter:6.1.3")
+    testImplementation("org.hamcrest:hamcrest:3.0")
+    testImplementation("org.mockito:mockito-core:5.24.0") // Papo - Java 25 migration (batch 209): 5.14's ByteBuddy cannot parse class-file v69
+    testImplementation("org.ow2.asm:asm-tree:9.11.1")
+    mockitoAgent("org.mockito:mockito-core:5.24.0") { isTransitive = false } // configure mockito agent that is needed in newer java versions
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:6.1.3")
 }
 
 val generatedDir: java.nio.file.Path = layout.projectDirectory.dir("src/generated/java").asFile.toPath()

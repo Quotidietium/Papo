@@ -1,0 +1,137 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 10 Oct 2026 00:34:16 +0800
+Subject: [PATCH] Papo: batch 145 (R6) eliminate per-instance constant
+ container payloads - two clusters the batch-144 heap-dump attribution
+ isolated as the only remaining reclaimable non-content residency: (1)
+ ZeroBitStorage, 431k instances (~6.9MB in the 12-bot soak) one per
+ single-value PalettedContainer.Data even though the object is immutable after
+ construction (final int size, no method writes a field, every accessor
+ derives from size or is a no-op, and copy() already returns this so vanilla
+ itself treats instances as shareable); both construction sites
+ (createOrReuseData and the codec unpack path) now route through
+ ZeroBitStorage.papoShared(entryCount), a ConcurrentHashMap keyed by entry
+ count (4096 block sections / 64 biome sections, a handful of distinct values
+ total), no identity comparisons on BitStorage exist anywhere in the tree; (2)
+ PapoPosTypeSet (batch 123) eagerly allocated long[16]+Object[16] per
+ per-chunk scheduled-tick container while most natural chunks never schedule a
+ tick - arrays now stay null until the first add, remove/contains return false
+ on the null state, clear is a no-op, and the post-allocation paths are
+ untouched; differential coverage in PapoPosTypeSetLazyTest (null-state
+ semantics, empty-after-remove reuse, identity type semantics, 200k-op
+ randomized model differential, resize beyond initial capacity) and
+ PapoZeroBitStorageSharedTest
+
+
+diff --git a/net/minecraft/util/ZeroBitStorage.java b/net/minecraft/util/ZeroBitStorage.java
+index 09fd99c9cbd23b5f3c899bfb00c9b89651948ed8..9531aff6dd99eec810672c0863aa59e9d4746c68 100644
+--- a/net/minecraft/util/ZeroBitStorage.java
++++ b/net/minecraft/util/ZeroBitStorage.java
+@@ -8,6 +8,18 @@ public class ZeroBitStorage implements BitStorage {
+     public static final long[] RAW = new long[0];
+     private final int size;
+ 
++    // Papo start - batch 145 (R6): ZeroBitStorage is immutable after construction (final size,
++    // no method writes any field, copy() already returns this), so instances are interchangeable
++    // per entry count (4096 block sections / 64 biome sections). Single-value paletted
++    // containers allocated 431k individual instances (~6.9MB in the 12-bot soak); share them.
++    private static final java.util.concurrent.ConcurrentHashMap<Integer, ZeroBitStorage> PAP0_SHARED =
++        new java.util.concurrent.ConcurrentHashMap<>();
++
++    public static ZeroBitStorage papoShared(final int size) {
++        return PAP0_SHARED.computeIfAbsent(size, ZeroBitStorage::new);
++    }
++    // Papo end - batch 145 (R6)
++
+     public ZeroBitStorage(int size) {
+         this.size = size;
+     }
+diff --git a/net/minecraft/world/level/chunk/PalettedContainer.java b/net/minecraft/world/level/chunk/PalettedContainer.java
+index ffa3921dd3c9afbcc550d0435f3296655b307b12..e41fbcd6a2e929d3ff611dadd2cd7dcd8afa1453 100644
+--- a/net/minecraft/world/level/chunk/PalettedContainer.java
++++ b/net/minecraft/world/level/chunk/PalettedContainer.java
+@@ -157,7 +157,7 @@ public class PalettedContainer<T> implements PaletteResize<T>, PalettedContainer
+             return data;
+         } else {
+             BitStorage bitStorage = (BitStorage)(configurationForBitCount.bitsInMemory() == 0
+-                ? new ZeroBitStorage(this.strategy.entryCount())
++                ? ZeroBitStorage.papoShared(this.strategy.entryCount()) // Papo - batch 145 (R6): shared immutable
+                 : new SimpleBitStorage(configurationForBitCount.bitsInMemory(), this.strategy.entryCount()));
+             Palette<T> palette = configurationForBitCount.createPalette(this.strategy, List.of());
+             return new PalettedContainer.Data<>(configurationForBitCount, bitStorage, palette);
+@@ -311,7 +311,7 @@ public class PalettedContainer<T> implements PaletteResize<T>, PalettedContainer
+             Palette<T> palette;
+             if (configurationForPaletteSize.bitsInMemory() == 0) {
+                 palette = configurationForPaletteSize.createPalette(strategy, list);
+-                bitStorage = new ZeroBitStorage(entryCount);
++                bitStorage = ZeroBitStorage.papoShared(entryCount); // Papo - batch 145 (R6): shared immutable
+             } else {
+                 Optional<LongStream> optional = packedData.storage();
+                 if (optional.isEmpty()) {
+diff --git a/net/minecraft/world/ticks/PapoPosTypeSet.java b/net/minecraft/world/ticks/PapoPosTypeSet.java
+index a65ac264114af5ec577c7455ad47140b411b3b40..3da38dba21330a5ded03f92bd43ced1271c21264 100644
+--- a/net/minecraft/world/ticks/PapoPosTypeSet.java
++++ b/net/minecraft/world/ticks/PapoPosTypeSet.java
+@@ -7,11 +7,19 @@ package net.minecraft.world.ticks;
+ // to UNIQUE_TICK_HASH: same position AND identical type reference (its equals() compares
+ // type() with ==). Open addressing with linear probing and backward-shift deletion.
+ final class PapoPosTypeSet<T> {
+-    private long[] keys = new long[16];
+-    private Object[] types = new Object[16];
++    // Papo - batch 145 (R6): arrays stay null until the first add - most chunks never
++    // schedule a tick (natural terrain without fluids in motion), the eager pair costs
++    // 192B per per-chunk container in the soak
++    private long[] keys;
++    private Object[] types;
+     private int mask = 15;
+     private int size;
+ 
++    private void allocate() {
++        this.keys = new long[16];
++        this.types = new Object[16];
++    }
++
+     private static int hash(final long key, final Object type) {
+         int h = (int) (key ^ (key >>> 32));
+         h = h * 31 + System.identityHashCode(type);
+@@ -48,6 +56,9 @@ final class PapoPosTypeSet<T> {
+ 
+     /** @return true if the pair was already present (not added). */
+     public boolean add(final long key, final T type) {
++        if (this.types == null) { // Papo - batch 145 (R6)
++            this.allocate();
++        }
+         int slot = hash(key, type) & this.mask;
+         while (this.types[slot] != null) {
+             if (this.keys[slot] == key && this.types[slot] == type) {
+@@ -68,6 +79,9 @@ final class PapoPosTypeSet<T> {
+ 
+     /** @return true if a matching pair was removed. */
+     public boolean remove(final long key, final T type) {
++        if (this.types == null) { // Papo - batch 145 (R6)
++            return false;
++        }
+         int slot = hash(key, type) & this.mask;
+         while (this.types[slot] != null) {
+             if (this.keys[slot] == key && this.types[slot] == type) {
+@@ -99,6 +113,9 @@ final class PapoPosTypeSet<T> {
+     }
+ 
+     public boolean contains(final long key, final T type) {
++        if (this.types == null) { // Papo - batch 145 (R6)
++            return false;
++        }
+         int slot = hash(key, type) & this.mask;
+         while (this.types[slot] != null) {
+             if (this.keys[slot] == key && this.types[slot] == type) {
+@@ -114,7 +131,9 @@ final class PapoPosTypeSet<T> {
+     }
+ 
+     public void clear() {
+-        java.util.Arrays.fill(this.types, null);
++        if (this.types != null) { // Papo - batch 145 (R6)
++            java.util.Arrays.fill(this.types, null);
++        }
+         this.size = 0;
+     }
+ }

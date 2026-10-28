@@ -10,7 +10,7 @@ inside an entity status callback) or during shutdown (which has
 chunk loading restrictions due to the chunk system being halted).
 
 diff --git a/net/minecraft/world/level/block/entity/BarrelBlockEntity.java b/net/minecraft/world/level/block/entity/BarrelBlockEntity.java
-index 75c09a2..9ccd287 100644
+index 75c09a2079c89f9346391abdd01ef8790b9cbb13..9ccd2870fd124dd4aefbce2f976b707d95ae3a75 100644
 --- a/net/minecraft/world/level/block/entity/BarrelBlockEntity.java
 +++ b/net/minecraft/world/level/block/entity/BarrelBlockEntity.java
 @@ -61,6 +61,13 @@ public class BarrelBlockEntity extends RandomizableContainerBlockEntity {
@@ -28,7 +28,7 @@ index 75c09a2..9ccd287 100644
          protected void onOpen(Level level, BlockPos pos, BlockState state) {
              BarrelBlockEntity.this.playSound(state, SoundEvents.BARREL_OPEN);
 diff --git a/net/minecraft/world/level/block/entity/ChestBlockEntity.java b/net/minecraft/world/level/block/entity/ChestBlockEntity.java
-index 6b1299c..4165a6b 100644
+index 6b1299c20573ca009f6bffce829a4a593f548fce..4165a6bb69d8605f5b2fd24532781c74cd0863be 100644
 --- a/net/minecraft/world/level/block/entity/ChestBlockEntity.java
 +++ b/net/minecraft/world/level/block/entity/ChestBlockEntity.java
 @@ -30,6 +30,13 @@ public class ChestBlockEntity extends RandomizableContainerBlockEntity implement
@@ -46,7 +46,7 @@ index 6b1299c..4165a6b 100644
          protected void onOpen(Level level, BlockPos pos, BlockState state) {
              if (state.getBlock() instanceof ChestBlock chestBlock) {
 diff --git a/net/minecraft/world/level/block/entity/ContainerOpenersCounter.java b/net/minecraft/world/level/block/entity/ContainerOpenersCounter.java
-index d867c96..1da0064 100644
+index d867c96ca418f1229635cf90dc578c0a6473faf2..1da0064488565a9fa4464dc1fd474e7b9c323cb1 100644
 --- a/net/minecraft/world/level/block/entity/ContainerOpenersCounter.java
 +++ b/net/minecraft/world/level/block/entity/ContainerOpenersCounter.java
 @@ -37,9 +37,21 @@ public abstract class ContainerOpenersCounter {

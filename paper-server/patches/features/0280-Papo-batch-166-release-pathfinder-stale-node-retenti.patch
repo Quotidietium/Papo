@@ -1,0 +1,53 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sun, 11 Oct 2026 05:00:14 +0800
+Subject: [PATCH] Papo: batch 166 - release pathfinder stale-node retention
+
+BinaryHeap.clear() only reset size, so each mob's PathFinder pinned its
+last search's unpopped frontier plus every historically grown-but-never-
+popped slot between searches (entity soak census: 26,683 Nodes / 1.71MB
++ 2,031 Node[] arrays / 500KB across ~679 mobs, ~3.2KB per mob, scaling
+with mob count and search length). The array beyond size is never read
+by the search logic; getHeap() hands debug consumers a dense
+Arrays.copyOf(heap, size) snapshot, so nulling is unobservable there.
+The 32-slot neighbor scratch gets the same treatment after each search
+(slots rewritten bounded by the returned count before every read).
+
+Zero behavioral difference; pure release-after-last-reader.
+
+diff --git a/net/minecraft/world/level/pathfinder/BinaryHeap.java b/net/minecraft/world/level/pathfinder/BinaryHeap.java
+index b867357561672b53daa0294f32545da617c19fda..eff1184ca09f8c93de75da999922409e74c15589 100644
+--- a/net/minecraft/world/level/pathfinder/BinaryHeap.java
++++ b/net/minecraft/world/level/pathfinder/BinaryHeap.java
+@@ -24,6 +24,14 @@ public class BinaryHeap {
+     }
+ 
+     public void clear() {
++        // Papo start - batch 166 (R25): the heap array kept references to the search's
++        // residue (unpopped frontier nodes and historically grown-but-never-popped slots)
++        // alive between searches - measured 26,683 stale Nodes / 1.71MB + grown Node[]
++        // arrays across ~679 mobs in the entity soak, pinned solely by these slots. The
++        // array beyond `size` is never read by the search logic, and debug consumers get
++        // an Arrays.copyOf(heap, size) snapshot from getHeap(), so nulling is unobservable.
++        Arrays.fill(this.heap, null);
++        // Papo end - batch 166 (R25)
+         this.size = 0;
+     }
+ 
+diff --git a/net/minecraft/world/level/pathfinder/PathFinder.java b/net/minecraft/world/level/pathfinder/PathFinder.java
+index 168b475b38b2872b27c1ab15f6846323ac16dd2c..c863251c14ac2b86e4984e85c72320f78585f0ea 100644
+--- a/net/minecraft/world/level/pathfinder/PathFinder.java
++++ b/net/minecraft/world/level/pathfinder/PathFinder.java
+@@ -55,6 +55,12 @@ public class PathFinder {
+             // Paper end - Perf: remove streams and optimize collection
+             Path path = this.findPath(start, map, maxRange, reachRange, maxVisitedNodesMultiplier);
+             this.nodeEvaluator.done();
++            // Papo start - batch 166 (R25): same stale-retention family as the heap clear -
++            // the 32-slot neighbor scratch kept the last getNeighbors() results alive after
++            // the search ended. Slots are fully rewritten (bounded by the returned count)
++            // before every read, so nulling between searches is unobservable.
++            java.util.Arrays.fill(this.neighbors, null);
++            // Papo end - batch 166 (R25)
+             return path;
+         }
+     }

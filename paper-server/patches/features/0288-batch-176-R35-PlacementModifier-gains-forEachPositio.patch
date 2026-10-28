@@ -1,0 +1,386 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sun, 11 Oct 2026 14:58:04 +0800
+Subject: [PATCH] batch 176 (R35): PlacementModifier gains forEachPosition
+ (allocation-free traversal twin of getPositions; default delegates to the
+ stream form so plugin subclasses keep working) with loop overrides on every
+ vanilla modifier - PlacementFilter final emit-if covers 5 filters,
+ RepeatingPlacement covers 4 count family, plus
+ InSquare/HeightRange/Heightmap/RandomOffset/Fixed/EnvironmentScan/CountOnEveryLayer
+ - and PlacedFeature.placeWithContext drives a depth-first walk instead of the
+ flatMap chain (236 visible census trips + hidden per-position-per-layer
+ stream machinery). Same emissions, same order, same random consumption;
+ multi-emission modifiers sample all randomness before the first emission
+ mirroring the eager stream builders
+
+
+diff --git a/net/minecraft/world/level/levelgen/placement/CountOnEveryLayerPlacement.java b/net/minecraft/world/level/levelgen/placement/CountOnEveryLayerPlacement.java
+index 06721d146ad96fa95645b8fe5eef58171b2bef33..120f629f70cf34ad997a687a53acdc000524a361 100644
+--- a/net/minecraft/world/level/levelgen/placement/CountOnEveryLayerPlacement.java
++++ b/net/minecraft/world/level/levelgen/placement/CountOnEveryLayerPlacement.java
+@@ -56,6 +56,40 @@ public class CountOnEveryLayerPlacement extends PlacementModifier {
+         return builder.build();
+     }
+ 
++    // Papo start - batch 176 (R35): the whole emission set is built first - every
++    // random of this modifier is sampled before the first emission, exactly like the
++    // stream form materialises its builder inside getPositions - and only then are
++    // the positions emitted in build order. count.sample(random) stays in the loop
++    // condition so it is sampled on the same iterations as vanilla.
++    @Override
++    public void forEachPosition(PlacementContext context, RandomSource random, BlockPos pos, java.util.function.Consumer<BlockPos> emitter) {
++        java.util.List<BlockPos> emitted = new java.util.ArrayList<>();
++        int i = 0;
++
++        boolean flag;
++        do {
++            flag = false;
++
++            for (int i1 = 0; i1 < this.count.sample(random); i1++) {
++                int i2 = random.nextInt(16) + pos.getX();
++                int i3 = random.nextInt(16) + pos.getZ();
++                int height = context.getHeight(Heightmap.Types.MOTION_BLOCKING, i2, i3);
++                int i4 = findOnGroundYPosition(context, i2, height, i3, i);
++                if (i4 != Integer.MAX_VALUE) {
++                    emitted.add(new BlockPos(i2, i4, i3));
++                    flag = true;
++                }
++            }
++
++            i++;
++        } while (flag);
++
++        for (int i5 = 0; i5 < emitted.size(); i5++) {
++            emitter.accept(emitted.get(i5));
++        }
++    }
++    // Papo end - batch 176 (R35)
++
+     @Override
+     public PlacementModifierType<?> type() {
+         return PlacementModifierType.COUNT_ON_EVERY_LAYER;
+diff --git a/net/minecraft/world/level/levelgen/placement/EnvironmentScanPlacement.java b/net/minecraft/world/level/levelgen/placement/EnvironmentScanPlacement.java
+index 5d6053cbd6d07d2a1eaf2acc1d8d42607459b9f0..4b92e970ad9b0f4890870a181a71cbbf1360f778 100644
+--- a/net/minecraft/world/level/levelgen/placement/EnvironmentScanPlacement.java
++++ b/net/minecraft/world/level/levelgen/placement/EnvironmentScanPlacement.java
+@@ -70,6 +70,39 @@ public class EnvironmentScanPlacement extends PlacementModifier {
+         }
+     }
+ 
++    // Papo start - batch 176 (R35): same control flow and predicate call sequence;
++    // emits the mutable position (the driver consumes each emission synchronously,
++    // matching the stream form's aliasing)
++    @Override
++    public void forEachPosition(PlacementContext context, RandomSource random, BlockPos pos, java.util.function.Consumer<BlockPos> emitter) {
++        BlockPos.MutableBlockPos mutableBlockPos = pos.mutable();
++        WorldGenLevel level = context.getLevel();
++        if (!this.allowedSearchCondition.test(level, mutableBlockPos)) {
++            return;
++        } else {
++            for (int i = 0; i < this.maxSteps; i++) {
++                if (this.targetCondition.test(level, mutableBlockPos)) {
++                    emitter.accept(mutableBlockPos);
++                    return;
++                }
++
++                mutableBlockPos.move(this.directionOfSearch);
++                if (level.isOutsideBuildHeight(mutableBlockPos.getY())) {
++                    return;
++                }
++
++                if (!this.allowedSearchCondition.test(level, mutableBlockPos)) {
++                    break;
++                }
++            }
++
++            if (this.targetCondition.test(level, mutableBlockPos)) {
++                emitter.accept(mutableBlockPos);
++            }
++        }
++    }
++    // Papo end - batch 176 (R35)
++
+     @Override
+     public PlacementModifierType<?> type() {
+         return PlacementModifierType.ENVIRONMENT_SCAN;
+diff --git a/net/minecraft/world/level/levelgen/placement/FixedPlacement.java b/net/minecraft/world/level/levelgen/placement/FixedPlacement.java
+index 0d8730c75c7c037ab5b48fa198c4dc51b2c33d2c..11e21abcc7461a30aadf54d118e4b770b01595f9 100644
+--- a/net/minecraft/world/level/levelgen/placement/FixedPlacement.java
++++ b/net/minecraft/world/level/levelgen/placement/FixedPlacement.java
+@@ -39,6 +39,31 @@ public class FixedPlacement extends PlacementModifier {
+         return !flag ? Stream.empty() : this.positions.stream().filter(pos1 -> isSameChunk(sectionPosX, sectionPosZ, pos1));
+     }
+ 
++    // Papo start - batch 176 (R35): two-pass twin - the same-chunk pre-scan first
++    // (no emissions when nothing matches), then emissions in list order
++    @Override
++    public void forEachPosition(PlacementContext context, RandomSource random, BlockPos pos, java.util.function.Consumer<BlockPos> emitter) {
++        int sectionPosX = SectionPos.blockToSectionCoord(pos.getX());
++        int sectionPosZ = SectionPos.blockToSectionCoord(pos.getZ());
++        boolean flag = false;
++        final int positionCount = this.positions.size();
++        for (int i = 0; i < positionCount; i++) {
++            if (isSameChunk(sectionPosX, sectionPosZ, this.positions.get(i))) {
++                flag = true;
++                break;
++            }
++        }
++        if (flag) {
++            for (int i = 0; i < positionCount; i++) {
++                BlockPos blockPos = this.positions.get(i);
++                if (isSameChunk(sectionPosX, sectionPosZ, blockPos)) {
++                    emitter.accept(blockPos);
++                }
++            }
++        }
++    }
++    // Papo end - batch 176 (R35)
++
+     private static boolean isSameChunk(int x, int z, BlockPos pos) {
+         return x == SectionPos.blockToSectionCoord(pos.getX()) && z == SectionPos.blockToSectionCoord(pos.getZ());
+     }
+diff --git a/net/minecraft/world/level/levelgen/placement/HeightRangePlacement.java b/net/minecraft/world/level/levelgen/placement/HeightRangePlacement.java
+index cfc010a3904218ec1cb1652097b0024852a02b54..c5d2d4cb732e2d9c894e11f23accc9199b30b7d4 100644
+--- a/net/minecraft/world/level/levelgen/placement/HeightRangePlacement.java
++++ b/net/minecraft/world/level/levelgen/placement/HeightRangePlacement.java
+@@ -37,6 +37,14 @@ public class HeightRangePlacement extends PlacementModifier {
+         return Stream.of(pos.atY(this.height.sample(random, context)));
+     }
+ 
++    // Papo start - batch 176 (R35): single-emission twin; atY may alias the input
++    // when the sampled y equals pos.getY(), same as the stream form
++    @Override
++    public void forEachPosition(PlacementContext context, RandomSource random, BlockPos pos, java.util.function.Consumer<BlockPos> emitter) {
++        emitter.accept(pos.atY(this.height.sample(random, context)));
++    }
++    // Papo end - batch 176 (R35)
++
+     @Override
+     public PlacementModifierType<?> type() {
+         return PlacementModifierType.HEIGHT_RANGE;
+diff --git a/net/minecraft/world/level/levelgen/placement/HeightmapPlacement.java b/net/minecraft/world/level/levelgen/placement/HeightmapPlacement.java
+index 437b650fdc21faa1b76c41e94d3d98c00d0a2881..04bd2adb8857ecaeb4b454ec2ba8ca72331d5cc7 100644
+--- a/net/minecraft/world/level/levelgen/placement/HeightmapPlacement.java
++++ b/net/minecraft/world/level/levelgen/placement/HeightmapPlacement.java
+@@ -30,6 +30,18 @@ public class HeightmapPlacement extends PlacementModifier {
+         return height > context.getMinY() ? Stream.of(new BlockPos(x, height, z)) : Stream.of();
+     }
+ 
++    // Papo start - batch 176 (R35): single-emission-or-none twin
++    @Override
++    public void forEachPosition(PlacementContext context, RandomSource random, BlockPos pos, java.util.function.Consumer<BlockPos> emitter) {
++        int x = pos.getX();
++        int z = pos.getZ();
++        int height = context.getHeight(this.heightmap, x, z);
++        if (height > context.getMinY()) {
++            emitter.accept(new BlockPos(x, height, z));
++        }
++    }
++    // Papo end - batch 176 (R35)
++
+     @Override
+     public PlacementModifierType<?> type() {
+         return PlacementModifierType.HEIGHTMAP;
+diff --git a/net/minecraft/world/level/levelgen/placement/InSquarePlacement.java b/net/minecraft/world/level/levelgen/placement/InSquarePlacement.java
+index cd4bae645f4ee20f8d58e707784ca027b35ddae2..43dd87240f73389c859489bfb436e3bb5b868434 100644
+--- a/net/minecraft/world/level/levelgen/placement/InSquarePlacement.java
++++ b/net/minecraft/world/level/levelgen/placement/InSquarePlacement.java
+@@ -20,6 +20,15 @@ public class InSquarePlacement extends PlacementModifier {
+         return Stream.of(new BlockPos(i, pos.getY(), i1));
+     }
+ 
++    // Papo start - batch 176 (R35): single-emission twin, same random consumption
++    @Override
++    public void forEachPosition(PlacementContext context, RandomSource random, BlockPos pos, java.util.function.Consumer<BlockPos> emitter) {
++        int i = random.nextInt(16) + pos.getX();
++        int i1 = random.nextInt(16) + pos.getZ();
++        emitter.accept(new BlockPos(i, pos.getY(), i1));
++    }
++    // Papo end - batch 176 (R35)
++
+     @Override
+     public PlacementModifierType<?> type() {
+         return PlacementModifierType.IN_SQUARE;
+diff --git a/net/minecraft/world/level/levelgen/placement/PlacedFeature.java b/net/minecraft/world/level/levelgen/placement/PlacedFeature.java
+index a58d0245899fdb95a91c402f291311a30c40faf2..1eabb060828600270bad12e67a62c20317d9884b 100644
+--- a/net/minecraft/world/level/levelgen/placement/PlacedFeature.java
++++ b/net/minecraft/world/level/levelgen/placement/PlacedFeature.java
+@@ -42,16 +42,16 @@ public record PlacedFeature(Holder<ConfiguredFeature<?, ?>> feature, List<Placem
+         return this.placeWithContext(new PlacementContext(level, generator, Optional.of(this)), random, pos);
+     }
+ 
++    // Papo start - batch 176 (R35): drive placement through forEachPosition instead
++    // of a flatMap chain - the chain allocates stream machinery per position per
++    // modifier (Head/spliterator/pipeline stages; 236 visible census trips plus the
++    // hidden per-layer stages). The depth-first walk and the per-modifier random
++    // consumption sequence are identical to the sequential flatMap chain's lazy
++    // pull semantics; see PapoPlacementDriverEquivalenceTest.
+     private boolean placeWithContext(PlacementContext context, RandomSource source, BlockPos pos) {
+-        Stream<BlockPos> stream = Stream.of(pos);
+-
+-        for (PlacementModifier placementModifier : this.placement) {
+-            stream = stream.flatMap(blockPos -> placementModifier.getPositions(context, source, blockPos));
+-        }
+-
+         ConfiguredFeature<?, ?> configuredFeature = this.feature.value();
+         MutableBoolean mutableBoolean = new MutableBoolean();
+-        stream.forEach(blockPos -> {
++        this.papoWalkPositions(context, source, pos, blockPos -> {
+             if (configuredFeature.place(context.getLevel(), context.generator(), source, blockPos)) {
+                 mutableBoolean.setTrue();
+                 if (SharedConstants.DEBUG_FEATURE_COUNT) {
+@@ -62,6 +62,45 @@ public record PlacedFeature(Holder<ConfiguredFeature<?, ?>> feature, List<Placem
+         return mutableBoolean.isTrue();
+     }
+ 
++    @com.google.common.annotations.VisibleForTesting
++    void papoWalkPositions(PlacementContext context, RandomSource source, BlockPos pos, java.util.function.Consumer<BlockPos> leaf) {
++        PapoPlacementWalk walk = new PapoPlacementWalk(this, context, source, leaf);
++        walk.accept(pos);
++    }
++
++    // One walk object per placement call and zero allocation per emitted position.
++    // forEachPosition emits strictly sequentially, so depth bookkeeping on a single
++    // instance is safe; nested PlacedFeature placements run their own walk.
++    private static final class PapoPlacementWalk implements java.util.function.Consumer<BlockPos> {
++        private final PlacedFeature owner;
++        private final PlacementContext context;
++        private final RandomSource source;
++        private final java.util.function.Consumer<BlockPos> leaf;
++        private int depth;
++
++        PapoPlacementWalk(PlacedFeature owner, PlacementContext context, RandomSource source, java.util.function.Consumer<BlockPos> leaf) {
++            this.owner = owner;
++            this.context = context;
++            this.source = source;
++            this.leaf = leaf;
++        }
++
++        @Override
++        public void accept(BlockPos pos) {
++            if (this.depth == this.owner.placement.size()) {
++                this.leaf.accept(pos);
++            } else {
++                this.depth++;
++                try {
++                    this.owner.placement.get(this.depth - 1).forEachPosition(this.context, this.source, pos, this);
++                } finally {
++                    this.depth--;
++                }
++            }
++        }
++    }
++    // Papo end - batch 176 (R35)
++
+     public Stream<ConfiguredFeature<?, ?>> getFeatures() {
+         return this.feature.value().getFeatures();
+     }
+diff --git a/net/minecraft/world/level/levelgen/placement/PlacementFilter.java b/net/minecraft/world/level/levelgen/placement/PlacementFilter.java
+index c894f0f63c0c6f55f0c4ac1d84336138b0505109..71eb059e6ab5dca08e0d31ffebd41731160201f9 100644
+--- a/net/minecraft/world/level/levelgen/placement/PlacementFilter.java
++++ b/net/minecraft/world/level/levelgen/placement/PlacementFilter.java
+@@ -1,5 +1,6 @@
+ package net.minecraft.world.level.levelgen.placement;
+ 
++import java.util.function.Consumer;
+ import java.util.stream.Stream;
+ import net.minecraft.core.BlockPos;
+ import net.minecraft.util.RandomSource;
+@@ -10,5 +11,16 @@ public abstract class PlacementFilter extends PlacementModifier {
+         return this.shouldPlace(context, random, pos) ? Stream.of(pos) : Stream.of();
+     }
+ 
++    // Papo start - batch 176 (R35): emit-if twin - covers every filter subclass
++    // (Biome/BlockPredicate/Rarity/SurfaceRelativeThreshold/SurfaceWaterDepth) with
++    // zero allocation by reusing the input position.
++    @Override
++    public final void forEachPosition(PlacementContext context, RandomSource random, BlockPos pos, Consumer<BlockPos> emitter) {
++        if (this.shouldPlace(context, random, pos)) {
++            emitter.accept(pos);
++        }
++    }
++    // Papo end - batch 176 (R35)
++
+     protected abstract boolean shouldPlace(PlacementContext context, RandomSource random, BlockPos pos);
+ }
+diff --git a/net/minecraft/world/level/levelgen/placement/PlacementModifier.java b/net/minecraft/world/level/levelgen/placement/PlacementModifier.java
+index 39154c291bc3a4ec7a163f210aa6d4e53230d297..d070e86584ce24a6200778dfa0c553af641d2290 100644
+--- a/net/minecraft/world/level/levelgen/placement/PlacementModifier.java
++++ b/net/minecraft/world/level/levelgen/placement/PlacementModifier.java
+@@ -1,6 +1,7 @@
+ package net.minecraft.world.level.levelgen.placement;
+ 
+ import com.mojang.serialization.Codec;
++import java.util.function.Consumer;
+ import java.util.stream.Stream;
+ import net.minecraft.core.BlockPos;
+ import net.minecraft.core.registries.BuiltInRegistries;
+@@ -13,5 +14,19 @@ public abstract class PlacementModifier {
+ 
+     public abstract Stream<BlockPos> getPositions(PlacementContext context, RandomSource random, BlockPos pos);
+ 
++    // Papo start - batch 176 (R35): allocation-free traversal twin of getPositions.
++    // The only production caller (PlacedFeature.placeWithContext) drives placement
++    // through this method; vanilla modifiers override it with loops emitting the same
++    // positions in the same order while consuming randomness identically (randomness
++    // is always sampled before the first emission, mirroring how the stream forms
++    // build their pipelines eagerly inside getPositions - the driver relies on this
++    // when a multi-emission modifier sits mid-chain). The default keeps subclasses
++    // compiled against the old surface (plugins) working through getPositions.
++    // Implementations must emit strictly sequentially.
++    public void forEachPosition(PlacementContext context, RandomSource random, BlockPos pos, Consumer<BlockPos> emitter) {
++        this.getPositions(context, random, pos).forEach(emitter);
++    }
++    // Papo end - batch 176 (R35)
++
+     public abstract PlacementModifierType<?> type();
+ }
+diff --git a/net/minecraft/world/level/levelgen/placement/RandomOffsetPlacement.java b/net/minecraft/world/level/levelgen/placement/RandomOffsetPlacement.java
+index 0cb949acf53802cf64923e6ce56977a861a6892b..1f2c1aa19dd46ee56a2f7739dbd654ec09fa3787 100644
+--- a/net/minecraft/world/level/levelgen/placement/RandomOffsetPlacement.java
++++ b/net/minecraft/world/level/levelgen/placement/RandomOffsetPlacement.java
+@@ -44,6 +44,16 @@ public class RandomOffsetPlacement extends PlacementModifier {
+         return Stream.of(new BlockPos(i, i1, i2));
+     }
+ 
++    // Papo start - batch 176 (R35): single-emission twin, same spread sampling order
++    @Override
++    public void forEachPosition(PlacementContext context, RandomSource random, BlockPos pos, java.util.function.Consumer<BlockPos> emitter) {
++        int i = pos.getX() + this.xzSpread.sample(random);
++        int i1 = pos.getY() + this.ySpread.sample(random);
++        int i2 = pos.getZ() + this.xzSpread.sample(random);
++        emitter.accept(new BlockPos(i, i1, i2));
++    }
++    // Papo end - batch 176 (R35)
++
+     @Override
+     public PlacementModifierType<?> type() {
+         return PlacementModifierType.RANDOM_OFFSET;
+diff --git a/net/minecraft/world/level/levelgen/placement/RepeatingPlacement.java b/net/minecraft/world/level/levelgen/placement/RepeatingPlacement.java
+index 0098f5951611ebb8d518d1832cb4a8e69e98c2d8..0c97e05ed91d8eadb20349be34c9cf8f7d6e6de9 100644
+--- a/net/minecraft/world/level/levelgen/placement/RepeatingPlacement.java
++++ b/net/minecraft/world/level/levelgen/placement/RepeatingPlacement.java
+@@ -1,5 +1,6 @@
+ package net.minecraft.world.level.levelgen.placement;
+ 
++import java.util.function.Consumer;
+ import java.util.stream.IntStream;
+ import java.util.stream.Stream;
+ import net.minecraft.core.BlockPos;
+@@ -12,4 +13,16 @@ public abstract class RepeatingPlacement extends PlacementModifier {
+     public Stream<BlockPos> getPositions(PlacementContext context, RandomSource random, BlockPos pos) {
+         return IntStream.range(0, this.count(random, pos)).mapToObj(i -> pos);
+     }
++
++    // Papo start - batch 176 (R35): loop twin of IntStream.range(0, n).mapToObj(i -> pos)
++    // covering Count/NoiseBasedCount/NoiseThresholdCount - the count is sampled before
++    // the first emission, exactly like the stream form builds its range eagerly.
++    @Override
++    public void forEachPosition(PlacementContext context, RandomSource random, BlockPos pos, Consumer<BlockPos> emitter) {
++        final int count = this.count(random, pos);
++        for (int i = 0; i < count; i++) {
++            emitter.accept(pos);
++        }
++    }
++    // Papo end - batch 176 (R35)
+ }

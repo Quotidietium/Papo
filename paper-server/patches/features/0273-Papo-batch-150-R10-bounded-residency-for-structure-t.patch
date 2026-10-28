@@ -1,0 +1,582 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Sat, 10 Oct 2026 05:24:12 +0800
+Subject: [PATCH] Papo: batch 150 (R10) bounded residency for structure
+ templates - decouple pieces, sweep the manager cache. The 0.87.0 census
+ attributed the largest remaining unbounded non-content cluster to structure
+ templates: 495,771 StructureTemplate$StructureBlockInfo (11.9MB) + their
+ ~495k BlockPos (11.9MB) + list arrays ~= 26-28MB (3.4%) held by just 412
+ StructureTemplate instances cached forever in the single server-wide
+ StructureTemplateManager.structureRepository unbounded ConcurrentHashMap
+ (vanilla never evicts; onResourceManagerReload only clears on datapack
+ reload). The pinning audit found the hazard that made a plain bound
+ insufficient: TemplateStructurePiece held a strong 'protected
+ StructureTemplate template' field acquired via getOrCreate, and pieces live
+ inside StructureStarts held by RESIDENT CHUNKS - so manager eviction alone
+ would free almost nothing while generated chunks stay loaded. Fix is
+ two-sided. (1) Pieces no longer hold template instances:
+ TemplateStructurePiece keeps the manager + resolved Identifier and its
+ template() accessor lazily re-fetches via getOrCreate; the field was never
+ serialized (vanilla already persists the template NAME), so the disk format
+ is untouched; the five direct field uses in
+ ShipwreckPieces/OceanRuinPieces/NetherFossilPieces (all placement-time
+ getSize/getBoundingBox) now go through the accessor; postProcess fetches once
+ per pass so a single placement sees one instance. Templates are immutable
+ while being placed, so reload-on-miss reproduces identical content. (2)
+ structureRepository's runtime type is now PapoStructureCache (declared field
+ type stays Map - compiled plugin references keep their field descriptor):
+ idle eviction (120s TTL, sweep driven from MinecraftServer.tickServer every
+ 512 ticks because worldgen never touches the cache again after generation
+ finishes), protection for every entry that entered through put() (vanilla
+ getOrCreate calls get() first - the tryLoad path - and only puts when NO
+ source can load the id, so the protected set is exactly the possibly-unsaved
+ programmatic work: getOrCreate-created empties and every Bukkit
+ CraftStructureManager register/load-with-register), access stamping on every
+ read path (get, containsKey, computeIfAbsent, entrySet/values iteration) so
+ plugins polling the raw map - Bukkit getStructure/getStructures - keep
+ entries hot and their API semantics are byte-identical, and a 256-entry cap
+ on the evictable population that evicts oldest-stamped first for pathological
+ worlds. tryLoad-backed entries stay evictable because they are always
+ reloadable; Optional.empty negatives (unloadable ids) are evictable and their
+ reload just re-attempts the sources. Reload (datapack change) clears
+ everything including protection, matching vanilla clear() semantics.
+ Coverage: PapoStructureTemplateCacheTest 10 tests over an injected clock -
+ idle TTL eviction, put-protection surviving a 10,000s sweep, access-stamp
+ heat windows, clear-resets-protection, entrySet/get stamping (the Bukkit
+ parity contract), cap eviction ordering (300 evictable -> 256 + protected,
+ oldest first), reload-after-eviction transparency, exact Map contract (same
+ Optional instance through get/put/computeIfAbsent/remove), back-to-back sweep
+ idempotence.
+
+
+diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
+index 40793cec5e829d55402936bf29e31e53cf19240a..66194a7dd419bfe066b9148bebe6001360775039 100644
+--- a/net/minecraft/server/MinecraftServer.java
++++ b/net/minecraft/server/MinecraftServer.java
+@@ -1619,6 +1619,15 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+         }
+ 
+         this.ticksUntilAutosave--;
++        // Papo start - batch 150 (R10): periodic idle sweep of the structure template
++        // cache (see PapoStructureCache). Runs about every 25 seconds on the main
++        // thread; the sweep itself is O(number of cached templates) and no-ops
++        // while nothing is idle. Without a hook here the cache would never shrink
++        // after generation finishes, because worldgen does not touch it again.
++        if ((this.tickCount & 511) == 0) {
++            this.structureTemplateManager.papoMaintenanceTick();
++        }
++        // Papo end
+         // Paper start - Incremental chunk and player saving
+         final ProfilerFiller profiler = Profiler.get();
+         int playerSaveInterval = io.papermc.paper.configuration.GlobalConfiguration.get().playerAutoSave.rate;
+diff --git a/net/minecraft/world/level/levelgen/structure/TemplateStructurePiece.java b/net/minecraft/world/level/levelgen/structure/TemplateStructurePiece.java
+index 42e0780b262bc13a96aa6570aadade7f8c6fa7fd..170c0dfb81ef10199405544b6fe0876fe0323e6b 100644
+--- a/net/minecraft/world/level/levelgen/structure/TemplateStructurePiece.java
++++ b/net/minecraft/world/level/levelgen/structure/TemplateStructurePiece.java
+@@ -30,7 +30,16 @@ import org.slf4j.Logger;
+ public abstract class TemplateStructurePiece extends StructurePiece {
+     private static final Logger LOGGER = LogUtils.getLogger();
+     protected final String templateName;
+-    protected StructureTemplate template;
++    // Papo start - batch 150 (R10): pieces live inside StructureStarts held by
++    // resident chunks, so a held template instance pinned the whole block-info
++    // payload of every generated structure for the chunk's lifetime and defeated
++    // any cache bound. Pieces now keep only the manager + identifier and fetch
++    // the (immutable while placed) template at use time; the disk format is
++    // unchanged because vanilla already serializes the template NAME, never the
++    // instance.
++    protected final StructureTemplateManager structureTemplateManager;
++    private final Identifier papoTemplateLocation;
++    // Papo end
+     protected StructurePlaceSettings placeSettings;
+     protected BlockPos templatePosition;
+ 
+@@ -47,7 +56,8 @@ public abstract class TemplateStructurePiece extends StructurePiece {
+         this.setOrientation(Direction.NORTH);
+         this.templateName = templateName;
+         this.templatePosition = templatePosition;
+-        this.template = structureTemplateManager.getOrCreate(location);
++        this.structureTemplateManager = structureTemplateManager; // Papo - batch 150 (R10)
++        this.papoTemplateLocation = location; // Papo - batch 150 (R10)
+         this.placeSettings = placeSettings;
+     }
+ 
+@@ -62,9 +72,10 @@ public abstract class TemplateStructurePiece extends StructurePiece {
+         this.templateName = tag.getStringOr("Template", "");
+         this.templatePosition = new BlockPos(tag.getIntOr("TPX", 0), tag.getIntOr("TPY", 0), tag.getIntOr("TPZ", 0));
+         Identifier identifier = this.makeTemplateLocation();
+-        this.template = structureTemplateManager.getOrCreate(identifier);
++        this.structureTemplateManager = structureTemplateManager; // Papo - batch 150 (R10)
++        this.papoTemplateLocation = identifier; // Papo - batch 150 (R10)
+         this.placeSettings = placeSettingsFactory.apply(identifier);
+-        this.boundingBox = this.template.getBoundingBox(this.placeSettings, this.templatePosition);
++        this.boundingBox = structureTemplateManager.getOrCreate(identifier).getBoundingBox(this.placeSettings, this.templatePosition); // Papo - batch 150 (R10): transient fetch, no field
+     }
+ 
+     protected Identifier makeTemplateLocation() {
+@@ -83,10 +94,11 @@ public abstract class TemplateStructurePiece extends StructurePiece {
+     public void postProcess(
+         WorldGenLevel level, StructureManager structureManager, ChunkGenerator generator, RandomSource random, BoundingBox box, ChunkPos chunkPos, BlockPos pos
+     ) {
++        StructureTemplate structureTemplate = this.template(); // Papo - batch 150 (R10): fetch once per placement pass
+         this.placeSettings.setBoundingBox(box);
+-        this.boundingBox = this.template.getBoundingBox(this.placeSettings, this.templatePosition);
+-        if (this.template.placeInWorld(level, this.templatePosition, pos, this.placeSettings, random, Block.UPDATE_CLIENTS)) {
+-            for (StructureTemplate.StructureBlockInfo structureBlockInfo : this.template
++        this.boundingBox = structureTemplate.getBoundingBox(this.placeSettings, this.templatePosition);
++        if (structureTemplate.placeInWorld(level, this.templatePosition, pos, this.placeSettings, random, Block.UPDATE_CLIENTS)) {
++            for (StructureTemplate.StructureBlockInfo structureBlockInfo : structureTemplate
+                 .filterBlocks(this.templatePosition, this.placeSettings, Blocks.STRUCTURE_BLOCK)) {
+                 if (structureBlockInfo.nbt() != null) {
+                     StructureMode structureMode = structureBlockInfo.nbt().read("mode", StructureMode.LEGACY_CODEC).orElseThrow();
+@@ -96,7 +108,7 @@ public abstract class TemplateStructurePiece extends StructurePiece {
+                 }
+             }
+ 
+-            for (StructureTemplate.StructureBlockInfo structureBlockInfo1 : this.template
++            for (StructureTemplate.StructureBlockInfo structureBlockInfo1 : structureTemplate
+                 .filterBlocks(this.templatePosition, this.placeSettings, Blocks.JIGSAW)) {
+                 if (structureBlockInfo1.nbt() != null) {
+                     String stringOr = structureBlockInfo1.nbt().getStringOr("final_state", "minecraft:air");
+@@ -128,8 +140,12 @@ public abstract class TemplateStructurePiece extends StructurePiece {
+         return this.placeSettings.getRotation();
+     }
+ 
++    // Papo start - batch 150 (R10): lazy fetch - the manager's bounded cache keeps
++    // generation-time templates hot, and eviction is safe because templates are
++    // immutable while being placed (reload-on-miss reproduces identical content)
++    // Papo end
+     public StructureTemplate template() {
+-        return this.template;
++        return this.structureTemplateManager.getOrCreate(this.papoTemplateLocation);
+     }
+ 
+     public BlockPos templatePosition() {
+diff --git a/net/minecraft/world/level/levelgen/structure/structures/NetherFossilPieces.java b/net/minecraft/world/level/levelgen/structure/structures/NetherFossilPieces.java
+index cf2d24236f0bc1280a4bc82a4879a30f6b1f0d04..29e8404c34def766ec4133c82f36c173a55fde95 100644
+--- a/net/minecraft/world/level/levelgen/structure/structures/NetherFossilPieces.java
++++ b/net/minecraft/world/level/levelgen/structure/structures/NetherFossilPieces.java
+@@ -79,7 +79,7 @@ public class NetherFossilPieces {
+             ChunkPos chunkPos,
+             BlockPos pos
+         ) {
+-            BoundingBox boundingBox = this.template.getBoundingBox(this.placeSettings, this.templatePosition);
++            BoundingBox boundingBox = this.template().getBoundingBox(this.placeSettings, this.templatePosition); // Papo - batch 150 (R10): lazy template fetch
+             box.encapsulate(boundingBox);
+             super.postProcess(level, structureManager, generator, random, box, chunkPos, pos);
+             this.placeDriedGhast(level, random, boundingBox, box);
+diff --git a/net/minecraft/world/level/levelgen/structure/structures/OceanRuinPieces.java b/net/minecraft/world/level/levelgen/structure/structures/OceanRuinPieces.java
+index 16c44dcab73c62466a0b765289551bac5109affb..0ddc8e91080d83c52f5fd4b6baedbca106cd307b 100644
+--- a/net/minecraft/world/level/levelgen/structure/structures/OceanRuinPieces.java
++++ b/net/minecraft/world/level/levelgen/structure/structures/OceanRuinPieces.java
+@@ -351,7 +351,7 @@ public class OceanRuinPieces {
+             int height = level.getHeight(Heightmap.Types.OCEAN_FLOOR_WG, this.templatePosition.getX(), this.templatePosition.getZ());
+             this.templatePosition = new BlockPos(this.templatePosition.getX(), height, this.templatePosition.getZ());
+             BlockPos blockPos = StructureTemplate.transform(
+-                    new BlockPos(this.template.getSize().getX() - 1, 0, this.template.getSize().getZ() - 1),
++                    new BlockPos(this.template().getSize().getX() - 1, 0, this.template().getSize().getZ() - 1), // Papo - batch 150 (R10): lazy template fetch
+                     Mirror.NONE,
+                     this.placeSettings.getRotation(),
+                     BlockPos.ZERO
+diff --git a/net/minecraft/world/level/levelgen/structure/structures/RuinedPortalPiece.java b/net/minecraft/world/level/levelgen/structure/structures/RuinedPortalPiece.java
+index 10d69e25df6ed48d765fcfeaa52bd7fbc5afcd45..50eaf9a33f8cc8aebe2ddc805899066dec40edd1 100644
+--- a/net/minecraft/world/level/levelgen/structure/structures/RuinedPortalPiece.java
++++ b/net/minecraft/world/level/levelgen/structure/structures/RuinedPortalPiece.java
+@@ -143,7 +143,7 @@ public class RuinedPortalPiece extends TemplateStructurePiece {
+     public void postProcess(
+         WorldGenLevel level, StructureManager structureManager, ChunkGenerator generator, RandomSource random, BoundingBox box, ChunkPos chunkPos, BlockPos pos
+     ) {
+-        BoundingBox boundingBox = this.template.getBoundingBox(this.placeSettings, this.templatePosition);
++        BoundingBox boundingBox = this.template().getBoundingBox(this.placeSettings, this.templatePosition); // Papo - batch 150 (R10): lazy template fetch
+         if (box.isInside(boundingBox.getCenter())) {
+             box.encapsulate(boundingBox);
+             super.postProcess(level, structureManager, generator, random, box, chunkPos, pos);
+diff --git a/net/minecraft/world/level/levelgen/structure/structures/ShipwreckPieces.java b/net/minecraft/world/level/levelgen/structure/structures/ShipwreckPieces.java
+index 59857087523e8e50d11d2c0af7236af721dfe569..7c2b1ae23078f609726e3798f92e7093cfba8c4a 100644
+--- a/net/minecraft/world/level/levelgen/structure/structures/ShipwreckPieces.java
++++ b/net/minecraft/world/level/levelgen/structure/structures/ShipwreckPieces.java
+@@ -148,7 +148,7 @@ public class ShipwreckPieces {
+             } else {
+                 int i = level.getMaxY() + 1;
+                 int i1 = 0;
+-                Vec3i size = this.template.getSize();
++                Vec3i size = this.template().getSize(); // Papo - batch 150 (R10): lazy template fetch
+                 Heightmap.Types types = this.isBeached ? Heightmap.Types.WORLD_SURFACE_WG : Heightmap.Types.OCEAN_FLOOR_WG;
+                 int i2 = size.getX() * size.getZ();
+                 if (i2 == 0) {
+@@ -171,12 +171,12 @@ public class ShipwreckPieces {
+         }
+ 
+         public boolean isTooBigToFitInWorldGenRegion() {
+-            Vec3i size = this.template.getSize();
++            Vec3i size = this.template().getSize(); // Papo - batch 150 (R10): lazy template fetch
+             return size.getX() > 32 || size.getY() > 32;
+         }
+ 
+         public int calculateBeachedPosition(int maxHeight, RandomSource random) {
+-            return maxHeight - this.template.getSize().getY() / 2 - random.nextInt(3);
++            return maxHeight - this.template().getSize().getY() / 2 - random.nextInt(3); // Papo - batch 150 (R10): lazy template fetch
+         }
+ 
+         public void adjustPositionHeight(int height) {
+diff --git a/net/minecraft/world/level/levelgen/structure/templatesystem/PapoStructureCache.java b/net/minecraft/world/level/levelgen/structure/templatesystem/PapoStructureCache.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..9b18169088e8f21e7858f7c58bbe4f0d4ab90aa5
+--- /dev/null
++++ b/net/minecraft/world/level/levelgen/structure/templatesystem/PapoStructureCache.java
+@@ -0,0 +1,311 @@
++package net.minecraft.world.level.levelgen.structure.templatesystem;
++
++import java.util.AbstractMap;
++import java.util.ArrayList;
++import java.util.Collection;
++import java.util.Iterator;
++import java.util.List;
++import java.util.Map;
++import java.util.Optional;
++import java.util.Set;
++import java.util.concurrent.ConcurrentHashMap;
++import java.util.concurrent.TimeUnit;
++import java.util.function.Function;
++import java.util.function.LongSupplier;
++import net.minecraft.resources.Identifier;
++
++// Papo start - batch 150 (R10): bounded residency for the structure template cache.
++// Vanilla keeps every template ever loaded in an unbounded concurrent map for the
++// lifetime of the server; a post-generation heap shows hundreds of templates
++// (block-info lists + block positions, tens of MB) resident long after the last
++// structure finished generating. This replacement keeps the exact Map contract
++// (the declared field type in StructureTemplateManager stays Map for plugin binary
++// compatibility) but adds:
++//   * idle eviction - entries not read for 120 seconds are dropped and reloaded
++//     from their source on the next access (structure templates are immutable
++//     while placed, so reload-on-miss is behaviour-preserving);
++//   * protection   - every entry that enters the map through put() (vanilla
++//     getOrCreate's create-path for ids no source can load, and every Bukkit
++//     CraftStructureManager register/load-with-register call) is protected from
++//     eviction: those templates may be unsaved programmatic work whose loss
++//     would change observable behaviour. tryLoad-backed entries (the worldgen
++//     hot path) stay evictable because they are always reloadable;
++//   * access stamping on every read path (get, containsKey, computeIfAbsent,
++//     entrySet/values iteration) so plugins polling the raw map keep their
++//     entries hot and Bukkit getStructure/getStructures semantics are unchanged;
++//   * a hard cap on the evictable population for pathological worlds.
++// StructureTemplateManager.papoMaintenanceTick drives papoSweepIfDue from the
++// server tick; TemplateStructurePiece no longer holds template instances (it
++// re-fetches by identifier), so resident structure starts cannot pin templates.
++// Papo end
++public final class PapoStructureCache extends ConcurrentHashMap<Identifier, Optional<StructureTemplate>> {
++    // Papo start - batch 150 (R10): tuning constants - see class comment
++    static final long PAPO_IDLE_TTL_NANOS = TimeUnit.SECONDS.toNanos(120L);
++    static final long PAPO_SWEEP_INTERVAL_NANOS = TimeUnit.SECONDS.toNanos(25L);
++    static final int PAPO_MAX_EVICTABLE = 256;
++    // Papo end
++
++    private final transient ConcurrentHashMap<Identifier, Long> papoLastAccess = new ConcurrentHashMap<>();
++    private final transient Set<Identifier> papoProtected = ConcurrentHashMap.newKeySet();
++    private final transient LongSupplier papoClock;
++    private transient volatile long papoLastSweepNanos;
++
++    public PapoStructureCache() {
++        this(System::nanoTime);
++    }
++
++    public PapoStructureCache(LongSupplier clock) {
++        this.papoClock = clock;
++    }
++
++    // Papo start - batch 150 (R10): stamping + protection plumbing
++    private void papoTouch(Identifier key) {
++        this.papoLastAccess.put(key, this.papoClock.getAsLong());
++    }
++
++    @Override
++    public Optional<StructureTemplate> get(Object key) {
++        Optional<StructureTemplate> value = super.get(key);
++        if (value != null && key instanceof Identifier identifier) {
++            this.papoTouch(identifier);
++        }
++
++        return value;
++    }
++
++    @Override
++    public boolean containsKey(Object key) {
++        boolean present = super.containsKey(key);
++        if (present && key instanceof Identifier identifier) {
++            this.papoTouch(identifier);
++        }
++
++        return present;
++    }
++
++    @Override
++    public Optional<StructureTemplate> computeIfAbsent(Identifier key, Function<? super Identifier, ? extends Optional<StructureTemplate>> mappingFunction) {
++        Optional<StructureTemplate> value = super.computeIfAbsent(key, mappingFunction);
++        this.papoTouch(key);
++        return value;
++    }
++
++    @Override
++    public Optional<StructureTemplate> put(Identifier key, Optional<StructureTemplate> value) {
++        Optional<StructureTemplate> previous = super.put(key, value);
++        this.papoProtected.add(key);
++        this.papoTouch(key);
++        return previous;
++    }
++
++    @Override
++    public Optional<StructureTemplate> putIfAbsent(Identifier key, Optional<StructureTemplate> value) {
++        Optional<StructureTemplate> previous = super.putIfAbsent(key, value);
++        this.papoProtected.add(key);
++        this.papoTouch(key);
++        return previous;
++    }
++
++    @Override
++    public Optional<StructureTemplate> remove(Object key) {
++        Optional<StructureTemplate> previous = super.remove(key);
++        if (previous != null && key instanceof Identifier identifier) {
++            this.papoProtected.remove(identifier);
++            this.papoLastAccess.remove(identifier);
++        }
++
++        return previous;
++    }
++
++    @Override
++    public void clear() {
++        super.clear();
++        this.papoProtected.clear();
++        this.papoLastAccess.clear();
++    }
++    // Papo end
++
++    // Papo start - batch 150 (R10): stamping collection views. keySet() is NOT
++    // overridden (ConcurrentHashMap declares a covariant KeySetView return type,
++    // and no in-repo caller iterates keys without also calling get); entrySet()
++    // and values() are what CraftStructureManager.getStructures() walks, so
++    // iterating them keeps entries hot.
++    @Override
++    public Set<Map.Entry<Identifier, Optional<StructureTemplate>>> entrySet() {
++        return new PapoStampingSet<>(super.entrySet());
++    }
++
++    @Override
++    public Collection<Optional<StructureTemplate>> values() {
++        return new PapoStampingCollection<>(super.values());
++    }
++
++    private final class PapoStampingIterator<T> implements Iterator<T> {
++        private final Iterator<T> papoDelegate;
++
++        PapoStampingIterator(Iterator<T> delegate) {
++            this.papoDelegate = delegate;
++        }
++
++        @Override
++        public boolean hasNext() {
++            return this.papoDelegate.hasNext();
++        }
++
++        @Override
++        public T next() {
++            T next = this.papoDelegate.next();
++            PapoStructureCache.this.papoTouchDelegate(next);
++            return next;
++        }
++    }
++
++    private void papoTouchDelegate(Object element) {
++        if (element instanceof Map.Entry<?, ?> entry && entry.getKey() instanceof Identifier identifier) {
++            this.papoTouch(identifier);
++        }
++    }
++    // Papo end
++
++    // Papo start - batch 150 (R10): sweep. Called from the server main thread via
++    // StructureTemplateManager.papoMaintenanceTick; safe concurrently (all state
++    // is concurrent-map backed and removal is a plain remove - if an entry is
++    // re-inserted between inspection and removal the next access simply reloads).
++    void papoSweepIfDue() {
++        long now = this.papoClock.getAsLong();
++        if (now - this.papoLastSweepNanos < PAPO_SWEEP_INTERVAL_NANOS) {
++            return;
++        }
++
++        this.papoLastSweepNanos = now;
++        this.papoSweep(now);
++    }
++
++    void papoSweep(long now) {
++        List<Identifier> idle = null;
++        int unprotected = 0;
++
++        for (Map.Entry<Identifier, Optional<StructureTemplate>> entry : PapoStructureCache.super.entrySet()) {
++            Identifier key = entry.getKey();
++            if (this.papoProtected.contains(key)) {
++                continue;
++            }
++
++            unprotected++;
++            Long stamp = this.papoLastAccess.get(key);
++            if (stamp == null || now - stamp >= PAPO_IDLE_TTL_NANOS) {
++                if (idle == null) {
++                    idle = new ArrayList<>();
++                }
++
++                idle.add(key);
++            }
++        }
++
++        if (idle != null) {
++            for (Identifier key : idle) {
++                this.remove(key);
++            }
++        }
++
++        int surviving = unprotected - (idle == null ? 0 : idle.size());
++        if (surviving > PAPO_MAX_EVICTABLE) {
++            List<Map.Entry<Identifier, Long>> stamps = new ArrayList<>(surviving);
++
++            for (Map.Entry<Identifier, Optional<StructureTemplate>> entry : PapoStructureCache.super.entrySet()) {
++                if (!this.papoProtected.contains(entry.getKey())) {
++                    stamps.add(new AbstractMap.SimpleImmutableEntry<>(entry.getKey(), this.papoLastAccess.getOrDefault(entry.getKey(), Long.MIN_VALUE)));
++                }
++            }
++
++            stamps.sort(Map.Entry.comparingByValue());
++            int excess = stamps.size() - PAPO_MAX_EVICTABLE;
++
++            for (int i = 0; i < excess; i++) {
++                this.remove(stamps.get(i).getKey());
++            }
++        }
++    }
++    // Papo end
++
++    // Papo start - batch 150 (R10): view wrappers whose iterators stamp visited keys
++    private final class PapoStampingSet<E> extends PapoStampingCollection<E> implements Set<E> {
++        PapoStampingSet(Set<E> delegate) {
++            super(delegate);
++        }
++    }
++
++    private class PapoStampingCollection<E> implements Collection<E> {
++        private final Collection<E> papoDelegate;
++
++        PapoStampingCollection(Collection<E> delegate) {
++            this.papoDelegate = delegate;
++        }
++
++        @Override
++        public int size() {
++            return this.papoDelegate.size();
++        }
++
++        @Override
++        public boolean isEmpty() {
++            return this.papoDelegate.isEmpty();
++        }
++
++        @Override
++        public boolean contains(Object o) {
++            return this.papoDelegate.contains(o);
++        }
++
++        @Override
++        public Iterator<E> iterator() {
++            return new PapoStampingIterator<>(this.papoDelegate.iterator());
++        }
++
++        @Override
++        public Object[] toArray() {
++            return this.papoDelegate.toArray();
++        }
++
++        @Override
++        public <T> T[] toArray(T[] a) {
++            return this.papoDelegate.toArray(a);
++        }
++
++        @Override
++        public boolean add(E e) {
++            return this.papoDelegate.add(e);
++        }
++
++        @Override
++        public boolean remove(Object o) {
++            return this.papoDelegate.remove(o);
++        }
++
++        @Override
++        public boolean containsAll(Collection<?> c) {
++            return this.papoDelegate.containsAll(c);
++        }
++
++        @Override
++        public boolean addAll(Collection<? extends E> c) {
++            return this.papoDelegate.addAll(c);
++        }
++
++        @Override
++        public boolean removeAll(Collection<?> c) {
++            return this.papoDelegate.removeAll(c);
++        }
++
++        @Override
++        public boolean retainAll(Collection<?> c) {
++            return this.papoDelegate.retainAll(c);
++        }
++
++        @Override
++        public void clear() {
++            this.papoDelegate.clear();
++        }
++    }
++    // Papo end
++}
+diff --git a/net/minecraft/world/level/levelgen/structure/templatesystem/StructureTemplateManager.java b/net/minecraft/world/level/levelgen/structure/templatesystem/StructureTemplateManager.java
+index c92a2e2a87dc58c9378a12d4d2e46e212889feb2..36c98c6f1cd1127eb55a5a299b6ad8ebc17e8632 100644
+--- a/net/minecraft/world/level/levelgen/structure/templatesystem/StructureTemplateManager.java
++++ b/net/minecraft/world/level/levelgen/structure/templatesystem/StructureTemplateManager.java
+@@ -1,7 +1,6 @@
+ package net.minecraft.world.level.levelgen.structure.templatesystem;
+ 
+ import com.google.common.collect.ImmutableList;
+-import com.google.common.collect.Maps;
+ import com.google.common.collect.ImmutableList.Builder;
+ import com.mojang.brigadier.exceptions.CommandSyntaxException;
+ import com.mojang.datafixers.DataFixer;
+@@ -55,7 +54,14 @@ public class StructureTemplateManager {
+     private static final String STRUCTURE_GENERATED_DIRECTORY_NAME = "structures";
+     private static final String STRUCTURE_FILE_EXTENSION = ".nbt";
+     private static final String STRUCTURE_TEXT_FILE_EXTENSION = ".snbt";
+-    public final Map<Identifier, Optional<StructureTemplate>> structureRepository = Maps.newConcurrentMap();
++    // Papo start - batch 150 (R10): vanilla kept every loaded template forever in an
++    // unbounded concurrent map (post-generation heaps carry hundreds of templates,
++    // tens of MB, with no worldgen activity left touching them). Runtime type is the
++    // bounded PapoStructureCache; the declared type stays Map for plugin binary
++    // compatibility, and Map-API behaviour is unchanged (Bukkit reads register,
++    // registerStructure etc. keep vanilla semantics - see PapoStructureCache).
++    // Papo end
++    public final Map<Identifier, Optional<StructureTemplate>> structureRepository = new PapoStructureCache();
+     private final DataFixer fixerUpper;
+     private ResourceManager resourceManager;
+     private final Path generatedDir;
+@@ -95,6 +101,15 @@ public class StructureTemplateManager {
+         return this.structureRepository.computeIfAbsent(id, this::tryLoad);
+     }
+ 
++    // Papo start - batch 150 (R10): the template repository is a bounded residency
++    // cache (idle-TTL sweep + protection for programmatically created templates,
++    // see PapoStructureCache). The declared field type stays Map so compiled
++    // references keep their field descriptor. Driven from the server tick.
++    public void papoMaintenanceTick() {
++        ((PapoStructureCache)this.structureRepository).papoSweepIfDue();
++    }
++    // Papo end
++
+     public Stream<Identifier> listTemplates() {
+         return this.sources.stream().flatMap(source -> source.lister().get()).distinct();
+     }

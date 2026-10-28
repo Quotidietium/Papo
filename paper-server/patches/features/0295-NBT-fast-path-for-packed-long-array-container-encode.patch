@@ -1,0 +1,37 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Mon, 12 Oct 2026 05:11:32 +0800
+Subject: [PATCH] NBT fast path for packed long-array container encode
+
+NbtOps.createLongList(stream) is exactly new LongArrayTag(stream.toArray())
+and Arrays.stream(long[]).toArray() is a content-identical clone - so when
+the encode ops is the NbtOps singleton (private ctor, strict singleton, so
+identity is exact) route directly to a cloned LongArrayTag. Same tag, fresh
+backing array, same wire bytes, minus the spliterator/node-builder
+machinery per saved hash-paletted container (chunk autosave: every
+non-single-value block-state or biome section pays this once). Wrapper
+ops (RegistryFileOps etc.) fall through to the generic path unchanged.
+
+diff --git a/net/minecraft/world/level/chunk/PalettedContainer.java b/net/minecraft/world/level/chunk/PalettedContainer.java
+index 4b94d450fccfd014e0d46dec2050b57a07ed26f7..97d962c56d2b4a1f94c902504bef290aa8bc7ff7 100644
+--- a/net/minecraft/world/level/chunk/PalettedContainer.java
++++ b/net/minecraft/world/level/chunk/PalettedContainer.java
+@@ -85,6 +85,18 @@ public class PalettedContainer<T> implements PaletteResize<T>, PalettedContainer
+ 
+         @Override
+         public <D> DataResult<D> encode(final long[] input, final com.mojang.serialization.DynamicOps<D> ops, final D prefix) {
++            // Papo start - batch 183 (R42): NbtOps fast path skips the LongStream round-trip.
++            // NbtOps.createLongList(stream) is exactly new LongArrayTag(stream.toArray()), and
++            // Arrays.stream(input).toArray() is a content-identical clone of input - so routing
++            // the NBT singleton directly to a cloned LongArrayTag yields the same tag (fresh
++            // backing array, same wire bytes) without the spliterator/node-builder machinery
++            // per saved hash-paletted container. NbtOps has a private constructor (strict
++            // singleton), so identity is exact; wrapper ops (e.g. RegistryFileOps) take the
++            // generic path below and keep vanilla behavior byte-for-byte.
++            if (ops == net.minecraft.nbt.NbtOps.INSTANCE) {
++                return DataResult.success((D) new net.minecraft.nbt.LongArrayTag(input.clone()));
++            }
++            // Papo end - batch 183 (R42)
+             return DataResult.success(ops.createLongList(java.util.Arrays.stream(input))); // createLongList returns the value directly in this DFU
+         }
+     };

@@ -1,14 +1,9 @@
-# Security Policy
+# 安全
 
-## Supported Versions
+本仓库是个人维护的 Paper fork，无官方安全响应流程。
 
-We generally only fully support the latest version, the same applies to exploits such as server crashes and item
-duplication bugs. In the transition period during larger Minecraft updates, we may still backport important fixes to the
-last minor or major release.
-
-## Reporting a Vulnerability
-
-For any issues that are NOT duplication bugs, server/client crashes, or otherwise serious exploits, please open an issue
-through the [Issues tab](https://github.com/PaperMC/Paper/issues).
-For exploits, please [join our Discord](https://discord.gg/papermc) and see the [#paper-exploit-report channel](https://discord.com/channels/289587909051416579/1208749386348101682) for
-further instructions.
+- **Papo 自有改动**（`paper-server/patches/features/`、`note/` 记录的优化）的安全问题：
+  直接在 [本仓库 issues](https://github.com/Quotidietium/Papo/issues) 报告。
+- **上游 Paper / Minecraft 本体**的漏洞：请走
+  [PaperMC 官方报告渠道](https://github.com/PaperMC/Paper/security)，不要在本仓库报告。
+- 上游安全公告会随 `upstream`（PaperMC/Paper）同步节奏由维护者自行评估回移。

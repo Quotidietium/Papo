@@ -1,0 +1,448 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Tue, 27 Oct 2026 00:10:04 +0800
+Subject: [PATCH] compat: pipeline-purity guard and content-verified memos for
+ shared packets
+
+Shared packet instances (chunk sends, join caches, pairing sweeps) and wire memos are now only served to connections whose netty pipeline contains exactly the vanilla-installed handlers (PapoPipelineGuard, fail-closed); the compression memo additionally verifies a content hash of the current connection's bytes before replaying; player-info packets never memo (per-receiver-locale displayName codec).
+
+diff --git a/net/minecraft/network/CompressionEncoder.java b/net/minecraft/network/CompressionEncoder.java
+index 34082c285d418d0e959ad47d555700c18080dadf..7aabd3a53adcb15a26741775cd4d531a38000926 100644
+--- a/net/minecraft/network/CompressionEncoder.java
++++ b/net/minecraft/network/CompressionEncoder.java
+@@ -77,7 +77,14 @@ public class CompressionEncoder extends MessageToByteEncoder<ByteBuf> {
+             // this exact packet instance; the segment [data-length varint][compressed payload] is
+             // self-describing and byte-identical to what the deflate below produces for the same
+             // input, so replaying it skips the dominant per-viewer cost of multi-viewer chunk sends.
+-            final byte[] papoCachedSegment = papoMemo != null ? papoMemo.papoSegmentFor(this.threshold) : null;
++            // Content-verified: the memo only replays when the CURRENT connection's uncompressed
++            // bytes hash to the same value the segment was filled from - a packet-editing plugin
++            // rewriting the shared instance between viewers fails the check and this connection
++            // compresses its own (plugin-modified) bytes instead, exactly like vanilla. The hash is
++            // computed once here, before deflate can touch the buffer's indexes, and reused for the
++            // fill below.
++            final long papoInputHash = papoMemo != null ? PapoSharedWireMemo.papoHashBytes(in) : 0L;
++            final byte[] papoCachedSegment = papoMemo != null ? papoMemo.papoSegmentFor(this.threshold, i, papoInputHash) : null;
+             if (papoCachedSegment != null) {
+                 final ByteBuf out = com.velocitypowered.natives.util.MoreByteBufUtils.preferredBuffer(
+                     ctx.alloc(), this.compressor, PapoOutboundFraming.HEADROOM + papoCachedSegment.length);
+@@ -104,11 +111,13 @@ public class CompressionEncoder extends MessageToByteEncoder<ByteBuf> {
+                 }
+                 // Papo start - shared wire-compression memo fill: snapshot the freshly compressed
+                 // segment for this packet instance so later connections replay it instead of
+-                // re-deflating identical bytes. First writer for a (threshold, level epoch) stamp wins.
++                // re-deflating identical bytes. First writer for a (threshold, level epoch,
++                // input identity) stamp wins; the pre-deflate input hash above makes the replay
++                // content-verified.
+                 if (papoMemo != null) {
+                     byte[] papoSegment = new byte[out.writerIndex() - PapoOutboundFraming.HEADROOM];
+                     out.getBytes(PapoOutboundFraming.HEADROOM, papoSegment);
+-                    papoMemo.papoStore(this.threshold, papoSegment);
++                    papoMemo.papoStore(this.threshold, i, papoInputHash, papoSegment);
+                 }
+                 // Papo end - shared wire-compression memo fill
+             } catch (Exception e) {
+diff --git a/net/minecraft/network/PacketEncoder.java b/net/minecraft/network/PacketEncoder.java
+index 2118d08376a2d2dd5bd9288ec63c9190a22f164f..923a528cd39baef88508fd9d92e139f57103aaa3 100644
+--- a/net/minecraft/network/PacketEncoder.java
++++ b/net/minecraft/network/PacketEncoder.java
+@@ -64,7 +64,13 @@ public class PacketEncoder<T extends PacketListener> extends MessageToByteEncode
+             // snapshot is taken from this very buffer right after the first codec encode, so hit
+             // and miss paths produce byte-identical output; the PacketTooLarge check below reads
+             // readableBytes() which is identical either way.
+-            if (packet instanceof PapoSharedWireMemo.Carrier papoCarrier && papoCarrier.papoWireMemo() != null) {
++            // Plugin-compat guard: memo replay/store and the wire-memo arming below are disabled
++            // on connections whose pipeline carries any non-vanilla handler (ProtocolLib /
++            // PacketEvents rewrite packets per connection; replaying shared bytes would revert
++            // their edits or leak one viewer's edits to another). Fail closed - see
++            // PapoPipelineGuard.
++            final boolean papoMemoAllowed = PapoPipelineGuard.papoPurePipeline(channelHandlerContext.pipeline());
++            if (papoMemoAllowed && packet instanceof PapoSharedWireMemo.Carrier papoCarrier && papoCarrier.papoWireMemo() != null) {
+                 PapoSharedWireMemo papoMemo = papoCarrier.papoWireMemo();
+                 byte[] papoCachedEncode = papoMemo.papoEncoded();
+                 if (papoCachedEncode != null) {
+@@ -90,7 +96,8 @@ public class PacketEncoder<T extends PacketListener> extends MessageToByteEncode
+                 // Papo - shared wire-compression memo: publish alongside the headroom marker (same
+                 // write traversal, consumed by CompressionEncoder only when the buffer identity
+                 // matches; armed exclusively on shared multi-viewer packets, null otherwise).
+-                if (packet instanceof PapoSharedWireMemo.Carrier papoCarrier) {
++                // Guarded by the same pipeline-purity check (see PapoPipelineGuard).
++                if (papoMemoAllowed && packet instanceof PapoSharedWireMemo.Carrier papoCarrier) {
+                     PapoSharedWireMemo papoMemo = papoCarrier.papoWireMemo();
+                     if (papoMemo != null) {
+                         channelHandlerContext.channel().attr(PapoSharedWireMemo.ATTR).set(papoMemo);
+diff --git a/net/minecraft/network/PapoPipelineGuard.java b/net/minecraft/network/PapoPipelineGuard.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..3bee3a7aa70f615c958f99c568d91011935a9134
+--- /dev/null
++++ b/net/minecraft/network/PapoPipelineGuard.java
+@@ -0,0 +1,69 @@
++package net.minecraft.network;
++
++import io.netty.channel.ChannelHandler;
++import io.netty.channel.ChannelPipeline;
++import java.util.Map;
++import java.util.Set;
++
++// Papo start - plugin-compatibility guard for shared packet instances and wire memos.
++//
++// Papo's chunk-send sharing (0241/0242), join-packet caches (0226/0245), pairing-packet sharing
++// (0248) and the encode/compression memos assume the packet bytes that leave the server are
++// exactly what this server encoded. Packet-editing plugins (ProtocolLib / PacketEvents and
++// everything built on them) intercept the outbound netty pipeline and rewrite packets per
++// connection - for a SHARED packet instance or a replayed memo that means cross-viewer
++// corruption or silently reverted edits.
++//
++// This guard makes every share/memo site fail closed: the optimization is only used on
++// connections whose pipeline is EXACTLY the set of handlers the vanilla server installs.
++// Any extra handler - a plugin injector, or any future unknown addition - disables
++// sharing/memoing for that connection and it falls back to vanilla per-connection behavior.
++// Handlers are matched by exact runtime class (subclassing a vanilla handler yields a
++// different class name and correctly counts as foreign); the anonymous "hackfix" adapter is
++// matched by its Connection$N synthetic name prefix.
++public final class PapoPipelineGuard {
++
++    private static final Set<String> VANILLA_HANDLER_CLASSES = Set.of(
++        "io.netty.handler.timeout.ReadTimeoutHandler",          // "timeout"
++        "net.minecraft.network.Varint21FrameDecoder",           // "splitter"
++        "net.minecraft.network.LocalFrameDecoder",              // "splitter" (in-memory pipeline)
++        "net.minecraft.network.MonitoredLocalFrameDecoder",     // "splitter" (in-memory + monitor)
++        "io.netty.handler.flow.FlowControlHandler",             // unnamed
++        "net.minecraft.network.PacketDecoder",                  // "decoder"
++        "net.minecraft.network.UnconfiguredPipelineHandler$Inbound",  // "inbound_config"
++        "net.minecraft.network.Varint21LengthFieldPrepender",   // "prepender"
++        "net.minecraft.network.LocalFrameEncoder",              // "prepender" (in-memory pipeline)
++        "net.minecraft.network.PacketEncoder",                  // "encoder"
++        "net.minecraft.network.UnconfiguredPipelineHandler$Outbound", // "outbound_config"
++        "net.minecraft.network.Connection",                     // "packet_handler"
++        "net.minecraft.network.CipherEncoder",                  // "encrypt"
++        "net.minecraft.network.CipherDecoder",                  // "decrypt"
++        "net.minecraft.network.CompressionEncoder",             // "compress"
++        "net.minecraft.network.CompressionDecoder",             // "decompress"
++        "net.minecraft.network.PacketBundlePacker",             // "bundler"
++        "net.minecraft.network.PacketBundleUnpacker"            // "unbundler"
++    );
++
++    private static final String CONNECTION_ANONYMOUS_PREFIX = "net.minecraft.network.Connection$"; // "hackfix"
++
++    private PapoPipelineGuard() {
++    }
++
++    /**
++     * True when the pipeline contains only handlers the vanilla server itself installed.
++     * Fail-closed: any unknown handler class (plugin injector, monitor, future addition)
++     * yields false, which disables packet-instance sharing and wire memos for the connection.
++     */
++    public static boolean papoPurePipeline(final ChannelPipeline pipeline) {
++        for (final Map.Entry<String, ChannelHandler> entry : pipeline) {
++            final String className = entry.getValue().getClass().getName();
++            if (!VANILLA_HANDLER_CLASSES.contains(className)
++                && !(className.startsWith(CONNECTION_ANONYMOUS_PREFIX)
++                    && entry.getValue() instanceof io.netty.channel.ChannelOutboundHandlerAdapter)) {
++                return false;
++            }
++        }
++        return true;
++    }
++}
++// Papo end
+diff --git a/net/minecraft/network/PapoSharedWireMemo.java b/net/minecraft/network/PapoSharedWireMemo.java
+index 64f5257a5fa3be9c1f2f7e9d82e29e314f669d1e..876c7fd47eae1c3ce3c49406c43dd45549f0cb33 100644
+--- a/net/minecraft/network/PapoSharedWireMemo.java
++++ b/net/minecraft/network/PapoSharedWireMemo.java
+@@ -43,6 +43,8 @@ public final class PapoSharedWireMemo {
+ 
+     private volatile int papoThreshold = -1;
+     private volatile long papoLevelEpoch;
++    private volatile int papoInputLength = -1;
++    private volatile long papoInputHash;
+     private volatile byte @Nullable [] papoSegment;
+ 
+     private PapoSharedWireMemo() {
+@@ -69,24 +71,51 @@ public final class PapoSharedWireMemo {
+         return PAPO_LEVEL_EPOCH.get();
+     }
+ 
+-    /** Returns the memo'd segment when it was produced for the given threshold and current level epoch. */
+-    public byte @Nullable [] papoSegmentFor(int threshold) {
+-        if (this.papoThreshold != threshold || this.papoLevelEpoch != papoLevelEpoch()) {
++    /**
++     * Returns the memo'd segment when it was produced for the given threshold, current level epoch,
++     * and - critically - the given UNCOMPRESSED input identity (length + content hash). The memo is
++     * keyed on the packet instance, not its content: if anything mutated the packet between the
++     * fill and this replay (a packet-editing plugin rewriting a shared instance per viewer), the
++     * encoded bytes differ and the hash check fails the replay - the connection then compresses its
++     * own (correct) bytes. This is what makes replay content-verified instead of identity-trusted.
++     */
++    public byte @Nullable [] papoSegmentFor(int threshold, int inputLength, long inputHash) {
++        if (this.papoThreshold != threshold || this.papoLevelEpoch != papoLevelEpoch()
++            || this.papoInputLength != inputLength || this.papoInputHash != inputHash) {
+             return null;
+         }
+         return this.papoSegment;
+     }
+ 
+-    /** Stores the segment produced for the given threshold; first writer for a stamp wins. */
+-    public void papoStore(int threshold, byte[] segment) {
++    /** Stores the segment produced for the given threshold and uncompressed input identity; first writer for a stamp wins. */
++    public void papoStore(int threshold, int inputLength, long inputHash, byte[] segment) {
+         long epoch = papoLevelEpoch();
+-        if (this.papoSegment == null || this.papoThreshold != threshold || this.papoLevelEpoch != epoch) {
++        if (this.papoSegment == null || this.papoThreshold != threshold || this.papoLevelEpoch != epoch
++            || this.papoInputLength != inputLength || this.papoInputHash != inputHash) {
+             this.papoThreshold = threshold;
+             this.papoLevelEpoch = epoch;
++            this.papoInputLength = inputLength;
++            this.papoInputHash = inputHash;
+             this.papoSegment = segment; // volatile store publishes the stamp + fully-initialised array
+         }
+     }
+ 
++    /**
++     * FNV-1a 64 over the readable bytes of the buffer; index-neutral (does not move reader/writer).
++     * Purely arithmetic, so it is deterministic across JVMs. Collisions are not a practical concern:
++     * the check exists to catch packet mutation between viewers, not adversarial forgery.
++     */
++    static long papoHashBytes(io.netty.buffer.ByteBuf buf) {
++        long hash = 0xcbf29ce484222325L;
++        final int from = buf.readerIndex();
++        final int to = from + buf.readableBytes();
++        for (int i = from; i < to; i++) {
++            hash ^= buf.getByte(i) & 0xFFL;
++            hash *= 0x100000001b3L;
++        }
++        return hash;
++    }
++
+     /** Implemented by packet instances that can carry a shared compression memo. */
+     public interface Carrier {
+         @Nullable
+diff --git a/net/minecraft/network/protocol/game/ClientboundPlayerInfoUpdatePacket.java b/net/minecraft/network/protocol/game/ClientboundPlayerInfoUpdatePacket.java
+index 793341e8c9f4ea8f4f9ae32af36fa9124333bcc2..63f182dc9193433e0f3ec96c67ce289163e69ed8 100644
+--- a/net/minecraft/network/protocol/game/ClientboundPlayerInfoUpdatePacket.java
++++ b/net/minecraft/network/protocol/game/ClientboundPlayerInfoUpdatePacket.java
+@@ -10,7 +10,6 @@ import java.util.Objects;
+ import java.util.UUID;
+ import net.minecraft.Optionull;
+ import net.minecraft.network.FriendlyByteBuf;
+-import net.minecraft.network.PapoSharedWireMemo;
+ import net.minecraft.network.RegistryFriendlyByteBuf;
+ import net.minecraft.network.chat.Component;
+ import net.minecraft.network.chat.ComponentSerialization;
+@@ -25,7 +24,7 @@ import net.minecraft.world.entity.player.PlayerModelPart;
+ import net.minecraft.world.level.GameType;
+ import org.jspecify.annotations.Nullable;
+ 
+-public class ClientboundPlayerInfoUpdatePacket implements Packet<ClientGamePacketListener>, net.minecraft.network.PapoSharedWireMemo.Carrier {
++public class ClientboundPlayerInfoUpdatePacket implements Packet<ClientGamePacketListener> { // Papo - Carrier removed (locale-sensitive codec; see compat note below)
+     public static final StreamCodec<RegistryFriendlyByteBuf, ClientboundPlayerInfoUpdatePacket> STREAM_CODEC = Packet.codec(
+         ClientboundPlayerInfoUpdatePacket::write, ClientboundPlayerInfoUpdatePacket::new
+     );
+@@ -268,22 +267,11 @@ public class ClientboundPlayerInfoUpdatePacket implements Packet<ClientGamePacke
+         }
+     }
+ 
+-    // Papo start - shared wire memo for the join player-info broadcast
+-    // PlayerList sends one createPlayerInitializing instance to every online player on join
+-    // (profile entries with skin properties are ~0.5-1.5 KiB, above the compression threshold);
+-    // the memo replays the first connection's encode + DEFLATE - see PapoSharedWireMemo. The
+-    // packet is immutable and its codec is deterministic and locale-independent. Armed only at
+-    // the join broadcast sites; every other construction keeps a null memo.
+-    private PapoSharedWireMemo papoWireMemo;
+-
+-    public void papoEnableWireMemo() {
+-        this.papoWireMemo = PapoSharedWireMemo.papoCreateEncodeArmed();
+-    }
+-
+-    @Override
+-    public @Nullable PapoSharedWireMemo papoWireMemo() {
+-        return this.papoWireMemo;
+-    }
+-    // Papo end - shared wire memo for the join player-info broadcast
++    // Papo start - wire memo REMOVED (compat fix): the join player-info broadcast originally
++    // carried an encode+DEFLATE memo, but Entry.displayName serializes through the
++    // per-receiver-locale translation-aware codec - memoizing freezes the first receiver's
++    // locale into every client's tab list and replays away packet-editing plugins' rewrites.
++    // Vanilla per-connection encoding is the only correct behavior; see PlayerList.
++    // Papo end
+ 
+ }
+diff --git a/net/minecraft/server/level/ServerEntity.java b/net/minecraft/server/level/ServerEntity.java
+index c99d768f9a1ce4ab538aa3315480c2bb9bafb71c..c5437bb965e60b4f8bb0a9a40dd99c929cea8a60 100644
+--- a/net/minecraft/server/level/ServerEntity.java
++++ b/net/minecraft/server/level/ServerEntity.java
+@@ -372,13 +372,25 @@ public class ServerEntity {
+         // walking into range etc.) builds fresh as before. updateDataBeforeSync and
+         // detectEquipmentUpdates are idempotent checks, so running them once per sweep instead of
+         // once per viewer is unobservable.
+-        if (this.papoPairingShareDepth > 0 && this.papoPairingShareCache != null) {
++        // Plugin-compat guard: a connection whose pipeline carries packet-editing handlers
++        // (ProtocolLib/PacketEvents - they register no Bukkit listeners, so the event gate above
++        // does not see them) must never receive a shared instance: its per-viewer rewrite of a
++        // spawn/metadata/equipment packet would leak to every other viewer of the same sweep. Such
++        // connections build fresh per-viewer packets, and sharing is skipped entirely while any
++        // impure viewer participates (both the cached list and the freshly-built list handed to an
++        // impure viewer must stay private). See PapoPipelineGuard.
++        final boolean papoPureViewer = net.minecraft.network.PapoPipelineGuard.papoPurePipeline(player.connection.connection.channel.pipeline());
++        if (this.papoPairingShareDepth > 0 && this.papoPairingShareCache != null && papoPureViewer) {
+             list = this.papoPairingShareCache;
+         } else {
+             list = new ArrayList<>(4);
+             this.sendPairingData(player, list::add);
+-            if (this.papoPairingShareDepth > 0) {
++            if (this.papoPairingShareDepth > 0 && papoPureViewer) {
+                 this.papoPairingShareCache = list;
++            } else if (!papoPureViewer) {
++                // conservative: once an impure viewer participates, drop the cache for the rest
++                // of the sweep so later viewers never share a list an impure connection touched
++                this.papoPairingShareCache = null;
+             }
+         }
+         // Papo end - share pairing packets across viewers within one continuous sweep
+diff --git a/net/minecraft/server/network/PlayerChunkSender.java b/net/minecraft/server/network/PlayerChunkSender.java
+index ed6435f3ee6214e8a86451269b36ed0649e282ea..a8f90e46aecd8b3d0c967f2df6b34c31a4af5efd 100644
+--- a/net/minecraft/server/network/PlayerChunkSender.java
++++ b/net/minecraft/server/network/PlayerChunkSender.java
+@@ -79,7 +79,13 @@ public class PlayerChunkSender {
+     public static void sendChunk(ServerGamePacketListenerImpl packetListener, ServerLevel level, LevelChunk chunk) { // Paper - rewrite chunk system - public
+         // Paper start - Anti-Xray
+         final boolean shouldModify = level.chunkPacketBlockController.shouldModify(packetListener.player, chunk);
+-        if (shouldModify) {
++        // Papo start - plugin-compat guard (see PapoPipelineGuard): the cached/shared chunk packet
++        // paths hand out shared serialized arrays and (for BE-less chunks) ONE packet instance
++        // across viewers. A packet-editing plugin on this connection rewrites what it receives, so
++        // for such connections only the vanilla fresh per-viewer construction is safe - handing
++        // them shared data would poison the chunk's cache for every later viewer. Fail closed.
++        final boolean papoPureConnection = net.minecraft.network.PapoPipelineGuard.papoPurePipeline(packetListener.connection.channel.pipeline());
++        if (shouldModify || !papoPureConnection) {
+             packetListener.send(new ClientboundLevelChunkWithLightPacket(chunk, level.getLightEngine(), null, null, shouldModify));
+         } else {
+             // Papo start - multi-viewer chunk packet data cache: reuse the serialized
+@@ -88,6 +94,7 @@ public class PlayerChunkSender {
+             packetListener.send(ClientboundLevelChunkWithLightPacket.papoCreateCached(chunk, level.getLightEngine()));
+             // Papo end - multi-viewer chunk packet data cache
+         }
++        // Papo end
+         // Paper end - Anti-Xray
+         // Paper start - PlayerChunkLoadEvent
+         if (io.papermc.paper.event.packet.PlayerChunkLoadEvent.getHandlerList().getRegisteredListeners().length > 0) {
+diff --git a/net/minecraft/server/network/ServerConfigurationPacketListenerImpl.java b/net/minecraft/server/network/ServerConfigurationPacketListenerImpl.java
+index 320789bb8b2d8288c96200704b81f7fe6a211e39..33feecad7c1676f69665ca341f7c97cfc9d9c00c 100644
+--- a/net/minecraft/server/network/ServerConfigurationPacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerConfigurationPacketListenerImpl.java
+@@ -122,7 +122,10 @@ public class ServerConfigurationPacketListenerImpl extends ServerCommonPacketLis
+             .flatMap(packResources -> packResources.location().knownPackInfo().stream())
+             .toList();
+         this.send(new ClientboundUpdateEnabledFeaturesPacket(FeatureFlags.REGISTRY.toNames(this.server.getWorldData().enabledFeatures())));
+-        this.synchronizeRegistriesTask = new SynchronizeRegistriesTask(list, layeredRegistryAccess);
++        this.synchronizeRegistriesTask = new SynchronizeRegistriesTask(list, layeredRegistryAccess,
++            // Papo - plugin-compat guard: impure pipelines get freshly built registry/tag packets (vanilla
++            // per-join construction) so packet-editing plugins never mutate the shared cache instances
++            net.minecraft.network.PapoPipelineGuard.papoPurePipeline(this.connection.channel.pipeline()));
+         this.configurationTasks.add(this.synchronizeRegistriesTask);
+         this.addOptionalTasks();
+         this.configurationTasks.add(new io.papermc.paper.connection.PaperConfigurationTask(this)); // Paper
+diff --git a/net/minecraft/server/network/config/SynchronizeRegistriesTask.java b/net/minecraft/server/network/config/SynchronizeRegistriesTask.java
+index 3e73ccd49ce493f40055799a7469e199b5e10edd..25eba58d5975652fb64c65080859c161b9ab5014 100644
+--- a/net/minecraft/server/network/config/SynchronizeRegistriesTask.java
++++ b/net/minecraft/server/network/config/SynchronizeRegistriesTask.java
+@@ -23,9 +23,22 @@ public class SynchronizeRegistriesTask implements ConfigurationTask {
+     private final LayeredRegistryAccess<RegistryLayer> registries;
+ 
+     public SynchronizeRegistriesTask(List<KnownPack> requestedPacks, LayeredRegistryAccess<RegistryLayer> registries) {
++        this(requestedPacks, registries, true); // Papo - pure by default (legacy callers); real connections pass their guard result
++    }
++
++    // Papo start - plugin-compat guard (see PapoPipelineGuard): cached packet instances are only
++    // handed to connections with a pure vanilla pipeline. A packet-editing plugin on this
++    // connection rewrites what it receives - handing it the shared cached instance would poison
++    // the cache for every later join. Impure connections get freshly built packets (vanilla
++    // per-join construction, no memo - PacketEncoder's guard makes the memo inert anyway).
++    private final boolean papoPureConnection;
++
++    public SynchronizeRegistriesTask(List<KnownPack> requestedPacks, LayeredRegistryAccess<RegistryLayer> registries, boolean papoPureConnection) {
+         this.requestedPacks = requestedPacks;
+         this.registries = registries;
++        this.papoPureConnection = papoPureConnection;
+     }
++    // Papo end
+ 
+     @Override
+     public void start(Consumer<Packet<?>> task) {
+@@ -37,6 +50,10 @@ public class SynchronizeRegistriesTask implements ConfigurationTask {
+     // reloads; building them per join cost the main thread the full tag walk (625 tags / 4377
+     // entries) plus, for non-matching clients, full NBT encoding of 24 registries / 371 entries.
+     private void sendRegistries(Consumer<Packet<?>> packetSender, Set<KnownPack> packs, boolean papoMatched) {
++        if (!this.papoPureConnection) {
++            this.papoSendRegistriesUncached(packetSender, packs);
++            return; // Papo - impure pipeline: vanilla per-join construction, cache untouched
++        }
+         List<ClientboundRegistryDataPacket> papoCached = papoMatched ? PapoJoinPacketCache.registryMatched : PapoJoinPacketCache.registryMismatched;
+         if (papoCached == null) {
+             final List<ClientboundRegistryDataPacket> papoBuilt = new java.util.ArrayList<>();
+@@ -73,6 +90,21 @@ public class SynchronizeRegistriesTask implements ConfigurationTask {
+         packetSender.accept(papoTags);
+     }
+ 
++    // Papo start - impure-pipeline path: exactly the vanilla per-join construction (fresh packet
++    // instances, no memo arming, nothing stored in the cache). Content is identical to the cached
++    // instances; only instance identity (and thus mutability exposure) differs.
++    private void papoSendRegistriesUncached(Consumer<Packet<?>> packetSender, Set<KnownPack> packs) {
++        DynamicOps<Tag> dynamicOps = this.registries.compositeAccess().createSerializationContext(NbtOps.INSTANCE);
++        RegistrySynchronization.packRegistries(
++            dynamicOps,
++            this.registries.getAccessFrom(RegistryLayer.WORLDGEN),
++            packs,
++            (resourceKey, list) -> packetSender.accept(new ClientboundRegistryDataPacket(resourceKey, list))
++        );
++        packetSender.accept(new ClientboundUpdateTagsPacket(TagNetworkSerialization.serializeTagsToNetwork(this.registries)));
++    }
++    // Papo end
++
+     public void handleResponse(List<KnownPack> packs, Consumer<Packet<?>> packetSender) {
+         if (packs.equals(this.requestedPacks)) {
+             this.sendRegistries(packetSender, Set.copyOf(this.requestedPacks), true); // Papo - cache key
+diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
+index c40056e092ff3d8b84e6e17b1b0ae33fe3999b27..c02db85476e3978cb519ba05a29116d323e18a28 100644
+--- a/net/minecraft/server/players/PlayerList.java
++++ b/net/minecraft/server/players/PlayerList.java
+@@ -203,7 +203,17 @@ public abstract class PlayerList {
+         serverGamePacketListenerImpl.send(new ClientboundPlayerAbilitiesPacket(player.getAbilities()));
+         serverGamePacketListenerImpl.send(new ClientboundSetHeldSlotPacket(player.getInventory().getSelectedSlot()));
+         RecipeManager recipeManager = this.server.getRecipeManager();
+-        serverGamePacketListenerImpl.send(this.papoRecipesPacket(recipeManager)); // Papo - join-static cached instance with shared wire memo
++        // Papo start - plugin-compat guard: only hand the CACHED recipes-packet instance to pure
++        // vanilla pipelines; a packet-editing plugin on this connection would mutate the shared
++        // instance and poison every later join. Impure connections get a fresh instance (vanilla).
++        if (net.minecraft.network.PapoPipelineGuard.papoPurePipeline(serverGamePacketListenerImpl.connection.channel.pipeline())) {
++            serverGamePacketListenerImpl.send(this.papoRecipesPacket(recipeManager)); // Papo - join-static cached instance with shared wire memo
++        } else {
++            serverGamePacketListenerImpl.send(new ClientboundUpdateRecipesPacket(
++                recipeManager.getSynchronizedItemProperties(), recipeManager.getSynchronizedStonecutterRecipes()
++            ));
++        }
++        // Papo end
+         this.sendPlayerPermissionLevel(player);
+         player.getStats().markAllDirty();
+         player.getRecipeBook().sendInitialRecipeBook(player);
+@@ -260,7 +270,11 @@ public abstract class PlayerList {
+ 
+         // CraftBukkit start - sendAll above replaced with this loop
+         ClientboundPlayerInfoUpdatePacket packet = ClientboundPlayerInfoUpdatePacket.createPlayerInitializing(List.of(player)); // Paper - Add Listing API for Player
+-        packet.papoEnableWireMemo(); // Papo - one instance goes to every online player; replay its encode + DEFLATE per connection (see PapoSharedWireMemo)
++        // Papo - compat fix: NO wire memo on player-info. The displayName field is encoded through
++        // the per-receiver-locale translation-aware codec (ComponentSerialization.localizedCodec), so
++        // memoizing the first receiver's bytes would freeze THEIR locale into every other client's
++        // tab list, and packet-editing plugins' per-viewer rewrites would be replayed away. Vanilla
++        // encodes per connection; that stays.
+         ClientboundPlayerInfoUpdatePacket papoUnlistedPacket = null; // Papo - hoist the unlisted variant: same construction for every receiver, built lazily
+ 
+         final List<ServerPlayer> onlinePlayers = Lists.newArrayListWithExpectedSize(this.players.size() - 1); // Paper - Use single player info update packet on join
+@@ -277,7 +291,6 @@ public abstract class PlayerList {
+                     // Papo start - hoist the unlisted variant out of the loop (identical construction for every receiver)
+                     if (papoUnlistedPacket == null) {
+                         papoUnlistedPacket = ClientboundPlayerInfoUpdatePacket.createSinglePlayerInitializing(player, false);
+-                        papoUnlistedPacket.papoEnableWireMemo();
+                     }
+                     entityplayer1.connection.send(papoUnlistedPacket);
+                     // Papo end - hoist the unlisted variant out of the loop (identical construction for every receiver)

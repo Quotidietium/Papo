@@ -78,6 +78,20 @@ public final class PapoWireDirtyTracking {
     private final LongOpenHashSet[] dirty = new LongOpenHashSet[STRIPES];
     private final Object[] locks = new Object[STRIPES];
 
+    // Papo start - batch 178 (R37): scan position and 2x2 chunk-slot cache hoisted
+    // to thread-locals - mark() previously allocated one MutableBlockPos (both
+    // paths) and one ChunkAccess[4] (markLevel) per call, and mark runs once per
+    // block transition, including once per worldgen setBlock. Every use of the
+    // scan position is set-immediately-before-read and every slot read happens
+    // within the single mark() frame (the array is nulled on entry so a previous
+    // call's chunks can never leak into a new grid base), so reuse is
+    // unobservable. Reentry on the same thread (a force-load during papoChunk
+    // cannot itself transition a block) would still be safe: each access
+    // re-derives its position via set().
+    private static final ThreadLocal<BlockPos.MutableBlockPos> SCAN_SCRATCH = ThreadLocal.withInitial(BlockPos.MutableBlockPos::new);
+    private static final ThreadLocal<ChunkAccess[]> SLOT_CACHE = ThreadLocal.withInitial(() -> new ChunkAccess[4]);
+    // Papo end - batch 178 (R37)
+
     public PapoWireDirtyTracking() {
         for (int i = 0; i < STRIPES; i++) {
             this.dirty[i] = new LongOpenHashSet(64);
@@ -171,8 +185,12 @@ public final class PapoWireDirtyTracking {
             this.markGeneric(level, pos);
             return;
         }
-        final ChunkAccess[] chunks = new ChunkAccess[4]; // slot = ((cx-baseCx)<<1) | (cz-baseCz)
-        final BlockPos.MutableBlockPos scan = new BlockPos.MutableBlockPos();
+        // Papo start - batch 178 (R37): thread-local scan position (see field
+        // comment) instead of a fresh MutableBlockPos per mark.
+        final BlockPos.MutableBlockPos scan = SCAN_SCRATCH.get();
+        // Papo end - batch 178 (R37)
+        final ChunkAccess[] chunks = SLOT_CACHE.get(); // slot = ((cx-baseCx)<<1) | (cz-baseCz)
+        java.util.Arrays.fill(chunks, null);
         for (int i = 0; i < SCAN_DX.length; i++) {
             scan.set(x + SCAN_DX[i], y + SCAN_DY[i], z + SCAN_DZ[i]);
             this.markIfWire(this.papoChunk(level, chunks, baseCx, baseCz, scan.getX(), scan.getZ()).getBlockState(scan), scan);
@@ -223,7 +241,9 @@ public final class PapoWireDirtyTracking {
         final int x = pos.getX();
         final int y = pos.getY();
         final int z = pos.getZ();
-        final BlockPos.MutableBlockPos scan = new BlockPos.MutableBlockPos();
+        // Papo start - batch 178 (R37): thread-local scan position (see field comment).
+        final BlockPos.MutableBlockPos scan = SCAN_SCRATCH.get();
+        // Papo end - batch 178 (R37)
         for (int i = 0; i < SCAN_DX.length; i++) {
             scan.set(x + SCAN_DX[i], y + SCAN_DY[i], z + SCAN_DZ[i]);
             this.markIfWire(reader, scan);

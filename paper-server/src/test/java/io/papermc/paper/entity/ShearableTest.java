@@ -15,8 +15,17 @@ import org.junit.jupiter.params.provider.MethodSource;
 class ShearableTest {
 
     static List<Class<Shearable>> nmsShearables() {
-        try (final ScanResult result = new ClassGraph().enableClassInfo().whitelistPackages("net.minecraft.world.entity").scan()) {
-            return result.getClassesImplementing(Shearable.class.getName()).loadClasses(Shearable.class);
+        try (final ScanResult result = new ClassGraph().enableClassInfo().enableClasspath().acceptPackages("net.minecraft.world.entity").scan()) {
+            // classgraph 6 dropped class loading; the test classloader sees the same single classpath
+            return result.getAllClassesImplementing(Shearable.class.getName()).stream()
+                .map(classInfo -> {
+                    try {
+                        return (Class<Shearable>) Class.forName(classInfo.getName(), false, ShearableTest.class.getClassLoader());
+                    } catch (final ClassNotFoundException e) {
+                        throw new RuntimeException(e);
+                    }
+                })
+                .toList();
         }
     }
 

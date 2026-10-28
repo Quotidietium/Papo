@@ -1,0 +1,210 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zurker <91011862+hershate@users.noreply.github.com>
+Date: Mon, 12 Oct 2026 20:45:20 +0800
+Subject: [PATCH] inside block walk de-allocation
+
+
+diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
+index b8130f4c0cd5a655ba3d41755239196b918b1041..3a37e388d842980ecadfa39fcfffcf746ba3782f 100644
+--- a/net/minecraft/world/entity/Entity.java
++++ b/net/minecraft/world/entity/Entity.java
+@@ -343,6 +343,13 @@ public abstract class Entity implements SyncedDataHolder, DebugValueSource, Name
+     private final ArrayDeque<Entity.Movement> movementThisTick = new ArrayDeque<>(100);
+     private final List<Entity.Movement> finalMovementsThisTick = new ObjectArrayList<>();
+     private final LongSet visitedBlocks = new LongOpenHashSet();
++    // Papo start - batch 188 (R47): caller-owned scratch for BlockGetter.forEachBlockIntersectedBetween's
++    // travel-dedupe set (was a fresh LongOpenHashSet per move segment; 717 trips/60s in the item-vortex
++    // census). Lazy: most entities never move-experience blocks. Left empty by the callee on every exit
++    // path (try/finally inside), cleared-in-place keeps capacity (fastutil), single-threaded main-thread
++    // use only, and the visitor never re-enters forEachBlockIntersectedBetween.
++    private LongOpenHashSet papoTravelDedupeScratch;
++    // Papo end
+     private final InsideBlockEffectApplier.StepBasedCollector insideEffectCollector = new InsideBlockEffectApplier.StepBasedCollector();
+     private CustomData customData = CustomData.EMPTY;
+     // CraftBukkit start
+@@ -1750,6 +1757,10 @@ public abstract class Entity implements SyncedDataHolder, DebugValueSource, Name
+         boolean flag1 = this.level instanceof ServerLevel serverLevel
+             && serverLevel.getServer().debugSubscribers().hasAnySubscriberFor(DebugSubscriptions.ENTITY_BLOCK_INTERSECTIONS);
+         AtomicInteger atomicInteger = new AtomicInteger();
++        // Papo - batch 188 (R47): pass the per-entity travel-dedupe scratch (see field comment)
++        if (this.papoTravelDedupeScratch == null) {
++            this.papoTravelDedupeScratch = new LongOpenHashSet();
++        }
+         BlockGetter.forEachBlockIntersectedBetween(
+             from,
+             to,
+@@ -1806,6 +1817,8 @@ public abstract class Entity implements SyncedDataHolder, DebugValueSource, Name
+                     }
+                 }
+             }
++            // Papo - batch 188 (R47): travel-dedupe scratch, see field comment
++            , this.papoTravelDedupeScratch
+         );
+         return atomicInteger.get() + 1;
+     }
+diff --git a/net/minecraft/world/level/BlockGetter.java b/net/minecraft/world/level/BlockGetter.java
+index 8a21910fe7ed61c903c4f36fced63b179ace4577..86ef27652475c6500b87e065f748e0dee6bbb371 100644
+--- a/net/minecraft/world/level/BlockGetter.java
++++ b/net/minecraft/world/level/BlockGetter.java
+@@ -2,6 +2,7 @@ package net.minecraft.world.level;
+ 
+ import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+ import it.unimi.dsi.fastutil.longs.LongSet;
++import java.util.List;
+ import java.util.Optional;
+ import java.util.function.BiFunction;
+ import java.util.function.Function;
+@@ -210,6 +211,15 @@ public interface BlockGetter extends LevelHeightAccessor {
+     }
+ 
+     static boolean forEachBlockIntersectedBetween(Vec3 from, Vec3 to, AABB boundingBox, BlockGetter.BlockStepVisitor visitor) {
++        // Papo - batch 188 (R47): delegate to the scratch overload with null = legacy per-call set
++        return forEachBlockIntersectedBetween(from, to, boundingBox, visitor, null);
++    }
++
++    // Papo start - batch 188 (R47): scratch-set overload for the hot caller (Entity.checkInsideBlocks).
++    // The travel-dedupe LongOpenHashSet used to be allocated per call (717 trips in the 60s item-vortex
++    // census window). The set is call-local and dead on exit, so a caller-owned scratch cleared on every
++    // exit path (try/finally, exception-safe) is behavior-identical; null keeps the per-call allocation.
++    static boolean forEachBlockIntersectedBetween(Vec3 from, Vec3 to, AABB boundingBox, BlockGetter.BlockStepVisitor visitor, @Nullable LongSet papoScratch) {
+         Vec3 vec3 = to.subtract(from);
+         if (vec3.lengthSqr() < Mth.square(1.0E-5F)) {
+             for (BlockPos blockPos : BlockPos.betweenClosed(boundingBox)) {
+@@ -220,30 +230,108 @@ public interface BlockGetter extends LevelHeightAccessor {
+ 
+             return true;
+         } else {
+-            LongSet set = new LongOpenHashSet();
+-
+-            for (BlockPos blockPos1 : BlockPos.betweenCornersInDirection(boundingBox.move(vec3.scale(-1.0)), vec3)) {
+-                if (!visitor.visit(blockPos1, 0)) {
++            final LongSet set = papoScratch != null ? papoScratch : new LongOpenHashSet();
++            try {
++                // Papo start - batch 188 (R47): loop 1 was
++                //   for (BlockPos blockPos1 : BlockPos.betweenCornersInDirection(boundingBox.move(vec3.scale(-1.0)), vec3))
++                // Each such loop allocated a capture lambda + AbstractIterator (530 trips combined across the
++                // three loops). papoVisitCornersInDirection yields the identical positions in the identical order
++                // through one MutableBlockPos cursor per call of the helper — the same shared-cursor aliasing
++                // vanilla's iterator had within one loop, and separate cursors across loops, exactly like vanilla.
++                if (papoVisitCornersInDirection(boundingBox.minX - vec3.x, boundingBox.minY - vec3.y, boundingBox.minZ - vec3.z,
++                    boundingBox.maxX - vec3.x, boundingBox.maxY - vec3.y, boundingBox.maxZ - vec3.z, vec3, visitor, 0, set, false)) {
+                     return false;
+                 }
++                // Papo end
+ 
+-                set.add(blockPos1.asLong());
+-            }
+-
+-            int i = addCollisionsAlongTravel(set, vec3, boundingBox, visitor);
+-            if (i < 0) {
+-                return false;
+-            } else {
+-                for (BlockPos blockPos2 : BlockPos.betweenCornersInDirection(boundingBox, vec3)) {
+-                    if (set.add(blockPos2.asLong()) && !visitor.visit(blockPos2, i + 1)) {
++                int i = addCollisionsAlongTravel(set, vec3, boundingBox, visitor);
++                if (i < 0) {
++                    return false;
++                } else {
++                    // Papo - batch 188 (R47): was BlockPos.betweenCornersInDirection(boundingBox, vec3); see loop 1
++                    if (papoVisitCornersInDirection(boundingBox.minX, boundingBox.minY, boundingBox.minZ,
++                        boundingBox.maxX, boundingBox.maxY, boundingBox.maxZ, vec3, visitor, i + 1, set, true)) {
+                         return false;
+                     }
++
++                    return true;
+                 }
++            } finally {
++                if (papoScratch != null) {
++                    papoScratch.clear();
++                }
++            }
++        }
++    }
++
++    // Papo start - batch 188 (R47): allocation-free mirror of BlockPos.betweenCornersInDirection's walk.
++    // Positions, order and short-circuit are identical (indices advance t-innermost, exactly like
++    // computeNext); the AABB overload's floor arguments are taken as raw doubles so callers can pass
++    // moved-box components without materializing the moved AABB or the getMin/MaxPosition Vec3s
++    // (minX - vec3.x is bit-identical to minX + (-vec3.x), which is what AABB.move(Vec3.scale(-1)) computed).
++    // papoDedupeSet/papoDedupeBeforeVisit encode the two set disciplines the original loops used:
++    //   dedupe-before-visit (set.add filter, loop 2/3) or visit-then-add (loop 1); null = no set.
++    private static boolean papoVisitCornersInDirection(double minX, double minY, double minZ, double maxX, double maxY, double maxZ,
++                                                       Vec3 direction, BlockGetter.BlockStepVisitor visitor, int index,
++                                                       @Nullable LongSet papoDedupeSet, boolean papoDedupeBeforeVisit) {
++        int min = Math.min(Mth.floor(minX), Mth.floor(maxX));
++        int min1 = Math.min(Mth.floor(minY), Mth.floor(maxY));
++        int min2 = Math.min(Mth.floor(minZ), Mth.floor(maxZ));
++        int max = Math.max(Mth.floor(minX), Mth.floor(maxX));
++        int max1 = Math.max(Mth.floor(minY), Mth.floor(maxY));
++        int max2 = Math.max(Mth.floor(minZ), Mth.floor(maxZ));
++        int i = max - min;
++        int i1 = max1 - min1;
++        int i2 = max2 - min2;
++        int i3 = direction.x >= 0.0 ? min : max;
++        int i4 = direction.y >= 0.0 ? min1 : max1;
++        int i5 = direction.z >= 0.0 ? min2 : max2;
++        List<Direction.Axis> list = Direction.axisStepOrder(direction);
++        Direction.Axis axis = list.get(0);
++        Direction.Axis axis1 = list.get(1);
++        Direction.Axis axis2 = list.get(2);
++        Direction direction1 = direction.get(axis) >= 0.0 ? axis.getPositive() : axis.getNegative();
++        Direction direction2 = direction.get(axis1) >= 0.0 ? axis1.getPositive() : axis1.getNegative();
++        Direction direction3 = direction.get(axis2) >= 0.0 ? axis2.getPositive() : axis2.getNegative();
++        int i6 = axis.choose(i, i1, i2);
++        int i7 = axis1.choose(i, i1, i2);
++        int i8 = axis2.choose(i, i1, i2);
++        int firstDirX = direction1.getStepX();
++        int firstDirY = direction1.getStepY();
++        int firstDirZ = direction1.getStepZ();
++        int secondDirX = direction2.getStepX();
++        int secondDirY = direction2.getStepY();
++        int secondDirZ = direction2.getStepZ();
++        int thirdDirX = direction3.getStepX();
++        int thirdDirY = direction3.getStepY();
++        int thirdDirZ = direction3.getStepZ();
++        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
++        for (int firstIndex = 0; firstIndex <= i6; firstIndex++) {
++            for (int secondIndex = 0; secondIndex <= i7; secondIndex++) {
++                for (int thirdIndex = 0; thirdIndex <= i8; thirdIndex++) {
++                    cursor.set(
++                        i3 + firstDirX * firstIndex + secondDirX * secondIndex + thirdDirX * thirdIndex,
++                        i4 + firstDirY * firstIndex + secondDirY * secondIndex + thirdDirY * thirdIndex,
++                        i5 + firstDirZ * firstIndex + secondDirZ * secondIndex + thirdDirZ * thirdIndex
++                    );
++                    if (papoDedupeSet != null && papoDedupeBeforeVisit && !papoDedupeSet.add(cursor.asLong())) {
++                        continue;
++                    }
++
++                    if (!visitor.visit(cursor, index)) {
++                        return true;
++                    }
+ 
+-                return true;
++                    if (papoDedupeSet != null && !papoDedupeBeforeVisit) {
++                        papoDedupeSet.add(cursor.asLong());
++                    }
++                }
+             }
+         }
++
++        return false;
+     }
++    // Papo end
+ 
+     private static int addCollisionsAlongTravel(LongSet output, Vec3 travelVector, AABB boundingBox, BlockGetter.BlockStepVisitor stepVisitor) {
+         double xsize = boundingBox.getXsize();
+@@ -300,10 +388,10 @@ public interface BlockGetter extends LevelHeightAccessor {
+                 int floor5 = Mth.floor(d8 - zsize * furthestCorner.getZ());
+                 int i4 = i3;
+ 
+-                for (BlockPos blockPos : BlockPos.betweenCornersInDirection(floor, floor1, floor2, floor3, floor4, floor5, travelVector)) {
+-                    if (output.add(blockPos.asLong()) && !stepVisitor.visit(blockPos, i4)) {
+-                        return -1;
+-                    }
++                // Papo - batch 188 (R47): was BlockPos.betweenCornersInDirection(floor..floor5, travelVector);
++                // see the helper in forEachBlockIntersectedBetween. Dedupe-before-visit, same set discipline.
++                if (papoVisitCornersInDirection(floor, floor1, floor2, floor3, floor4, floor5, travelVector, stepVisitor, i4, output, true)) {
++                    return -1;
+                 }
+             }
+         }

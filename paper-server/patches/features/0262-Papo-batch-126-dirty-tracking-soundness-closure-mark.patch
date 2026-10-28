@@ -105,10 +105,10 @@ index b3e539678c2f172ed040d0068a5e608787bb25fb..112b48ccd3004a283631001373b6db36
          BlockPos blockPos = pos.relative(direction.getOpposite());
          Orientation orientation = ExperimentalRedstoneUtils.initialOrientation(level, direction.getOpposite(), Direction.UP);
 diff --git a/net/minecraft/world/level/chunk/LevelChunk.java b/net/minecraft/world/level/chunk/LevelChunk.java
-index 722bbb41c38070bfb0b69b4f39c096ab08cc2b88..e120f11aaf5f78d3daf49c424a3f79a4904e8127 100644
+index 5a9924ce9c8a2f09da739144e2ddaec99d4309b7..17f6cd7af12fa98ea411f2a4ed6052bbae0bd00d 100644
 --- a/net/minecraft/world/level/chunk/LevelChunk.java
 +++ b/net/minecraft/world/level/chunk/LevelChunk.java
-@@ -432,6 +432,20 @@ public class LevelChunk extends ChunkAccess implements DebugValueSource, ca.spot
+@@ -440,6 +440,20 @@ public class LevelChunk extends ChunkAccess implements DebugValueSource, ca.spot
              if (blockState == state) {
                  return null;
              } else {
